@@ -21,7 +21,7 @@ async def make_call(
     ctx: TenantContext = Depends(get_tenant_context),
     service: CallService = Depends(get_call_service)
 ):
-    call = await service.make_call(ctx, payload.to)
+    call = await service.make_call(ctx, payload.to, payload.from_number, payload.prompt)
     return ApiResponse.ok(CallResponse.model_validate(call))
 
 @router.get("/token", response_model=ApiResponse[dict])
@@ -39,4 +39,3 @@ async def list_calls(
 ):
     calls = await service.list_calls(ctx)
     return ApiResponse.ok([CallResponse.model_validate(c) for c in calls])
-

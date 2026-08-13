@@ -1,12 +1,33 @@
+import os
+import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.twilio import router as twilio_router
 from app.api.v1.calls import router as calls_router
+from app.api.v1.auth import router as auth_router
+from app.api.v1.admin import router as admin_router
+from app.core.cosmos import init_cosmos_db
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Run Cosmos DB container setup and admin user seeding in a background thread
+    try:
+        await asyncio.to_thread(init_cosmos_db)
+    except Exception as e:
+        print(f"[Main Startup Error] Cosmos DB init failed: {e}")
+    yield
 
 app = FastAPI(
-    title="Cloud Rep AI API",
-    version="0.1.0",
-    description="Multi-Tenant AI Calling Agent Platform API"
+    title="Desire AI API",
+    version="0.2.0",
+    description="Desire AI Calling Agent Platform API with Cosmos DB Auth & Admin Management",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -17,6 +38,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
 app.include_router(calls_router, prefix="/api/v1")
 

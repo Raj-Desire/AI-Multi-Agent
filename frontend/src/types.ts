@@ -1,3 +1,19 @@
+export interface AuthUser {
+  id: string;
+  username: string;
+  email: string;
+  role: 'admin' | 'user';
+}
+
+export interface UserSummary {
+  id: string;
+  username: string;
+  email: string;
+  role: 'admin' | 'user';
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface TwilioConfig {
   account_sid: string;
   auth_token_masked: string;
@@ -19,6 +35,8 @@ export interface CallRecord {
   call_sid: string | null;
   from_number: string;
   to_number: string;
+  duration: number;
+  prompt?: string;
   status: string;
   created_at: string;
   updated_at: string;
