@@ -113,7 +113,7 @@ function MainContent() {
       </header>
 
       {/* Main Content Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+      <main className="flex-1 max-w-7xl xl:max-w-[1440px] w-full mx-auto px-4 sm:px-8 py-8 transition-all">
         {currentTab === "dashboard" ? (
           <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
         ) : currentTab === "twilio" ? (
