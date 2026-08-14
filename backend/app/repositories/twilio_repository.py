@@ -21,6 +21,10 @@ class TwilioRepository:
                     account_sid=item.get("account_sid", ""),
                     encrypted_auth_token=item.get("encrypted_auth_token", ""),
                     phone_number=item.get("phone_number", ""),
+                    twiml_app_sid=item.get("twiml_app_sid"),
+                    api_key_sid=item.get("api_key_sid"),
+                    encrypted_api_key_secret=item.get("encrypted_api_key_secret"),
+                    public_base_url=item.get("public_base_url"),
                     status="CONNECTED",
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
@@ -40,6 +44,10 @@ class TwilioRepository:
                     "account_sid": config.account_sid,
                     "encrypted_auth_token": config.encrypted_auth_token,
                     "phone_number": config.phone_number,
+                    "twiml_app_sid": config.twiml_app_sid,
+                    "api_key_sid": config.api_key_sid,
+                    "encrypted_api_key_secret": config.encrypted_api_key_secret,
+                    "public_base_url": config.public_base_url,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 container.upsert_item(body=doc)

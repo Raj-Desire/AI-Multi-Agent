@@ -8,6 +8,7 @@ from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
+from twilio.twiml.voice_response import VoiceResponse, Dial
 
 from app.core.dependencies import TenantContext
 from app.core.security import decrypt_token
@@ -15,6 +16,14 @@ from app.models.call import Call
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.call_repository import CallRepository
 
+def normalize_phone_number(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    cleaned = str(value).strip()
+    if cleaned.startswith("+"):
+        return "+" + "".join(c for c in cleaned[1:] if c.isdigit())
+    digits = "".join(c for c in cleaned if c.isdigit())
+    return f"+{digits}" if digits else None
 
 class CallService:
     def __init__(self, twilio_repo: TwilioRepository, call_repo: CallRepository):
@@ -83,30 +92,89 @@ class CallService:
         )
         return await self.call_repo.save(call)
 
-    async def generate_voice_token(self, ctx: TenantContext) -> Dict[str, Any]:
+    async def generate_voice_token(self, ctx: TenantContext, req_base_url: str = "") -> Dict[str, Any]:
         tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
         if not tw_cfg:
-            raise HTTPException(status_code=400, detail="Twilio is not configured.")
+            raise HTTPException(status_code=400, detail="Twilio is not configured. Please configure your Account SID and Auth Token in settings.")
         
         auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
-        identity = f"user_{ctx.user_id}"
+        api_key_secret = decrypt_token(tw_cfg.encrypted_api_key_secret) if tw_cfg.encrypted_api_key_secret else None
+
+        if not tw_cfg.twiml_app_sid:
+            raise HTTPException(status_code=400, detail="TwiML App SID is missing. Please add it in Twilio Settings.")
+        if not tw_cfg.api_key_sid or not api_key_secret:
+            raise HTTPException(status_code=400, detail="Twilio API Key SID & Secret are required for WebRTC browser calling. Add them in Twilio Settings.")
+
+        # Check and auto-sync TwiML App URL if public base url is available
+        effective_base_url = tw_cfg.public_base_url or req_base_url
+        if effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
+            expected_url = f"{effective_base_url.strip().rstrip('/')}/api/v1/twilio/voice/twiml"
+            try:
+                def _sync_url():
+                    client = Client(tw_cfg.account_sid, auth_token)
+                    app = client.applications(tw_cfg.twiml_app_sid).fetch()
+                    if not app.voice_url or "/api/v1/twilio/voice/twiml" not in app.voice_url:
+                        client.applications(tw_cfg.twiml_app_sid).update(
+                            voice_url=expected_url,
+                            voice_method="POST",
+                            voice_fallback_url=expected_url,
+                            voice_fallback_method="POST"
+                        )
+                await asyncio.to_thread(_sync_url)
+            except Exception as e:
+                print(f"[CallService Warning] Could not auto-sync TwiML App URL: {e}")
+
+        identity = f"caller_{ctx.user_id}"
         
-        token = AccessToken(
+        access_token = AccessToken(
             account_sid=tw_cfg.account_sid,
-            signing_key_sid=tw_cfg.account_sid,
-            secret=auth_token,
-            identity=identity
+            signing_key_sid=tw_cfg.api_key_sid,
+            secret=api_key_secret,
+            identity=identity,
+            ttl=3600
         )
-        grant = VoiceGrant(incoming_allow=True)
-        token.add_grant(grant)
+        
+        voice_grant = VoiceGrant(
+            outgoing_application_sid=tw_cfg.twiml_app_sid,
+            outgoing_application_params={"userId": ctx.user_id},
+            incoming_allow=False
+        )
+        access_token.add_grant(voice_grant)
         
         first_number = tw_cfg.phone_number.split(",")[0].strip() if tw_cfg.phone_number else ""
 
         return {
-            "token": token.to_jwt(),
+            "token": access_token.to_jwt(),
             "identity": identity,
-            "from_number": first_number
+            "from_number": first_number,
+            "caller_number": first_number
         }
+
+    async def build_twiml_response(self, to: Optional[str], caller_id_override: Optional[str] = None, user_id: Optional[str] = None) -> str:
+        org_id = user_id or "default"
+        tw_cfg = await self.twilio_repo.get_by_org(org_id)
+        
+        caller_number_default = tw_cfg.phone_number.split(",")[0].strip() if tw_cfg and tw_cfg.phone_number else None
+        caller_id = normalize_phone_number(caller_id_override or caller_number_default)
+        destination = normalize_phone_number(to)
+
+        response = VoiceResponse()
+
+        if not destination:
+            response.say("Destination phone number is invalid or missing.")
+            response.hangup()
+            return str(response)
+
+        if not caller_id:
+            response.say("Caller ID number is not configured in Twilio settings. Please set your Twilio phone number in settings.")
+            response.hangup()
+            return str(response)
+
+        dial = Dial(caller_id=caller_id, answer_on_bridge=True)
+        dial.number(destination)
+        response.append(dial)
+
+        return str(response)
 
     async def list_calls(self, ctx: TenantContext) -> List[Call]:
         calls = await self.call_repo.list_by_org(ctx.organization_id)

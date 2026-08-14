@@ -18,6 +18,10 @@ export interface TwilioConfig {
   account_sid: string;
   auth_token_masked: string;
   phone_number: string;
+  twiml_app_sid?: string | null;
+  api_key_sid?: string | null;
+  api_key_secret_masked?: string | null;
+  public_base_url?: string | null;
   status: string;
 }
 
@@ -25,6 +29,10 @@ export interface SaveTwilioPayload {
   account_sid: string;
   auth_token: string;
   phone_number: string;
+  twiml_app_sid?: string;
+  api_key_sid?: string;
+  api_key_secret?: string;
+  public_base_url?: string;
 }
 
 export interface CallRecord {

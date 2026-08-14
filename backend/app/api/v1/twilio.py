@@ -1,15 +1,19 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
 from app.schemas.common import ApiResponse
 from app.services.twilio_service import TwilioService
+from app.services.call_service import CallService
 from app.repositories.twilio_repository import TwilioRepository
+from app.repositories.call_repository import CallRepository
 
 router = APIRouter(prefix="/twilio", tags=["Twilio"])
 
 twilio_repo = TwilioRepository()
 twilio_service = TwilioService(twilio_repo)
+call_repo = CallRepository()
+call_service = CallService(twilio_repo, call_repo)
 
 def get_twilio_service() -> TwilioService:
     return twilio_service
@@ -38,3 +42,29 @@ async def test_connection(
 ):
     res = await service.test_connection(ctx)
     return ApiResponse.ok(res)
+
+@router.api_route("/voice/twiml", methods=["GET", "POST"])
+async def voice_twiml_webhook(request: Request):
+    """
+    Public webhook endpoint invoked by Twilio when an in-browser WebRTC call connects.
+    Returns TwiML instructions directing Twilio to dial the destination phone number.
+    """
+    # Accept params from either form body or query params
+    form_data = {}
+    if request.method == "POST":
+        try:
+            form_data = await request.form()
+        except Exception:
+            form_data = {}
+
+    to = form_data.get("To") or form_data.get("to") or request.query_params.get("To") or request.query_params.get("to")
+    user_id = form_data.get("userId") or form_data.get("user_id") or request.query_params.get("userId") or request.query_params.get("user_id")
+    caller_id = form_data.get("callerId") or form_data.get("caller_id") or request.query_params.get("callerId")
+
+    try:
+        twiml_xml = await call_service.build_twiml_response(to=to, caller_id_override=caller_id, user_id=user_id)
+        return Response(content=twiml_xml, media_type="application/xml")
+    except Exception as e:
+        print(f"[Twilio Voice TwiML Error] {e}")
+        fallback_xml = '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred generating call instructions.</Say><Hangup/></Response>'
+        return Response(content=fallback_xml, media_type="application/xml")

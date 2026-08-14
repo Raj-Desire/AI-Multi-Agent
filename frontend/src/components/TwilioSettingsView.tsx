@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../api-client";
 import { TwilioConfig } from "../types";
-import { Key, Lock, Phone, ShieldCheck, AlertCircle, CheckCircle2, Save, RefreshCw, Plus, Edit2, Trash2, Check, X } from "lucide-react";
+import { Key, Lock, Phone, ShieldCheck, AlertCircle, CheckCircle2, Save, RefreshCw, Plus, Edit2, Trash2, Check, X, Globe, Radio, Sparkles } from "lucide-react";
 
 export function TwilioSettingsView() {
   const [config, setConfig] = useState<TwilioConfig | null>(null);
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
+  const [twimlAppSid, setTwimlAppSid] = useState("");
+  const [apiKeySid, setApiKeySid] = useState("");
+  const [apiKeySecret, setApiKeySecret] = useState("");
+  const [publicBaseUrl, setPublicBaseUrl] = useState("");
   
   // Master Phone Numbers List state
   const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
@@ -29,8 +33,12 @@ export function TwilioSettingsView() {
       const data = await fetchApi<TwilioConfig | null>("/twilio/configuration");
       if (data) {
         setConfig(data);
-        setAccountSid(data.account_sid);
-        setAuthToken(data.auth_token_masked);
+        setAccountSid(data.account_sid || "");
+        setAuthToken(data.auth_token_masked || "");
+        setTwimlAppSid(data.twiml_app_sid || "");
+        setApiKeySid(data.api_key_sid || "");
+        setApiKeySecret(data.api_key_secret_masked || "");
+        setPublicBaseUrl(data.public_base_url || "");
         const parsed = (data.phone_number || "")
           .split(",")
           .map((n) => n.trim())
@@ -103,11 +111,18 @@ export function TwilioSettingsView() {
           account_sid: accountSid,
           auth_token: authToken,
           phone_number: joinedNumbers,
+          twiml_app_sid: twimlAppSid,
+          api_key_sid: apiKeySid,
+          api_key_secret: apiKeySecret,
+          public_base_url: publicBaseUrl,
         }),
       });
       setConfig(updated);
       setAuthToken(updated.auth_token_masked);
-      setMessage({ text: "Twilio configuration saved successfully!", type: "success" });
+      if (updated.api_key_secret_masked) {
+        setApiKeySecret(updated.api_key_secret_masked);
+      }
+      setMessage({ text: "Twilio configuration & WebRTC settings saved successfully! TwiML Voice URL synced.", type: "success" });
     } catch (err: any) {
       setMessage({ text: err.message, type: "error" });
     } finally {
@@ -144,11 +159,11 @@ export function TwilioSettingsView() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 font-sans">
+    <div className="max-w-4xl mx-auto space-y-6 font-sans">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Twilio Configuration</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Manage your organization's Twilio Programmable Voice account and master phone numbers.
+          Manage your Twilio Programmable Voice account, WebRTC in-browser dialer keys, and public webhook tunnel.
         </p>
       </div>
 
@@ -188,39 +203,117 @@ export function TwilioSettingsView() {
         )}
 
         <form onSubmit={handleSave} className="space-y-6">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Key className="w-4 h-4 text-indigo-600" /> Account SID
-            </label>
-            <input
-              type="text"
-              required
-              value={accountSid}
-              onChange={(e) => setAccountSid(e.target.value)}
-              placeholder="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
-            />
+          {/* Section 1: Core Account */}
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider text-indigo-600 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" /> 1. Twilio Core Account
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-indigo-600" /> Account SID (starts with AC)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={accountSid}
+                  onChange={(e) => setAccountSid(e.target.value)}
+                  placeholder="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-indigo-600" /> Auth Token
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={authToken}
+                  onChange={(e) => setAuthToken(e.target.value)}
+                  placeholder="********************************"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <Lock className="w-4 h-4 text-indigo-600" /> Auth Token
-            </label>
-            <input
-              type="password"
-              required
-              value={authToken}
-              onChange={(e) => setAuthToken(e.target.value)}
-              placeholder="********************************"
-              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
-            />
-            <p className="text-xs text-slate-400 mt-1">Credentials are stored encrypted at rest in Azure Cosmos DB.</p>
+          {/* Section 2: In-Browser WebRTC Voice Calling */}
+          <div className="space-y-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider text-indigo-600 flex items-center gap-2">
+                <Radio className="w-4 h-4" /> 2. WebRTC Live Calling Keys (Browser Calling)
+              </h2>
+              <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-md font-semibold">
+                Required for In-Browser Web Dialer
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Radio className="w-4 h-4 text-indigo-600" /> TwiML App SID (starts with AP)
+              </label>
+              <input
+                type="text"
+                value={twimlAppSid}
+                onChange={(e) => setTwimlAppSid(e.target.value)}
+                placeholder="APXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Found in Twilio Console &gt; Voice &gt; Manage &gt; TwiML apps.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-indigo-600" /> API Key SID (starts with SK)
+                </label>
+                <input
+                  type="text"
+                  value={apiKeySid}
+                  onChange={(e) => setApiKeySid(e.target.value)}
+                  placeholder="SKXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-indigo-600" /> API Key Secret
+                </label>
+                <input
+                  type="password"
+                  value={apiKeySecret}
+                  onChange={(e) => setApiKeySecret(e.target.value)}
+                  placeholder="********************************"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-indigo-600" /> Public Webhook Base URL (ngrok / live tunnel / Azure host)
+              </label>
+              <input
+                type="text"
+                value={publicBaseUrl}
+                onChange={(e) => setPublicBaseUrl(e.target.value)}
+                placeholder="https://your-domain.ngrok-free.dev or https://your-subdomain.loca.lt"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                Saving will automatically configure your Twilio TwiML App Voice URL to: <code className="bg-slate-100 text-indigo-600 px-1 py-0.5 rounded">{publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/twilio/voice/twiml` : 'https://<your-url>/api/v1/twilio/voice/twiml'}</code>
+              </p>
+            </div>
           </div>
 
-          {/* Master Phone Numbers Manager */}
-          <div className="space-y-3 pt-2">
+          {/* Section 3: Master Phone Numbers Manager */}
+          <div className="space-y-3 pt-4 border-t border-slate-100">
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <Phone className="w-4 h-4 text-emerald-600" /> Configured Phone Numbers ({phoneNumbers.length})
+              <Phone className="w-4 h-4 text-emerald-600" /> 3. Configured Phone Numbers ({phoneNumbers.length})
             </label>
 
             {/* Add Number Control Bar */}
@@ -253,7 +346,7 @@ export function TwilioSettingsView() {
                 No phone numbers added yet. Enter a number above and click Add.
               </div>
             ) : (
-              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
                 {phoneNumbers.map((num, index) => (
                   <div
                     key={index}
@@ -294,7 +387,7 @@ export function TwilioSettingsView() {
                           <div>
                             <span className="font-mono text-sm font-bold text-slate-900">{num}</span>
                             {index === 0 && (
-                              <span className="ml-2 text.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border border-emerald-200">
+                              <span className="ml-2 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border border-emerald-200">
                                 Primary Caller ID
                               </span>
                             )}
@@ -327,7 +420,7 @@ export function TwilioSettingsView() {
             )}
           </div>
 
-          <div className="pt-3 flex items-center gap-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
             <button
               type="submit"
               disabled={saving}

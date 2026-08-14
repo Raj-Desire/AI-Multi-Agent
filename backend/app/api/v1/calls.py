@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.call import MakeCallRequest, CallResponse
 from app.schemas.common import ApiResponse
@@ -26,10 +26,12 @@ async def make_call(
 
 @router.get("/token", response_model=ApiResponse[dict])
 async def get_voice_token(
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: CallService = Depends(get_call_service)
 ):
-    res = await service.generate_voice_token(ctx)
+    base_url = str(request.base_url).rstrip("/")
+    res = await service.generate_voice_token(ctx, req_base_url=base_url)
     return ApiResponse.ok(res)
 
 @router.get("", response_model=ApiResponse[List[CallResponse]])

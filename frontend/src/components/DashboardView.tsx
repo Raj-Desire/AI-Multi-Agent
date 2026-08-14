@@ -1,7 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { fetchApi } from "../api-client";
 import { TwilioConfig, CallRecord } from "../types";
-import { PhoneCall, PhoneOutgoing, Clock, CheckCircle2, AlertCircle, ShieldAlert, ArrowUpRight, MessageSquare, Timer } from "lucide-react";
+import { PhoneCall, PhoneOutgoing, PhoneOff, Mic, MicOff, Clock, CheckCircle2, AlertCircle, ShieldAlert, ArrowUpRight, MessageSquare, Timer, Radio, Delete, Volume2 } from "lucide-react";
+
+declare global {
+  interface Window {
+    Twilio?: any;
+  }
+}
 
 function formatDuration(seconds: number) {
   if (!seconds || seconds <= 0) return "0s";
@@ -18,11 +24,30 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
   const [prompt, setPrompt] = useState("");
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
-  const [calling, setCalling] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // WebRTC Device & Live Call states
+  const [deviceReady, setDeviceReady] = useState(false);
+  const [deviceStatusText, setDeviceStatusText] = useState("Initializing WebRTC Voice Device...");
+  const [callState, setCallState] = useState<"idle" | "dialing" | "ringing" | "connected">("idle");
+  const [isMuted, setIsMuted] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+
+  const deviceRef = useRef<any>(null);
+  const activeCallRef = useRef<any>(null);
+  const timerRef = useRef<any>(null);
 
   useEffect(() => {
     loadData();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (activeCallRef.current) {
+        try { activeCallRef.current.disconnect(); } catch (e) {}
+      }
+      if (deviceRef.current) {
+        try { deviceRef.current.destroy(); } catch (e) {}
+      }
+    };
   }, []);
 
   async function loadData() {
@@ -39,6 +64,13 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
 
       const callList = await fetchApi<CallRecord[]>("/calls");
       setCalls(callList);
+
+      // Attempt to initialize Twilio WebRTC Device if credentials present
+      if (twCfg && twCfg.account_sid) {
+        initializeWebRTCDevice();
+      } else {
+        setDeviceStatusText("Twilio not configured. Please add settings.");
+      }
     } catch (err: any) {
       console.error("Dashboard load error:", err);
     } finally {
@@ -46,15 +78,127 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
     }
   }
 
-  async function handleMakeCall(e: React.FormEvent) {
-    e.preventDefault();
-    if (!config) {
-      setMessage({ text: "Please configure your Twilio account first.", type: "error" });
+  async function initializeWebRTCDevice() {
+    try {
+      setDeviceStatusText("Requesting Voice Access Token...");
+      const tokenRes = await fetchApi<{ token: string; identity: string; from_number: string }>("/calls/token");
+      
+      if (!tokenRes || !tokenRes.token) {
+        setDeviceStatusText("Could not get voice token. Check WebRTC keys in settings.");
+        return;
+      }
+
+      if (!window.Twilio || !window.Twilio.Device) {
+        setDeviceStatusText("Twilio Voice SDK loading...");
+        setTimeout(initializeWebRTCDevice, 1000);
+        return;
+      }
+
+      if (deviceRef.current) {
+        deviceRef.current.destroy();
+      }
+
+      const device = new window.Twilio.Device(tokenRes.token, {
+        codecPreferences: ["opus", "pcmu"],
+        enableRingingState: true,
+      });
+
+      device.on("registered", () => {
+        setDeviceReady(true);
+        setDeviceStatusText("Ready for in-browser calling");
+      });
+
+      device.on("error", (error: any) => {
+        console.error("Twilio Device error:", error);
+        setDeviceStatusText(`Device Error: ${error.message || error}`);
+        setDeviceReady(false);
+      });
+
+      device.on("tokenWillExpire", async () => {
+        try {
+          const refreshed = await fetchApi<{ token: string }>("/calls/token");
+          device.updateToken(refreshed.token);
+        } catch (e) {}
+      });
+
+      await device.register();
+      deviceRef.current = device;
+    } catch (err: any) {
+      console.warn("WebRTC voice init warning:", err);
+      setDeviceStatusText(err.message || "WebRTC Keys required in Twilio Settings");
+      setDeviceReady(false);
+    }
+  }
+
+  // Handle in-browser WebRTC call
+  async function handleBrowserCall() {
+    if (!toNumber.trim()) {
+      setMessage({ text: "Please enter a phone number to call.", type: "error" });
       return;
     }
 
+    if (!deviceRef.current || !deviceReady) {
+      // Fallback to server outbound trigger if WebRTC device isn't registered
+      return handleServerOutboundCall();
+    }
+
     try {
-      setCalling(true);
+      setMessage(null);
+      setCallState("dialing");
+      setDeviceStatusText(`Dialing ${toNumber}...`);
+
+      const call = await deviceRef.current.connect({
+        params: {
+          To: toNumber.trim(),
+          to: toNumber.trim(),
+          phoneNumber: toNumber.trim(),
+          callerId: selectedFromNumber || config?.phone_number?.split(",")[0]?.trim() || "",
+        },
+      });
+
+      activeCallRef.current = call;
+
+      call.on("ringing", () => {
+        setCallState("ringing");
+        setDeviceStatusText(`Ringing ${toNumber}...`);
+      });
+
+      call.on("accept", () => {
+        setCallState("connected");
+        setDeviceStatusText("Call in Progress (WebRTC Audio Live)");
+        startTimer();
+      });
+
+      call.on("disconnect", () => {
+        endCallCleanup();
+        setDeviceStatusText("Call Ended");
+        setTimeout(() => setDeviceStatusText("Ready for in-browser calling"), 3000);
+      });
+
+      call.on("cancel", () => {
+        endCallCleanup();
+        setDeviceStatusText("Call Canceled");
+      });
+
+      call.on("reject", () => {
+        endCallCleanup();
+        setDeviceStatusText("Call Rejected / Busy");
+      });
+
+      call.on("error", (err: any) => {
+        endCallCleanup();
+        setMessage({ text: `Call Error: ${err.message}`, type: "error" });
+      });
+    } catch (err: any) {
+      endCallCleanup();
+      setMessage({ text: `Failed to initiate call: ${err.message}`, type: "error" });
+    }
+  }
+
+  // Fallback to Server Outbound Call
+  async function handleServerOutboundCall() {
+    try {
+      setCallState("dialing");
       setMessage(null);
       const call = await fetchApi<CallRecord>("/calls", {
         method: "POST",
@@ -64,22 +208,76 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
           prompt: prompt,
         }),
       });
-      setMessage({ text: `Call placed from ${selectedFromNumber || config.phone_number}! Call SID: ${call.call_sid}`, type: "success" });
-      setToNumber("");
-      
+      setMessage({ text: `Server outbound call placed! Call SID: ${call.call_sid}`, type: "success" });
+      setCallState("idle");
       const updatedCalls = await fetchApi<CallRecord[]>("/calls");
       setCalls(updatedCalls);
     } catch (err: any) {
+      setCallState("idle");
       setMessage({ text: err.message, type: "error" });
-    } finally {
-      setCalling(false);
     }
+  }
+
+  function handleHangup() {
+    if (activeCallRef.current) {
+      activeCallRef.current.disconnect();
+    } else if (deviceRef.current) {
+      deviceRef.current.disconnectAll();
+    }
+    endCallCleanup();
+  }
+
+  function handleToggleMute() {
+    if (!activeCallRef.current) return;
+    const nextMute = !isMuted;
+    activeCallRef.current.mute(nextMute);
+    setIsMuted(nextMute);
+  }
+
+  function handleKeypadDigit(digit: string) {
+    setToNumber((prev) => prev + digit);
+    if (activeCallRef.current) {
+      try {
+        activeCallRef.current.sendDigits(digit);
+      } catch (e) {}
+    }
+  }
+
+  function startTimer() {
+    setCallDuration(0);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+  }
+
+  function endCallCleanup() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setCallState("idle");
+    setIsMuted(false);
+    activeCallRef.current = null;
+    fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
   }
 
   const availableFromNumbers = (config?.phone_number || "")
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
+
+  const keypadDigits = [
+    { digit: "1", sub: "" },
+    { digit: "2", sub: "ABC" },
+    { digit: "3", sub: "DEF" },
+    { digit: "4", sub: "GHI" },
+    { digit: "5", sub: "JKL" },
+    { digit: "6", sub: "MNO" },
+    { digit: "7", sub: "PQRS" },
+    { digit: "8", sub: "TUV" },
+    { digit: "9", sub: "WXYZ" },
+    { digit: "*", sub: "" },
+    { digit: "0", sub: "+" },
+    { digit: "#", sub: "" },
+  ];
 
   return (
     <div className="space-y-6 font-sans">
@@ -88,11 +286,22 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Calling Console</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            Select caller number, set custom conversation prompt, and monitor call history & talking duration.
+            Direct in-browser WebRTC calling, DTMF keypad, talking duration, and call logs.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Device WebRTC Status Badge */}
+          <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
+            deviceReady
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-slate-100 text-slate-600 border-slate-200"
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${deviceReady ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+            <Radio className="w-3.5 h-3.5" />
+            <span className="max-w-[200px] truncate">{deviceStatusText}</span>
+          </div>
+
           <div className="bg-white border border-slate-200/80 shadow-xs px-4 py-2 rounded-xl flex items-center gap-3">
             <PhoneOutgoing className="w-4 h-4 text-indigo-600" />
             <div className="text-xs">
@@ -104,16 +313,25 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Make Call Card */}
+        {/* Interactive In-Browser Dialer Card */}
         <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-5">
-          <div className="border-b border-slate-100 pb-4">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <PhoneCall className="w-5 h-5 text-indigo-600" />
-              Make a Call
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Select caller ID, set custom speech prompt, and enter recipient number.
-            </p>
+          <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <PhoneCall className="w-5 h-5 text-indigo-600" />
+                Live Phone Dialer
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Direct WebRTC In-Browser Calling with Live Audio
+              </p>
+            </div>
+
+            {callState === "connected" && (
+              <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-mono font-bold border border-emerald-200 animate-pulse">
+                <Timer className="w-3.5 h-3.5 text-emerald-600" />
+                {Math.floor(callDuration / 60).toString().padStart(2, "0")}:{(callDuration % 60).toString().padStart(2, "0")}
+              </div>
+            )}
           </div>
 
           {loadingConfig ? (
@@ -125,7 +343,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                 Twilio Account Required
               </div>
               <p className="text-xs text-amber-700 leading-relaxed">
-                You must set up your Twilio Account SID, Auth Token, and phone numbers before placing calls.
+                You must set up your Twilio Account SID, Auth Token, TwiML App, and API Keys before placing calls.
               </p>
               <button
                 onClick={onNavigateSettings}
@@ -135,7 +353,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
               </button>
             </div>
           ) : (
-            <form onSubmit={handleMakeCall} className="space-y-4">
+            <div className="space-y-4">
               {message && (
                 <div
                   className={`p-3 rounded-xl text-xs border flex items-start gap-2 ${
@@ -155,8 +373,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
 
               {/* From Number Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>From (Caller Number)</span>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Caller ID (From Number)</span>
                   {availableFromNumbers.length > 1 && (
                     <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md">
                       {availableFromNumbers.length} Numbers Available
@@ -168,7 +386,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                   <select
                     value={selectedFromNumber}
                     onChange={(e) => setSelectedFromNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono bg-white shadow-xs"
+                    disabled={callState !== "idle"}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-xs font-mono bg-white shadow-xs"
                   >
                     {availableFromNumbers.map((num) => (
                       <option key={num} value={num}>
@@ -181,51 +400,89 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                     type="text"
                     disabled
                     value={availableFromNumbers[0] || config.phone_number}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-500 bg-slate-100 font-mono text-sm cursor-not-allowed"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-500 bg-slate-100 font-mono text-xs cursor-not-allowed"
                   />
                 )}
               </div>
 
-              {/* To Number */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  To (Destination Phone Number)
-                </label>
+              {/* Number Screen & Backspace */}
+              <div className="relative">
                 <input
-                  type="text"
-                  required
+                  type="tel"
                   value={toNumber}
                   onChange={(e) => setToNumber(e.target.value)}
-                  placeholder="+15551234567"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                  placeholder="Enter phone number (e.g. +1...)"
+                  className="w-full pl-4 pr-12 py-3 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-base font-mono text-center tracking-wider bg-slate-50/50 font-bold"
                 />
+                {toNumber.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setToNumber((prev) => prev.slice(0, -1))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                    title="Backspace"
+                  >
+                    <Delete className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              {/* Custom Speech Prompt */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span>Custom Conversation / Speech Prompt</span>
-                  <span className="text-[10px] text-slate-400 font-normal">Optional</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g. Hello, this is Desire AI calling to confirm your appointment today. Please press 1 or reply to confirm."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-xs leading-relaxed"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">Leave blank to use default greeting message.</p>
+              {/* 3x4 Touch Keypad */}
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {keypadDigits.map(({ digit, sub }) => (
+                  <button
+                    key={digit}
+                    type="button"
+                    onClick={() => handleKeypadDigit(digit)}
+                    className="flex flex-col items-center justify-center py-2.5 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 border border-slate-200 rounded-xl transition-all active:scale-95 group"
+                  >
+                    <span className="text-base font-bold text-slate-800 group-hover:text-indigo-600 font-mono leading-none">
+                      {digit}
+                    </span>
+                    <span className="text-[9px] text-slate-400 group-hover:text-indigo-500 uppercase font-semibold mt-0.5 tracking-widest min-h-[12px]">
+                      {sub}
+                    </span>
+                  </button>
+                ))}
               </div>
 
-              <button
-                type="submit"
-                disabled={calling}
-                className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all shadow-md shadow-indigo-600/20 disabled:opacity-50"
-              >
-                <PhoneOutgoing className="w-4 h-4" />
-                {calling ? "Dialing..." : "Make Call"}
-              </button>
-            </form>
+              {/* Action Controls */}
+              <div className="flex items-center gap-3 pt-2">
+                {callState === "connected" && (
+                  <button
+                    type="button"
+                    onClick={handleToggleMute}
+                    className={`p-3 rounded-xl border transition-all ${
+                      isMuted
+                        ? "bg-rose-50 text-rose-600 border-rose-200"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200"
+                    }`}
+                    title={isMuted ? "Unmute Mic" : "Mute Mic"}
+                  >
+                    {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  </button>
+                )}
+
+                {callState === "idle" ? (
+                  <button
+                    type="button"
+                    onClick={handleBrowserCall}
+                    className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm py-3.5 rounded-xl transition-all shadow-md shadow-emerald-600/20 active:scale-[0.99]"
+                  >
+                    <PhoneOutgoing className="w-4 h-4" />
+                    Call Destination
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleHangup}
+                    className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm py-3.5 rounded-xl transition-all shadow-md shadow-rose-600/20 active:scale-[0.99]"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                    End Call
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
@@ -251,7 +508,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
 
           {calls.length === 0 ? (
             <div className="py-12 text-center border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
-              No calls recorded yet. Place a call using the form on the left.
+              No calls recorded yet. Place a call using the live dialer on the left.
             </div>
           ) : (
             <div className="space-y-3.5 max-h-[520px] overflow-y-auto pr-1">
