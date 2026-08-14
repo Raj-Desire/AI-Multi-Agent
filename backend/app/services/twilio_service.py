@@ -55,6 +55,21 @@ class TwilioService:
             encrypted_api_secret = existing.encrypted_api_key_secret if existing else None
             real_api_secret = decrypt_token(existing.encrypted_api_key_secret) if (existing and existing.encrypted_api_key_secret) else None
 
+        # If phone numbers are not explicitly supplied or user requests auto-fetch, fetch purchased numbers from Twilio API
+        incoming_phone_numbers = req.phone_number.strip() if req.phone_number else ""
+        if not incoming_phone_numbers:
+            try:
+                def _fetch_numbers():
+                    client = Client(req.account_sid, real_auth_token)
+                    nums = client.incoming_phone_numbers.list(limit=20)
+                    return [n.phone_number for n in nums if n.phone_number]
+                fetched = await asyncio.to_thread(_fetch_numbers)
+                if fetched:
+                    incoming_phone_numbers = ", ".join(fetched)
+                    print(f"[TwilioService] Auto-fetched {len(fetched)} numbers from Twilio account: {incoming_phone_numbers}")
+            except Exception as e:
+                print(f"[TwilioService Warning] Could not auto-fetch phone numbers: {e}")
+
         # Auto-sync TwiML App voiceUrl if public_base_url and twiml_app_sid provided
         if req.twiml_app_sid and req.public_base_url:
             cleaned_url = req.public_base_url.strip().rstrip("/")
@@ -79,7 +94,7 @@ class TwilioService:
             organization_id=ctx.organization_id,
             account_sid=req.account_sid,
             encrypted_auth_token=encrypted_auth,
-            phone_number=req.phone_number,
+            phone_number=incoming_phone_numbers or (existing.phone_number if existing else ""),
             twiml_app_sid=req.twiml_app_sid,
             api_key_sid=req.api_key_sid,
             encrypted_api_key_secret=encrypted_api_secret,
@@ -99,6 +114,25 @@ class TwilioService:
             public_base_url=cfg.public_base_url,
             status=cfg.status
         )
+
+    async def fetch_account_phone_numbers(self, ctx: TenantContext, account_sid: Optional[str] = None, auth_token: Optional[str] = None) -> list[str]:
+        cfg = await self.repo.get_by_org(ctx.organization_id)
+        
+        target_account_sid = account_sid or (cfg.account_sid if cfg else None)
+        target_auth_token = auth_token or (decrypt_token(cfg.encrypted_auth_token) if cfg else None)
+
+        if not target_account_sid or not target_auth_token:
+            raise ValueError("Account SID and Auth Token are required to fetch purchased phone numbers.")
+
+        if "*" in target_auth_token and cfg:
+            target_auth_token = decrypt_token(cfg.encrypted_auth_token)
+
+        def _fetch():
+            client = Client(target_account_sid, target_auth_token)
+            numbers = client.incoming_phone_numbers.list(limit=50)
+            return [num.phone_number for num in numbers if num.phone_number]
+
+        return await asyncio.to_thread(_fetch)
 
     async def test_connection(self, ctx: TenantContext) -> dict:
         cfg = await self.repo.get_by_org(ctx.organization_id)

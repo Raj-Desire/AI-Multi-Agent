@@ -21,6 +21,7 @@ export function TwilioSettingsView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [fetchingNumbers, setFetchingNumbers] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -51,6 +52,39 @@ export function TwilioSettingsView() {
       setLoading(false);
     }
   }
+
+  const handleAutoFetchNumbers = async () => {
+    if (!accountSid.trim() || !authToken.trim()) {
+      setMessage({ text: "Please enter your Twilio Account SID and Auth Token first to fetch numbers.", type: "error" });
+      return;
+    }
+
+    try {
+      setFetchingNumbers(true);
+      setMessage(null);
+      const fetched = await fetchApi<string[]>("/twilio/fetch-numbers", {
+        method: "POST",
+        body: JSON.stringify({
+          account_sid: accountSid,
+          auth_token: authToken,
+        }),
+      });
+
+      if (!fetched || fetched.length === 0) {
+        setMessage({ text: "No purchased phone numbers found on this Twilio account. Please purchase a number on Twilio Console.", type: "error" });
+        return;
+      }
+
+      // Merge unique numbers with existing list
+      const combined = Array.from(new Set([...phoneNumbers, ...fetched]));
+      setPhoneNumbers(combined);
+      setMessage({ text: `Successfully retrieved ${fetched.length} purchased Twilio number(s)! Click Save to persist.`, type: "success" });
+    } catch (err: any) {
+      setMessage({ text: err.message || "Failed to fetch phone numbers from Twilio.", type: "error" });
+    } finally {
+      setFetchingNumbers(false);
+    }
+  };
 
   const handleAddNumber = () => {
     const trimmed = newNumberInput.trim();
@@ -312,9 +346,23 @@ export function TwilioSettingsView() {
 
           {/* Section 3: Master Phone Numbers Manager */}
           <div className="space-y-3 pt-4 border-t border-slate-100">
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <Phone className="w-4 h-4 text-emerald-600" /> 3. Configured Phone Numbers ({phoneNumbers.length})
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <Phone className="w-4 h-4 text-emerald-600" /> 3. Configured Phone Numbers ({phoneNumbers.length})
+              </label>
+
+              {/* Auto-Fetch Numbers from Twilio Button */}
+              <button
+                type="button"
+                onClick={handleAutoFetchNumbers}
+                disabled={fetchingNumbers}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs border border-indigo-200 transition-all disabled:opacity-50"
+                title="Fetch all numbers purchased on your Twilio account automatically"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${fetchingNumbers ? "animate-spin text-indigo-600" : "text-indigo-600"}`} />
+                {fetchingNumbers ? "Fetching Numbers..." : "Auto-Fetch From Twilio"}
+              </button>
+            </div>
 
             {/* Add Number Control Bar */}
             <div className="flex items-center gap-2">
@@ -336,7 +384,7 @@ export function TwilioSettingsView() {
                 onClick={handleAddNumber}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-sm transition-all"
               >
-                <Plus className="w-4 h-4" /> Add Number
+                <Plus className="w-4 h-4" /> Add Manual
               </button>
             </div>
 

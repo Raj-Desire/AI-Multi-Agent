@@ -1,4 +1,5 @@
 from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
@@ -42,6 +43,24 @@ async def test_connection(
 ):
     res = await service.test_connection(ctx)
     return ApiResponse.ok(res)
+
+class FetchNumbersRequest(BaseModel):
+    account_sid: Optional[str] = None
+    auth_token: Optional[str] = None
+
+@router.post("/fetch-numbers", response_model=ApiResponse[list[str]])
+async def fetch_purchased_numbers(
+    payload: Optional[FetchNumbersRequest] = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: TwilioService = Depends(get_twilio_service)
+):
+    try:
+        acc_sid = payload.account_sid if payload else None
+        tok = payload.auth_token if payload else None
+        numbers = await service.fetch_account_phone_numbers(ctx, account_sid=acc_sid, auth_token=tok)
+        return ApiResponse.ok(numbers)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.api_route("/voice/twiml", methods=["GET", "POST"])
 async def voice_twiml_webhook(request: Request):
