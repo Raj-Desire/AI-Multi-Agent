@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
@@ -14,6 +14,9 @@ class TwilioConfiguration(BaseModel):
     api_key_sid: Optional[str] = None
     encrypted_api_key_secret: Optional[str] = None
     public_base_url: Optional[str] = None
+    inbound_forward_mode: Optional[str] = "global"  # "global", "per_number", or "disabled"
+    inbound_forward_global_number: Optional[str] = None
+    inbound_forward_mapping: Optional[Dict[str, str]] = None  # { "+1TwilioNumber": "+1ForwardTarget" }
     status: str = "CONNECTED"
     created_at: datetime
     updated_at: datetime

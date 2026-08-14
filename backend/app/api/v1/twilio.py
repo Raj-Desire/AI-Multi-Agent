@@ -79,9 +79,17 @@ async def voice_twiml_webhook(request: Request):
     to = form_data.get("To") or form_data.get("to") or request.query_params.get("To") or request.query_params.get("to")
     user_id = form_data.get("userId") or form_data.get("user_id") or request.query_params.get("userId") or request.query_params.get("user_id")
     caller_id = form_data.get("callerId") or form_data.get("caller_id") or request.query_params.get("callerId")
+    from_caller = form_data.get("From") or form_data.get("from") or request.query_params.get("From")
+    called_number = form_data.get("Called") or form_data.get("called") or to
 
     try:
-        twiml_xml = await call_service.build_twiml_response(to=to, caller_id_override=caller_id, user_id=user_id)
+        twiml_xml = await call_service.build_twiml_response(
+            to=to,
+            caller_id_override=caller_id,
+            user_id=user_id,
+            from_caller=from_caller,
+            called_number=called_number
+        )
         return Response(content=twiml_xml, media_type="application/xml")
     except Exception as e:
         print(f"[Twilio Voice TwiML Error] {e}")

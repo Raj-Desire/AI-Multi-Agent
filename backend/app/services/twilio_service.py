@@ -30,6 +30,9 @@ class TwilioService:
             api_key_sid=cfg.api_key_sid,
             api_key_secret_masked=mask_auth_token(decrypted_secret) if decrypted_secret else None,
             public_base_url=cfg.public_base_url,
+            inbound_forward_mode=cfg.inbound_forward_mode or "global",
+            inbound_forward_global_number=cfg.inbound_forward_global_number,
+            inbound_forward_mapping=cfg.inbound_forward_mapping or {},
             status=cfg.status
         )
 
@@ -70,11 +73,14 @@ class TwilioService:
             except Exception as e:
                 print(f"[TwilioService Warning] Could not auto-fetch phone numbers: {e}")
 
-        # Auto-sync TwiML App voiceUrl if public_base_url and twiml_app_sid provided
-        if req.twiml_app_sid and req.public_base_url:
-            cleaned_url = req.public_base_url.strip().rstrip("/")
-            if not ("localhost" in cleaned_url or "127.0.0.1" in cleaned_url):
-                expected_voice_url = f"{cleaned_url}/api/v1/twilio/voice/twiml"
+        # Auto-sync TwiML App voiceUrl AND incoming phone numbers webhook if public_base_url is provided
+        effective_base_url = req.public_base_url or (existing.public_base_url if existing else None)
+        if effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
+            cleaned_url = effective_base_url.strip().rstrip("/")
+            expected_voice_url = f"{cleaned_url}/api/v1/twilio/voice/twiml"
+            
+            # 1. Sync TwiML App
+            if req.twiml_app_sid:
                 try:
                     def _sync_twiml_app():
                         client = Client(req.account_sid, real_auth_token)
@@ -89,6 +95,25 @@ class TwilioService:
                 except Exception as e:
                     print(f"[TwilioService Warning] Could not auto-sync TwiML App: {e}")
 
+            # 2. Sync Inbound Webhook on each purchased Twilio Phone Number
+            all_numbers_list = [n.strip() for n in (incoming_phone_numbers or (existing.phone_number if existing else "")).split(",") if n.strip()]
+            if all_numbers_list:
+                try:
+                    def _sync_inbound_numbers():
+                        client = Client(req.account_sid, real_auth_token)
+                        tw_numbers = client.incoming_phone_numbers.list(limit=50)
+                        for tw_num in tw_numbers:
+                            if tw_num.phone_number in all_numbers_list:
+                                if tw_num.voice_url != expected_voice_url:
+                                    client.incoming_phone_numbers(tw_num.sid).update(
+                                        voice_url=expected_voice_url,
+                                        voice_method="POST"
+                                    )
+                                    print(f"[TwilioService] Synced Inbound Webhook on {tw_num.phone_number} -> {expected_voice_url}")
+                    await asyncio.to_thread(_sync_inbound_numbers)
+                except Exception as e:
+                    print(f"[TwilioService Warning] Could not auto-sync phone numbers webhook: {e}")
+
         cfg = TwilioConfiguration(
             id=existing.id if existing else f"twc_{uuid.uuid4().hex[:12]}",
             organization_id=ctx.organization_id,
@@ -99,6 +124,9 @@ class TwilioService:
             api_key_sid=req.api_key_sid,
             encrypted_api_key_secret=encrypted_api_secret,
             public_base_url=req.public_base_url,
+            inbound_forward_mode=req.inbound_forward_mode or (existing.inbound_forward_mode if existing else "global"),
+            inbound_forward_global_number=req.inbound_forward_global_number if req.inbound_forward_global_number is not None else (existing.inbound_forward_global_number if existing else None),
+            inbound_forward_mapping=req.inbound_forward_mapping if req.inbound_forward_mapping is not None else (existing.inbound_forward_mapping if existing else {}),
             status="CONNECTED",
             created_at=existing.created_at if existing else datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
@@ -112,6 +140,9 @@ class TwilioService:
             api_key_sid=cfg.api_key_sid,
             api_key_secret_masked=mask_auth_token(real_api_secret) if real_api_secret else None,
             public_base_url=cfg.public_base_url,
+            inbound_forward_mode=cfg.inbound_forward_mode,
+            inbound_forward_global_number=cfg.inbound_forward_global_number,
+            inbound_forward_mapping=cfg.inbound_forward_mapping,
             status=cfg.status
         )
 

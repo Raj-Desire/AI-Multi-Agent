@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { fetchApi } from "../api-client";
 import { TwilioConfig, CallRecord } from "../types";
+import { useAuth } from "../context/AuthContext";
 import { PhoneCall, PhoneOutgoing, PhoneOff, Mic, MicOff, Clock, CheckCircle2, AlertCircle, ShieldAlert, ArrowUpRight, MessageSquare, Timer, Radio, Delete, Volume2 } from "lucide-react";
 
 declare global {
@@ -18,6 +19,7 @@ function formatDuration(seconds: number) {
 }
 
 export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () => void }) {
+  const { user } = useAuth();
   const [config, setConfig] = useState<TwilioConfig | null>(null);
   const [selectedFromNumber, setSelectedFromNumber] = useState("");
   const [toNumber, setToNumber] = useState("");
@@ -152,6 +154,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
           To: toNumber.trim(),
           to: toNumber.trim(),
           phoneNumber: toNumber.trim(),
+          userId: user?.id || "default",
           callerId: selectedFromNumber || config?.phone_number?.split(",")[0]?.trim() || "",
         },
       });

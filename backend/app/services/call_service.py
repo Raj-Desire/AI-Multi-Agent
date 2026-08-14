@@ -150,23 +150,86 @@ class CallService:
             "caller_number": first_number
         }
 
-    async def build_twiml_response(self, to: Optional[str], caller_id_override: Optional[str] = None, user_id: Optional[str] = None) -> str:
+    async def build_twiml_response(
+        self,
+        to: Optional[str],
+        caller_id_override: Optional[str] = None,
+        user_id: Optional[str] = None,
+        from_caller: Optional[str] = None,
+        called_number: Optional[str] = None
+    ) -> str:
+        response = VoiceResponse()
+
         org_id = user_id or "default"
         tw_cfg = await self.twilio_repo.get_by_org(org_id)
         
-        caller_number_default = tw_cfg.phone_number.split(",")[0].strip() if tw_cfg and tw_cfg.phone_number else None
+        # If user_id wasn't provided or not found, try resolving via the called number (e.g. Inbound Call)
+        if (not tw_cfg) and called_number:
+            tw_cfg = await self.twilio_repo.get_by_phone_number(called_number)
+
+        # Determine if this is an Inbound call from an external phone or an Outbound call from WebRTC browser
+        # WebRTC outgoing calls include 'userId' or destination 'To' is not one of the user's incoming Twilio numbers
+        is_inbound = False
+        target_twilio_number = called_number or to
+        
+        # If user_id is explicitly present (from WebRTC token or dialer), it is an OUTBOUND call from browser
+        if user_id:
+            is_inbound = False
+        elif tw_cfg and tw_cfg.phone_number:
+            configured_numbers = [n.strip() for n in tw_cfg.phone_number.split(",") if n.strip()]
+            if target_twilio_number and any(target_twilio_number.replace("+", "") == n.replace("+", "") for n in configured_numbers):
+                is_inbound = True
+
+        if is_inbound and tw_cfg:
+            # Determine Inbound Forward Destination
+            forward_mode = getattr(tw_cfg, "inbound_forward_mode", "global") or "global"
+            forward_global = getattr(tw_cfg, "inbound_forward_global_number", None)
+            forward_mapping = getattr(tw_cfg, "inbound_forward_mapping", {}) or {}
+
+            target_forward_number = None
+
+            if forward_mode == "per_number":
+                # Look up matching number in the per-number mapping table
+                for tw_num, fwd_num in forward_mapping.items():
+                    if tw_num and target_twilio_number and (tw_num.replace("+", "") == target_twilio_number.replace("+", "")):
+                        target_forward_number = fwd_num
+                        break
+                # If no specific mapping found, fallback to global number if available
+                if not target_forward_number:
+                    target_forward_number = forward_global
+            elif forward_mode == "global":
+                target_forward_number = forward_global
+
+            if target_forward_number:
+                fwd_destination = normalize_phone_number(target_forward_number)
+                fwd_caller_id = normalize_phone_number(from_caller) or normalize_phone_number(target_twilio_number)
+                print(f"[Twilio Inbound] Forwarding call from {from_caller} on {target_twilio_number} -> {fwd_destination}")
+                
+                dial = Dial(caller_id=fwd_caller_id, answer_on_bridge=True, timeout=30)
+                dial.number(fwd_destination)
+                response.append(dial)
+                return str(response)
+            elif forward_mode == "disabled":
+                response.say("Thank you for calling. Inbound call forwarding is currently disabled.")
+                response.hangup()
+                return str(response)
+
+        # Standard Outbound / Browser WebRTC Call Handling
+        caller_number_default = tw_cfg.phone_number.split(",")[0].strip() if (tw_cfg and tw_cfg.phone_number) else None
         caller_id = normalize_phone_number(caller_id_override or caller_number_default)
         destination = normalize_phone_number(to)
 
-        response = VoiceResponse()
+        print(f"[Twilio Outbound WebRTC] destination='{destination}', caller_id='{caller_id}'")
 
         if not destination:
+            print("[Twilio TwiML Error] Destination number missing.")
             response.say("Destination phone number is invalid or missing.")
             response.hangup()
             return str(response)
 
         if not caller_id:
-            response.say("Caller ID number is not configured in Twilio settings. Please set your Twilio phone number in settings.")
+            print("[Twilio TwiML Error] Caller ID missing.")
+            response.say("Caller ID phone number is not configured in Twilio settings.")
             response.hangup()
             return str(response)
 

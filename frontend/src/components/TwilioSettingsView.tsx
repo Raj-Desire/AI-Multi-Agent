@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../api-client";
 import { TwilioConfig } from "../types";
-import { Key, Lock, Phone, ShieldCheck, AlertCircle, CheckCircle2, Save, RefreshCw, Plus, Edit2, Trash2, Check, X, Globe, Radio, Sparkles } from "lucide-react";
+import { Key, Lock, Phone, PhoneForwarded, ShieldCheck, AlertCircle, CheckCircle2, Save, RefreshCw, Plus, Edit2, Trash2, Check, X, Globe, Radio, Sparkles, PhoneIncoming, Layers } from "lucide-react";
 
 export function TwilioSettingsView() {
   const [config, setConfig] = useState<TwilioConfig | null>(null);
@@ -12,6 +12,11 @@ export function TwilioSettingsView() {
   const [apiKeySecret, setApiKeySecret] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
   
+  // Inbound Call Forwarding states
+  const [inboundForwardMode, setInboundForwardMode] = useState<"global" | "per_number" | "disabled">("global");
+  const [inboundForwardGlobalNumber, setInboundForwardGlobalNumber] = useState("");
+  const [inboundForwardMapping, setInboundForwardMapping] = useState<Record<string, string>>({});
+
   // Master Phone Numbers List state
   const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
   const [newNumberInput, setNewNumberInput] = useState("");
@@ -40,6 +45,9 @@ export function TwilioSettingsView() {
         setApiKeySid(data.api_key_sid || "");
         setApiKeySecret(data.api_key_secret_masked || "");
         setPublicBaseUrl(data.public_base_url || "");
+        setInboundForwardMode(data.inbound_forward_mode || "global");
+        setInboundForwardGlobalNumber(data.inbound_forward_global_number || "");
+        setInboundForwardMapping(data.inbound_forward_mapping || {});
         const parsed = (data.phone_number || "")
           .split(",")
           .map((n) => n.trim())
@@ -106,9 +114,19 @@ export function TwilioSettingsView() {
   const handleSaveEdit = (index: number) => {
     const trimmed = editingValue.trim();
     if (!trimmed) return;
+    const oldNum = phoneNumbers[index];
     const updated = [...phoneNumbers];
     updated[index] = trimmed;
     setPhoneNumbers(updated);
+    
+    // Update forward mapping if key changed
+    if (inboundForwardMapping[oldNum]) {
+      const newMapping = { ...inboundForwardMapping };
+      newMapping[trimmed] = newMapping[oldNum];
+      delete newMapping[oldNum];
+      setInboundForwardMapping(newMapping);
+    }
+
     setEditingIndex(null);
     setEditingValue("");
   };
@@ -124,8 +142,22 @@ export function TwilioSettingsView() {
         return;
       }
     }
+    const numToDelete = phoneNumbers[index];
     const updated = phoneNumbers.filter((_, i) => i !== index);
     setPhoneNumbers(updated);
+
+    if (inboundForwardMapping[numToDelete]) {
+      const newMapping = { ...inboundForwardMapping };
+      delete newMapping[numToDelete];
+      setInboundForwardMapping(newMapping);
+    }
+  };
+
+  const handlePerNumberForwardChange = (twilioNum: string, targetNum: string) => {
+    setInboundForwardMapping((prev) => ({
+      ...prev,
+      [twilioNum]: targetNum,
+    }));
   };
 
   async function handleSave(e: React.FormEvent) {
@@ -149,6 +181,9 @@ export function TwilioSettingsView() {
           api_key_sid: apiKeySid,
           api_key_secret: apiKeySecret,
           public_base_url: publicBaseUrl,
+          inbound_forward_mode: inboundForwardMode,
+          inbound_forward_global_number: inboundForwardGlobalNumber,
+          inbound_forward_mapping: inboundForwardMapping,
         }),
       });
       setConfig(updated);
@@ -156,7 +191,7 @@ export function TwilioSettingsView() {
       if (updated.api_key_secret_masked) {
         setApiKeySecret(updated.api_key_secret_masked);
       }
-      setMessage({ text: "Twilio configuration & WebRTC settings saved successfully! TwiML Voice URL synced.", type: "success" });
+      setMessage({ text: "Twilio configuration, WebRTC keys, & Inbound forwarding saved successfully!", type: "success" });
     } catch (err: any) {
       setMessage({ text: err.message, type: "error" });
     } finally {
@@ -197,7 +232,7 @@ export function TwilioSettingsView() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Twilio Configuration</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Manage your Twilio Programmable Voice account, WebRTC in-browser dialer keys, and public webhook tunnel.
+          Manage your Twilio credentials, WebRTC dialer keys, and inbound call forwarding rules.
         </p>
       </div>
 
@@ -339,7 +374,7 @@ export function TwilioSettingsView() {
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Saving will automatically configure your Twilio TwiML App Voice URL to: <code className="bg-slate-100 text-indigo-600 px-1 py-0.5 rounded">{publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/twilio/voice/twiml` : 'https://<your-url>/api/v1/twilio/voice/twiml'}</code>
+                Saving will automatically configure your Twilio TwiML App and phone number webhooks to: <code className="bg-slate-100 text-indigo-600 px-1 py-0.5 rounded">{publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, '')}/api/v1/twilio/voice/twiml` : 'https://<your-url>/api/v1/twilio/voice/twiml'}</code>
               </p>
             </div>
           </div>
@@ -351,7 +386,6 @@ export function TwilioSettingsView() {
                 <Phone className="w-4 h-4 text-emerald-600" /> 3. Configured Phone Numbers ({phoneNumbers.length})
               </label>
 
-              {/* Auto-Fetch Numbers from Twilio Button */}
               <button
                 type="button"
                 onClick={handleAutoFetchNumbers}
@@ -364,7 +398,6 @@ export function TwilioSettingsView() {
               </button>
             </div>
 
-            {/* Add Number Control Bar */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -388,10 +421,9 @@ export function TwilioSettingsView() {
               </button>
             </div>
 
-            {/* List of Numbers */}
             {phoneNumbers.length === 0 ? (
               <div className="p-4 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs text-center">
-                No phone numbers added yet. Enter a number above and click Add.
+                No phone numbers added yet. Enter a number above or click "Auto-Fetch From Twilio".
               </div>
             ) : (
               <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
@@ -434,11 +466,6 @@ export function TwilioSettingsView() {
                           </div>
                           <div>
                             <span className="font-mono text-sm font-bold text-slate-900">{num}</span>
-                            {index === 0 && (
-                              <span className="ml-2 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border border-emerald-200">
-                                Primary Caller ID
-                              </span>
-                            )}
                           </div>
                         </div>
 
@@ -464,6 +491,141 @@ export function TwilioSettingsView() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section 4: Inbound Call Forwarding */}
+          <div className="space-y-4 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider text-indigo-600 flex items-center gap-2">
+                <PhoneIncoming className="w-4 h-4" /> 4. Inbound Call Forwarding (When Anyone Dials Your Twilio Number)
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500">
+              Configure what happens when an external caller dials any of your Twilio numbers. Calls can be forwarded to a single master phone number or routed to separate numbers per Twilio line.
+            </p>
+
+            {/* Mode Selection Tabs */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("global")}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  inboundForwardMode === "global"
+                    ? "bg-indigo-50/70 border-indigo-500 text-indigo-900 shadow-xs"
+                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <PhoneForwarded className="w-4 h-4 text-indigo-600" />
+                  Option A: Global Forwarding
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Forward ALL incoming Twilio calls to a single personal/office number.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("per_number")}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  inboundForwardMode === "per_number"
+                    ? "bg-indigo-50/70 border-indigo-500 text-indigo-900 shadow-xs"
+                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <Layers className="w-4 h-4 text-indigo-600" />
+                  Option B: Per-Number Routing
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Set unique forwarding destination numbers for each specific Twilio number.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("disabled")}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  inboundForwardMode === "disabled"
+                    ? "bg-slate-100 border-slate-400 text-slate-900"
+                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-slate-700">
+                  <X className="w-4 h-4" />
+                  Disabled
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Do not forward inbound calls (play automated greeting and hangup).
+                </p>
+              </button>
+            </div>
+
+            {/* Global Forwarding Input */}
+            {inboundForwardMode === "global" && (
+              <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100 space-y-2">
+                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                  <PhoneForwarded className="w-4 h-4 text-indigo-600" /> Single Global Forwarding Target Number (E.164)
+                </label>
+                <input
+                  type="text"
+                  value={inboundForwardGlobalNumber}
+                  onChange={(e) => setInboundForwardGlobalNumber(e.target.value)}
+                  placeholder="e.g. +15559876543 (Your mobile, desk, or call center number)"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono"
+                />
+                <p className="text-[11px] text-slate-500">
+                  When any customer calls any of your configured Twilio numbers, Twilio will immediately bridge and ring this target number.
+                </p>
+              </div>
+            )}
+
+            {/* Per-Number Routing Table */}
+            {inboundForwardMode === "per_number" && (
+              <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100 space-y-3">
+                <div className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Individual Number Forwarding Map
+                </div>
+                {phoneNumbers.length === 0 ? (
+                  <p className="text-xs text-slate-400">Add or fetch Twilio numbers above first.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {phoneNumbers.map((twNum) => (
+                      <div key={twNum} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-white rounded-xl border border-slate-200">
+                        <div className="font-mono text-xs font-bold text-indigo-900 sm:w-44 shrink-0 flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                          {twNum}
+                        </div>
+                        <div className="text-slate-400 text-xs hidden sm:block">&rarr;</div>
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={inboundForwardMapping[twNum] || ""}
+                            onChange={(e) => handlePerNumberForwardChange(twNum, e.target.value)}
+                            placeholder={`Forward calls on ${twNum} to e.g. +15559876543`}
+                            className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Fallback default if not mapped */}
+                <div className="pt-2">
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Fallback Forwarding Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={inboundForwardGlobalNumber}
+                    onChange={(e) => setInboundForwardGlobalNumber(e.target.value)}
+                    placeholder="Fallback number if specific mapping is left empty"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-mono"
+                  />
+                </div>
               </div>
             )}
           </div>

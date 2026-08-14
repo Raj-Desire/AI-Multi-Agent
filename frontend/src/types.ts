@@ -22,6 +22,9 @@ export interface TwilioConfig {
   api_key_sid?: string | null;
   api_key_secret_masked?: string | null;
   public_base_url?: string | null;
+  inbound_forward_mode?: "global" | "per_number" | "disabled";
+  inbound_forward_global_number?: string | null;
+  inbound_forward_mapping?: Record<string, string>;
   status: string;
 }
 
@@ -33,6 +36,9 @@ export interface SaveTwilioPayload {
   api_key_sid?: string;
   api_key_secret?: string;
   public_base_url?: string;
+  inbound_forward_mode?: "global" | "per_number" | "disabled";
+  inbound_forward_global_number?: string;
+  inbound_forward_mapping?: Record<string, string>;
 }
 
 export interface CallRecord {
