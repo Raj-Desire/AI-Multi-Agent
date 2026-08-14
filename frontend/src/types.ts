@@ -55,3 +55,89 @@ export interface CallRecord {
   created_at: string;
   updated_at: string;
 }
+
+export type UIStyle =
+  | 'default'
+  | 'minimal'
+  | 'glassmorphism'
+  | 'liquid_glass'
+  | 'brutalism'
+  | 'claymorphism'
+  | 'neomorphism'
+  | 'retro';
+
+export type BorderRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+export type UIDensity = 'compact' | 'comfortable' | 'spacious';
+export type ColorMode = 'light' | 'dark' | 'system';
+export type FontFamily = 'Inter' | 'Plus Jakarta Sans' | 'Outfit' | 'Roboto' | 'Poppins' | 'Space Grotesk';
+export type FontScale = 'sm' | 'md' | 'lg';
+
+export interface ThemeColors {
+  primary: string;
+  primary_hover?: string;
+  secondary: string;
+  accent: string;
+  background: string;
+  surface: string;
+  sidebar: string;
+  sidebar_text: string;
+  heading?: string;
+  text: string;
+  text_muted: string;
+  border: string;
+  success: string;
+  warning: string;
+  danger: string;
+  info: string;
+}
+
+export interface ThemeAppearance {
+  ui_style: UIStyle;
+  border_radius: BorderRadius;
+  ui_density: UIDensity;
+  color_mode: ColorMode;
+}
+
+export interface ThemeTypography {
+  font_family: FontFamily;
+  font_scale: FontScale;
+}
+
+export interface ThemeIdentity {
+  org_name: string;
+  logo_url?: string | null;
+  logo_dark_url?: string | null;
+  favicon_url?: string | null;
+  show_nav_logo?: boolean;
+  show_nav_title?: boolean;
+}
+
+export interface OrganizationThemeConfig {
+  id?: string;
+  organization_id: string;
+  identity: ThemeIdentity;
+  colors: ThemeColors;
+  appearance: ThemeAppearance;
+  typography: ThemeTypography;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export interface UserPreferences {
+  color_mode: ColorMode;
+  ui_density: UIDensity;
+}
+
+export type PalettePreset =
+  | 'Original'
+  | 'Dark'
+  | 'Muted'
+  | 'Vivid'
+  | 'Complement'
+  | 'Triadic'
+  | 'Analogous'
+  | 'Mono'
+  | 'Pastel'
+  | 'Deep'
+  | 'Spectrum';
+

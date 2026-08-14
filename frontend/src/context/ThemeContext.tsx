@@ -1,0 +1,195 @@
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { OrganizationThemeConfig, UserPreferences, ColorMode, UIDensity } from "../types";
+import { applyThemeToCss } from "../utils/themeUtils";
+import { fetchApi } from "../api-client";
+import { useAuth } from "./AuthContext";
+
+export const DEFAULT_ORG_THEME: OrganizationThemeConfig = {
+  organization_id: "default",
+  identity: {
+    org_name: "Desire AI",
+    logo_url: null,
+    logo_dark_url: null,
+    favicon_url: null,
+    show_nav_logo: true,
+    show_nav_title: true,
+  },
+  colors: {
+    primary: "#4f46e5",
+    primary_hover: "#4338ca",
+    secondary: "#0ea5e9",
+    accent: "#8b5cf6",
+    background: "#ffffff",
+    surface: "#ffffff",
+    sidebar: "#faf9fa",
+    sidebar_text: "#0f172a",
+    heading: "#0f172a",
+    text: "#1e293b",
+    text_muted: "#475569",
+    border: "#e2e8f0",
+    success: "#10b981",
+    warning: "#f59e0b",
+    danger: "#ef4444",
+    info: "#3b82f6",
+  },
+  appearance: {
+    ui_style: "default",
+    border_radius: "md",
+    ui_density: "comfortable",
+    color_mode: "light",
+  },
+  typography: {
+    font_family: "Inter",
+    font_scale: "md",
+  },
+};
+
+interface ThemeContextType {
+  theme: OrganizationThemeConfig; // Saved active organization theme
+  draftTheme: OrganizationThemeConfig; // Studio preview theme (may contain unsaved changes)
+  userPreferences: UserPreferences;
+  isDirty: boolean;
+  isLoading: boolean;
+  setDraftTheme: React.Dispatch<React.SetStateAction<OrganizationThemeConfig>>;
+  updateDraftTheme: (updater: (prev: OrganizationThemeConfig) => OrganizationThemeConfig) => void;
+  saveTheme: () => Promise<void>;
+  discardChanges: () => void;
+  resetToDefault: () => Promise<void>;
+  setUserPreferences: (prefs: Partial<UserPreferences>) => void;
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const [theme, setTheme] = useState<OrganizationThemeConfig>(DEFAULT_ORG_THEME);
+  const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(DEFAULT_ORG_THEME);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // User personal preferences stored locally (default: light)
+  const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(() => {
+    const saved = localStorage.getItem("desire_user_prefs");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return { color_mode: "light", ui_density: "comfortable" };
+  });
+
+  // Calculate dirty state
+  const isDirty = JSON.stringify(theme) !== JSON.stringify(draftTheme);
+
+  // Load theme from API when user session changes
+  useEffect(() => {
+    async function loadOrgTheme() {
+      if (!user) {
+        setTheme(DEFAULT_ORG_THEME);
+        setDraftTheme(DEFAULT_ORG_THEME);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const data = await fetchApi<OrganizationThemeConfig>("/organization/theme");
+        if (data && data.colors) {
+          setTheme(data);
+          setDraftTheme(data);
+        }
+      } catch (err) {
+        console.warn("Could not load organization theme from API, using default:", err);
+        setTheme(DEFAULT_ORG_THEME);
+        setDraftTheme(DEFAULT_ORG_THEME);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadOrgTheme();
+  }, [user?.id]);
+
+  // Apply draftTheme CSS tokens to document in real time
+  useEffect(() => {
+    applyThemeToCss(draftTheme, userPreferences);
+  }, [draftTheme, userPreferences]);
+
+  const updateDraftTheme = (updater: (prev: OrganizationThemeConfig) => OrganizationThemeConfig) => {
+    setDraftTheme((prev) => updater(prev));
+  };
+
+  const saveTheme = async () => {
+    try {
+      const updated = await fetchApi<OrganizationThemeConfig>("/organization/theme", {
+        method: "PUT",
+        body: JSON.stringify({
+          identity: draftTheme.identity,
+          colors: draftTheme.colors,
+          appearance: draftTheme.appearance,
+          typography: draftTheme.typography,
+        }),
+      });
+      setTheme(updated);
+      setDraftTheme(updated);
+    } catch (err: any) {
+      console.error("Failed to save theme to server:", err);
+      // Still persist locally
+      setTheme(draftTheme);
+      throw err;
+    }
+  };
+
+  const discardChanges = () => {
+    setDraftTheme(theme);
+  };
+
+  const resetToDefault = async () => {
+    try {
+      const resetData = await fetchApi<OrganizationThemeConfig>("/organization/theme/reset", {
+        method: "POST",
+      });
+      setTheme(resetData || DEFAULT_ORG_THEME);
+      setDraftTheme(resetData || DEFAULT_ORG_THEME);
+    } catch (err) {
+      console.warn("Reset API failed, using fallback:", err);
+      setTheme(DEFAULT_ORG_THEME);
+      setDraftTheme(DEFAULT_ORG_THEME);
+    }
+  };
+
+  const setUserPreferences = (prefs: Partial<UserPreferences>) => {
+    setUserPreferencesState((prev) => {
+      const next = { ...prev, ...prefs };
+      localStorage.setItem("desire_user_prefs", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  return (
+    <ThemeContext.Provider
+      value={{
+        theme,
+        draftTheme,
+        userPreferences,
+        isDirty,
+        isLoading,
+        setDraftTheme,
+        updateDraftTheme,
+        saveTheme,
+        discardChanges,
+        resetToDefault,
+        setUserPreferences,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+};

@@ -12,6 +12,7 @@ COSMOS_DATABASE = os.getenv("COSMOS_DATABASE", "DesireAIDB")
 COSMOS_CONTAINER_USERS = os.getenv("COSMOS_CONTAINER_USERS", "users")
 COSMOS_CONTAINER_TWILIO = os.getenv("COSMOS_CONTAINER_TWILIO", "twilio_configs")
 COSMOS_CONTAINER_CALLS = os.getenv("COSMOS_CONTAINER_CALLS", "calls")
+COSMOS_CONTAINER_THEMES = os.getenv("COSMOS_CONTAINER_THEMES", "theme_configs")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@desireai.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -21,6 +22,7 @@ _database = None
 _users_container = None
 _twilio_container = None
 _calls_container = None
+_themes_container = None
 
 def get_cosmos_client() -> Optional[CosmosClient]:
     global _client
@@ -101,11 +103,34 @@ def get_calls_container():
         print(f"[CosmosDB Error] Failed to get/create calls container: {e}")
         return None
 
+def get_themes_container():
+    global _database, _themes_container
+    if _themes_container is not None:
+        return _themes_container
+
+    client = get_cosmos_client()
+    if not client:
+        return None
+
+    try:
+        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
+        _database = db
+        container = db.create_container_if_not_exists(
+            id=COSMOS_CONTAINER_THEMES,
+            partition_key=PartitionKey(path="/organization_id")
+        )
+        _themes_container = container
+        return _themes_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get/create themes container: {e}")
+        return None
+
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
     container = get_users_container()
     get_twilio_container()
     get_calls_container()
+    get_themes_container()
 
     if not container:
         print("[CosmosDB Warning] Users container unavailable. Skipping initial admin seed.")

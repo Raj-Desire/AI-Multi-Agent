@@ -7,8 +7,6 @@ import {
   Phone,
   PhoneForwarded,
   ShieldCheck,
-  AlertCircle,
-  CheckCircle2,
   Save,
   RefreshCw,
   Plus,
@@ -18,15 +16,16 @@ import {
   X,
   Globe,
   Radio,
-  Sparkles,
   PhoneIncoming,
   Layers,
-  HelpCircle,
-  ExternalLink,
-  ShieldAlert,
-  Server,
   Zap,
 } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
+import { Button } from "./ui/Button";
+import { Input } from "./ui/Input";
+import { Badge } from "./ui/Badge";
+import { Alert } from "./ui/Alert";
+import { PageHeader } from "./ui/PageHeader";
 
 export function TwilioSettingsView() {
   const [config, setConfig] = useState<TwilioConfig | null>(null);
@@ -108,7 +107,6 @@ export function TwilioSettingsView() {
         return;
       }
 
-      // Merge unique numbers with existing list
       const combined = Array.from(new Set([...phoneNumbers, ...fetched]));
       setPhoneNumbers(combined);
       setMessage({ text: `Successfully pulled ${fetched.length} purchased Twilio number(s)! Click Save Configuration below to persist.`, type: "success" });
@@ -144,7 +142,6 @@ export function TwilioSettingsView() {
     updated[index] = trimmed;
     setPhoneNumbers(updated);
 
-    // Update forward mapping if key changed
     if (inboundForwardMapping[oldNum]) {
       const newMapping = { ...inboundForwardMapping };
       newMapping[trimmed] = newMapping[oldNum];
@@ -245,9 +242,9 @@ export function TwilioSettingsView() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 text-slate-500 space-y-4">
-        <div className="w-10 h-10 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-medium">Loading Twilio configuration & Cosmos DB keys...</span>
+      <div className="flex flex-col items-center justify-center py-32 space-y-4 text-sub">
+        <div className="w-8 h-8 border-3 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-xs font-semibold uppercase tracking-wider">Loading Twilio configuration...</span>
       </div>
     );
   }
@@ -255,510 +252,448 @@ export function TwilioSettingsView() {
   const isConnected = config?.status === "CONNECTED";
 
   return (
-    <div className="w-full space-y-8 font-sans pb-16">
-      {/* Top Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 rounded-3xl text-white shadow-xl">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <span className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Zap className="w-5 h-5" />
-            </span>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Twilio Voice & WebRTC Settings</h1>
-          </div>
-          <p className="text-slate-300 text-xs md:text-sm max-w-2xl leading-relaxed">
-            Configure your Programmable Voice account, in-browser WebRTC softphone keys, and automated inbound call forwarding rules.
-          </p>
-        </div>
-
-        {/* Status Indicator Pill */}
-        <div className="flex items-center gap-3">
-          <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 shadow-inner ${
-            isConnected
-              ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-300"
-              : "bg-slate-800/80 border-slate-700 text-slate-400"
-          }`}>
-            <span className={`w-3 h-3 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
-            <div>
-              <div className="text-[10px] uppercase font-bold tracking-wider opacity-70">Gateway Status</div>
-              <div className="text-xs font-bold font-mono">{isConnected ? "Connected & Verified" : "Not Configured"}</div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="w-full space-y-6 pb-16">
+      {/* Page Header */}
+      <PageHeader
+        title="Twilio Voice & WebRTC Settings"
+        description="Configure your Programmable Voice account, in-browser WebRTC softphone keys, and automated inbound call forwarding rules."
+        badge={
+          <Badge variant={isConnected ? "success" : "neutral"} size="md" dot={isConnected}>
+            {isConnected ? "Gateway Connected" : "Not Configured"}
+          </Badge>
+        }
+        actions={
+          config && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestConnection}
+              isLoading={testing}
+              leftIcon={<Zap className="w-3.5 h-3.5 text-amber-500" />}
+            >
+              Test Connection
+            </Button>
+          )
+        }
+      />
 
       {/* Global Status Message Toast */}
       {message && (
-        <div
-          className={`p-4 rounded-2xl text-sm border flex items-start gap-3 shadow-sm transition-all animate-fadeIn ${
-            message.type === "success"
-              ? "bg-emerald-50/90 border-emerald-300 text-emerald-900"
-              : "bg-rose-50/90 border-rose-300 text-rose-900"
-          }`}
+        <Alert
+          type={message.type === "success" ? "success" : "danger"}
+          onDismiss={() => setMessage(null)}
         >
-          {message.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          )}
-          <div className="font-semibold flex-1 leading-snug">{message.text}</div>
-          <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-600">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+          {message.text}
+        </Alert>
       )}
 
-      <form onSubmit={handleSave} className="space-y-8">
+      <form onSubmit={handleSave} className="space-y-6">
         {/* SECTION 1: Core Twilio Credentials */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-5">
+        <Card className="bg-white border border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
-                <Key className="w-5 h-5" />
+              <div
+                style={{
+                  backgroundColor: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  borderColor: "var(--color-primary-ring)",
+                }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center border"
+              >
+                <Key className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900">1. Twilio Core Account Credentials</h2>
-                <p className="text-xs text-slate-500">Your primary Twilio Account SID & Auth Token from Twilio Console.</p>
+                <CardTitle className="text-sm">1. Twilio Core Account Credentials</CardTitle>
+                <CardDescription>Primary Account SID and Auth Token from Twilio Console</CardDescription>
               </div>
             </div>
+            <Badge variant="primary" size="sm">Mandatory</Badge>
+          </CardHeader>
 
-            <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-3 py-1 rounded-full self-start sm:self-auto">
-              Mandatory
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Account SID</span>
-                <span className="text-[10px] text-slate-400 font-normal">Starts with AC</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={accountSid}
-                  onChange={(e) => setAccountSid(e.target.value)}
-                  placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Auth Token</span>
-                <span className="text-[10px] text-emerald-600 font-medium">Encrypted at rest</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  required
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="••••••••••••••••••••••••••••••••"
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* SECTION 2: WebRTC In-Browser Calling Keys */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center border border-violet-100">
-                <Radio className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">2. WebRTC Live In-Browser Calling (Softphone Keys)</h2>
-                <p className="text-xs text-slate-500">
-                  Required for direct microphone calling in the web browser without desk phones.
-                </p>
-              </div>
-            </div>
-
-            <span className="text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200/80 px-3 py-1 rounded-full self-start sm:self-auto">
-              WebRTC Audio
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2 space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>TwiML App SID</span>
-                <span className="text-[10px] text-slate-400 font-normal">Starts with AP (Found in Twilio Console &gt; Voice &gt; TwiML Apps)</span>
-              </label>
-              <input
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Account SID"
                 type="text"
-                value={twimlAppSid}
-                onChange={(e) => setTwimlAppSid(e.target.value)}
-                placeholder="APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
+                required
+                value={accountSid}
+                onChange={(e) => setAccountSid(e.target.value)}
+                placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className="font-mono text-xs"
+                helperText="Found on the Twilio Console homepage (starts with AC)."
+              />
+
+              <Input
+                label="Auth Token"
+                type="password"
+                required
+                value={authToken}
+                onChange={(e) => setAuthToken(e.target.value)}
+                placeholder="••••••••••••••••••••••••••••••••"
+                className="font-mono text-xs"
+                helperText="Encrypted at rest in Azure Cosmos DB."
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>API Key SID</span>
-                <span className="text-[10px] text-slate-400 font-normal">Starts with SK</span>
-              </label>
-              <input
+        {/* SECTION 2: WebRTC In-Browser Calling Keys */}
+        <Card className="bg-white border border-slate-200">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                style={{
+                  backgroundColor: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  borderColor: "var(--color-primary-ring)",
+                }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center border"
+              >
+                <Radio className="w-4 h-4" />
+              </div>
+              <div>
+                <CardTitle className="text-sm">2. WebRTC Live In-Browser Calling (Softphone Keys)</CardTitle>
+                <CardDescription>Required for direct browser mic audio calls via WebRTC.</CardDescription>
+              </div>
+            </div>
+            <Badge variant="primary" size="sm">WebRTC Audio</Badge>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <Input
+              label="TwiML App SID"
+              type="text"
+              value={twimlAppSid}
+              onChange={(e) => setTwimlAppSid(e.target.value)}
+              placeholder="APxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="font-mono text-xs"
+              helperText="Created under Twilio Console > Voice > TwiML Apps (starts with AP)."
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="API Key SID"
                 type="text"
                 value={apiKeySid}
                 onChange={(e) => setApiKeySid(e.target.value)}
                 placeholder="SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
+                className="font-mono text-xs"
+                helperText="Twilio Standard API Key (starts with SK)."
               />
-            </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>API Key Secret</span>
-                <span className="text-[10px] text-emerald-600 font-medium">Encrypted at rest</span>
-              </label>
-              <input
+              <Input
+                label="API Key Secret"
                 type="password"
                 value={apiKeySecret}
                 onChange={(e) => setApiKeySecret(e.target.value)}
                 placeholder="••••••••••••••••••••••••••••••••"
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
+                className="font-mono text-xs"
+                helperText="Secret corresponding to your API Key SID."
               />
             </div>
 
-            <div className="md:col-span-2 space-y-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                <span>Public Webhook Base URL (Tunnel / Server Host)</span>
-                <span className="text-[10px] text-slate-400 font-normal">e.g. ngrok / Azure URL</span>
-              </label>
-              <input
+            <div className="space-y-2 pt-2">
+              <Input
+                label="Public Webhook Base URL (Host / Tunnel)"
                 type="text"
                 value={publicBaseUrl}
                 onChange={(e) => setPublicBaseUrl(e.target.value)}
                 placeholder="https://your-domain.ngrok-free.dev or https://api.yourdomain.com"
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono transition-all shadow-xs"
+                className="font-mono text-xs"
+                helperText="Twilio webhook endpoint automatically resolved upon save."
               />
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>
-                  Twilio webhook destination automatically synced on save:{" "}
-                  <code className="font-mono text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center gap-2">
+                <Globe className="w-4 h-4 theme-primary-text shrink-0" />
+                <span className="text-sub">
+                  Twilio Webhook Destination:{" "}
+                  <code className="font-mono theme-primary-text font-bold">
                     {publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/api/v1/twilio/voice/twiml` : "https://<your-host>/api/v1/twilio/voice/twiml"}
                   </code>
                 </span>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* SECTION 3: Configured Phone Numbers */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <Card className="bg-white border border-slate-200">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-                <Phone className="w-5 h-5" />
+              <div
+                style={{
+                  backgroundColor: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  borderColor: "var(--color-primary-ring)",
+                }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center border"
+              >
+                <Phone className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900">3. Purchased Twilio Phone Numbers ({phoneNumbers.length})</h2>
-                <p className="text-xs text-slate-500">Caller IDs available for outbound dialing and inbound routing.</p>
+                <CardTitle className="text-sm">3. Twilio Caller ID Phone Numbers ({phoneNumbers.length})</CardTitle>
+                <CardDescription>Caller IDs available for outbound dialing and inbound routing.</CardDescription>
               </div>
             </div>
 
-            {/* Quick Action: Auto-Fetch */}
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleAutoFetchNumbers}
-              disabled={fetchingNumbers}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+              isLoading={fetchingNumbers}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${fetchingNumbers ? "animate-spin" : ""}`} />
-              {fetchingNumbers ? "Syncing Twilio Numbers..." : "Auto-Fetch From Twilio"}
-            </button>
-          </div>
+              Auto-Fetch From Twilio
+            </Button>
+          </CardHeader>
 
-          {/* Add Number Input Row */}
-          <div className="flex items-center gap-3">
-            <input
-              type="text"
-              value={newNumberInput}
-              onChange={(e) => setNewNumberInput(e.target.value)}
-              placeholder="e.g. +15551234567"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddNumber();
-                }
-              }}
-              className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono shadow-xs"
-            />
-            <button
-              type="button"
-              onClick={handleAddNumber}
-              className="flex items-center gap-1.5 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all active:scale-95 shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Add Number
-            </button>
-          </div>
-
-          {/* Phone Numbers List Display */}
-          {phoneNumbers.length === 0 ? (
-            <div className="p-8 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-2">
-              <Phone className="w-8 h-8 text-slate-300 mx-auto" />
-              <div className="text-sm font-semibold text-slate-600">No phone numbers configured yet</div>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Click <strong>"Auto-Fetch From Twilio"</strong> above to pull all purchased numbers automatically.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
-              {phoneNumbers.map((num, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 hover:bg-white transition-all shadow-xs"
-                >
-                  {editingIndex === index ? (
-                    <div className="flex items-center gap-2 flex-1 mr-2">
-                      <input
-                        type="text"
-                        value={editingValue}
-                        onChange={(e) => setEditingValue(e.target.value)}
-                        className="flex-1 px-3 py-1.5 rounded-xl border border-indigo-500 text-sm font-mono focus:outline-none"
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveEdit(index)}
-                        className="p-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-                        title="Save"
-                      >
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelEdit}
-                        className="p-2 rounded-xl bg-slate-200 text-slate-600 hover:bg-slate-300"
-                        title="Cancel"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
-                          {index + 1}
-                        </div>
-                        <div>
-                          <div className="font-mono text-sm font-bold text-slate-900">{num}</div>
-                          {index === 0 && (
-                            <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">
-                              Primary Outbound Caller ID
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleStartEdit(index)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteNumber(index)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* SECTION 4: Inbound Call Forwarding */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 md:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-5">
+          <CardContent className="space-y-4">
+            {/* Add Number Input Row */}
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
-                <PhoneIncoming className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">4. Inbound Call Forwarding Rules</h2>
-                <p className="text-xs text-slate-500">
-                  Control how incoming calls to your Twilio numbers are forwarded to your personal/office phones.
-                </p>
-              </div>
-            </div>
-
-            <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-3 py-1 rounded-full self-start sm:self-auto">
-              Call Routing
-            </span>
-          </div>
-
-          {/* Mode Selector Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <button
-              type="button"
-              onClick={() => setInboundForwardMode("global")}
-              className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden ${
-                inboundForwardMode === "global"
-                  ? "bg-indigo-50/60 border-indigo-600 ring-2 ring-indigo-500/20 shadow-sm"
-                  : "bg-slate-50/60 border-slate-200 hover:bg-white hover:border-slate-300"
-              }`}
-            >
-              <div className="flex items-center gap-2.5 font-bold text-sm text-slate-900">
-                <PhoneForwarded className="w-4 h-4 text-indigo-600" />
-                Global Single Forward
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                Forward all incoming calls across every Twilio number to one master target phone.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setInboundForwardMode("per_number")}
-              className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden ${
-                inboundForwardMode === "per_number"
-                  ? "bg-indigo-50/60 border-indigo-600 ring-2 ring-indigo-500/20 shadow-sm"
-                  : "bg-slate-50/60 border-slate-200 hover:bg-white hover:border-slate-300"
-              }`}
-            >
-              <div className="flex items-center gap-2.5 font-bold text-sm text-slate-900">
-                <Layers className="w-4 h-4 text-indigo-600" />
-                Per-Number Routing Map
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                Assign specific forwarding phone numbers individually for each Twilio line.
-              </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setInboundForwardMode("disabled")}
-              className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden ${
-                inboundForwardMode === "disabled"
-                  ? "bg-slate-200/80 border-slate-400 ring-2 ring-slate-400/20"
-                  : "bg-slate-50/60 border-slate-200 hover:bg-white hover:border-slate-300"
-              }`}
-            >
-              <div className="flex items-center gap-2.5 font-bold text-sm text-slate-700">
-                <X className="w-4 h-4 text-slate-500" />
-                Disabled
-              </div>
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                Do not forward incoming calls (disconnects after polite automated greeting).
-              </p>
-            </button>
-          </div>
-
-          {/* Mode Form Content */}
-          {inboundForwardMode === "global" && (
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 animate-fadeIn">
-              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                <PhoneForwarded className="w-4 h-4 text-indigo-600" /> Master Inbound Forwarding Target (E.164)
-              </label>
               <input
                 type="text"
-                value={inboundForwardGlobalNumber}
-                onChange={(e) => setInboundForwardGlobalNumber(e.target.value)}
-                placeholder="e.g. +15559876543 (Your mobile or office phone)"
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 text-sm font-mono shadow-xs"
+                value={newNumberInput}
+                onChange={(e) => setNewNumberInput(e.target.value)}
+                placeholder="e.g. +15551234567"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddNumber();
+                  }
+                }}
+                className="flex-1 ui-input text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-heading focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-ring)]"
               />
-              <p className="text-xs text-slate-500 leading-relaxed">
-                When anyone dials any of your Twilio numbers, our platform immediately forwards and rings this number with live audio bridge.
-              </p>
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={handleAddNumber}
+                leftIcon={<Plus className="w-4 h-4" />}
+              >
+                Add Number
+              </Button>
             </div>
-          )}
 
-          {inboundForwardMode === "per_number" && (
-            <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200 space-y-4 animate-fadeIn">
-              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-600" /> Twilio Line &rarr; Forward Destination Mapping
+            {/* List */}
+            {phoneNumbers.length === 0 ? (
+              <div className="p-8 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-1 text-xs text-sub">
+                <Phone className="w-6 h-6 mx-auto opacity-50 mb-2" />
+                <div className="font-bold text-heading">No phone numbers configured yet</div>
+                <p>Click "Auto-Fetch From Twilio" above to pull all purchased numbers.</p>
               </div>
-
-              {phoneNumbers.length === 0 ? (
-                <div className="text-xs text-slate-400">Please add or fetch Twilio phone numbers above first.</div>
-              ) : (
-                <div className="space-y-3">
-                  {phoneNumbers.map((twNum) => (
-                    <div
-                      key={twNum}
-                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-xs"
-                    >
-                      <div className="font-mono text-xs font-bold text-indigo-950 sm:w-48 shrink-0 flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                        {twNum}
-                      </div>
-                      <div className="text-slate-400 font-bold text-xs hidden sm:block">&rarr;</div>
-                      <div className="flex-1">
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
+                {phoneNumbers.map((num, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 rounded-xl bg-white border border-slate-200 hover:shadow-xs transition-all"
+                  >
+                    {editingIndex === index ? (
+                      <div className="flex items-center gap-2 flex-1 mr-2">
                         <input
                           type="text"
-                          value={inboundForwardMapping[twNum] || ""}
-                          onChange={(e) => handlePerNumberForwardChange(twNum, e.target.value)}
-                          placeholder={`Forward calls on ${twNum} to e.g. +15559876543`}
-                          className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--color-primary)] text-xs font-mono focus:outline-none"
+                          autoFocus
                         />
+                        <Button
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleSaveEdit(index)}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCancelEdit}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div
+                            style={{
+                              backgroundColor: "var(--color-primary-light)",
+                              color: "var(--color-primary)",
+                            }}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs"
+                          >
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="font-mono text-xs font-bold text-heading">{num}</div>
+                            {index === 0 && (
+                              <span
+                                style={{ color: "var(--color-primary)" }}
+                                className="text-[10px] font-bold uppercase tracking-wider block"
+                              >
+                                Primary Outbound ID
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
-              <div className="pt-3 border-t border-slate-200/60 space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Fallback Destination (Optional)
-                </label>
-                <input
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(index)}
+                            className="p-1.5 text-sub hover:theme-primary-text rounded-lg cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteNumber(index)}
+                            className="p-1.5 text-sub hover:text-rose-600 rounded-lg cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* SECTION 4: Inbound Call Forwarding */}
+        <Card className="bg-white border border-slate-200">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div
+                style={{
+                  backgroundColor: "var(--color-primary-light)",
+                  color: "var(--color-primary)",
+                  borderColor: "var(--color-primary-ring)",
+                }}
+                className="w-9 h-9 rounded-xl flex items-center justify-center border"
+              >
+                <PhoneIncoming className="w-4 h-4" />
+              </div>
+              <div>
+                <CardTitle className="text-sm">4. Inbound Call Forwarding Rules</CardTitle>
+                <CardDescription>Control automated forwarding for incoming customer calls.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("global")}
+                style={{
+                  borderColor: inboundForwardMode === "global" ? "var(--color-primary)" : "#e2e8f0",
+                  backgroundColor: inboundForwardMode === "global" ? "var(--color-primary-light)" : "#ffffff",
+                }}
+                className="p-4 rounded-xl border text-left transition-all cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <PhoneForwarded className="w-3.5 h-3.5 theme-primary-text" />
+                  <span className="text-heading">Global Forward</span>
+                </div>
+                <p className="text-[11px] text-sub mt-1 leading-relaxed">
+                  Forward all incoming lines to one master phone.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("per_number")}
+                style={{
+                  borderColor: inboundForwardMode === "per_number" ? "var(--color-primary)" : "#e2e8f0",
+                  backgroundColor: inboundForwardMode === "per_number" ? "var(--color-primary-light)" : "#ffffff",
+                }}
+                className="p-4 rounded-xl border text-left transition-all cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center gap-2 font-bold text-xs">
+                  <Layers className="w-3.5 h-3.5 theme-primary-text" />
+                  <span className="text-heading">Per-Number Mapping</span>
+                </div>
+                <p className="text-[11px] text-sub mt-1 leading-relaxed">
+                  Assign individual forward destinations per line.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setInboundForwardMode("disabled")}
+                style={{
+                  borderColor: inboundForwardMode === "disabled" ? "#94a3b8" : "#e2e8f0",
+                  backgroundColor: inboundForwardMode === "disabled" ? "#f1f5f9" : "#ffffff",
+                }}
+                className="p-4 rounded-xl border text-left transition-all cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center gap-2 font-bold text-xs text-sub">
+                  <X className="w-3.5 h-3.5" />
+                  <span className="text-heading">Disabled</span>
+                </div>
+                <p className="text-[11px] text-sub mt-1 leading-relaxed">
+                  Do not forward incoming calls.
+                </p>
+              </button>
+            </div>
+
+            {inboundForwardMode === "global" && (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <Input
+                  label="Master Inbound Forwarding Target (E.164)"
                   type="text"
                   value={inboundForwardGlobalNumber}
                   onChange={(e) => setInboundForwardGlobalNumber(e.target.value)}
-                  placeholder="Fallback number if any specific mapping is left empty"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-mono"
+                  placeholder="e.g. +15559876543"
+                  className="font-mono text-xs"
+                  helperText="Incoming calls immediately bridge and ring this target number."
                 />
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Sticky Action Footer Bar */}
-        <div className="sticky bottom-4 z-20 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/90 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-slate-800 shadow-2xl text-white">
-          <div className="flex items-center gap-2.5 text-xs text-slate-300">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Settings are securely encrypted at rest in Azure Cosmos DB NoSQL.</span>
-          </div>
-
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            {config && (
-              <button
-                type="button"
-                onClick={handleTestConnection}
-                disabled={testing}
-                className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs px-5 py-3 rounded-2xl border border-slate-700 transition-all disabled:opacity-50"
-              >
-                {testing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5 text-amber-400" />}
-                {testing ? "Testing..." : "Test Connection"}
-              </button>
             )}
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-7 py-3 rounded-2xl shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
-            >
-              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {saving ? "Saving Configuration..." : config ? "Update Configuration" : "Save Configuration"}
-            </button>
+            {inboundForwardMode === "per_number" && (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-sub">
+                  Twilio Line &rarr; Forward Destination Mapping
+                </div>
+                {phoneNumbers.map((twNum) => (
+                  <div key={twNum} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span className="font-mono text-xs font-bold sm:w-40 shrink-0 text-heading">{twNum}</span>
+                    <input
+                      type="text"
+                      value={inboundForwardMapping[twNum] || ""}
+                      onChange={(e) => handlePerNumberForwardChange(twNum, e.target.value)}
+                      placeholder={`Target for ${twNum}`}
+                      className="flex-1 ui-input text-xs font-mono px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-heading focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-ring)]"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Sticky Action Footer */}
+        <div className="sticky bottom-4 z-20 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-xl text-heading">
+          <div className="flex items-center gap-2 text-xs text-sub">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Settings are encrypted in Azure Cosmos DB NoSQL.</span>
           </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            isLoading={saving}
+            leftIcon={<Save className="w-4 h-4" />}
+          >
+            {config ? "Update Configuration" : "Save Configuration"}
+          </Button>
         </div>
       </form>
     </div>

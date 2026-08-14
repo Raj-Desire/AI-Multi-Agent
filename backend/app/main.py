@@ -12,6 +12,7 @@ from app.api.v1.twilio import router as twilio_router
 from app.api.v1.calls import router as calls_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.theme import router as theme_router
 from app.core.cosmos import init_cosmos_db
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
 app.include_router(calls_router, prefix="/api/v1")
+app.include_router(theme_router, prefix="/api/v1")
 
 @app.get("/health/live")
 async def health_live():
