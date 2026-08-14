@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { UserSummary } from "../types";
 import { fetchApi } from "../api-client";
+import { useAuth } from "../context/AuthContext";
 import {
   ShieldCheck,
   UserPlus,
@@ -10,6 +11,7 @@ import {
   User,
   Mail,
   Lock,
+  Building2,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
@@ -21,6 +23,7 @@ import { Alert } from "./ui/Alert";
 import { PageHeader } from "./ui/PageHeader";
 
 export const AdminPanel: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export const AdminPanel: React.FC = () => {
         body: JSON.stringify({ username, email, password, role: "user" }),
       });
 
-      setSuccessMsg(`User '${newUser.username}' (${newUser.email}) created successfully!`);
+      setSuccessMsg(`User '${newUser.username}' (${newUser.email}) created successfully for ${currentUser?.org_name || "your organization"}!`);
       setUsername("");
       setEmail("");
       setPassword("");
@@ -102,8 +105,8 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleDeleteUser = async (user: UserSummary) => {
-    if (user.role === "admin") {
-      alert("Primary Admin account is protected and cannot be deleted. At least one Admin must always exist.");
+    if (user.role === "admin" || user.role === "superadmin") {
+      alert("Admin accounts cannot be deleted from the Organization User tab.");
       return;
     }
 
@@ -126,12 +129,15 @@ export const AdminPanel: React.FC = () => {
     <div className="w-full space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Admin User Management"
-        description="Provision client tenant accounts, rotate passwords, and oversee organization users stored in Azure Cosmos DB."
+        title="Organization User Management"
+        description={`Provision and manage client accounts belonging strictly to ${currentUser?.org_name || "your organization"}.`}
         badge={
-          <Badge variant="primary" size="md">
-            Admin Access
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="primary" size="md">
+              <Building2 className="w-3.5 h-3.5 mr-1" />
+              {currentUser?.org_name || "Organization Admin"}
+            </Badge>
+          </div>
         }
         actions={
           <Button
@@ -147,8 +153,10 @@ export const AdminPanel: React.FC = () => {
 
       {/* Policy Alert */}
       <Alert type="info">
-        <span className="font-bold text-sky-950">Platform Security Policy:</span> As an administrator, you have full authority to provision client accounts and rotate security credentials.
+        <span className="font-bold text-sky-950">Tenant Isolation Policy:</span> You are managing users under{" "}
+        <span className="font-bold">{currentUser?.org_name || "your organization"}</span> ({currentUser?.organization_id}).
       </Alert>
+
 
       {/* Global Alerts */}
       {error && (

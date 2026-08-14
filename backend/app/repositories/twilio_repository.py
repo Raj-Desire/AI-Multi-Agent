@@ -1,7 +1,8 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime, timezone
 from app.models.twilio import TwilioConfiguration
 from app.core.cosmos import get_twilio_container
+
 
 class TwilioRepository:
     async def get_by_org(self, organization_id: str) -> Optional[TwilioConfiguration]:
@@ -35,7 +36,38 @@ class TwilioRepository:
         except Exception as e:
             print(f"[TwilioRepository Error] get_by_org: {e}")
         
-        return None
+    async def list_all(self) -> List[TwilioConfiguration]:
+        container = get_twilio_container()
+        if not container:
+            return []
+        
+        query = "SELECT * FROM c"
+        try:
+            items = list(container.query_items(query=query, enable_cross_partition_query=True))
+            configs = []
+            for item in items:
+                configs.append(TwilioConfiguration(
+                    id=item.get("id", f"cfg_{item.get('user_id')}"),
+                    organization_id=item.get("user_id", ""),
+                    account_sid=item.get("account_sid", ""),
+                    encrypted_auth_token=item.get("encrypted_auth_token", ""),
+                    phone_number=item.get("phone_number", ""),
+                    twiml_app_sid=item.get("twiml_app_sid"),
+                    api_key_sid=item.get("api_key_sid"),
+                    encrypted_api_key_secret=item.get("encrypted_api_key_secret"),
+                    public_base_url=item.get("public_base_url"),
+                    inbound_forward_mode=item.get("inbound_forward_mode", "global"),
+                    inbound_forward_global_number=item.get("inbound_forward_global_number"),
+                    inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                    status="CONNECTED",
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                ))
+            return configs
+        except Exception as e:
+            print(f"[TwilioRepository Error] list_all: {e}")
+            return []
+
 
     async def get_by_phone_number(self, phone_number: str) -> Optional[TwilioConfiguration]:
         container = get_twilio_container()

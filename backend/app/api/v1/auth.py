@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.repositories.user_repository import UserRepository
 from app.core.security import verify_password, create_access_token
 from app.core.dependencies import get_current_user
@@ -16,6 +16,8 @@ class UserResponse(BaseModel):
     username: str
     email: str
     role: str
+    organization_id: Optional[str] = None
+    org_name: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -50,7 +52,9 @@ async def login(req: LoginRequest):
     access_token = create_access_token(data={
         "sub": user["id"],
         "email": user["email"],
-        "role": user["role"]
+        "role": user.get("role", "user"),
+        "organization_id": user.get("organization_id", user["id"]),
+        "org_name": user.get("org_name")
     })
 
     return TokenResponse(
@@ -60,7 +64,9 @@ async def login(req: LoginRequest):
             id=user["id"],
             username=user.get("username", "User"),
             email=user["email"],
-            role=user.get("role", "user")
+            role=user.get("role", "user"),
+            organization_id=user.get("organization_id", user["id"]),
+            org_name=user.get("org_name")
         )
     )
 
@@ -70,5 +76,8 @@ async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
         id=current_user["id"],
         username=current_user.get("username", "User"),
         email=current_user["email"],
-        role=current_user.get("role", "user")
+        role=current_user.get("role", "user"),
+        organization_id=current_user.get("organization_id", current_user["id"]),
+        org_name=current_user.get("org_name")
     )
+

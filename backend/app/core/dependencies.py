@@ -12,6 +12,7 @@ class TenantContext(BaseModel):
     user_id: str
     email: str
     role: str
+    org_name: Optional[str] = None
 
 async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)) -> Dict[str, Any]:
     if not credentials or not credentials.credentials:
@@ -48,17 +49,30 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
 
 async def get_tenant_context(current_user: Dict[str, Any] = Depends(get_current_user)) -> TenantContext:
     user_id = current_user.get("id", "")
+    org_id = current_user.get("organization_id") or user_id
     return TenantContext(
-        organization_id=user_id,
+        organization_id=org_id,
         user_id=user_id,
         email=current_user.get("email", ""),
-        role=current_user.get("role", "user")
+        role=current_user.get("role", "user"),
+        org_name=current_user.get("org_name")
     )
 
 async def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    if current_user.get("role") != "admin":
+    role = current_user.get("role", "user")
+    if role not in ["admin", "superadmin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required to perform this action.",
         )
     return current_user
+
+async def require_superadmin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    role = current_user.get("role", "user")
+    if role != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superadmin privileges required to access this resource.",
+        )
+    return current_user
+

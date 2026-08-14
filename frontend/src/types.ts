@@ -1,17 +1,43 @@
+export type UserRole = 'superadmin' | 'admin' | 'user';
+
 export interface AuthUser {
   id: string;
   username: string;
   email: string;
-  role: 'admin' | 'user';
+  role: UserRole;
+  organization_id?: string;
+  org_name?: string;
 }
 
 export interface UserSummary {
   id: string;
   username: string;
   email: string;
-  role: 'admin' | 'user';
+  role: UserRole;
+  organization_id?: string;
+  org_name?: string;
   is_active: boolean;
   created_at: string;
+}
+
+export interface OrganizationSummary {
+  organization_id: string;
+  org_name: string;
+  admin_count: number;
+  user_count: number;
+  total_members: number;
+  is_active: boolean;
+  admins: { id: string; username: string; email: string; is_active?: boolean }[];
+  created_at: string;
+}
+
+
+export interface PlatformOverviewMetrics {
+  total_organizations: number;
+  total_superadmins: number;
+  total_admins: number;
+  total_users: number;
+  total_accounts: number;
 }
 
 export interface TwilioConfig {

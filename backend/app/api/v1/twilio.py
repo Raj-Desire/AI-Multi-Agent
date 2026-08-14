@@ -21,27 +21,70 @@ def get_twilio_service() -> TwilioService:
 
 @router.get("/configuration", response_model=ApiResponse[Optional[TwilioConfigResponse]])
 async def get_configuration(
+    organization_id: Optional[str] = None,
     ctx: TenantContext = Depends(get_tenant_context),
     service: TwilioService = Depends(get_twilio_service)
 ):
-    cfg = await service.get_config(ctx)
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
+    cfg = await service.get_config(effective_ctx)
     return ApiResponse.ok(cfg)
 
 @router.post("/configuration", response_model=ApiResponse[TwilioConfigResponse])
 async def save_configuration(
     payload: SaveTwilioConfigRequest,
+    organization_id: Optional[str] = None,
     ctx: TenantContext = Depends(get_tenant_context),
     service: TwilioService = Depends(get_twilio_service)
 ):
-    cfg = await service.save_config(ctx, payload)
+    # Security Rule: Only Admins and Superadmins can modify Twilio settings
+    if ctx.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Only Organization Administrators or Superadmins can update Twilio configuration."
+        )
+
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
+    cfg = await service.save_config(effective_ctx, payload)
     return ApiResponse.ok(cfg)
 
 @router.post("/test-connection", response_model=ApiResponse[dict])
 async def test_connection(
+    organization_id: Optional[str] = None,
     ctx: TenantContext = Depends(get_tenant_context),
     service: TwilioService = Depends(get_twilio_service)
 ):
-    res = await service.test_connection(ctx)
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
+    res = await service.test_connection(effective_ctx)
     return ApiResponse.ok(res)
 
 class FetchNumbersRequest(BaseModel):
@@ -51,16 +94,35 @@ class FetchNumbersRequest(BaseModel):
 @router.post("/fetch-numbers", response_model=ApiResponse[list[str]])
 async def fetch_purchased_numbers(
     payload: Optional[FetchNumbersRequest] = None,
+    organization_id: Optional[str] = None,
     ctx: TenantContext = Depends(get_tenant_context),
     service: TwilioService = Depends(get_twilio_service)
 ):
+    if ctx.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Only Organization Administrators or Superadmins can fetch Twilio account numbers."
+        )
+
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
     try:
         acc_sid = payload.account_sid if payload else None
         tok = payload.auth_token if payload else None
-        numbers = await service.fetch_account_phone_numbers(ctx, account_sid=acc_sid, auth_token=tok)
+        numbers = await service.fetch_account_phone_numbers(effective_ctx, account_sid=acc_sid, auth_token=tok)
         return ApiResponse.ok(numbers)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.api_route("/voice/twiml", methods=["GET", "POST"])
 async def voice_twiml_webhook(request: Request):

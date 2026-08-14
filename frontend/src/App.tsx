@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { LoginPage } from "./components/LoginPage";
 import { AdminPanel } from "./components/AdminPanel";
+import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { DashboardView } from "./components/DashboardView";
 import { TwilioSettingsView } from "./components/TwilioSettingsView";
 import { ThemeStudioView } from "./components/ThemeStudioView";
@@ -11,20 +12,22 @@ import {
   Settings,
   Activity,
   ShieldCheck,
+  ShieldAlert,
   LogOut,
   User,
   Palette,
   Sun,
   Moon,
   Laptop,
+  Crown,
 } from "lucide-react";
 import { Badge } from "./components/ui/Badge";
 import { Button } from "./components/ui/Button";
 
 function MainContent() {
-  const { user, isLoading, isAdmin, logout } = useAuth();
+  const { user, isLoading, isAdmin, isSuperAdmin, logout } = useAuth();
   const { draftTheme, userPreferences, setUserPreferences } = useTheme();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "twilio" | "theme" | "admin">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "twilio" | "theme" | "admin" | "superadmin">("dashboard");
 
   if (isLoading) {
     return (
@@ -47,9 +50,13 @@ function MainContent() {
     return <LoginPage />;
   }
 
-  // Ensure non-admin users cannot access admin or theme tabs
-  const currentTab =
-    (activeTab === "admin" || activeTab === "theme") && !isAdmin ? "dashboard" : activeTab;
+  // Ensure role permissions are strictly guarded for tab access
+  let currentTab = activeTab;
+  if (currentTab === "superadmin" && !isSuperAdmin) {
+    currentTab = "dashboard";
+  } else if ((currentTab === "admin" || currentTab === "theme") && !isAdmin) {
+    currentTab = "dashboard";
+  }
 
   const toggleColorMode = () => {
     const modes: ("system" | "light" | "dark")[] = ["light", "dark", "system"];
@@ -90,7 +97,7 @@ function MainContent() {
                 style={{ color: draftTheme.colors.primary }}
                 className="font-black text-lg tracking-tight leading-none"
               >
-                {draftTheme.identity.org_name || "Desire AI"}
+                {draftTheme.identity.org_name || (user.org_name || "Desire AI")}
               </div>
               <div className="text-xs text-slate-500 font-medium mt-1">
                 AI Voice Agent Platform
@@ -116,20 +123,24 @@ function MainContent() {
             Dashboard
           </button>
 
-          <button
-            onClick={() => setActiveTab("twilio")}
-            style={{
-              backgroundColor: currentTab === "twilio" ? `${draftTheme.colors.primary}18` : "transparent",
-              color: currentTab === "twilio" ? draftTheme.colors.primary : "#475569",
-              borderColor: currentTab === "twilio" ? `${draftTheme.colors.primary}40` : "transparent",
-            }}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-              currentTab === "twilio" ? "shadow-2xs" : "hover:text-slate-900 hover:bg-slate-50"
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            Twilio Settings
-          </button>
+          {/* Twilio Settings Tab (Only visible to Org Admins and Superadmins) */}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab("twilio")}
+              style={{
+                backgroundColor: currentTab === "twilio" ? `${draftTheme.colors.primary}18` : "transparent",
+                color: currentTab === "twilio" ? draftTheme.colors.primary : "#475569",
+                borderColor: currentTab === "twilio" ? `${draftTheme.colors.primary}40` : "transparent",
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                currentTab === "twilio" ? "shadow-2xs" : "hover:text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Twilio Settings
+            </button>
+          )}
+
 
           {/* Admin Theme Studio Tab */}
           {isAdmin && (
@@ -149,7 +160,7 @@ function MainContent() {
             </button>
           )}
 
-          {/* Admin User Management Tab */}
+          {/* Admin User Management Tab (for Org Admin) */}
           {isAdmin && (
             <button
               onClick={() => setActiveTab("admin")}
@@ -164,6 +175,24 @@ function MainContent() {
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               User Admin
+            </button>
+          )}
+
+          {/* Superadmin Dedicated Master Console Tab */}
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab("superadmin")}
+              style={{
+                backgroundColor: currentTab === "superadmin" ? "#f59e0b1f" : "transparent",
+                color: currentTab === "superadmin" ? "#d97706" : "#78350f",
+                borderColor: currentTab === "superadmin" ? "#f59e0b50" : "transparent",
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+                currentTab === "superadmin" ? "shadow-2xs" : "hover:text-amber-900 hover:bg-amber-50"
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              Super Admin Console
             </button>
           )}
         </nav>
@@ -192,12 +221,13 @@ function MainContent() {
             <span className="font-semibold text-slate-800">{user.username}</span>
             <span
               style={{
-                backgroundColor: `${draftTheme.colors.primary}18`,
-                color: draftTheme.colors.primary,
-                borderColor: `${draftTheme.colors.primary}30`,
+                backgroundColor: user.role === "superadmin" ? "#fef3c7" : `${draftTheme.colors.primary}18`,
+                color: user.role === "superadmin" ? "#b45309" : draftTheme.colors.primary,
+                borderColor: user.role === "superadmin" ? "#fcd34d" : `${draftTheme.colors.primary}30`,
               }}
-              className="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] border"
+              className="px-2 py-0.5 rounded-md font-bold uppercase text-[10px] border flex items-center gap-1"
             >
+              {user.role === "superadmin" && <Crown className="w-2.5 h-2.5" />}
               {user.role}
             </span>
           </div>
@@ -221,6 +251,8 @@ function MainContent() {
           <TwilioSettingsView />
         ) : currentTab === "theme" ? (
           <ThemeStudioView />
+        ) : currentTab === "superadmin" ? (
+          <SuperAdminPanel />
         ) : (
           <AdminPanel />
         )}
@@ -228,12 +260,13 @@ function MainContent() {
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 px-6 sm:px-12 py-4 text-xs text-slate-500 flex justify-between items-center">
-        <div>&copy; 2026 {draftTheme.identity.org_name || "Desire AI"} SaaS Platform. All rights reserved.</div>
+        <div>&copy; 2026 {draftTheme.identity.org_name || (user.org_name || "Desire AI")} SaaS Platform. All rights reserved.</div>
         <div className="font-mono text-[11px] opacity-70">Multi-Tenant Azure Cosmos DB</div>
       </footer>
     </div>
   );
 }
+
 
 export function App() {
   return (

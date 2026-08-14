@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../api-client";
-import { TwilioConfig } from "../types";
+import { TwilioConfig, OrganizationSummary } from "../types";
+import { useAuth } from "../context/AuthContext";
 import {
   Key,
   Lock,
@@ -19,6 +20,7 @@ import {
   PhoneIncoming,
   Layers,
   Zap,
+  Building2,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
@@ -28,6 +30,10 @@ import { Alert } from "./ui/Alert";
 import { PageHeader } from "./ui/PageHeader";
 
 export function TwilioSettingsView() {
+  const { user, isSuperAdmin } = useAuth();
+  const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+
   const [config, setConfig] = useState<TwilioConfig | null>(null);
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
@@ -54,13 +60,42 @@ export function TwilioSettingsView() {
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
-    loadConfig();
-  }, []);
+    if (isSuperAdmin) {
+      loadOrganizations();
+    } else {
+      loadConfig();
+    }
+  }, [isSuperAdmin]);
 
-  async function loadConfig() {
+  useEffect(() => {
+    if (selectedOrgId) {
+      loadConfig(selectedOrgId);
+    }
+  }, [selectedOrgId]);
+
+  async function loadOrganizations() {
+    try {
+      const orgs = await fetchApi<OrganizationSummary[]>("/superadmin/organizations");
+      setOrganizations(orgs);
+      if (orgs.length > 0) {
+        const initialOrg = user?.organization_id || orgs[0].organization_id;
+        setSelectedOrgId(initialOrg);
+        loadConfig(initialOrg);
+      } else {
+        loadConfig();
+      }
+    } catch (e) {
+      loadConfig();
+    }
+  }
+
+  async function loadConfig(targetOrgId?: string) {
     try {
       setLoading(true);
-      const data = await fetchApi<TwilioConfig | null>("/twilio/configuration");
+      const url = targetOrgId && isSuperAdmin
+        ? `/twilio/configuration?organization_id=${targetOrgId}`
+        : "/twilio/configuration";
+      const data = await fetchApi<TwilioConfig | null>(url);
       if (data) {
         setConfig(data);
         setAccountSid(data.account_sid || "");
@@ -77,6 +112,18 @@ export function TwilioSettingsView() {
           .map((n) => n.trim())
           .filter(Boolean);
         setPhoneNumbers(parsed);
+      } else {
+        setConfig(null);
+        setAccountSid("");
+        setAuthToken("");
+        setTwimlAppSid("");
+        setApiKeySid("");
+        setApiKeySecret("");
+        setPublicBaseUrl("");
+        setInboundForwardMode("global");
+        setInboundForwardGlobalNumber("");
+        setInboundForwardMapping({});
+        setPhoneNumbers([]);
       }
     } catch (err: any) {
       setMessage({ text: err.message, type: "error" });
@@ -84,6 +131,7 @@ export function TwilioSettingsView() {
       setLoading(false);
     }
   }
+
 
   const handleAutoFetchNumbers = async () => {
     if (!accountSid.trim() || !authToken.trim()) {
@@ -193,7 +241,11 @@ export function TwilioSettingsView() {
       setSaving(true);
       setMessage(null);
       const joinedNumbers = phoneNumbers.join(", ");
-      const updated = await fetchApi<TwilioConfig>("/twilio/configuration", {
+      const saveUrl = isSuperAdmin && selectedOrgId
+        ? `/twilio/configuration?organization_id=${selectedOrgId}`
+        : "/twilio/configuration";
+
+      const updated = await fetchApi<TwilioConfig>(saveUrl, {
         method: "POST",
         body: JSON.stringify({
           account_sid: accountSid,
@@ -225,7 +277,11 @@ export function TwilioSettingsView() {
     try {
       setTesting(true);
       setMessage(null);
-      const res = await fetchApi<{ success: boolean; message: string }>("/twilio/test-connection", {
+      const testUrl = isSuperAdmin && selectedOrgId
+        ? `/twilio/test-connection?organization_id=${selectedOrgId}`
+        : "/twilio/test-connection";
+
+      const res = await fetchApi<{ success: boolean; message: string }>(testUrl, {
         method: "POST",
       });
       if (res.success) {
@@ -239,6 +295,7 @@ export function TwilioSettingsView() {
       setTesting(false);
     }
   }
+
 
   if (loading) {
     return (
@@ -277,7 +334,41 @@ export function TwilioSettingsView() {
         }
       />
 
+      {/* Superadmin Cross-Org Selector */}
+      {isSuperAdmin && organizations.length > 0 && (
+        <Card className="bg-amber-50/60 border border-amber-200 shadow-xs">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                  Configuring Organization Twilio Gateway
+                </div>
+                <div className="text-xs text-amber-700">
+                  Select which organization's Twilio credentials and forwarding rules to manage as Superadmin.
+                </div>
+              </div>
+            </div>
+
+            <select
+              value={selectedOrgId}
+              onChange={(e) => setSelectedOrgId(e.target.value)}
+              className="text-xs font-bold px-4 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 focus:outline-none shadow-xs"
+            >
+              {organizations.map((org) => (
+                <option key={org.organization_id} value={org.organization_id}>
+                  {org.org_name} ({org.organization_id})
+                </option>
+              ))}
+            </select>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Global Status Message Toast */}
+
       {message && (
         <Alert
           type={message.type === "success" ? "success" : "danger"}

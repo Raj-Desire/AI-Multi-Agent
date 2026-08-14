@@ -144,21 +144,28 @@ def init_cosmos_db():
         if not items:
             admin_user = {
                 "id": f"usr_{uuid.uuid4().hex[:12]}",
-                "username": "Admin",
+                "username": "Super Admin",
                 "email": ADMIN_EMAIL.lower(),
                 "hashed_password": desired_hash,
-                "role": "admin",
+                "role": "superadmin",
+                "organization_id": "org_platform_root",
+                "org_name": "Platform Master",
                 "is_active": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             container.create_item(body=admin_user)
-            print(f"[CosmosDB] Admin user successfully seeded: {ADMIN_EMAIL}")
+            print(f"[CosmosDB] Superadmin user successfully seeded: {ADMIN_EMAIL}")
         else:
             admin_doc = items[0]
-            # Ensure password hash is up to date
+            # Ensure superadmin role and password hash
             admin_doc["hashed_password"] = desired_hash
-            admin_doc["role"] = "admin"
+            admin_doc["role"] = "superadmin"
+            if not admin_doc.get("organization_id"):
+                admin_doc["organization_id"] = "org_platform_root"
+            if not admin_doc.get("org_name"):
+                admin_doc["org_name"] = "Platform Master"
             container.upsert_item(body=admin_doc)
-            print(f"[CosmosDB] Admin user password & role synced: {ADMIN_EMAIL}")
+            print(f"[CosmosDB] Superadmin user synced: {ADMIN_EMAIL}")
     except Exception as e:
         print(f"[CosmosDB Error] Error during admin user seed check: {e}")
+
