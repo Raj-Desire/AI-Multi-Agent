@@ -263,12 +263,34 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
     setIsMuted(nextMute);
   }
 
+  function sanitizePhoneNumber(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    const hasLeadingPlus = trimmed.startsWith("+");
+    const digitsOnly = trimmed.replace(/\D/g, "");
+    return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
+  }
+
   function handleKeypadDigit(digit: string) {
-    setToNumber((prev) => prev + digit);
-    if (activeCallRef.current) {
-      try {
-        activeCallRef.current.sendDigits(digit);
-      } catch (e) {}
+    if (digit === "+") {
+      setToNumber((prev) => {
+        if (prev.startsWith("+")) return prev;
+        return `+${prev.replace(/\D/g, "")}`;
+      });
+      return;
+    }
+
+    if (/^[0-9]$/.test(digit)) {
+      setToNumber((prev) => {
+        const sanitized = prev.replace(/[^0-9+]/g, "");
+        return sanitized + digit;
+      });
+
+      if (activeCallRef.current) {
+        try {
+          activeCallRef.current.sendDigits(digit);
+        } catch (e) {}
+      }
     }
   }
 
@@ -303,9 +325,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
     { digit: "7", sub: "PQRS" },
     { digit: "8", sub: "TUV" },
     { digit: "9", sub: "WXYZ" },
-    { digit: "*", sub: "" },
+    { digit: "+", sub: "INTL" },
     { digit: "0", sub: "+" },
-    { digit: "#", sub: "" },
   ];
 
   return (
@@ -421,43 +442,109 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                 </div>
 
                 {/* Number Screen & Backspace */}
-                <div className="relative">
+                <div className="relative bg-slate-50/80 p-2 rounded-2xl border border-slate-200">
                   <input
                     type="tel"
                     value={toNumber}
-                    onChange={(e) => setToNumber(e.target.value)}
+                    onChange={(e) => setToNumber(sanitizePhoneNumber(e.target.value))}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const pasted = e.clipboardData.getData("text");
+                      setToNumber(sanitizePhoneNumber(pasted));
+                    }}
                     placeholder="Enter phone number (e.g. +1...)"
-                    className="w-full pl-4 pr-12 py-3 rounded-xl border border-slate-200 text-lg font-mono text-center tracking-wider bg-white text-heading font-bold focus:outline-none focus:ring-2 focus:ring-[var(--color-primary-ring)] focus:border-[var(--color-primary)]"
+                    className="w-full pl-4 pr-12 py-3 rounded-xl border-none text-xl font-mono text-center tracking-wider bg-transparent text-heading font-extrabold focus:outline-none placeholder:text-slate-400 placeholder:font-normal"
                   />
                   {toNumber.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setToNumber((prev) => prev.slice(0, -1))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer transition-all active:scale-90"
                       title="Backspace"
                     >
-                      <Delete className="w-4 h-4" />
+                      <Delete className="w-5 h-5" />
                     </button>
                   )}
                 </div>
 
-                {/* 3x4 Touch Keypad */}
-                <div className="grid grid-cols-3 gap-2.5 pt-1">
-                  {keypadDigits.map(({ digit, sub }) => (
+                {/* Modern Smartphone Round Keypad Grid (1-9, +, 0, Del) */}
+                <div className="max-w-[340px] mx-auto py-2">
+                  <div className="grid grid-cols-3 gap-3.5">
+                    {/* Rows 1-3: Digits 1 to 9 */}
+                    {[
+                      { digit: "1", sub: "" },
+                      { digit: "2", sub: "ABC" },
+                      { digit: "3", sub: "DEF" },
+                      { digit: "4", sub: "GHI" },
+                      { digit: "5", sub: "JKL" },
+                      { digit: "6", sub: "MNO" },
+                      { digit: "7", sub: "PQRS" },
+                      { digit: "8", sub: "TUV" },
+                      { digit: "9", sub: "WXYZ" },
+                    ].map(({ digit, sub }) => (
+                      <button
+                        key={digit}
+                        type="button"
+                        onClick={() => handleKeypadDigit(digit)}
+                        className="w-full aspect-square max-w-[80px] mx-auto rounded-full bg-white hover:bg-[var(--color-primary-light)] border-2 border-slate-100 hover:border-[var(--color-primary)] flex flex-col items-center justify-center transition-all duration-150 active:scale-90 group cursor-pointer shadow-xs hover:shadow-md"
+                      >
+                        <span className="text-2xl font-black text-heading group-hover:theme-primary-text font-mono leading-none">
+                          {digit}
+                        </span>
+                        {sub ? (
+                          <span className="text-[9px] text-sub group-hover:theme-primary-text uppercase font-bold tracking-widest mt-0.5">
+                            {sub}
+                          </span>
+                        ) : (
+                          <span className="h-[13px]" />
+                        )}
+                      </button>
+                    ))}
+
+                    {/* Bottom Row: + Button, 0 Button, and Quick Clear/Backspace */}
+                    {/* 1. Plus (+) Button */}
                     <button
-                      key={digit}
                       type="button"
-                      onClick={() => handleKeypadDigit(digit)}
-                      className="flex flex-col items-center justify-center py-3 bg-white hover:bg-[var(--color-primary-light)] hover:border-[var(--color-primary)] border border-slate-200 rounded-xl transition-all active:scale-95 group cursor-pointer shadow-2xs"
+                      onClick={() => handleKeypadDigit("+")}
+                      className="w-full aspect-square max-w-[80px] mx-auto rounded-full bg-white hover:bg-[var(--color-primary-light)] border-2 border-slate-100 hover:border-[var(--color-primary)] flex flex-col items-center justify-center transition-all duration-150 active:scale-90 group cursor-pointer shadow-xs hover:shadow-md"
+                      title="Add Plus (+)"
                     >
-                      <span className="text-xl font-black text-heading group-hover:theme-primary-text font-mono leading-none">
-                        {digit}
+                      <span className="text-2xl font-black text-heading group-hover:theme-primary-text font-mono leading-none">
+                        +
                       </span>
-                      <span className="text-[10px] text-sub group-hover:theme-primary-text uppercase font-semibold mt-1 tracking-widest min-h-[14px]">
-                        {sub}
+                      <span className="text-[9px] text-sub group-hover:theme-primary-text uppercase font-bold tracking-widest mt-0.5">
+                        INTL
                       </span>
                     </button>
-                  ))}
+
+                    {/* 2. Zero (0) Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleKeypadDigit("0")}
+                      className="w-full aspect-square max-w-[80px] mx-auto rounded-full bg-white hover:bg-[var(--color-primary-light)] border-2 border-slate-100 hover:border-[var(--color-primary)] flex flex-col items-center justify-center transition-all duration-150 active:scale-90 group cursor-pointer shadow-xs hover:shadow-md"
+                    >
+                      <span className="text-2xl font-black text-heading group-hover:theme-primary-text font-mono leading-none">
+                        0
+                      </span>
+                      <span className="text-[9px] text-sub group-hover:theme-primary-text uppercase font-bold tracking-widest mt-0.5">
+                        +
+                      </span>
+                    </button>
+
+                    {/* 3. Clear / Backspace Button */}
+                    <button
+                      type="button"
+                      onClick={() => setToNumber((prev) => prev.slice(0, -1))}
+                      disabled={toNumber.length === 0}
+                      className="w-full aspect-square max-w-[80px] mx-auto rounded-full bg-slate-50 hover:bg-rose-50 border-2 border-slate-100 hover:border-rose-300 disabled:opacity-40 disabled:hover:bg-slate-50 disabled:hover:border-slate-100 flex flex-col items-center justify-center transition-all duration-150 active:scale-90 text-slate-400 hover:text-rose-600 cursor-pointer shadow-xs"
+                      title="Backspace"
+                    >
+                      <Delete className="w-5 h-5" />
+                      <span className="text-[9px] uppercase font-bold tracking-widest mt-0.5">
+                        DEL
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Action Controls */}
@@ -466,10 +553,10 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                     <button
                       type="button"
                       onClick={handleToggleMute}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                      className={`p-3 rounded-2xl border transition-all cursor-pointer ${
                         isMuted
-                          ? "bg-rose-50 text-rose-600 border-rose-200"
-                          : "bg-white text-heading border border-slate-200"
+                          ? "bg-rose-50 text-rose-600 border-rose-200 shadow-xs"
+                          : "bg-white text-heading border border-slate-200 shadow-xs hover:bg-slate-50"
                       }`}
                       title={isMuted ? "Unmute Mic" : "Mute Mic"}
                     >
@@ -482,8 +569,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                       variant="primary"
                       size="lg"
                       onClick={handleBrowserCall}
-                      leftIcon={<PhoneOutgoing className="w-4 h-4" />}
-                      className="flex-1 py-3.5 font-bold"
+                      leftIcon={<PhoneOutgoing className="w-5 h-5" />}
+                      className="flex-1 py-4 text-base font-extrabold rounded-2xl shadow-md hover:shadow-lg"
                     >
                       Call Destination
                     </Button>
@@ -492,8 +579,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
                       variant="danger"
                       size="lg"
                       onClick={handleHangup}
-                      leftIcon={<PhoneOff className="w-4 h-4" />}
-                      className="flex-1 py-3.5 font-bold"
+                      leftIcon={<PhoneOff className="w-5 h-5" />}
+                      className="flex-1 py-4 text-base font-extrabold rounded-2xl shadow-md"
                     >
                       End Call
                     </Button>
