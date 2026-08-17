@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
+import { Badge } from "./ui/Badge";
 import { Alert } from "./ui/Alert";
 import { PageHeader } from "./ui/PageHeader";
 import { Tabs } from "./ui/Tabs";
@@ -144,20 +145,166 @@ export const ThemeStudioView: React.FC = () => {
     }
   };
 
-  // 8 UI Architecture Styles
+  // 8 UI Architecture Styles with Visual Mockups
   const uiStyles: {
     id: UIStyle;
     title: string;
     desc: string;
+    renderMockup: (primary: string, secondary: string) => React.ReactNode;
   }[] = [
-    { id: "default", title: "Modern SaaS", desc: "Clean, restrained borders with subtle shadows" },
-    { id: "minimal", title: "Minimalist Flat", desc: "Ultra-clean flat surfaces and zero shadows" },
-    { id: "glassmorphism", title: "Glassmorphism", desc: "Frosted translucent panels with subtle blur" },
-    { id: "liquid_glass", title: "Liquid Glass", desc: "Fluid, high-blur glass with subtle gradient sheen" },
-    { id: "brutalism", title: "Neo-Brutalism", desc: "Bold solid 2px borders with crisp offset shadow" },
-    { id: "claymorphism", title: "Claymorphism", desc: "Soft 3D pillowed surfaces with gentle depth" },
-    { id: "neomorphism", title: "Neomorphism", desc: "Soft extruded/pressed dual light and dark shadows" },
-    { id: "retro", title: "Retro Terminal", desc: "Vintage 90s terminal borders and monospaced typography" },
+    {
+      id: "default",
+      title: "Modern SaaS",
+      desc: "Clean, restrained borders with subtle shadows",
+      renderMockup: (p) => (
+        <div className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-2.5 shadow-xs flex items-center justify-between gap-2">
+          <div style={{ backgroundColor: p }} className="w-12 h-2 rounded-full shrink-0" />
+          <div style={{ backgroundColor: p }} className="px-2.5 py-1 rounded-md text-white font-medium text-[10px] shadow-2xs">
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "minimal",
+      title: "Minimalist Flat",
+      desc: "Ultra-clean flat surfaces and zero shadows",
+      renderMockup: (p) => (
+        <div className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-none p-2.5 shadow-none flex items-center justify-between gap-2">
+          <div style={{ backgroundColor: p }} className="w-12 h-2 rounded-none shrink-0" />
+          <div style={{ backgroundColor: p }} className="px-2.5 py-1 rounded-none text-white font-medium text-[10px]">
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "glassmorphism",
+      title: "Glassmorphism",
+      desc: "Frosted translucent panels with subtle blur",
+      renderMockup: (p) => (
+        <div
+          style={{
+            background: "rgba(255, 255, 255, 0.75)",
+            backdropFilter: "blur(12px)",
+            borderColor: "rgba(255, 255, 255, 0.6)",
+          }}
+          className="w-full border rounded-xl p-2.5 shadow-sm flex items-center justify-between gap-2 bg-gradient-to-br from-white/80 to-white/40 dark:from-slate-800/80 dark:to-slate-900/40"
+        >
+          <div style={{ backgroundColor: p }} className="w-12 h-2 rounded-full opacity-80 shrink-0" />
+          <div
+            style={{ backgroundColor: p }}
+            className="px-2.5 py-1 rounded-lg text-white font-medium text-[10px] shadow-xs backdrop-blur-xs border border-white/30"
+          >
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "liquid_glass",
+      title: "Liquid Glass",
+      desc: "Fluid, high-blur glass with subtle gradient sheen",
+      renderMockup: (p, s) => (
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${p}18 0%, ${s}12 100%)`,
+            borderColor: `${p}35`,
+          }}
+          className="w-full backdrop-blur-md border rounded-2xl p-2.5 shadow-md flex items-center justify-between gap-2"
+        >
+          <div
+            style={{ background: `linear-gradient(90deg, ${p} 0%, ${s} 100%)` }}
+            className="w-12 h-2 rounded-full shrink-0"
+          />
+          <div
+            style={{ background: `linear-gradient(135deg, ${p} 0%, ${s} 100%)` }}
+            className="px-3 py-1 rounded-full text-white font-medium text-[10px] shadow-sm"
+          >
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "brutalism",
+      title: "Neo-Brutalism",
+      desc: "Bold solid 2px borders with crisp offset shadow",
+      renderMockup: (p) => (
+        <div className="w-full bg-[var(--color-surface)] border-2 border-slate-900 dark:border-white rounded-none p-2 shadow-[3px_3px_0px_#0f172a] dark:shadow-[3px_3px_0px_#f8fafc] flex items-center justify-between gap-2">
+          <div style={{ backgroundColor: p }} className="w-12 h-2 rounded-none border border-slate-900 dark:border-white shrink-0" />
+          <div
+            style={{ backgroundColor: p }}
+            className="px-2.5 py-1 bg-slate-900 text-white font-bold text-[10px] rounded-none border border-slate-900 shadow-[1px_1px_0px_#000]"
+          >
+            BUTTON
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "claymorphism",
+      title: "Claymorphism",
+      desc: "Soft 3D pillowed surfaces with gentle depth",
+      renderMockup: (p) => (
+        <div
+          style={{
+            boxShadow: "4px 6px 14px rgba(0,0,0,0.06), inset 2px 2px 3px rgba(255,255,255,0.9)",
+          }}
+          className="w-full bg-[var(--color-surface)] border-2 border-white/80 rounded-2xl p-2.5 flex items-center justify-between gap-2"
+        >
+          <div style={{ backgroundColor: p }} className="w-12 h-2.5 rounded-full shadow-inner shrink-0" />
+          <div
+            style={{
+              backgroundColor: p,
+              boxShadow: "2px 3px 8px rgba(0,0,0,0.15), inset 1px 1px 2px rgba(255,255,255,0.4)",
+            }}
+            className="px-3 py-1 rounded-xl text-white font-medium text-[10px]"
+          >
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "neomorphism",
+      title: "Neomorphism",
+      desc: "Soft extruded/pressed dual light and dark shadows",
+      renderMockup: (p) => (
+        <div
+          style={{
+            boxShadow: "4px 4px 10px rgba(0,0,0,0.06), -4px -4px 10px rgba(255,255,255,0.9)",
+          }}
+          className="w-full bg-[var(--color-surface)] rounded-xl p-2.5 flex items-center justify-between gap-2 border border-slate-100 dark:border-slate-800"
+        >
+          <div style={{ backgroundColor: p }} className="w-12 h-2 rounded-full shrink-0" />
+          <div
+            style={{
+              boxShadow: "inset 1px 1px 3px rgba(0,0,0,0.1), inset -1px -1px 3px rgba(255,255,255,0.8)",
+            }}
+            className="px-2.5 py-1 rounded-lg text-[var(--color-heading)] bg-[var(--color-surface)] font-medium text-[10px] border border-slate-200/50"
+          >
+            Button
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "retro",
+      title: "Retro Terminal",
+      desc: "Vintage 90s terminal borders and monospaced typography",
+      renderMockup: (p) => (
+        <div className="w-full bg-[#101420] border-2 border-t-slate-200 border-l-slate-200 border-r-slate-700 border-b-slate-700 rounded-none p-2 flex items-center justify-between gap-2 font-mono">
+          <span style={{ color: p }} className="text-[10px] font-bold">&gt; SYS</span>
+          <div
+            style={{ backgroundColor: p }}
+            className="px-2 py-0.5 text-[9px] font-bold text-white uppercase rounded-xs border-t border-l border-white/50 border-r border-b border-black/50"
+          >
+            [RUN]
+          </div>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -223,12 +370,15 @@ export const ThemeStudioView: React.FC = () => {
 
       {/* TAB 1: 8 UI ARCHITECTURE STYLES */}
       {activeTab === "styles" && (
-        <div className="space-y-4">
-          <div className="text-xs text-[var(--color-muted)]">
-            Select an architectural rendering style for your workspace. All components adapt automatically.
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--color-heading)]">UI Architecture Style Presets</h3>
+            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+              Select an architectural design language. Each style transforms cards, borders, buttons, and elevation across the entire platform.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {uiStyles.map((style) => {
               const isSelected = draftTheme.appearance.ui_style === style.id;
               return (
@@ -240,24 +390,78 @@ export const ThemeStudioView: React.FC = () => {
                       appearance: { ...prev.appearance, ui_style: style.id },
                     }))
                   }
-                  className={`p-4 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all ${
+                  className={`p-3.5 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all flex flex-col justify-between gap-3 group hover:border-[var(--color-primary)] ${
                     isSelected
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/40 shadow-xs"
-                      : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] bg-[var(--color-surface)]"
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/30 ring-2 ring-[var(--color-primary-ring)] shadow-xs"
+                      : "border-[var(--color-border)] bg-[var(--color-surface)]"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-xs font-semibold text-[var(--color-heading)]">{style.title}</h4>
-                    {isSelected && (
-                      <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-[10px]">
-                        <Check className="w-2.5 h-2.5" />
-                      </span>
-                    )}
+                  {/* Visual Rendered Mockup Container */}
+                  <div className="p-2.5 rounded-md bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] flex items-center justify-center min-h-[64px] transition-transform group-hover:scale-[1.02]">
+                    {style.renderMockup(draftTheme.colors.primary, draftTheme.colors.secondary)}
                   </div>
-                  <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">{style.desc}</p>
+
+                  {/* Title & Description */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className={`text-xs font-semibold ${isSelected ? "text-[var(--color-primary)]" : "text-[var(--color-heading)]"}`}>
+                        {style.title}
+                      </h4>
+                      {isSelected && (
+                        <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-[10px]">
+                          <Check className="w-2.5 h-2.5" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}
+          </div>
+
+          {/* Interactive Live Style Demo Sandbox */}
+          <div className="pt-2">
+            <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
+                <div>
+                  <h4 className="text-xs font-semibold text-[var(--color-heading)]">
+                    Active Style Live Sandbox ({uiStyles.find((s) => s.id === draftTheme.appearance.ui_style)?.title})
+                  </h4>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    This sandbox reflects the active architecture style token applied in real time.
+                  </p>
+                </div>
+                <Badge variant="primary" size="sm">
+                  {draftTheme.appearance.ui_style}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                <div className="ui-card p-3.5 space-y-2">
+                  <div className="text-xs font-semibold text-[var(--color-heading)]">Sample Card Component</div>
+                  <p className="text-[11px] text-[var(--color-muted)]">Borders, radius, and shadows update dynamically.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[var(--color-heading)] block">Sample Input Field</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value="Input field with style focus"
+                    className="w-full h-9 text-xs px-3 ui-input bg-[var(--color-surface)] text-[var(--color-heading)]"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
+                  <button type="button" className="ui-button-primary px-3.5 py-2 text-xs font-medium cursor-pointer">
+                    Primary Action
+                  </button>
+                  <button type="button" className="ui-button-secondary px-3.5 py-2 text-xs font-medium cursor-pointer">
+                    Secondary
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
