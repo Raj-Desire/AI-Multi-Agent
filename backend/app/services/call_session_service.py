@@ -35,7 +35,8 @@ class CallSessionService:
         model: str = "gpt-4o-mini",
         twilio_call_sid: Optional[str] = None,
         twilio_stream_sid: Optional[str] = None,
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        agent_config_snapshot: Optional[Dict[str, Any]] = None
     ) -> CallSession:
         """Initializes a new live CallSession in memory and active registry."""
         session = CallSession(
@@ -51,6 +52,7 @@ class CallSessionService:
             voice=voice,
             model=model,
             custom_prompt=custom_prompt,
+            agent_config_snapshot=agent_config_snapshot,
             twilio_call_sid=twilio_call_sid,
             twilio_stream_sid=twilio_stream_sid,
             started_at=datetime.now(timezone.utc)

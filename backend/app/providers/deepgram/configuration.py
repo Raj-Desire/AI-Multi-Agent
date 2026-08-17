@@ -33,7 +33,6 @@ class DeepgramListenProvider(BaseModel):
 
 class DeepgramListenConfig(BaseModel):
     provider: DeepgramListenProvider = Field(default_factory=DeepgramListenProvider)
-    eot_threshold: Optional[float] = None
 
 
 class DeepgramThinkProvider(BaseModel):
@@ -50,8 +49,7 @@ class DeepgramThinkConfig(BaseModel):
 
 class DeepgramSpeakProvider(BaseModel):
     type: str = "deepgram"
-    model: str = "aura-2-asteria-en"
-    speed: Optional[float] = None
+    model: str = "aura-orion-en"
 
 
 class DeepgramSpeakConfig(BaseModel):

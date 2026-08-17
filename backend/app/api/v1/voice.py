@@ -14,6 +14,7 @@ from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster
+from app.agents.configuration import AgentConfiguration
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
 from app.repositories.twilio_repository import TwilioRepository
@@ -38,6 +39,7 @@ class TestAICallRequest(BaseModel):
     from_number: Optional[str] = None
     agent_id: Optional[str] = "agt_receptionist_default"
     custom_prompt: Optional[str] = None
+    agent_config_override: Optional[Dict[str, Any]] = None
 
 
 class HangupCallRequest(BaseModel):
@@ -102,8 +104,17 @@ async def initiate_ai_test_call(
     selected_from = (payload.from_number or available_numbers[0]).strip()
     agent_id = payload.agent_id or "agt_receptionist_default"
 
-    # Get agent config
-    agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+    # Get agent config or apply override from client
+    if payload.agent_config_override:
+        try:
+            agent_config = AgentConfiguration.model_validate(payload.agent_config_override)
+            agent_config.organization_id = ctx.organization_id
+            await agent_service.save_agent(ctx, agent_config)
+        except Exception as e:
+            logger.warning(f"Failed to parse agent_config_override: {e}")
+            agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+    else:
+        agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
 
     # Validate Deepgram API Key before initiating call
     import os
@@ -125,7 +136,7 @@ async def initiate_ai_test_call(
     ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://")
     stream_url = f"{ws_base}/api/v1/voice/stream"
 
-    # Pre-create CallSession
+    # Pre-create CallSession with full config snapshot
     session = await call_session_service.create_session(
         organization_id=ctx.organization_id,
         agent_id=agent_config.agent_id,
@@ -137,7 +148,8 @@ async def initiate_ai_test_call(
         agent_role=agent_config.role,
         voice=agent_config.voice.voice,
         model=agent_config.llm.model,
-        custom_prompt=payload.custom_prompt.strip() if payload.custom_prompt and payload.custom_prompt.strip() else None
+        custom_prompt=payload.custom_prompt.strip() if payload.custom_prompt and payload.custom_prompt.strip() else None,
+        agent_config_snapshot=agent_config.model_dump(mode="json")
     )
 
     # Build TwiML containing <Connect><Stream> with fallback

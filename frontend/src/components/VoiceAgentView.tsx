@@ -245,7 +245,8 @@ export function VoiceAgentView() {
           to_number: testPhoneNumber.trim(),
           from_number: selectedFromNumber ? selectedFromNumber.trim() : undefined,
           agent_id: agent?.agent_id || "agt_receptionist_default",
-          custom_prompt: customTestPrompt.trim() || undefined
+          custom_prompt: customTestPrompt.trim() || undefined,
+          agent_config_override: agent || undefined
         })
       });
 
@@ -569,6 +570,36 @@ export function VoiceAgentView() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                     <div>
                       <div className="flex justify-between text-xs font-medium mb-1">
+                        <span>Voice Speaking Speed (Pacing)</span>
+                        <span className="text-[var(--color-primary)] font-bold">
+                          {(agent.voice.speed ?? 0.8).toFixed(2)}x
+                          {(agent.voice.speed ?? 0.8) <= 0.82 ? " (Calm & Relaxed)" : (agent.voice.speed ?? 0.8) >= 1.05 ? " (Fast)" : " (Standard)"}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.70"
+                        max="1.30"
+                        step="0.05"
+                        value={agent.voice.speed ?? 0.8}
+                        onChange={(e) =>
+                          setAgent({
+                            ...agent,
+                            voice: { ...agent.voice, speed: parseFloat(e.target.value) }
+                          })
+                        }
+                        className="w-full accent-[var(--color-primary)] cursor-pointer"
+                      />
+                      <div className="flex justify-between text-[10px] text-[var(--color-muted)] mt-1">
+                        <span>0.70x (Slow)</span>
+                        <span className="text-emerald-400 font-semibold">0.80x (Calm & Natural)</span>
+                        <span>1.00x (Fast)</span>
+                        <span>1.30x (Very Fast)</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs font-medium mb-1">
                         <span>Temperature (Creativity / Precision)</span>
                         <span className="text-[var(--color-primary)] font-bold">{agent.llm.temperature}</span>
                       </div>
@@ -592,14 +623,14 @@ export function VoiceAgentView() {
                         <span>1.0 (Creative)</span>
                       </div>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-xs font-medium mb-1">Communication Style</label>
-                      <Input
-                        value={agent.communication_style}
-                        onChange={(e) => setAgent({ ...agent, communication_style: e.target.value })}
-                      />
-                    </div>
+                  <div className="pt-1">
+                    <label className="block text-xs font-medium mb-1">Communication Style</label>
+                    <Input
+                      value={agent.communication_style}
+                      onChange={(e) => setAgent({ ...agent, communication_style: e.target.value })}
+                    />
                   </div>
                 </CardContent>
               </Card>

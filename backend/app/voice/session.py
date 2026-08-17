@@ -71,6 +71,7 @@ class CallSession(BaseModel):
     voice: str = "aura-asteria-en"
     model: str = "gpt-4o-mini"
     custom_prompt: Optional[str] = None
+    agent_config_snapshot: Optional[Dict[str, Any]] = None
 
     # Conversation Tracking
     messages: List[ConversationMessage] = Field(default_factory=list)

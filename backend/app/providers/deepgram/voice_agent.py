@@ -260,13 +260,14 @@ class DeepgramVoiceAgentClient:
                         await self.on_agent_audio_done()
 
                 elif event_type == DeepgramEventType.ERROR:
-                    err_msg = data.get("message", "Unknown Deepgram error")
-                    logger.error(f"Deepgram Error event: {err_msg}")
+                    err_msg = data.get("message") or data.get("description") or data.get("error") or str(data)
+                    logger.error(f"Deepgram Error event: {err_msg} | Full payload: {data}")
                     if self.on_error:
                         await self.on_error(err_msg)
 
                 elif event_type == DeepgramEventType.WARNING:
-                    logger.warning(f"Deepgram Warning: {data.get('message')}")
+                    warn_msg = data.get("message") or data.get("description") or data.get("warning") or data.get("warn") or str(data)
+                    logger.warning(f"Deepgram Warning event: {warn_msg} | Full payload: {data}")
 
         except websockets.exceptions.ConnectionClosed:
             logger.info("Deepgram WebSocket connection closed.")

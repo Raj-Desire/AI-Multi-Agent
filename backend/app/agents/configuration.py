@@ -30,9 +30,9 @@ class SpeakProviderConfig(BaseModel):
     provider: str = "deepgram"
     version: str = "v1"
     model: str = "aura"
-    voice: str = "aura-asteria-en"
+    voice: str = "aura-orion-en"
     language: str = "en"
-    speed: float = 1.0
+    speed: float = 0.8
 
 
 class ThinkProviderConfig(BaseModel):

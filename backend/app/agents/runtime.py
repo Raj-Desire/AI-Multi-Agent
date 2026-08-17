@@ -45,8 +45,7 @@ class AgentRuntimeBuilder:
             keyterms=config.listen.keyterms if config.listen.keyterms else None
         )
         listen_config = DeepgramListenConfig(
-            provider=listen_provider,
-            eot_threshold=config.listen.eot_threshold
+            provider=listen_provider
         )
 
         # 3. Think configuration (LLM)
@@ -62,11 +61,10 @@ class AgentRuntimeBuilder:
         )
 
         # 4. Speak configuration (TTS)
-        voice_model = config.voice.voice or "aura-2-asteria-en"
+        voice_model = config.voice.voice or "aura-orion-en"
         speak_provider = DeepgramSpeakProvider(
             type="deepgram",
-            model=voice_model,
-            speed=None
+            model=voice_model
         )
         speak_config = DeepgramSpeakConfig(
             provider=speak_provider

@@ -15,6 +15,7 @@ from app.voice.audio import AudioAdapter
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
+from app.agents.configuration import AgentConfiguration
 from app.agents.runtime import AgentRuntimeBuilder
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
@@ -162,7 +163,12 @@ async def voice_stream_websocket(websocket: WebSocket):
                 )
 
                 # Fetch or seed Agent Configuration
-                agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+                if session and session.agent_config_snapshot:
+                    agent_config = AgentConfiguration.model_validate(session.agent_config_snapshot)
+                    logger.info(f"[VoiceGateway] Using CallSession agent snapshot: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
+                else:
+                    agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+                    logger.info(f"[VoiceGateway] Loaded Agent config: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
 
                 # Initialize or attach CallSession
                 if not session:
@@ -178,7 +184,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                         voice=agent_config.voice.voice,
                         model=agent_config.llm.model,
                         twilio_call_sid=call_sid,
-                        twilio_stream_sid=stream_sid
+                        twilio_stream_sid=stream_sid,
+                        agent_config_snapshot=agent_config.model_dump(mode="json")
                     )
 
                 await call_session_service.attach_stream(session, stream_sid, call_sid=call_sid)
@@ -188,8 +195,17 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 # Override with custom prompt if specified for this test call session
                 if session and session.custom_prompt:
-                    logger.info(f"[VoiceGateway] Applying custom call prompt: {session.custom_prompt[:60]}...")
+                    logger.info(f"[VoiceGateway] Applying custom call prompt override: {session.custom_prompt[:60]}...")
                     deepgram_settings.agent.think.prompt = session.custom_prompt
+
+                logger.info(
+                    f"[VoiceGateway] Initializing Deepgram with Settings: "
+                    f"STT Model='{deepgram_settings.agent.listen.provider.model}', "
+                    f"LLM Provider='{deepgram_settings.agent.think.provider.type}', "
+                    f"LLM Model='{deepgram_settings.agent.think.provider.model}', "
+                    f"LLM Temp={deepgram_settings.agent.think.provider.temperature}, "
+                    f"TTS Voice='{deepgram_settings.agent.speak.provider.model}'"
+                )
 
                 # 3. Instantiate and connect Deepgram Client
                 deepgram_client = DeepgramVoiceAgentClient(
