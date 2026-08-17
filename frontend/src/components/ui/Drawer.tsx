@@ -1,24 +1,26 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
 
-export interface ModalProps {
+export interface DrawerProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl";
+  position?: "right" | "left";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
-export const Modal: React.FC<ModalProps> = ({
+export const Drawer: React.FC<DrawerProps> = ({
   isOpen,
   onClose,
   title,
   description,
   children,
   footer,
-  maxWidth = "md",
+  position = "right",
+  size = "md",
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -38,28 +40,32 @@ export const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen) return null;
 
-  const maxWidthClasses = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-    "2xl": "max-w-2xl",
+  const sizeClasses = {
+    sm: "w-full max-w-sm",
+    md: "w-full max-w-md",
+    lg: "w-full max-w-lg",
+    xl: "w-full max-w-xl",
+  };
+
+  const positionClasses = {
+    right: "right-0 top-0 bottom-0 border-l",
+    left: "left-0 top-0 bottom-0 border-r",
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-hidden flex">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Card */}
+      {/* Drawer Panel */}
       <div
-        className={`relative w-full ${maxWidthClasses[maxWidth]} bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-lg z-10 overflow-hidden text-left`}
+        className={`fixed ${positionClasses[position]} ${sizeClasses[size]} bg-[var(--color-surface)] border-[var(--color-border)] shadow-xl z-10 flex flex-col justify-between text-left`}
       >
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-[var(--color-border)] flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-[var(--color-heading)]">{title}</h3>
             {description && (
@@ -68,18 +74,18 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
+            className="p-1.5 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5">{children}</div>
+        {/* Content */}
+        <div className="p-5 flex-1 overflow-y-auto">{children}</div>
 
         {/* Footer */}
         {footer && (
-          <div className="px-5 py-3 bg-[var(--color-surface-muted)]/50 border-t border-[var(--color-border)] flex items-center justify-end gap-2.5">
+          <div className="px-5 py-3.5 bg-[var(--color-surface-muted)]/50 border-t border-[var(--color-border)] flex items-center justify-end gap-2.5">
             {footer}
           </div>
         )}

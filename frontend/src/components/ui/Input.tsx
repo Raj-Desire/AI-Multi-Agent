@@ -13,43 +13,43 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
 
     return (
-      <div className="w-full space-y-1.5">
+      <div className="w-full space-y-1.5 text-left">
         {label && (
           <label
             htmlFor={inputId}
-            className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+            className="block text-xs font-medium text-[var(--color-heading)]"
           >
             {label}
           </label>
         )}
         <div className="relative flex items-center">
           {leftIcon && (
-            <div className="absolute left-3.5 text-slate-400 pointer-events-none flex items-center">
+            <div className="absolute left-3 text-[var(--color-muted)] pointer-events-none flex items-center justify-center">
               {leftIcon}
             </div>
           )}
           <input
             id={inputId}
             ref={ref}
-            className={`w-full ui-input text-sm px-3.5 py-2.5 transition-all text-slate-900 bg-white placeholder-slate-400 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed border ${
-              leftIcon ? "pl-10" : ""
-            } ${rightIcon ? "pr-10" : ""} ${
+            className={`w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] placeholder-[var(--color-muted)]/70 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed border rounded-[var(--radius-main,0.375rem)] ${
+              leftIcon ? "pl-9" : ""
+            } ${rightIcon ? "pr-9" : ""} ${
               error
-                ? "border-rose-500 focus:border-rose-600 focus:ring-2 focus:ring-rose-500/20"
-                : "border-slate-200 focus:ring-2 focus:ring-pink-500/20"
+                ? "border-[var(--color-danger)] focus:border-[var(--color-danger)] focus:ring-2 focus:ring-[var(--color-danger)]/15"
+                : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary-ring)]"
             } ${className}`}
             {...props}
           />
           {rightIcon && (
-            <div className="absolute right-3.5 text-slate-400 flex items-center">
+            <div className="absolute right-3 text-[var(--color-muted)] flex items-center justify-center">
               {rightIcon}
             </div>
           )}
         </div>
         {error ? (
-          <p className="text-xs text-rose-600 font-medium">{error}</p>
+          <p className="text-xs text-[var(--color-danger)] font-medium">{error}</p>
         ) : helperText ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400">{helperText}</p>
+          <p className="text-xs text-[var(--color-muted)]">{helperText}</p>
         ) : null}
       </div>
     );

@@ -11,17 +11,12 @@ import { Sidebar, NavTab } from "./components/Sidebar";
 import {
   Menu,
   PhoneCall,
-  Activity,
-  Settings,
+  Sliders,
   Palette,
-  ShieldCheck,
-  Crown,
-  Bell,
-  Sparkles,
+  Users,
+  ShieldAlert,
   Wifi,
 } from "lucide-react";
-import { Badge } from "./components/ui/Badge";
-import { Button } from "./components/ui/Button";
 
 function MainContent() {
   const { user, isLoading, isAdmin, isSuperAdmin } = useAuth();
@@ -32,16 +27,16 @@ function MainContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen theme-bg flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div
             style={{
-              borderColor: draftTheme.colors.primary,
+              borderColor: "var(--color-primary)",
               borderTopColor: "transparent",
             }}
-            className="w-8 h-8 border-3 rounded-full animate-spin"
+            className="w-7 h-7 border-2 rounded-full animate-spin"
           />
-          <span className="text-sm font-medium theme-muted">Loading session...</span>
+          <span className="text-xs font-medium text-[var(--color-muted)]">Loading session...</span>
         </div>
       </div>
     );
@@ -51,11 +46,11 @@ function MainContent() {
     return <LoginPage />;
   }
 
-  // Ensure role permissions are strictly guarded for tab access
+  // Guard tab access based on role
   let currentTab = activeTab;
   if (currentTab === "superadmin" && !isSuperAdmin) {
     currentTab = "dashboard";
-  } else if ((currentTab === "admin" || currentTab === "theme") && !isAdmin) {
+  } else if ((currentTab === "admin" || currentTab === "theme" || currentTab === "twilio") && !isAdmin) {
     currentTab = "dashboard";
   }
 
@@ -64,38 +59,38 @@ function MainContent() {
       case "dashboard":
         return {
           title: "Calling Console",
-          sub: "WebRTC Direct Dialing & Live Call Session History",
-          icon: Activity,
+          sub: "WebRTC Direct Dialing & Live AI Voice Sessions",
+          icon: PhoneCall,
         };
       case "twilio":
         return {
-          title: "Twilio Voice Configuration",
-          sub: "Programmable Voice softphone keys, Caller IDs & Inbound Routing",
-          icon: Settings,
+          title: "Phone & Voice",
+          sub: "Twilio credentials, active numbers & call routing",
+          icon: Sliders,
         };
       case "theme":
         return {
-          title: "Theme Studio & Design Tokens",
-          sub: "White-label customization across 8 architecture UI styles",
+          title: "Theme Studio",
+          sub: "White-label design tokens and UI architecture styles",
           icon: Palette,
         };
       case "admin":
         return {
-          title: "Organization User Administration",
-          sub: "Manage organization team members, roles & permissions",
-          icon: ShieldCheck,
+          title: "Team Administration",
+          sub: "Manage workspace members, roles & credentials",
+          icon: Users,
         };
       case "superadmin":
         return {
-          title: "Super Admin Master Console",
-          sub: "Multi-tenant tenant root governance & system telemetries",
-          icon: Crown,
+          title: "Master Console",
+          sub: "Multi-tenant root governance and platform telemetries",
+          icon: ShieldAlert,
         };
       default:
         return {
-          title: "Dashboard",
-          sub: "AI Voice Agent Platform",
-          icon: Activity,
+          title: "Calling Console",
+          sub: "Voice Calling Platform",
+          icon: PhoneCall,
         };
     }
   };
@@ -104,7 +99,7 @@ function MainContent() {
   const HeaderIcon = pageMeta.icon;
 
   return (
-    <div className="min-h-screen flex theme-bg theme-text transition-colors">
+    <div className="min-h-screen flex bg-[var(--color-background)] text-[var(--color-text)] transition-colors">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
         <Sidebar
@@ -122,7 +117,7 @@ function MainContent() {
           onClick={() => setMobileSidebarOpen(false)}
         >
           <div
-            className="w-72 h-full"
+            className="w-64 h-full bg-[var(--color-surface)]"
             onClick={(e) => e.stopPropagation()}
           >
             <Sidebar
@@ -137,60 +132,49 @@ function MainContent() {
         </div>
       )}
 
-      {/* Main Column Workspace */}
+      {/* Main Workspace Column */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-        {/* Top Minimal Utility Navbar */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-8 py-3.5 flex items-center justify-between sticky top-0 z-20 shadow-2xs">
+        {/* Minimal Sticky Top Bar */}
+        <header className="bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-border)] px-4 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-3">
-            {/* Mobile Sidebar Hamburger Toggle */}
+            {/* Mobile Hamburger */}
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
-              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 md:hidden cursor-pointer"
+              className="p-1.5 rounded border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] md:hidden cursor-pointer"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4 h-4" />
             </button>
 
-            {/* Current Section Breadcrumb / Title Indicator */}
-            <div className="flex items-center gap-2.5">
-              <div
-                style={{
-                  backgroundColor: `${draftTheme.colors.primary}15`,
-                  color: draftTheme.colors.primary,
-                }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 hidden sm:flex"
-              >
-                <HeaderIcon className="w-4 h-4" />
-              </div>
-              <div>
-                <h1 className="text-sm sm:text-base font-extrabold text-heading tracking-tight leading-none">
-                  {pageMeta.title}
-                </h1>
-                <p className="text-[11px] text-sub font-medium hidden sm:block mt-0.5">
-                  {pageMeta.sub}
-                </p>
+            {/* Breadcrumb Header */}
+            <div className="flex items-center gap-2">
+              <HeaderIcon className="w-4 h-4 text-[var(--color-muted)] hidden sm:block" />
+              <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
+                <span className="font-medium text-[var(--color-heading)]">{pageMeta.title}</span>
+                <span className="opacity-40 hidden sm:inline">&bull;</span>
+                <span className="hidden sm:inline text-[11px]">{pageMeta.sub}</span>
               </div>
             </div>
           </div>
 
           {/* Right Status Indicators */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Active Tenant Badge */}
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-sub font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Org: <strong className="text-heading font-semibold">{user.org_name || draftTheme.identity.org_name || "Desire AI"}</strong></span>
+          <div className="flex items-center gap-2.5">
+            {/* Tenant Organization */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "Desire AI"}</strong></span>
             </div>
 
-            {/* WebRTC Live System Status */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
-              <Wifi className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+            {/* Live WebRTC indicator */}
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium">
+              <Wifi className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">WebRTC Live</span>
             </div>
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-8 py-6 sm:py-8 transition-all">
+        {/* Dynamic Main View */}
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
             <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
           ) : currentTab === "twilio" ? (
@@ -204,22 +188,21 @@ function MainContent() {
           )}
         </main>
 
-        {/* Global Clean Footer */}
-        <footer className="bg-white/80 border-t border-slate-200/80 px-6 sm:px-8 py-3.5 text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2">
+        {/* Minimal Footer */}
+        <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
           <div>
-            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "Desire AI")} SaaS Platform. All rights reserved.
+            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "Desire AI")}. All rights reserved.
           </div>
-          <div className="flex items-center gap-3 font-mono text-[11px] opacity-70">
-            <span>Multi-Tenant Azure Cosmos DB</span>
+          <div className="flex items-center gap-2.5 text-[11px] opacity-75">
+            <span>Multi-Tenant Architecture</span>
             <span>&bull;</span>
-            <span>WebRTC Voice Gateway v2.11</span>
+            <span>WebRTC Gateway v2.11</span>
           </div>
         </footer>
       </div>
     </div>
   );
 }
-
 
 export function App() {
   return (
@@ -230,4 +213,5 @@ export function App() {
     </AuthProvider>
   );
 }
+
 export default App;

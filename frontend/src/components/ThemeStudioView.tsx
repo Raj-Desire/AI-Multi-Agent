@@ -4,7 +4,6 @@ import {
   UIStyle,
   BorderRadius,
   UIDensity,
-  ColorMode,
   PalettePreset,
   ThemeColors,
 } from "../types";
@@ -12,21 +11,28 @@ import {
   generateSmartTheme,
   getPalettePreset,
   shuffleColors,
+  checkContrast,
 } from "../utils/themeUtils";
 import {
-  Sparkles,
   Palette,
-  Layers,
   Building2,
   Trash2,
   Upload,
-  Check,
   RotateCcw,
   Shuffle,
   Save,
+  Check,
+  Layout,
+  Type,
+  Eye,
 } from "lucide-react";
 import { Button } from "./ui/Button";
+import { Input } from "./ui/Input";
 import { Alert } from "./ui/Alert";
+import { PageHeader } from "./ui/PageHeader";
+import { Tabs } from "./ui/Tabs";
+import { FormSection } from "./ui/FormSection";
+import { ThemePreview } from "./ui/ThemePreview";
 
 export const ThemeStudioView: React.FC = () => {
   const {
@@ -38,7 +44,7 @@ export const ThemeStudioView: React.FC = () => {
     resetToDefault,
   } = useTheme();
 
-  const [paletteTab, setPaletteTab] = useState<"brand" | "default">("brand");
+  const [activeTab, setActiveTab] = useState<string>("styles");
   const [selectedPreset, setSelectedPreset] = useState<PalettePreset>("Original");
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
@@ -70,7 +76,6 @@ export const ThemeStudioView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  // Remove Logo
   const handleRemoveLogo = () => {
     updateDraftTheme((prev) => ({
       ...prev,
@@ -81,19 +86,17 @@ export const ThemeStudioView: React.FC = () => {
     }));
   };
 
-  // Preset Palettes
   const presets: { name: PalettePreset; label: string }[] = [
-    { name: "Original", label: "Brand Original" },
-    { name: "Dark", label: "Brand Dark" },
-    { name: "Muted", label: "Brand Muted" },
-    { name: "Vivid", label: "Brand Vivid" },
-    { name: "Complement", label: "Brand Complement" },
-    { name: "Triadic", label: "Brand Triadic" },
-    { name: "Analogous", label: "Brand Analogous" },
-    { name: "Mono", label: "Brand Mono" },
-    { name: "Pastel", label: "Brand Pastel" },
-    { name: "Deep", label: "Brand Deep" },
-    { name: "Spectrum", label: "Brand Spectrum" },
+    { name: "Original", label: "Default Indigo" },
+    { name: "Dark", label: "Midnight Dark" },
+    { name: "Muted", label: "Neutral Slate" },
+    { name: "Vivid", label: "Vivid Coral" },
+    { name: "Complement", label: "Teal Complement" },
+    { name: "Triadic", label: "Triadic Harmony" },
+    { name: "Analogous", label: "Analogous Sky" },
+    { name: "Mono", label: "Monochrome" },
+    { name: "Pastel", label: "Soft Pastel" },
+    { name: "Deep", label: "Deep Navy" },
   ];
 
   const handleApplyPreset = (presetName: PalettePreset) => {
@@ -111,25 +114,9 @@ export const ThemeStudioView: React.FC = () => {
       ...prev,
       colors: shuffled,
     }));
-    setStatusMessage({ text: "Generated fresh random harmonious palette!", type: "info" });
+    setStatusMessage({ text: "Generated fresh harmonious palette.", type: "info" });
   };
 
-  const handleResetColors = () => {
-    const defaultThemeColors = getPalettePreset("Original", "#4f46e5");
-    updateDraftTheme((prev) => ({
-      ...prev,
-      colors: defaultThemeColors,
-      appearance: {
-        ...prev.appearance,
-        color_mode: "light",
-        ui_style: "default",
-      },
-    }));
-    setSelectedPreset("Original");
-    setStatusMessage({ text: "Reset brand colors and style to professional default light theme.", type: "info" });
-  };
-
-  // Direct color update
   const handleColorChange = (key: keyof ThemeColors, hex: string) => {
     updateDraftTheme((prev) => {
       const updatedColors = { ...prev.colors, [key]: hex };
@@ -144,13 +131,12 @@ export const ThemeStudioView: React.FC = () => {
     });
   };
 
-  // Save handler
   const handleSave = async () => {
     try {
       setIsSaving(true);
       setStatusMessage(null);
       await saveTheme();
-      setStatusMessage({ text: "Organization theme successfully saved!", type: "success" });
+      setStatusMessage({ text: "Theme tokens and settings saved successfully.", type: "success" });
     } catch (err: any) {
       setStatusMessage({ text: err.message || "Failed to save theme.", type: "danger" });
     } finally {
@@ -158,208 +144,59 @@ export const ThemeStudioView: React.FC = () => {
     }
   };
 
-  // 8 UI Styles Data
+  // 8 UI Architecture Styles
   const uiStyles: {
     id: UIStyle;
     title: string;
     desc: string;
-    renderMockup: (primary: string, secondary: string) => React.ReactNode;
   }[] = [
-    {
-      id: "default",
-      title: "Default",
-      desc: "Clean, professional with subtle shadows",
-      renderMockup: (p) => (
-        <div className="w-full bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex items-center justify-between">
-          <div style={{ backgroundColor: p }} className="w-14 h-2 rounded-full" />
-          <button
-            style={{ backgroundColor: p }}
-            className="px-3.5 py-1.5 rounded-lg text-white font-bold text-[11px] shadow-xs"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "minimal",
-      title: "Minimal",
-      desc: "Ultra-clean flat design, sharp edges",
-      renderMockup: (p) => (
-        <div className="w-full bg-white border border-slate-200 rounded-none p-3.5 flex items-center justify-between">
-          <div style={{ backgroundColor: p }} className="w-14 h-2 rounded-none" />
-          <button
-            style={{ backgroundColor: p }}
-            className="px-3.5 py-1.5 rounded-none text-white font-bold text-[11px]"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "glassmorphism",
-      title: "Glassmorphism",
-      desc: "Frosted glass panels with blur",
-      renderMockup: (p) => (
-        <div
-          style={{ backgroundColor: `${p}15`, borderColor: `${p}30` }}
-          className="w-full backdrop-blur-md border rounded-xl p-3.5 shadow-md flex items-center justify-between"
-        >
-          <div style={{ backgroundColor: `${p}40` }} className="w-14 h-2 rounded-full" />
-          <button
-            style={{ backgroundColor: `${p}80` }}
-            className="px-3.5 py-1.5 rounded-lg text-white font-bold text-[11px] shadow-sm backdrop-blur-xs border border-white/30"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "liquid_glass",
-      title: "Liquid Glass",
-      desc: "Fluid, dynamic glass with iridescent glow",
-      renderMockup: (p, s) => (
-        <div
-          style={{
-            background: `linear-gradient(135deg, ${p}25 0%, ${s}15 100%)`,
-            borderColor: `${p}40`,
-          }}
-          className="w-full backdrop-blur-lg border rounded-2xl p-3.5 shadow-lg flex items-center justify-between"
-        >
-          <div
-            style={{ background: `linear-gradient(90deg, ${p} 0%, ${s} 100%)` }}
-            className="w-14 h-2 rounded-full"
-          />
-          <button
-            style={{ background: `linear-gradient(135deg, ${p} 0%, ${s} 100%)` }}
-            className="px-4 py-1.5 rounded-full text-white font-bold text-[11px] shadow-md"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "brutalism",
-      title: "Brutalism",
-      desc: "Bold, raw design with thick borders",
-      renderMockup: (p) => (
-        <div className="w-full bg-white border-2 border-black rounded-none p-3 shadow-[4px_4px_0px_#000] flex items-center justify-between">
-          <div style={{ backgroundColor: p }} className="w-14 h-2 rounded-none border border-black" />
-          <button className="px-3.5 py-1.5 bg-black text-white font-black text-[11px] rounded-none uppercase shadow-[2px_2px_0px_#e8568a]">
-            BUTTON
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "claymorphism",
-      title: "Claymorphism",
-      desc: "Soft 3D clay-like layered shadows",
-      renderMockup: (p) => (
-        <div
-          style={{
-            boxShadow: "6px 8px 16px rgba(0,0,0,0.06), inset 2px 2px 3px rgba(255,255,255,0.9)",
-          }}
-          className="w-full bg-white border-2 border-white rounded-2xl p-3.5 flex items-center justify-between"
-        >
-          <div style={{ backgroundColor: p }} className="w-14 h-2.5 rounded-full shadow-inner" />
-          <button
-            style={{
-              backgroundColor: p,
-              boxShadow: "3px 4px 10px rgba(0,0,0,0.15), inset 1px 1px 2px rgba(255,255,255,0.4)",
-            }}
-            className="px-4 py-1.5 rounded-xl text-white font-bold text-[11px]"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "neomorphism",
-      title: "Neomorphism",
-      desc: "Soft extruded/pressed UI shadows",
-      renderMockup: (p) => (
-        <div
-          style={{
-            boxShadow: "4px 4px 10px rgba(0,0,0,0.07), -4px -4px 10px rgba(255,255,255,0.9)",
-          }}
-          className="w-full bg-white rounded-xl p-3.5 flex items-center justify-between border border-slate-100"
-        >
-          <div style={{ backgroundColor: p }} className="w-14 h-2 rounded-full" />
-          <button
-            style={{
-              boxShadow: "inset 2px 2px 4px rgba(0,0,0,0.08), inset -2px -2px 4px rgba(255,255,255,0.9)",
-            }}
-            className="px-3.5 py-1.5 rounded-lg text-slate-700 bg-white font-semibold text-[11px]"
-          >
-            Button
-          </button>
-        </div>
-      ),
-    },
-    {
-      id: "retro",
-      title: "Retro",
-      desc: "Vintage pixel-inspired terminal aesthetic",
-      renderMockup: (p) => (
-        <div className="w-full bg-[#120b18] border border-[#e8568a] rounded-sm p-3 flex items-center justify-between font-mono">
-          <span className="text-[10px] text-[#e8568a] font-bold">&gt; SYSTEM</span>
-          <button
-            style={{ backgroundColor: p }}
-            className="px-2.5 py-1 text-[10px] font-bold text-white uppercase rounded-xs tracking-wider"
-          >
-            [RUN]
-          </button>
-        </div>
-      ),
-    },
+    { id: "default", title: "Modern SaaS", desc: "Clean, restrained borders with subtle shadows" },
+    { id: "minimal", title: "Minimalist Flat", desc: "Ultra-clean flat surfaces and zero shadows" },
+    { id: "glassmorphism", title: "Glassmorphism", desc: "Frosted translucent panels with subtle blur" },
+    { id: "liquid_glass", title: "Liquid Glass", desc: "Fluid, high-blur glass with subtle gradient sheen" },
+    { id: "brutalism", title: "Neo-Brutalism", desc: "Bold solid 2px borders with crisp offset shadow" },
+    { id: "claymorphism", title: "Claymorphism", desc: "Soft 3D pillowed surfaces with gentle depth" },
+    { id: "neomorphism", title: "Neomorphism", desc: "Soft extruded/pressed dual light and dark shadows" },
+    { id: "retro", title: "Retro Terminal", desc: "Vintage 90s terminal borders and monospaced typography" },
   ];
 
   return (
-    <div className="w-full space-y-8 pb-20 font-sans">
-      {/* Top Header & Save Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-900">
-            Theme Studio & Customization
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Configure organization identity, palette generator, and workspace visual style.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {isDirty && (
-            <span className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-200 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-pink-500" />
+    <div className="space-y-6">
+      {/* Page Header */}
+      <PageHeader
+        title="Theme Studio"
+        description="White-label branding, typography, color tokens, and 8 UI architecture styles."
+        badge={
+          isDirty ? (
+            <span className="text-xs font-medium text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
               Unsaved changes
             </span>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={discardChanges}
-            disabled={!isDirty || isSaving}
-            leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
-          >
-            Discard
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSave}
-            isLoading={isSaving}
-            disabled={!isDirty}
-            leftIcon={<Save className="w-3.5 h-3.5" />}
-          >
-            Save Changes
-          </Button>
-        </div>
-      </div>
+          ) : undefined
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={discardChanges}
+              disabled={!isDirty || isSaving}
+              leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+            >
+              Discard
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              isLoading={isSaving}
+              disabled={!isDirty}
+              leftIcon={<Save className="w-3.5 h-3.5" />}
+            >
+              Save Theme
+            </Button>
+          </div>
+        }
+      />
 
       {statusMessage && (
         <Alert
@@ -370,92 +207,159 @@ export const ThemeStudioView: React.FC = () => {
         </Alert>
       )}
 
-      {/* =========================================================================
-          SECTION 1: ORGANIZATION IDENTITY (Matching Screenshot 1)
-          ========================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-6 shadow-xs">
-        <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
-          <span style={{ color: draftTheme.colors.primary }}>
-            <Building2 className="w-5 h-5" />
-          </span>
-          <h2 className="text-base font-bold text-slate-900">
-            Organization Identity
-          </h2>
-        </div>
+      {/* Navigation Tabs */}
+      <Tabs
+        tabs={[
+          { id: "styles", label: "UI Architecture Styles", icon: <Layout className="w-3.5 h-3.5" /> },
+          { id: "colors", label: "Colors & Palettes", icon: <Palette className="w-3.5 h-3.5" /> },
+          { id: "identity", label: "Identity & Branding", icon: <Building2 className="w-3.5 h-3.5" /> },
+          { id: "typography", label: "Typography & Radius", icon: <Type className="w-3.5 h-3.5" /> },
+          { id: "preview", label: "Interactive Preview", icon: <Eye className="w-3.5 h-3.5" /> },
+        ]}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        variant="underline"
+      />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Organization Logo Upload (5 cols) */}
-          <div className="lg:col-span-5 space-y-2">
-            <label className="block text-xs font-bold text-slate-700">
-              Organization Logo
-            </label>
-
-            <div className="relative border-2 border-dashed border-pink-200 bg-pink-50/30 rounded-2xl p-6 flex items-center justify-between hover:bg-pink-50/50 transition-all">
-              {draftTheme.identity.logo_url ? (
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-white p-2 border border-slate-200 shadow-xs flex items-center justify-center shrink-0">
-                    <img
-                      src={draftTheme.identity.logo_url}
-                      alt="Logo"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">
-                      Logo uploaded
-                    </div>
-                    <label className="text-[11px] text-slate-400 hover:text-indigo-600 cursor-pointer block mt-0.5">
-                      Click or drag to replace
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleLogoUpload}
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <label className="w-full flex items-center gap-3 cursor-pointer py-2">
-                  <div className="w-12 h-12 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center shrink-0">
-                    <Upload className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">
-                      Upload Logo
-                    </div>
-                    <div className="text-[11px] text-slate-400">PNG, SVG, or JPG (max 2MB)</div>
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleLogoUpload}
-                  />
-                </label>
-              )}
-
-              {draftTheme.identity.logo_url && (
-                <button
-                  type="button"
-                  onClick={handleRemoveLogo}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                  title="Remove logo"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+      {/* TAB 1: 8 UI ARCHITECTURE STYLES */}
+      {activeTab === "styles" && (
+        <div className="space-y-4">
+          <div className="text-xs text-[var(--color-muted)]">
+            Select an architectural rendering style for your workspace. All components adapt automatically.
           </div>
 
-          {/* Right Column: Organization Name & Preview (7 cols) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Organization Name
-              </label>
-              <input
-                type="text"
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {uiStyles.map((style) => {
+              const isSelected = draftTheme.appearance.ui_style === style.id;
+              return (
+                <div
+                  key={style.id}
+                  onClick={() =>
+                    updateDraftTheme((prev) => ({
+                      ...prev,
+                      appearance: { ...prev.appearance, ui_style: style.id },
+                    }))
+                  }
+                  className={`p-4 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all ${
+                    isSelected
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/40 shadow-xs"
+                      : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] bg-[var(--color-surface)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h4 className="text-xs font-semibold text-[var(--color-heading)]">{style.title}</h4>
+                    {isSelected && (
+                      <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-[10px]">
+                        <Check className="w-2.5 h-2.5" />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">{style.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: BRAND COLORS & PALETTES */}
+      {activeTab === "colors" && (
+        <div className="divide-y divide-[var(--color-border)]">
+          {/* Preset Palettes */}
+          <FormSection
+            title="Palette Presets"
+            description="Select a curated harmonious color scheme or shuffle for AI-generated themes."
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleShuffle}
+                leftIcon={<Shuffle className="w-3.5 h-3.5" />}
+              >
+                Shuffle Harmony
+              </Button>
+            }
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {presets.map((preset) => {
+                const isSelected = selectedPreset === preset.name;
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => handleApplyPreset(preset.name)}
+                    className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border text-left text-xs transition-all cursor-pointer ${
+                      isSelected
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] font-semibold text-[var(--color-primary)]"
+                        : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--color-heading)]"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </FormSection>
+
+          {/* Color Tokens Editor */}
+          <FormSection
+            title="Semantic Color Tokens"
+            description="Customize individual brand and UI colors. Contrast ratios are computed automatically."
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { key: "primary" as const, label: "Primary Brand Color", val: draftTheme.colors.primary },
+                { key: "secondary" as const, label: "Secondary Accent", val: draftTheme.colors.secondary },
+                { key: "accent" as const, label: "Tertiary Accent", val: draftTheme.colors.accent },
+                { key: "background" as const, label: "App Canvas Background", val: draftTheme.colors.background },
+                { key: "surface" as const, label: "Card & Table Surface", val: draftTheme.colors.surface },
+                { key: "sidebar" as const, label: "Sidebar Background", val: draftTheme.colors.sidebar },
+              ].map((c) => {
+                const contrast = checkContrast(c.val, "#ffffff");
+                return (
+                  <div key={c.key} className="p-3 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[var(--color-heading)]">{c.label}</span>
+                      <span
+                        style={{ backgroundColor: c.val }}
+                        className="w-5 h-5 rounded border border-black/10 shrink-0"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={c.val}
+                        onChange={(e) => handleColorChange(c.key, e.target.value)}
+                        className="w-7 h-7 rounded border-0 cursor-pointer p-0 bg-transparent"
+                      />
+                      <input
+                        type="text"
+                        value={c.val}
+                        onChange={(e) => handleColorChange(c.key, e.target.value)}
+                        className="font-mono text-xs px-2 py-1 border border-[var(--color-border)] rounded w-full bg-[var(--color-surface)] text-[var(--color-heading)]"
+                      />
+                    </div>
+                    <div className="text-[10px] text-[var(--color-muted)]">
+                      WCAG Contrast: <strong className="text-[var(--color-heading)]">{contrast.ratio}:1</strong>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </FormSection>
+        </div>
+      )}
+
+      {/* TAB 3: IDENTITY & BRANDING */}
+      {activeTab === "identity" && (
+        <div className="divide-y divide-[var(--color-border)]">
+          <FormSection
+            title="Organization Brand"
+            description="Customize the organization name and logo visible to workspace team members."
+          >
+            <div className="space-y-4">
+              <Input
+                label="Organization Display Name"
                 value={draftTheme.identity.org_name}
                 onChange={(e) =>
                   updateDraftTheme((prev) => ({
@@ -463,600 +367,115 @@ export const ThemeStudioView: React.FC = () => {
                     identity: { ...prev.identity, org_name: e.target.value },
                   }))
                 }
-                placeholder="e.g. Raj PMP"
-                className="w-full text-sm px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20 shadow-2xs"
+                placeholder="e.g. Desire AI"
               />
-              <p className="text-[11px] text-slate-400 mt-1">Appears in the sidebar and browser title.</p>
-            </div>
 
-            {/* Sidebar Preview Box */}
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Sidebar Preview
-              </div>
-              <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs inline-flex flex-col items-center justify-center min-w-[140px]">
-                {draftTheme.identity.logo_url ? (
-                  <img
-                    src={draftTheme.identity.logo_url}
-                    alt="Sidebar logo"
-                    className="w-10 h-10 object-contain mb-2"
-                  />
-                ) : (
-                  <div
-                    style={{ backgroundColor: draftTheme.colors.primary }}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-white mb-2 shadow-xs"
-                  >
-                    <Building2 className="w-5 h-5" />
-                  </div>
-                )}
-                <div
-                  style={{ color: draftTheme.colors.primary }}
-                  className="font-bold text-xs tracking-tight"
-                >
-                  {draftTheme.identity.org_name || "Desire AI"}
-                </div>
-              </div>
-            </div>
-
-            {/* Toggles */}
-            <div className="space-y-2.5 pt-2">
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between shadow-2xs">
-                <div>
-                  <div className="text-xs font-bold text-slate-900">
-                    Show navigation logo
-                  </div>
-                  <div className="text-[11px] text-slate-400">Display logo in the sidebar header</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateDraftTheme((p) => ({
-                      ...p,
-                      identity: {
-                        ...p.identity,
-                        show_nav_logo: p.identity.show_nav_logo !== false ? false : true,
-                      },
-                    }))
-                  }
-                  style={{
-                    backgroundColor:
-                      draftTheme.identity.show_nav_logo !== false
-                        ? draftTheme.colors.primary
-                        : "#cbd5e1",
-                  }}
-                  className="w-11 h-6 rounded-full transition-colors relative cursor-pointer"
-                >
-                  <span
-                    className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-                      draftTheme.identity.show_nav_logo !== false ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between shadow-2xs">
-                <div>
-                  <div className="text-xs font-bold text-slate-900">
-                    Show navigation title
-                  </div>
-                  <div className="text-[11px] text-slate-400">
-                    Display organization name in the sidebar header
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateDraftTheme((p) => ({
-                      ...p,
-                      identity: {
-                        ...p.identity,
-                        show_nav_title: p.identity.show_nav_title !== false ? false : true,
-                      },
-                    }))
-                  }
-                  style={{
-                    backgroundColor:
-                      draftTheme.identity.show_nav_title !== false
-                        ? draftTheme.colors.primary
-                        : "#cbd5e1",
-                  }}
-                  className="w-11 h-6 rounded-full transition-colors relative cursor-pointer"
-                >
-                  <span
-                    className={`block w-4 h-4 rounded-full bg-white transition-transform ${
-                      draftTheme.identity.show_nav_title !== false ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          SECTION 2: BRAND THEME COLORS (Matching Screenshot 2)
-          ========================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-2.5">
-            <span style={{ color: draftTheme.colors.primary }}>
-              <Palette className="w-5 h-5" />
-            </span>
-            <h2 className="text-base font-bold text-slate-900">
-              Brand Theme Colors
-            </h2>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleShuffle}
-              style={{ backgroundColor: draftTheme.colors.primary }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-white text-xs font-bold shadow-xs hover:opacity-90 transition-all cursor-pointer"
-            >
-              <Shuffle className="w-3.5 h-3.5" />
-              Shuffle
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetColors}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 bg-white text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Reset
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Switcher: Default Palettes vs Brand Palettes */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setPaletteTab("default");
-              handleResetColors();
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-              paletteTab === "default"
-                ? "bg-slate-900 border-slate-900 text-white shadow-xs"
-                : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
-            }`}
-          >
-            Default Professional Palette
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaletteTab("brand")}
-            style={{
-              backgroundColor: paletteTab === "brand" ? `${draftTheme.colors.primary}15` : "#ffffff",
-              borderColor: paletteTab === "brand" ? draftTheme.colors.primary : "#e2e8f0",
-              color: paletteTab === "brand" ? draftTheme.colors.primary : "#64748b",
-            }}
-            className="px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Harmonious Brand Variations
-          </button>
-        </div>
-
-        {/* Horizontal Palette Preset Pills */}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {presets.map(({ name, label }) => {
-            const isSelected = selectedPreset === name;
-            const pColors = getPalettePreset(name, draftTheme.colors.primary);
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => handleApplyPreset(name)}
-                style={{
-                  borderColor: isSelected ? draftTheme.colors.primary : "#e2e8f0",
-                  backgroundColor: isSelected ? `${draftTheme.colors.primary}10` : "#ffffff",
-                  color: isSelected ? draftTheme.colors.primary : "#334155",
-                }}
-                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-2xs hover:border-slate-300 bg-white`}
-              >
-                {/* 3 mini color swatches */}
-                <div className="flex h-3 w-8 rounded-sm overflow-hidden border border-black/10 shrink-0">
-                  <div style={{ backgroundColor: pColors.primary }} className="flex-1" />
-                  <div style={{ backgroundColor: pColors.secondary }} className="flex-1" />
-                  <div style={{ backgroundColor: pColors.accent }} className="flex-1" />
-                </div>
-                <span>{label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 ml-0.5" />}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* 8 Color Configuration Cards (2 Columns x 4 Rows) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          {/* 1. Primary Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Primary Brand Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Main brand color for buttons, highlights, and active tabs
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.primary}
-                onChange={(e) => handleColorChange("primary", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.primary }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.primary}
-                onChange={(e) => handleColorChange("primary", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 2. Secondary Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Secondary Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Secondary brand color for hovers, borders, and gradients
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.secondary}
-                onChange={(e) => handleColorChange("secondary", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.secondary }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.secondary}
-                onChange={(e) => handleColorChange("secondary", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 3. Accent Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Accent Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Highlight color for badges, chips, and notification callouts
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.accent}
-                onChange={(e) => handleColorChange("accent", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.accent }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.accent}
-                onChange={(e) => handleColorChange("accent", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 4. Heading Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Heading Text Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Main page titles, card headers, and bold stat metrics
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.heading || "#0f172a"}
-                onChange={(e) => handleColorChange("heading", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.heading || "#0f172a" }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.heading || "#0f172a"}
-                onChange={(e) => handleColorChange("heading", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 5. Body Text Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Body Text Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Primary body copy, input text, table cell values
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.text}
-                onChange={(e) => handleColorChange("text", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.text }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.text}
-                onChange={(e) => handleColorChange("text", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 6. Subtext / Label Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Subtext & Label Color
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Field labels, table headers, descriptions, timestamps
-              </div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.text_muted || "#475569"}
-                onChange={(e) => handleColorChange("text_muted", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.text_muted || "#475569" }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-black/10 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.text_muted || "#475569"}
-                onChange={(e) => handleColorChange("text_muted", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 7. Background Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Background Color
-              </div>
-              <div className="text-[11px] text-slate-400">Page workspace canvas background</div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.background}
-                onChange={(e) => handleColorChange("background", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.background }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-slate-300 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.background}
-                onChange={(e) => handleColorChange("background", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-
-          {/* 8. Sidebar & Card Surface Color */}
-          <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2 shadow-2xs">
-            <div>
-              <div className="text-xs font-bold text-slate-900">
-                Sidebar & Surface Color
-              </div>
-              <div className="text-[11px] text-slate-400">Sidebar background and UI card surfaces</div>
-            </div>
-            <div className="flex items-center gap-3 pt-1">
-              <input
-                type="color"
-                value={draftTheme.colors.sidebar}
-                onChange={(e) => handleColorChange("sidebar", e.target.value)}
-                className="w-10 h-10 rounded-xl border border-slate-200 cursor-pointer p-0.5 bg-white shrink-0"
-              />
-              <div
-                style={{ backgroundColor: draftTheme.colors.sidebar }}
-                className="w-8 h-8 rounded-lg shrink-0 border border-slate-300 shadow-2xs"
-              />
-              <input
-                type="text"
-                value={draftTheme.colors.sidebar}
-                onChange={(e) => handleColorChange("sidebar", e.target.value)}
-                className="flex-1 text-xs font-mono px-3 py-2 uppercase bg-white rounded-xl border border-slate-200 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Live Preview Bar at Bottom of Colors */}
-        <div className="p-5 rounded-2xl border border-slate-200 bg-white space-y-3 shadow-2xs">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Real-Time Typography & Component Preview
-          </div>
-
-          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              {/* Logo Upload */}
               <div>
-                <h3
-                  style={{ color: draftTheme.colors.heading || "#0f172a" }}
-                  className="text-base font-bold"
-                >
-                  Enterprise Voice Platform (Heading)
-                </h3>
-                <p
-                  style={{ color: draftTheme.colors.text_muted || "#475569" }}
-                  className="text-xs mt-0.5"
-                >
-                  Subtext & description hierarchy dynamically updating in real-time.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  style={{
-                    backgroundColor: `${draftTheme.colors.primary}18`,
-                    color: draftTheme.colors.primary,
-                    borderColor: `${draftTheme.colors.primary}40`,
-                  }}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase border"
-                >
-                  Primary Badge
-                </span>
-                <span
-                  style={{
-                    backgroundColor: `${draftTheme.colors.accent}18`,
-                    color: draftTheme.colors.accent,
-                    borderColor: `${draftTheme.colors.accent}40`,
-                  }}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase border"
-                >
-                  Accent Badge
-                </span>
-              </div>
-            </div>
+                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
+                  Brand Logo
+                </label>
+                <div className="p-4 border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between bg-[var(--color-surface)]">
+                  {draftTheme.identity.logo_url ? (
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={draftTheme.identity.logo_url}
+                        alt="Logo"
+                        className="w-10 h-10 object-contain rounded border border-[var(--color-border)] p-1 bg-white"
+                      />
+                      <div>
+                        <div className="text-xs font-medium text-[var(--color-heading)]">Logo active</div>
+                        <label className="text-[11px] text-[var(--color-primary)] hover:underline cursor-pointer">
+                          Replace file
+                          <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="flex items-center gap-2 text-xs text-[var(--color-muted)] cursor-pointer">
+                      <Upload className="w-4 h-4 text-[var(--color-primary)]" />
+                      <span>Upload PNG or SVG logo (max 2MB)</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                    </label>
+                  )}
 
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <button
-                style={{ backgroundColor: draftTheme.colors.primary }}
-                className="px-5 py-2 rounded-xl text-white font-bold text-xs shadow-xs cursor-pointer"
-              >
-                Primary Button
-              </button>
-              <button
-                style={{ backgroundColor: draftTheme.colors.secondary }}
-                className="px-5 py-2 rounded-xl text-white font-bold text-xs shadow-xs cursor-pointer"
-              >
-                Secondary Button
-              </button>
-              <button
-                style={{ backgroundColor: draftTheme.colors.accent }}
-                className="px-5 py-2 rounded-xl text-white font-bold text-xs shadow-xs cursor-pointer"
-              >
-                Accent Action
-              </button>
-              <div
-                style={{
-                  backgroundColor: draftTheme.colors.background,
-                  color: draftTheme.colors.text,
-                }}
-                className="px-4 py-2 rounded-xl font-medium text-xs border border-slate-300"
-              >
-                Body Text Sample
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          SECTION 3: UI STYLE (Matching Screenshot 3)
-          ========================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 space-y-6 shadow-xs">
-        <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
-          <span style={{ color: draftTheme.colors.primary }}>
-            <Layers className="w-5 h-5" />
-          </span>
-          <div>
-            <h2 className="text-base font-bold text-slate-900">UI Style</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Visual design language applied across the entire workspace
-            </p>
-          </div>
-        </div>
-
-        {/* 8 Cards in a 4x2 grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {uiStyles.map((style) => {
-            const isSelected = draftTheme.appearance.ui_style === style.id;
-            return (
-              <div
-                key={style.id}
-                onClick={() =>
-                  updateDraftTheme((prev) => ({
-                    ...prev,
-                    appearance: { ...prev.appearance, ui_style: style.id },
-                  }))
-                }
-                style={{
-                  borderColor: isSelected ? draftTheme.colors.primary : "#e2e8f0",
-                }}
-                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer bg-white hover:shadow-md relative space-y-3 ${
-                  isSelected ? "ring-2 ring-pink-500/20" : ""
-                }`}
-              >
-                {/* Active Checkmark Pill */}
-                {isSelected && (
-                  <div
-                    style={{ backgroundColor: draftTheme.colors.primary }}
-                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full text-white flex items-center justify-center shadow-xs"
-                  >
-                    <Check className="w-3 h-3" />
-                  </div>
-                )}
-
-                {/* Simulated Visual Mockup */}
-                <div className="h-16 flex items-center justify-center">
-                  {style.renderMockup(draftTheme.colors.primary, draftTheme.colors.secondary)}
-                </div>
-
-                {/* Title & Description */}
-                <div>
-                  <div
-                    style={{ color: isSelected ? draftTheme.colors.primary : undefined }}
-                    className="text-xs font-bold text-slate-900"
-                  >
-                    {style.title}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                    {style.desc}
-                  </div>
+                  {draftTheme.identity.logo_url && (
+                    <Button variant="ghost" size="sm" onClick={handleRemoveLogo} className="text-[var(--color-danger)]">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          </FormSection>
         </div>
-      </div>
+      )}
+
+      {/* TAB 4: TYPOGRAPHY & RADIUS */}
+      {activeTab === "typography" && (
+        <div className="divide-y divide-[var(--color-border)]">
+          <FormSection
+            title="Typography & Sizing"
+            description="Select the primary font family and corner radius applied across all surfaces."
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
+                  Primary Font Family
+                </label>
+                <select
+                  value={draftTheme.typography.font_family}
+                  onChange={(e) =>
+                    updateDraftTheme((prev) => ({
+                      ...prev,
+                      typography: { ...prev.typography, font_family: e.target.value as any },
+                    }))
+                  }
+                  className="w-full h-9 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none"
+                >
+                  <option value="Inter">Inter (Modern Neutral)</option>
+                  <option value="Plus Jakarta Sans">Plus Jakarta Sans (Clean Geometric)</option>
+                  <option value="Outfit">Outfit (Contemporary)</option>
+                  <option value="Roboto">Roboto (Enterprise Standard)</option>
+                  <option value="Space Grotesk">Space Grotesk (Tech Monospace Accent)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
+                  Corner Border Radius
+                </label>
+                <select
+                  value={draftTheme.appearance.border_radius}
+                  onChange={(e) =>
+                    updateDraftTheme((prev) => ({
+                      ...prev,
+                      appearance: { ...prev.appearance, border_radius: e.target.value as BorderRadius },
+                    }))
+                  }
+                  className="w-full h-9 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none"
+                >
+                  <option value="none">Square (0px)</option>
+                  <option value="sm">Small (4px)</option>
+                  <option value="md">Medium (6px - Recommended)</option>
+                  <option value="lg">Large (10px)</option>
+                  <option value="xl">Extra Large (16px)</option>
+                </select>
+              </div>
+            </div>
+          </FormSection>
+        </div>
+      )}
+
+      {/* TAB 5: INTERACTIVE PREVIEW */}
+      {activeTab === "preview" && (
+        <div className="space-y-4">
+          <div className="text-xs text-[var(--color-muted)]">
+            Live interactive sandbox testing the current draft theme tokens in real-time before saving.
+          </div>
+          <ThemePreview theme={draftTheme} />
+        </div>
+      )}
     </div>
   );
 };

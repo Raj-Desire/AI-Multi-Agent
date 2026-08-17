@@ -2,32 +2,28 @@ import React, { useState, useEffect } from "react";
 import { UserSummary, OrganizationSummary, PlatformOverviewMetrics } from "../types";
 import { fetchApi } from "../api-client";
 import {
-  ShieldAlert,
   Building2,
   Users,
-  UserCheck,
   UserPlus,
   Key,
   Trash2,
   RefreshCw,
-  Search,
-  Filter,
   PlusCircle,
   Mail,
   Lock,
   User,
   Shield,
   Layers,
-  Sparkles,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { Badge } from "./ui/Badge";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from "./ui/Table";
 import { Modal } from "./ui/Modal";
 import { Alert } from "./ui/Alert";
 import { PageHeader } from "./ui/PageHeader";
+import { StatusIndicator } from "./ui/StatusIndicator";
+import { DataTable, Column } from "./ui/DataTable";
+import { Tabs } from "./ui/Tabs";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -36,13 +32,13 @@ export const SuperAdminPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("organizations");
 
   // Filters
   const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>("all");
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Create Organization + Admin modal
+  // Create Organization modal
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [adminUsername, setAdminUsername] = useState("");
@@ -50,7 +46,7 @@ export const SuperAdminPanel: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState("");
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
 
-  // Create additional admin for existing org
+  // Create Admin modal
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [targetOrgId, setTargetOrgId] = useState("");
   const [targetOrgName, setTargetOrgName] = useState("");
@@ -104,7 +100,7 @@ export const SuperAdminPanel: React.FC = () => {
         }),
       });
 
-      setSuccessMsg(`Organization '${orgName}' & Admin account '${res.email}' created successfully!`);
+      setSuccessMsg(`Organization '${orgName}' & Admin '${res.email}' provisioned successfully.`);
       setShowOrgModal(false);
       setOrgName("");
       setAdminUsername("");
@@ -138,7 +134,7 @@ export const SuperAdminPanel: React.FC = () => {
         }),
       });
 
-      setSuccessMsg(`New Admin '${res.username}' assigned to '${targetOrgName}' successfully!`);
+      setSuccessMsg(`Admin '${res.username}' assigned to '${targetOrgName}'.`);
       setShowAdminModal(false);
       setExtraAdminUser("");
       setExtraAdminEmail("");
@@ -151,7 +147,7 @@ export const SuperAdminPanel: React.FC = () => {
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !newPassword) return;
 
@@ -165,7 +161,7 @@ export const SuperAdminPanel: React.FC = () => {
         body: JSON.stringify({ new_password: newPassword }),
       });
 
-      setSuccessMsg(`Password for ${selectedUser.username} (${selectedUser.email}) updated.`);
+      setSuccessMsg(`Password for '${selectedUser.email}' updated.`);
       setSelectedUser(null);
       setNewPassword("");
     } catch (err: any) {
@@ -175,131 +171,218 @@ export const SuperAdminPanel: React.FC = () => {
     }
   };
 
-  const handleToggleOrgStatus = async (org: OrganizationSummary) => {
-    if (org.organization_id === "org_platform_root") {
-      alert("Platform Master root organization cannot be disabled.");
-      return;
-    }
-
-    const nextState = !org.is_active;
-    const actionLabel = nextState ? "enable" : "disable";
-    if (!window.confirm(`Are you sure you want to ${actionLabel} organization '${org.org_name}'? ${nextState ? "Users will be allowed to log in." : "All users in this organization will be blocked from logging in."}`)) {
-      return;
-    }
-
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetchApi<{ message: string; is_active: boolean }>(
-        `/superadmin/organizations/${org.organization_id}/status`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ is_active: nextState }),
-        }
-      );
-      setSuccessMsg(res.message);
-      await loadData();
-    } catch (err: any) {
-      setError(err.message || `Failed to ${actionLabel} organization.`);
-    }
-  };
-
-  const handleDeleteOrganization = async (org: OrganizationSummary) => {
-    if (org.organization_id === "org_platform_root") {
-      alert("Platform Master root organization cannot be deleted.");
-      return;
-    }
-
-    if (!window.confirm(`⚠️ PERMANENT DELETION: Are you sure you want to completely delete organization '${org.org_name}' and ALL ${org.total_members} user/admin accounts? This action cannot be undone.`)) {
-      return;
-    }
-
-    setError(null);
-    setSuccessMsg(null);
-
-    try {
-      const res = await fetchApi<{ message: string }>(
-        `/superadmin/organizations/${org.organization_id}`,
-        { method: "DELETE" }
-      );
-      setSuccessMsg(res.message);
-      await loadData();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete organization.");
-    }
-  };
-
   const handleDeleteUser = async (user: UserSummary) => {
-    if (user.role === "superadmin") {
-      alert("Superadmin master accounts are protected and cannot be deleted via quick action.");
+    if (!window.confirm(`Delete user '${user.email}' from ${user.org_name || user.organization_id}?`)) {
       return;
     }
-
-    if (!window.confirm(`Are you sure you want to delete user ${user.email} (${user.org_name || user.organization_id})?`)) {
-      return;
-    }
-
     setError(null);
     setSuccessMsg(null);
 
     try {
       await fetchApi(`/superadmin/users/${user.id}`, { method: "DELETE" });
-      setSuccessMsg(`User ${user.email} deleted successfully.`);
+      setSuccessMsg(`User '${user.email}' deleted.`);
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to delete user.");
     }
   };
 
-
-  // Filtered user list
   const filteredUsers = users.filter((u) => {
-    const matchesOrg = selectedOrgFilter === "all" || u.organization_id === selectedOrgFilter;
-    const matchesRole = selectedRoleFilter === "all" || u.role === selectedRoleFilter;
-    const matchesSearch =
-      searchQuery === "" ||
-      u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (u.org_name && u.org_name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    return matchesOrg && matchesRole && matchesSearch;
+    const matchOrg = selectedOrgFilter === "all" || u.organization_id === selectedOrgFilter;
+    const matchRole = selectedRoleFilter === "all" || u.role === selectedRoleFilter;
+    return matchOrg && matchRole;
   });
 
+  const orgColumns: Column<OrganizationSummary>[] = [
+    {
+      key: "org_name",
+      header: "Organization",
+      sortable: true,
+      render: (org) => (
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded bg-[var(--color-surface-muted)] text-[var(--color-heading)] flex items-center justify-center font-medium text-xs border border-[var(--color-border)]">
+            <Building2 className="w-3.5 h-3.5" />
+          </div>
+          <div>
+            <div className="font-medium text-xs text-[var(--color-heading)]">{org.org_name}</div>
+            <div className="text-[10px] font-mono text-[var(--color-muted)]">{org.organization_id}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "admin_count",
+      header: "Admins",
+      sortable: true,
+      render: (org) => (
+        <span className="font-mono text-xs text-[var(--color-heading)]">{org.admin_count}</span>
+      ),
+    },
+    {
+      key: "user_count",
+      header: "Total Members",
+      sortable: true,
+      render: (org) => (
+        <span className="font-mono text-xs text-[var(--color-heading)]">{org.user_count}</span>
+      ),
+    },
+    {
+      key: "is_active",
+      header: "Status",
+      render: (org) => (
+        <StatusIndicator
+          status={org.is_active ? "active" : "idle"}
+          label={org.is_active ? "Active" : "Suspended"}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      render: (org) => (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setTargetOrgId(org.organization_id);
+            setTargetOrgName(org.org_name);
+            setShowAdminModal(true);
+          }}
+          className="h-7 px-2 text-xs"
+        >
+          Add Admin
+        </Button>
+      ),
+    },
+  ];
+
+  const userColumns: Column<UserSummary>[] = [
+    {
+      key: "username",
+      header: "User",
+      sortable: true,
+      render: (u) => (
+        <div>
+          <div className="font-medium text-xs text-[var(--color-heading)]">{u.username}</div>
+          <div className="text-[11px] text-[var(--color-muted)]">{u.email}</div>
+        </div>
+      ),
+    },
+    {
+      key: "org_name",
+      header: "Tenant Organization",
+      sortable: true,
+      render: (u) => (
+        <span className="text-xs text-[var(--color-heading)] font-medium">
+          {u.org_name || u.organization_id}
+        </span>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      sortable: true,
+      render: (u) => (
+        <Badge
+          variant={u.role === "superadmin" ? "warning" : u.role === "admin" ? "primary" : "default"}
+          size="sm"
+        >
+          {u.role}
+        </Badge>
+      ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      sortable: true,
+      render: (u) => (
+        <span className="text-xs text-[var(--color-muted)]">
+          {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      render: (u) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedUser(u)}
+            className="h-7 px-2 text-xs"
+            title="Reset Password"
+          >
+            <Key className="w-3.5 h-3.5" />
+          </Button>
+          {u.role !== "superadmin" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleDeleteUser(u)}
+              className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+              title="Delete Account"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="w-full space-y-6">
-      {/* Top Page Header */}
+    <div className="space-y-6">
+      {/* Page Header */}
       <PageHeader
-        title="Super Admin Master Console"
-        description="Global platform oversight: Provision client organizations, assign organization administrators, and manage users across all tenant silos."
-        badge={
-          <Badge variant="primary" size="md">
-            Superadmin Root
-          </Badge>
-        }
+        title="Master Console"
+        description="Multi-tenant tenant governance, root organization provisioning, and global accounts."
+        badge={<Badge variant="warning" size="sm">SuperAdmin Root</Badge>}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadData}
+              isLoading={loading}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+            >
+              Sync Telemetry
+            </Button>
             <Button
               variant="primary"
               size="sm"
               onClick={() => setShowOrgModal(true)}
               leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
             >
-              New Organization
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadData}
-              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
-            >
-              Sync Platform
+              Provision Org
             </Button>
           </div>
         }
       />
 
-      {/* Global Alerts */}
+      {/* Overview Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Organizations</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{overview?.total_organizations || organizations.length}</div>
+        </div>
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Total Accounts</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{overview?.total_users || users.length}</div>
+        </div>
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Tenant Admins</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{overview?.total_admins || 0}</div>
+        </div>
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Total Accounts</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{overview?.total_accounts || users.length}</div>
+        </div>
+      </div>
+
       {error && (
         <Alert type="danger" onDismiss={() => setError(null)}>
           {error}
@@ -311,393 +394,127 @@ export const SuperAdminPanel: React.FC = () => {
         </Alert>
       )}
 
-      {/* Platform Overview Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-white border border-slate-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs">
-              <Building2 className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Client Orgs</div>
-              <div className="text-2xl font-black font-mono text-slate-900">
-                {overview?.total_organizations ?? 0}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tabs */}
+      <Tabs
+        tabs={[
+          { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
+          { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
+        ]}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        variant="underline"
+      />
 
-        <Card className="bg-white border border-slate-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600 shadow-2xs">
-              <Shield className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Org Admins</div>
-              <div className="text-2xl font-black font-mono text-slate-900">
-                {overview?.total_admins ?? 0}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* TAB 1: Organizations Directory */}
+      {activeTab === "organizations" && (
+        <div className="space-y-3">
+          <DataTable
+            columns={orgColumns}
+            data={organizations}
+            searchKey="org_name"
+            searchPlaceholder="Search organizations by name or ID..."
+            emptyTitle="No organizations provisioned"
+            emptyDescription="Create a tenant organization to isolate data, voice settings, and members."
+            pagination={true}
+            pageSize={10}
+          />
+        </div>
+      )}
 
-        <Card className="bg-white border border-slate-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-2xs">
-              <Users className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Client Users</div>
-              <div className="text-2xl font-black font-mono text-slate-900">
-                {overview?.total_users ?? 0}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-white border border-slate-200">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shadow-2xs">
-              <UserCheck className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Accounts</div>
-              <div className="text-2xl font-black font-mono text-slate-900">
-                {overview?.total_accounts ?? 0}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Organizations Directory */}
-      <Card className="bg-white border border-slate-200">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 theme-primary-text" />
-              <CardTitle className="text-sm">Organizations Directory ({organizations.length})</CardTitle>
-            </div>
-            <CardDescription>Multi-tenant organization partitions and their primary administrators.</CardDescription>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowOrgModal(true)}
-            leftIcon={<Building2 className="w-3 h-3" />}
-          >
-            Provision Org
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="py-8 text-center text-xs text-slate-400">Loading organizations...</div>
-          ) : organizations.length === 0 ? (
-            <TableEmpty message="No client organizations provisioned yet." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Organization Name</TableHead>
-                  <TableHead>Org ID</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Admins</TableHead>
-                  <TableHead>Client Users</TableHead>
-                  <TableHead>Total Members</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+      {/* TAB 2: Global User Accounts */}
+      {activeTab === "users" && (
+        <div className="space-y-3">
+          {/* Org & Role Filter Bar */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[var(--color-muted)]">Organization:</span>
+              <select
+                value={selectedOrgFilter}
+                onChange={(e) => setSelectedOrgFilter(e.target.value)}
+                className="h-8 text-xs px-2 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] focus:outline-none"
+              >
+                <option value="all">All Organizations ({organizations.length})</option>
                 {organizations.map((org) => (
-                  <TableRow key={org.organization_id} className={!org.is_active ? "bg-slate-50/80 opacity-80" : ""}>
-                    <TableCell className="font-bold text-heading">
-                      <div className="flex items-center gap-2">
-                        <span>{org.org_name}</span>
-                        {org.organization_id === "org_platform_root" && (
-                          <Badge variant="primary" size="sm">Master</Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-slate-500">
-                      {org.organization_id}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={org.is_active ? "success" : "danger"} size="sm" dot>
-                        {org.is_active ? "Active" : "Disabled"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        {org.admins.length > 0 ? (
-                          org.admins.map((adm) => (
-                            <span key={adm.id} className="text-xs font-mono text-slate-700">
-                              {adm.username} ({adm.email})
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">No admin assigned</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="neutral" size="sm">
-                        {org.user_count} Users
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-bold font-mono text-xs">{org.total_members}</span>
-                    </TableCell>
-                    <TableCell className="text-right space-x-1.5 whitespace-nowrap">
-                      {org.organization_id !== "org_platform_root" && (
-                        <Button
-                          variant={org.is_active ? "outline" : "primary"}
-                          size="sm"
-                          onClick={() => handleToggleOrgStatus(org)}
-                          className={org.is_active ? "text-amber-700 hover:bg-amber-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
-                        >
-                          {org.is_active ? "Disable Org" : "Enable Org"}
-                        </Button>
-                      )}
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setTargetOrgId(org.organization_id);
-                          setTargetOrgName(org.org_name);
-                          setShowAdminModal(true);
-                        }}
-                        leftIcon={<UserPlus className="w-3 h-3" />}
-                      >
-                        Add Admin
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedOrgFilter(org.organization_id)}
-                      >
-                        View Users
-                      </Button>
-
-                      {org.organization_id !== "org_platform_root" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteOrganization(org)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          leftIcon={<Trash2 className="w-3 h-3" />}
-                          title="Delete Organization"
-                        >
-                          Delete Org
-                        </Button>
-                      )}
-                    </TableCell>
-
-                  </TableRow>
+                  <option key={org.organization_id} value={org.organization_id}>
+                    {org.org_name}
+                  </option>
                 ))}
-              </TableBody>
-
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Global Master Users Directory */}
-      <Card className="bg-white border border-slate-200">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 theme-primary-text" />
-              <CardTitle className="text-sm">Global Users Master Directory ({filteredUsers.length})</CardTitle>
-            </div>
-            <CardDescription>Complete visibility of all administrators and users across all organizations.</CardDescription>
-          </div>
-
-          {/* Search and Filters Bar */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search */}
-            <div className="relative w-48">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search user or email..."
-                className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
-              />
+              </select>
             </div>
 
-            {/* Org Filter */}
-            <select
-              value={selectedOrgFilter}
-              onChange={(e) => setSelectedOrgFilter(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold focus:outline-none"
-            >
-              <option value="all">All Organizations</option>
-              {organizations.map((org) => (
-                <option key={org.organization_id} value={org.organization_id}>
-                  {org.org_name}
-                </option>
-              ))}
-            </select>
-
-            {/* Role Filter */}
-            <select
-              value={selectedRoleFilter}
-              onChange={(e) => setSelectedRoleFilter(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold focus:outline-none"
-            >
-              <option value="all">All Roles</option>
-              <option value="superadmin">Superadmin</option>
-              <option value="admin">Admin</option>
-              <option value="user">Standard User</option>
-            </select>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[var(--color-muted)]">Role:</span>
+              <select
+                value={selectedRoleFilter}
+                onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                className="h-8 text-xs px-2 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] focus:outline-none"
+              >
+                <option value="all">All Roles</option>
+                <option value="superadmin">SuperAdmin</option>
+                <option value="admin">Admin</option>
+                <option value="user">User</option>
+              </select>
+            </div>
           </div>
-        </CardHeader>
 
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="py-8 text-center text-xs text-slate-400">Loading user records...</div>
-          ) : filteredUsers.length === 0 ? (
-            <TableEmpty message="No matching users found." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-bold text-heading">
-                      <div className="flex items-center gap-2">
-                        <span>{u.username}</span>
-                        {u.role === "superadmin" && (
-                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-slate-600">{u.email}</TableCell>
-                    <TableCell>
-                      <div className="text-xs">
-                        <span className="font-semibold text-slate-800">{u.org_name || "Default Org"}</span>
-                        <span className="block font-mono text-[10px] text-slate-400">{u.organization_id}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          u.role === "superadmin"
-                            ? "primary"
-                            : u.role === "admin"
-                            ? "warning"
-                            : "neutral"
-                        }
-                        size="sm"
-                      >
-                        {u.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={u.is_active ? "success" : "danger"} size="sm" dot>
-                        {u.is_active ? "Active" : "Deactivated"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedUser(u);
-                          setNewPassword("");
-                        }}
-                        leftIcon={<Key className="w-3 h-3" />}
-                      >
-                        Password
-                      </Button>
+          <DataTable
+            columns={userColumns}
+            data={filteredUsers}
+            searchKey="username"
+            searchPlaceholder="Search users across all tenants..."
+            emptyTitle="No accounts match filter criteria"
+            emptyDescription="Adjust your organization or role filters."
+            pagination={true}
+            pageSize={10}
+          />
+        </div>
+      )}
 
-                      {u.role !== "superadmin" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteUser(u)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                          leftIcon={<Trash2 className="w-3 h-3" />}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Modal: Provision New Organization + Admin */}
+      {/* Provision Organization Modal */}
       <Modal
         isOpen={showOrgModal}
         onClose={() => setShowOrgModal(false)}
-        title="Provision New Client Organization"
-        description="Creates an isolated tenant partition in Azure Cosmos DB and assigns its initial organization administrator."
+        title="Provision Tenant Organization"
+        description="Creates an isolated tenant organization and primary administrator account."
       >
         <form onSubmit={handleCreateOrganization} className="space-y-4">
           <Input
-            label="Organization Name"
+            label="Organization Brand Name"
+            type="text"
+            required
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
-            placeholder="e.g. Acme Corp or Stellar Healthcare"
+            placeholder="e.g. Acme Telecom AI"
             leftIcon={<Building2 className="w-4 h-4" />}
-            required
           />
-
-          <div className="border-t border-slate-100 pt-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-              Primary Organization Admin Details
-            </span>
-            <div className="space-y-3">
-              <Input
-                label="Admin Username"
-                value={adminUsername}
-                onChange={(e) => setAdminUsername(e.target.value)}
-                placeholder="e.g. Acme Admin"
-                leftIcon={<User className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Admin Email"
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                placeholder="admin@acmecorp.com"
-                leftIcon={<Mail className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Admin Password"
-                type="text"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                placeholder="Min 6 characters"
-                leftIcon={<Lock className="w-4 h-4" />}
-                className="font-mono"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-3">
+          <Input
+            label="Admin Full Name"
+            type="text"
+            required
+            value={adminUsername}
+            onChange={(e) => setAdminUsername(e.target.value)}
+            placeholder="e.g. Sarah Jenkins"
+            leftIcon={<User className="w-4 h-4" />}
+          />
+          <Input
+            label="Admin Email Address"
+            type="email"
+            required
+            value={adminEmail}
+            onChange={(e) => setAdminEmail(e.target.value)}
+            placeholder="admin@acmetelecom.com"
+            leftIcon={<Mail className="w-4 h-4" />}
+          />
+          <Input
+            label="Admin Password"
+            type="password"
+            required
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            placeholder="••••••••••••"
+            leftIcon={<Lock className="w-4 h-4" />}
+          />
+          <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -718,45 +535,42 @@ export const SuperAdminPanel: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Modal: Assign Additional Admin to Organization */}
+      {/* Assign Extra Admin Modal */}
       <Modal
         isOpen={showAdminModal}
         onClose={() => setShowAdminModal(false)}
-        title={`Assign Admin to ${targetOrgName}`}
-        description="Creates an additional Organization Administrator account with full rights over this tenant's users."
+        title="Assign Organization Admin"
+        description={`Add an administrator account to '${targetOrgName}'.`}
       >
         <form onSubmit={handleCreateExtraAdmin} className="space-y-4">
           <Input
-            label="Admin Username"
+            label="Admin Name"
+            type="text"
+            required
             value={extraAdminUser}
             onChange={(e) => setExtraAdminUser(e.target.value)}
-            placeholder="e.g. Operations Admin"
+            placeholder="e.g. John Doe"
             leftIcon={<User className="w-4 h-4" />}
-            required
           />
-
           <Input
-            label="Admin Email"
+            label="Work Email"
             type="email"
+            required
             value={extraAdminEmail}
             onChange={(e) => setExtraAdminEmail(e.target.value)}
-            placeholder="ops@acmecorp.com"
+            placeholder="john@organization.com"
             leftIcon={<Mail className="w-4 h-4" />}
-            required
           />
-
           <Input
-            label="Admin Password"
-            type="text"
+            label="Password"
+            type="password"
+            required
             value={extraAdminPass}
             onChange={(e) => setExtraAdminPass(e.target.value)}
-            placeholder="Min 6 characters"
+            placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
-            className="font-mono"
-            required
           />
-
-          <div className="flex items-center justify-end gap-3 pt-3">
+          <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -771,37 +585,30 @@ export const SuperAdminPanel: React.FC = () => {
               size="md"
               isLoading={isCreatingAdmin}
             >
-              Assign Admin
+              Assign Administrator
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* Modal: Superadmin Reset Password */}
+      {/* SuperAdmin Password Reset Modal */}
       <Modal
         isOpen={!!selectedUser}
         onClose={() => setSelectedUser(null)}
-        title="Superadmin Credential Override"
-        description={
-          selectedUser
-            ? `Setting new password for ${selectedUser.username} (${selectedUser.email}) [Org: ${selectedUser.org_name || selectedUser.organization_id}]`
-            : undefined
-        }
+        title="SuperAdmin Password Override"
+        description={`Set a new password for account: ${selectedUser?.email}.`}
       >
-        <form onSubmit={handleResetPassword} className="space-y-4">
+        <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
           <Input
             label="New Password"
-            type="text"
+            type="password"
+            required
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Enter new password (min 6 chars)"
-            minLength={6}
+            placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
-            className="font-mono"
-            required
           />
-
-          <div className="flex items-center justify-end gap-3 pt-3">
+          <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"
@@ -816,7 +623,7 @@ export const SuperAdminPanel: React.FC = () => {
               size="md"
               isLoading={isResetting}
             >
-              Override Password
+              Update Password
             </Button>
           </div>
         </form>

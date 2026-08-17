@@ -18,37 +18,44 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     const selectId = id || (label ? `select-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
 
     return (
-      <div className="w-full space-y-1.5">
+      <div className="w-full space-y-1.5 text-left">
         {label && (
           <label
             htmlFor={selectId}
-            className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300"
+            className="block text-xs font-medium text-[var(--color-heading)]"
           >
             {label}
           </label>
         )}
-        <select
-          id={selectId}
-          ref={ref}
-          className={`w-full ui-input text-sm px-3.5 py-2.5 transition-all text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 disabled:opacity-60 disabled:cursor-not-allowed ${
-            error
-              ? "border-rose-500 focus:border-rose-600 focus:ring-rose-500/20"
-              : "border-slate-300 dark:border-slate-700"
-          } ${className}`}
-          {...props}
-        >
-          {options
-            ? options.map((opt) => (
-                <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-                  {opt.label}
-                </option>
-              ))
-            : children}
-        </select>
+        <div className="relative">
+          <select
+            id={selectId}
+            ref={ref}
+            className={`w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] border rounded-[var(--radius-main,0.375rem)] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer ${
+              error
+                ? "border-[var(--color-danger)] focus:border-[var(--color-danger)] focus:ring-2 focus:ring-[var(--color-danger)]/15"
+                : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary-ring)]"
+            } ${className}`}
+            {...props}
+          >
+            {options
+              ? options.map((opt) => (
+                  <option key={opt.value} value={opt.value} disabled={opt.disabled} className="bg-[var(--color-surface)] text-[var(--color-heading)]">
+                    {opt.label}
+                  </option>
+                ))
+              : children}
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[var(--color-muted)]">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
         {error ? (
-          <p className="text-xs text-rose-600 font-medium">{error}</p>
+          <p className="text-xs text-[var(--color-danger)] font-medium">{error}</p>
         ) : helperText ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400">{helperText}</p>
+          <p className="text-xs text-[var(--color-muted)]">{helperText}</p>
         ) : null}
       </div>
     );

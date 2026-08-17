@@ -7,8 +7,8 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 export const Card: React.FC<CardProps> = ({ children, className = "", hoverable = false, ...props }) => {
   return (
     <div
-      className={`ui-card overflow-hidden transition-all bg-white border border-slate-200 ${
-        hoverable ? "hover:-translate-y-0.5" : ""
+      className={`bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-xs transition-all ${
+        hoverable ? "hover:border-[var(--color-border-strong)] hover:shadow-sm" : ""
       } ${className}`}
       {...props}
     >
@@ -23,7 +23,7 @@ export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => {
   return (
-    <div className={`px-6 py-4 border-b border-slate-100 ${className}`} {...props}>
+    <div className={`px-5 py-3.5 border-b border-[var(--color-border)] ${className}`} {...props}>
       {children}
     </div>
   );
@@ -35,7 +35,7 @@ export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({
   ...props
 }) => {
   return (
-    <h3 className={`text-base font-bold tracking-tight text-heading ${className}`} {...props}>
+    <h3 className={`text-sm font-semibold tracking-tight text-[var(--color-heading)] ${className}`} {...props}>
       {children}
     </h3>
   );
@@ -47,7 +47,7 @@ export const CardDescription: React.FC<React.HTMLAttributes<HTMLParagraphElement
   ...props
 }) => {
   return (
-    <p className={`text-xs text-sub mt-1 ${className}`} {...props}>
+    <p className={`text-xs text-[var(--color-muted)] mt-0.5 ${className}`} {...props}>
       {children}
     </p>
   );
@@ -59,7 +59,7 @@ export const CardContent: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   ...props
 }) => {
   return (
-    <div className={`p-6 ${className}`} {...props}>
+    <div className={`p-5 ${className}`} {...props}>
       {children}
     </div>
   );
@@ -72,7 +72,7 @@ export const CardFooter: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
 }) => {
   return (
     <div
-      className={`px-6 py-3.5 bg-white border-t border-slate-100 flex items-center justify-between ${className}`}
+      className={`px-5 py-3 bg-[var(--color-surface-muted)]/50 border-t border-[var(--color-border)] flex items-center justify-between rounded-b-[var(--radius-main,0.375rem)] ${className}`}
       {...props}
     >
       {children}

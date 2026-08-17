@@ -2,66 +2,61 @@ import React, { useState } from "react";
 import { OrganizationThemeConfig } from "../../types";
 import {
   PhoneCall,
-  Activity,
-  Settings,
-  ShieldCheck,
   PhoneOutgoing,
-  CheckCircle2,
   TrendingUp,
   Clock,
   User,
-  Users,
-  Search,
+  Activity,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./Card";
 import { Button } from "./Button";
 import { Badge } from "./Badge";
+import { StatusIndicator } from "./StatusIndicator";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./Table";
 
 export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ theme }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "calls">("overview");
 
   return (
-    <div className="w-full rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden text-slate-900 dark:text-slate-100 transition-all">
+    <div className="w-full rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] shadow-sm overflow-hidden text-[var(--color-text)] bg-[var(--color-surface)] transition-all text-left">
       {/* Mock Browser Header Bar */}
-      <div className="bg-slate-100 dark:bg-slate-900 px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <div className="bg-[var(--color-surface-muted)] px-3.5 py-2 border-b border-[var(--color-border)] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex gap-1.5">
             <div className="w-2.5 h-2.5 rounded-full bg-rose-400"></div>
             <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
           </div>
-          <span className="text-[11px] font-mono text-slate-500 ml-2">
+          <span className="text-[11px] font-mono text-[var(--color-muted)] ml-2">
             https://app.desireai.com/preview
           </span>
         </div>
-        <Badge variant="primary" size="sm">
-          Live Interactive Theme Preview
-        </Badge>
+        <StatusIndicator status="active" label="Live Theme Engine" />
       </div>
 
       {/* Mock Application Frame */}
-      <div className="flex min-h-[520px] bg-slate-50 dark:bg-slate-950">
+      <div className="flex min-h-[480px] bg-[var(--color-background)]">
         {/* Mock Sidebar */}
-        <aside className="w-48 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 flex flex-col justify-between shrink-0 hidden sm:flex">
+        <aside className="w-48 bg-[var(--color-sidebar)] text-[var(--color-sidebar-text)] border-r border-[var(--color-border)] p-3.5 flex flex-col justify-between shrink-0 hidden sm:flex">
           <div className="space-y-4">
             {/* Mock Brand */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               {theme.identity.logo_url ? (
                 <img
                   src={theme.identity.logo_url}
                   alt="Logo"
-                  className="w-7 h-7 rounded-lg object-contain"
+                  className="w-6 h-6 rounded object-contain"
                 />
               ) : (
                 <div
-                  style={{ backgroundColor: theme.colors.primary }}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white shadow-xs"
+                  style={{ backgroundColor: "var(--color-primary)" }}
+                  className="w-6 h-6 rounded flex items-center justify-center text-white shadow-xs"
                 >
-                  <PhoneCall className="w-4 h-4" />
+                  <PhoneCall className="w-3.5 h-3.5" />
                 </div>
               )}
-              <div className="font-bold text-xs tracking-tight truncate">
+              <div className="font-semibold text-xs tracking-tight truncate text-[var(--color-heading)]">
                 {theme.identity.org_name || "Desire AI"}
               </div>
             </div>
@@ -70,49 +65,45 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
             <nav className="space-y-1">
               <button
                 onClick={() => setActiveTab("overview")}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "overview"
-                    ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
+                style={{
+                  backgroundColor: activeTab === "overview" ? "var(--color-primary-light)" : "transparent",
+                  color: activeTab === "overview" ? "var(--color-primary)" : "inherit",
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] text-xs font-medium transition-colors"
               >
                 <Activity className="w-3.5 h-3.5" />
-                <span>Dashboard</span>
+                <span>Console</span>
               </button>
               <button
                 onClick={() => setActiveTab("calls")}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === "calls"
-                    ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
+                style={{
+                  backgroundColor: activeTab === "calls" ? "var(--color-primary-light)" : "transparent",
+                  color: activeTab === "calls" ? "var(--color-primary)" : "inherit",
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] text-xs font-medium transition-colors"
               >
                 <PhoneOutgoing className="w-3.5 h-3.5" />
                 <span>Call Logs</span>
               </button>
-              <div className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 cursor-not-allowed">
-                <Settings className="w-3.5 h-3.5" />
-                <span>Settings</span>
-              </div>
             </nav>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2 text-[11px] text-slate-500">
-            <User className="w-3.5 h-3.5" />
+          <div className="pt-3 border-t border-[var(--color-border)] flex items-center gap-2 text-[11px] text-[var(--color-muted)]">
+            <User className="w-3 h-3" />
             <span className="truncate">admin@desireai.com</span>
           </div>
         </aside>
 
         {/* Mock Main Content Area */}
-        <div className="flex-1 p-5 space-y-4 overflow-y-auto max-h-[580px]">
+        <div className="flex-1 p-5 space-y-4 overflow-y-auto max-h-[520px]">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--color-border)]">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                {activeTab === "overview" ? "Voice Agent Dashboard" : "Outbound Call Intelligence"}
+              <h2 className="text-base font-semibold text-[var(--color-heading)]">
+                {activeTab === "overview" ? "Calling Console" : "Call Intelligence"}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Real-time multi-agent activity under {theme.identity.org_name}
+              <p className="text-xs text-[var(--color-muted)]">
+                Active tenant: {theme.identity.org_name || "Desire AI"}
               </p>
             </div>
             <div className="flex gap-2">
@@ -130,19 +121,19 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
             <Card hoverable>
               <CardContent className="p-3.5 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <div className="text-xs text-[var(--color-muted)] font-medium">
                     Total Calls
                   </div>
-                  <div className="text-xl font-bold mt-0.5">1,248</div>
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold mt-1">
+                  <div className="text-lg font-semibold text-[var(--color-heading)] mt-0.5 font-mono">1,248</div>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium mt-1">
                     <TrendingUp className="w-3 h-3" /> +18.4% this week
                   </div>
                 </div>
                 <div
-                  style={{ backgroundColor: `${theme.colors.primary}15`, color: theme.colors.primary }}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: "var(--color-primary-light)", color: "var(--color-primary)" }}
+                  className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center"
                 >
-                  <Activity className="w-5 h-5" />
+                  <Activity className="w-4 h-4" />
                 </div>
               </CardContent>
             </Card>
@@ -150,16 +141,16 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
             <Card hoverable>
               <CardContent className="p-3.5 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <div className="text-xs text-[var(--color-muted)] font-medium">
                     Success Rate
                   </div>
-                  <div className="text-xl font-bold mt-0.5">99.4%</div>
-                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold mt-1">
-                    <CheckCircle2 className="w-3 h-3" /> WebRTC Connected
+                  <div className="text-lg font-semibold text-[var(--color-heading)] mt-0.5 font-mono">99.4%</div>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium mt-1">
+                    <ShieldCheck className="w-3 h-3" /> WebRTC Live
                   </div>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
               </CardContent>
             </Card>
@@ -167,19 +158,19 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
             <Card hoverable>
               <CardContent className="p-3.5 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <div className="text-xs text-[var(--color-muted)] font-medium">
                     Avg Duration
                   </div>
-                  <div className="text-xl font-bold mt-0.5">3m 42s</div>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500 font-semibold mt-1">
-                    <Clock className="w-3 h-3" /> Real-time Opus Codec
+                  <div className="text-lg font-semibold text-[var(--color-heading)] mt-0.5 font-mono">3m 42s</div>
+                  <div className="flex items-center gap-1 text-[10px] text-[var(--color-muted)] font-medium mt-1">
+                    <Clock className="w-3 h-3" /> Opus Codec
                   </div>
                 </div>
                 <div
-                  style={{ backgroundColor: `${theme.colors.secondary}15`, color: theme.colors.secondary }}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: "var(--color-primary-light)", color: "var(--color-primary)" }}
+                  className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center"
                 >
-                  <Clock className="w-5 h-5" />
+                  <Clock className="w-4 h-4" />
                 </div>
               </CardContent>
             </Card>
@@ -189,33 +180,19 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* Quick Dispatch Card */}
             <Card className="lg:col-span-2">
-              <CardHeader className="py-3 px-4">
+              <CardHeader className="py-2.5 px-3.5">
                 <CardTitle className="text-xs">Quick Agent Dispatch</CardTitle>
               </CardHeader>
-              <CardContent className="p-4 space-y-3">
+              <CardContent className="p-3.5 space-y-2.5">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
+                  <label className="text-xs font-medium text-[var(--color-heading)] block mb-1">
                     Destination Phone Number
                   </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      readOnly
-                      value="+1 (555) 382-9012"
-                      className="w-full ui-input text-xs px-3 py-2 border rounded-lg bg-slate-50 dark:bg-slate-900"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block mb-1">
-                    AI Conversation Goal
-                  </label>
-                  <textarea
+                  <input
+                    type="text"
                     readOnly
-                    rows={2}
-                    value="Qualify inbound customer lead and confirm enterprise SaaS demo schedule."
-                    className="w-full ui-input text-xs p-2.5 border rounded-lg bg-slate-50 dark:bg-slate-900 resize-none"
+                    value="+1 (555) 382-9012"
+                    className="w-full h-8 text-xs font-mono px-2.5 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] text-[var(--color-heading)]"
                   />
                 </div>
 
@@ -232,54 +209,37 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
 
             {/* Sample Table Card */}
             <Card className="lg:col-span-3">
-              <CardHeader className="py-3 px-4 flex justify-between items-center">
+              <CardHeader className="py-2.5 px-3.5 flex justify-between items-center">
                 <CardTitle className="text-xs">Recent Session History</CardTitle>
-                <Badge variant="success" size="sm" dot>
-                  Live Stream
-                </Badge>
+                <Badge variant="success" size="sm">Live</Badge>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="py-2 text-[10px]">Recipient</TableHead>
-                      <TableHead className="py-2 text-[10px]">Status</TableHead>
-                      <TableHead className="py-2 text-[10px]">Duration</TableHead>
+                      <TableHead className="py-2 text-xs">Recipient</TableHead>
+                      <TableHead className="py-2 text-xs">Status</TableHead>
+                      <TableHead className="py-2 text-xs">Duration</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     <TableRow>
-                      <TableCell className="py-2.5 text-xs font-mono font-medium">
+                      <TableCell className="py-2 text-xs font-mono font-medium">
                         +1 (800) 452-1920
                       </TableCell>
-                      <TableCell className="py-2.5">
-                        <Badge variant="success" size="sm">
-                          Completed
-                        </Badge>
+                      <TableCell className="py-2">
+                        <StatusIndicator status="completed" label="Completed" />
                       </TableCell>
-                      <TableCell className="py-2.5 text-xs">4m 12s</TableCell>
+                      <TableCell className="py-2 text-xs font-mono">4m 12s</TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell className="py-2.5 text-xs font-mono font-medium">
+                      <TableCell className="py-2 text-xs font-mono font-medium">
                         +1 (415) 890-3321
                       </TableCell>
-                      <TableCell className="py-2.5">
-                        <Badge variant="primary" size="sm" dot>
-                          In Progress
-                        </Badge>
+                      <TableCell className="py-2">
+                        <StatusIndicator status="active" label="In Progress" pulse />
                       </TableCell>
-                      <TableCell className="py-2.5 text-xs">1m 45s</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="py-2.5 text-xs font-mono font-medium">
-                        +1 (312) 555-0199
-                      </TableCell>
-                      <TableCell className="py-2.5">
-                        <Badge variant="neutral" size="sm">
-                          Queued
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-2.5 text-xs">0s</TableCell>
+                      <TableCell className="py-2 text-xs font-mono">1m 45s</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>

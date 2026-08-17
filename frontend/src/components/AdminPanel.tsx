@@ -3,7 +3,6 @@ import { UserSummary } from "../types";
 import { fetchApi } from "../api-client";
 import { useAuth } from "../context/AuthContext";
 import {
-  ShieldCheck,
   UserPlus,
   Key,
   Trash2,
@@ -11,16 +10,15 @@ import {
   User,
   Mail,
   Lock,
-  Building2,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
 import { Badge } from "./ui/Badge";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableEmpty } from "./ui/Table";
 import { Modal } from "./ui/Modal";
 import { Alert } from "./ui/Alert";
 import { PageHeader } from "./ui/PageHeader";
+import { StatusIndicator } from "./ui/StatusIndicator";
+import { DataTable, Column } from "./ui/DataTable";
 
 export const AdminPanel: React.FC = () => {
   const { user: currentUser } = useAuth();
@@ -29,10 +27,12 @@ export const AdminPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Form states for user creation
+  // Invite member modal state
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"user" | "admin">("user");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Password reset modal states
@@ -46,7 +46,7 @@ export const AdminPanel: React.FC = () => {
       const data = await fetchApi<UserSummary[]>("/admin/users");
       setUsers(data);
     } catch (err: any) {
-      setError(err.message || "Failed to load user list");
+      setError(err.message || "Failed to load team members");
     } finally {
       setLoading(false);
     }
@@ -65,13 +65,15 @@ export const AdminPanel: React.FC = () => {
     try {
       const newUser = await fetchApi<UserSummary>("/admin/users", {
         method: "POST",
-        body: JSON.stringify({ username, email, password, role: "user" }),
+        body: JSON.stringify({ username, email, password, role }),
       });
 
-      setSuccessMsg(`User '${newUser.username}' (${newUser.email}) created successfully for ${currentUser?.org_name || "your organization"}!`);
+      setSuccessMsg(`Team member '${newUser.username}' (${newUser.email}) added successfully.`);
       setUsername("");
       setEmail("");
       setPassword("");
+      setRole("user");
+      setInviteModalOpen(false);
       await loadUsers();
     } catch (err: any) {
       setError(err.message || "Failed to create user.");
@@ -94,7 +96,7 @@ export const AdminPanel: React.FC = () => {
         body: JSON.stringify({ new_password: newPassword }),
       });
 
-      setSuccessMsg(`Password for user '${selectedUser.username}' (${selectedUser.email}) updated successfully.`);
+      setSuccessMsg(`Password for '${selectedUser.username}' updated successfully.`);
       setSelectedUser(null);
       setNewPassword("");
     } catch (err: any) {
@@ -106,11 +108,11 @@ export const AdminPanel: React.FC = () => {
 
   const handleDeleteUser = async (user: UserSummary) => {
     if (user.role === "admin" || user.role === "superadmin") {
-      alert("Admin accounts cannot be deleted from the Organization User tab.");
+      alert("Admin accounts cannot be deleted directly.");
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete user ${user.email}?`)) {
+    if (!window.confirm(`Are you sure you want to remove ${user.email} from the workspace?`)) {
       return;
     }
     setError(null);
@@ -118,47 +120,137 @@ export const AdminPanel: React.FC = () => {
 
     try {
       await fetchApi(`/admin/users/${user.id}`, { method: "DELETE" });
-      setSuccessMsg(`User ${user.email} deleted successfully.`);
+      setSuccessMsg(`User ${user.email} removed.`);
       await loadUsers();
     } catch (err: any) {
       setError(err.message || "Failed to delete user.");
     }
   };
 
+  const columns: Column<UserSummary>[] = [
+    {
+      key: "username",
+      header: "Member",
+      sortable: true,
+      render: (u) => (
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center text-xs font-semibold uppercase shrink-0">
+            {u.username ? u.username.charAt(0) : "U"}
+          </div>
+          <div>
+            <div className="font-medium text-xs text-[var(--color-heading)] leading-none">{u.username}</div>
+            <div className="text-[11px] text-[var(--color-muted)] mt-0.5">{u.email}</div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      header: "Role",
+      sortable: true,
+      render: (u) => (
+        <Badge
+          variant={u.role === "admin" ? "primary" : "default"}
+          size="sm"
+        >
+          {u.role}
+        </Badge>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: () => <StatusIndicator status="active" label="Active" />,
+    },
+    {
+      key: "created_at",
+      header: "Joined",
+      sortable: true,
+      render: (u) => (
+        <span className="text-xs text-[var(--color-muted)]">
+          {u.created_at ? new Date(u.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      className: "text-right",
+      render: (u) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedUser(u)}
+            className="h-7 px-2 text-xs"
+            title="Reset Password"
+          >
+            <Key className="w-3.5 h-3.5" />
+          </Button>
+          {u.role !== "admin" && u.role !== "superadmin" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleDeleteUser(u)}
+              className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+              title="Remove Member"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const adminCount = users.filter((u) => u.role === "admin" || u.role === "superadmin").length;
+  const memberCount = users.length;
+
   return (
-    <div className="w-full space-y-6">
+    <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Organization User Management"
-        description={`Provision and manage client accounts belonging strictly to ${currentUser?.org_name || "your organization"}.`}
-        badge={
-          <div className="flex items-center gap-2">
-            <Badge variant="primary" size="md">
-              <Building2 className="w-3.5 h-3.5 mr-1" />
-              {currentUser?.org_name || "Organization Admin"}
-            </Badge>
-          </div>
-        }
+        title="Team"
+        description="Manage the people and credentials who have access to your workspace."
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={loadUsers}
-            leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
-          >
-            Refresh Accounts
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadUsers}
+              isLoading={loading}
+              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+            >
+              Sync
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setInviteModalOpen(true)}
+              leftIcon={<UserPlus className="w-3.5 h-3.5" />}
+            >
+              Add Member
+            </Button>
+          </div>
         }
       />
 
-      {/* Policy Alert */}
-      <Alert type="info">
-        <span className="font-bold text-sky-950">Tenant Isolation Policy:</span> You are managing users under{" "}
-        <span className="font-bold">{currentUser?.org_name || "your organization"}</span> ({currentUser?.organization_id}).
-      </Alert>
+      {/* Overview Stat Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Total Team Members</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{memberCount}</div>
+        </div>
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Administrators</span>
+          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{adminCount}</div>
+        </div>
+        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs col-span-2 sm:col-span-1">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Active Seats</span>
+          <div className="text-xl font-semibold text-[var(--color-success)] mt-1 font-mono">{memberCount}</div>
+        </div>
+      </div>
 
-
-      {/* Global Alerts */}
       {error && (
         <Alert type="danger" onDismiss={() => setError(null)}>
           {error}
@@ -170,171 +262,108 @@ export const AdminPanel: React.FC = () => {
         </Alert>
       )}
 
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Create User Form (5 cols on large screens) */}
-        <Card className="lg:col-span-5 bg-white border border-slate-200">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4 theme-primary-text" />
-              <CardTitle className="text-sm">Provision Client Account</CardTitle>
-            </div>
-            <CardDescription>Create a new user under your organization.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateUser} className="space-y-4">
-              <Input
-                label="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. John Doe"
-                leftIcon={<User className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Email Address"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="client@example.com"
-                leftIcon={<Mail className="w-4 h-4" />}
-                required
-              />
-
-              <Input
-                label="Assign Initial Password"
-                type="text"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Initial password (min 6 chars)"
-                leftIcon={<Lock className="w-4 h-4" />}
-                className="font-mono"
-                required
-              />
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-sub mb-1.5">
-                  Account Role
-                </label>
-                <div className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs font-semibold text-heading">
-                  <span>Standard User (Client)</span>
-                  <Badge variant="neutral" size="sm">Fixed</Badge>
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                isLoading={isSubmitting}
-                className="w-full mt-2"
-              >
-                Create Account
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Right Column: User Accounts Table (7 cols on large screens) */}
-        <Card className="lg:col-span-7 bg-white border border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-sm">Registered Accounts ({users.length})</CardTitle>
-              <CardDescription>Active organization members with platform access.</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="py-12 text-center text-xs text-sub">
-                Loading users from Azure Cosmos DB...
-              </div>
-            ) : users.length === 0 ? (
-              <TableEmpty message="No registered users found." />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-bold text-heading">
-                        {u.username}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-body">{u.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={u.role === "admin" ? "primary" : "neutral"} size="sm">
-                          {u.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setNewPassword("");
-                          }}
-                          leftIcon={<Key className="w-3 h-3" />}
-                        >
-                          Password
-                        </Button>
-
-                        {u.role === "admin" ? (
-                          <Badge variant="neutral" size="sm">
-                            Protected
-                          </Badge>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteUser(u)}
-                            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                            leftIcon={<Trash2 className="w-3 h-3" />}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+      {/* Team Members DataTable */}
+      <div className="space-y-3">
+        <DataTable
+          columns={columns}
+          data={users}
+          searchKey="username"
+          searchPlaceholder="Search members by name or email..."
+          emptyTitle="No team members found"
+          emptyDescription="Invite your team members to collaborate on AI calling campaigns."
+          pagination={true}
+          pageSize={10}
+        />
       </div>
 
-      {/* Change Password Modal */}
+      {/* Add Member Modal */}
+      <Modal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        title="Add Team Member"
+        description="Create a login account for your organization workspace."
+      >
+        <form onSubmit={handleCreateUser} className="space-y-4">
+          <Input
+            label="Full Name or Username"
+            type="text"
+            required
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="e.g. Alex Morgan"
+            leftIcon={<User className="w-4 h-4" />}
+          />
+          <Input
+            label="Work Email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="alex@yourcompany.com"
+            leftIcon={<Mail className="w-4 h-4" />}
+          />
+          <Input
+            label="Initial Password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••••••"
+            leftIcon={<Lock className="w-4 h-4" />}
+            helperText="Minimum 6 characters."
+          />
+          <div>
+            <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
+              Workspace Role
+            </label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as any)}
+              className="w-full h-9 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none"
+            >
+              <option value="user">User (Calling console and analytics)</option>
+              <option value="admin">Administrator (Full settings and team access)</option>
+            </select>
+          </div>
+          <div className="pt-2 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => setInviteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              isLoading={isSubmitting}
+            >
+              Create Account
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Password Reset Modal */}
       <Modal
         isOpen={!!selectedUser}
         onClose={() => setSelectedUser(null)}
-        title="Change User Password"
-        description={
-          selectedUser
-            ? `Updating credentials for ${selectedUser.username} (${selectedUser.email})`
-            : undefined
-        }
+        title="Reset Password"
+        description={`Set a new login password for ${selectedUser?.username || "member"}.`}
       >
         <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
           <Input
             label="New Password"
-            type="text"
+            type="password"
+            required
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Enter new password (min 6 chars)"
-            minLength={6}
+            placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
-            className="font-mono"
-            required
           />
-
-          <div className="flex items-center justify-end gap-3 pt-3">
+          <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
               variant="outline"

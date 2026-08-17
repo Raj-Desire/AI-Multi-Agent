@@ -550,11 +550,14 @@ export function applyThemeToCss(
   root.style.setProperty("--color-text", colors.text || (isDark ? "#f8fafc" : "#1e293b"));
   root.style.setProperty("--color-muted", colors.text_muted || (isDark ? "#94a3b8" : "#475569"));
   
-  root.style.setProperty("--color-background", colors.background || (isDark ? "#090d16" : "#ffffff"));
+  root.style.setProperty("--color-background", colors.background || (isDark ? "#090d16" : "#fafafa"));
   root.style.setProperty("--color-surface", colors.surface || (isDark ? "#111827" : "#ffffff"));
-  root.style.setProperty("--color-sidebar", colors.sidebar || (isDark ? "#0d131f" : "#faf9fa"));
+  root.style.setProperty("--color-surface-muted", isDark ? "#182234" : "#f4f5f7");
+  root.style.setProperty("--color-surface-elevated", isDark ? "#1e293b" : "#ffffff");
+  root.style.setProperty("--color-sidebar", colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa"));
   root.style.setProperty("--color-sidebar-text", colors.sidebar_text || (isDark ? "#f3f4f6" : "#0f172a"));
-  root.style.setProperty("--color-border", colors.border || (isDark ? "#1e293b" : "#e2e8f0"));
+  root.style.setProperty("--color-border", colors.border || (isDark ? "#1f2937" : "#e5e7eb"));
+  root.style.setProperty("--color-border-strong", isDark ? "#374151" : "#d1d5db");
 
   root.style.setProperty("--color-success", colors.success || "#10b981");
   root.style.setProperty("--color-warning", colors.warning || "#f59e0b");

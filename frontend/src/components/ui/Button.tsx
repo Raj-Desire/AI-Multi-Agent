@@ -21,39 +21,43 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const sizeClasses = {
-    sm: "px-3 py-1.5 text-xs gap-1.5 font-semibold rounded-lg",
-    md: "px-4 py-2 text-sm gap-2 font-bold rounded-xl",
-    lg: "px-5 py-3 text-base gap-2.5 font-bold rounded-xl",
+    sm: "h-8 px-2.5 text-xs gap-1.5 font-medium rounded-[var(--radius-main,0.375rem)]",
+    md: "h-9 px-3.5 text-sm gap-2 font-medium rounded-[var(--radius-main,0.375rem)]",
+    lg: "h-10 px-4 text-sm gap-2.5 font-medium rounded-[var(--radius-main,0.375rem)]",
   };
 
   const variantClasses = {
-    primary: "ui-button-primary shadow-xs active:scale-[0.98] transition-all",
-    secondary: "ui-button-secondary shadow-xs active:scale-[0.98] transition-all",
+    primary:
+      "ui-button-primary text-white shadow-xs hover:opacity-95 active:scale-[0.99] border-transparent",
+    secondary:
+      "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:scale-[0.99]",
     outline:
-      "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 active:scale-[0.98] transition-all shadow-2xs",
+      "bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-border-strong)] active:scale-[0.99] shadow-xs",
     ghost:
-      "bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:scale-[0.98] transition-all",
+      "bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-heading)] active:scale-[0.99]",
     danger:
-      "bg-rose-600 hover:bg-rose-700 text-white shadow-xs active:scale-[0.98] transition-all",
+      "bg-[var(--color-danger)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
     success:
-      "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs active:scale-[0.98] transition-all",
+      "bg-[var(--color-success)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
   };
 
   return (
     <button
       disabled={disabled || isLoading}
-      className={`inline-flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--color-primary-ring)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none ${
+      className={`inline-flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--color-primary-ring)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none font-sans ${
         sizeClasses[size]
       } ${variantClasses[variant]} ${className}`}
       {...props}
     >
       {isLoading ? (
-        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
       ) : leftIcon ? (
-        <span className="shrink-0">{leftIcon}</span>
+        <span className="shrink-0 flex items-center">{leftIcon}</span>
       ) : null}
       <span>{children}</span>
-      {!isLoading && rightIcon && <span className="shrink-0">{rightIcon}</span>}
+      {!isLoading && rightIcon && (
+        <span className="shrink-0 flex items-center">{rightIcon}</span>
+      )}
     </button>
   );
 };

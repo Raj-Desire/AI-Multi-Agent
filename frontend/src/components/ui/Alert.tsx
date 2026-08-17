@@ -18,38 +18,38 @@ export const Alert: React.FC<AlertProps> = ({
 }) => {
   const styles = {
     info: {
-      container: "bg-sky-50/90 border-sky-200 text-sky-950",
-      icon: <Info className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />,
+      container: "bg-sky-500/10 border-sky-500/20 text-sky-900 dark:text-sky-200",
+      icon: <Info className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />,
     },
     success: {
-      container: "bg-emerald-50/90 border-emerald-200 text-emerald-950",
-      icon: <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />,
+      container: "bg-emerald-500/10 border-emerald-500/20 text-emerald-900 dark:text-emerald-200",
+      icon: <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />,
     },
     warning: {
-      container: "bg-amber-50/90 border-amber-200 text-amber-950",
-      icon: <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />,
+      container: "bg-amber-500/10 border-amber-500/20 text-amber-900 dark:text-amber-200",
+      icon: <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />,
     },
     danger: {
-      container: "bg-rose-50/90 border-rose-200 text-rose-950",
-      icon: <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />,
+      container: "bg-rose-500/10 border-rose-500/20 text-rose-900 dark:text-rose-200",
+      icon: <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />,
     },
   };
 
   const current = styles[type];
 
   return (
-    <div className={`p-4 rounded-xl border flex items-start gap-3 text-sm ${current.container} ${className} shadow-2xs`}>
+    <div className={`p-3.5 rounded-[var(--radius-main,0.375rem)] border flex items-start gap-2.5 text-xs text-left ${current.container} ${className}`}>
       {current.icon}
-      <div className="flex-1">
-        {title && <h4 className="font-bold text-sm mb-0.5 text-sky-950">{title}</h4>}
-        <div className="text-xs leading-relaxed font-medium">{children}</div>
+      <div className="flex-1 min-w-0">
+        {title && <h4 className="font-semibold text-xs mb-0.5">{title}</h4>}
+        <div className="leading-relaxed opacity-90">{children}</div>
       </div>
       {onDismiss && (
         <button
           onClick={onDismiss}
-          className="p-1 rounded-lg hover:bg-black/5 opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
+          className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       )}
     </div>

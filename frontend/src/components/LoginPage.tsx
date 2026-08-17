@@ -19,7 +19,7 @@ export const LoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setError("Please enter both email/username and password.");
+      setError("Please enter your email and password.");
       return;
     }
 
@@ -29,89 +29,84 @@ export const LoginPage: React.FC = () => {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.message || "Failed to log in. Please check your credentials.");
+      setError(err.message || "Invalid credentials. Please verify your email and password.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen theme-bg flex items-center justify-center p-4 sm:p-6 lg:p-8 transition-colors">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center p-4 sm:p-6 transition-colors">
+      <div className="w-full max-w-sm space-y-6">
         {/* Brand Header */}
-        <div className="text-center">
+        <div className="text-center space-y-2">
           {draftTheme.identity.logo_url ? (
             <img
               src={draftTheme.identity.logo_url}
               alt="Organization Logo"
-              className="w-14 h-14 mx-auto rounded-2xl object-contain border theme-border shadow-md mb-4 bg-white dark:bg-slate-900 p-1"
+              className="w-10 h-10 mx-auto rounded-lg object-contain border border-[var(--color-border)] bg-[var(--color-surface)] p-1"
             />
           ) : (
             <div
-              style={{ backgroundColor: draftTheme.colors.primary }}
-              className="inline-flex items-center justify-center w-14 h-14 rounded-2xl text-white shadow-lg shadow-indigo-500/30 mb-4"
+              style={{ backgroundColor: "var(--color-primary)" }}
+              className="inline-flex items-center justify-center w-10 h-10 rounded-lg text-white shadow-xs"
             >
-              <PhoneCall className="w-7 h-7" />
+              <PhoneCall className="w-5 h-5" />
             </div>
           )}
-          <h1 className="text-2xl font-black tracking-tight theme-text">
-            {draftTheme.identity.org_name || "Desire AI"}
-          </h1>
-          <p className="text-xs theme-muted mt-1 font-medium">
-            Multi-Agent AI Voice Platform
-          </p>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-[var(--color-heading)]">
+              {draftTheme.identity.org_name || "Desire AI"}
+            </h1>
+            <p className="text-xs text-[var(--color-muted)]">
+              Sign in to your voice calling workspace
+            </p>
+          </div>
         </div>
 
         {/* Login Card */}
-        <Card className="shadow-xl">
-          <CardContent className="p-8 space-y-6">
-            <div>
-              <h2 className="text-xl font-bold theme-text">Welcome back</h2>
-              <p className="text-xs theme-muted mt-0.5">Sign in to your organization account</p>
-            </div>
-
+        <Card className="shadow-sm">
+          <CardContent className="p-6 space-y-4">
             {error && (
               <Alert type="danger" onDismiss={() => setError(null)}>
                 {error}
               </Alert>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <Input
                 label="Email or Username"
                 type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@desireai.com"
-                leftIcon={<UserIcon className="w-4 h-4" />}
+                placeholder="you@company.com"
+                leftIcon={<UserIcon className="w-3.5 h-3.5" />}
                 required
               />
 
-              <div>
-                <Input
-                  label="Password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  leftIcon={<Lock className="w-4 h-4" />}
-                  rightIcon={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  }
-                  required
-                />
-              </div>
+              <Input
+                label="Password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                leftIcon={<Lock className="w-3.5 h-3.5" />}
+                rightIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[var(--color-muted)] hover:text-[var(--color-heading)] cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                }
+                required
+              />
 
               <Button
                 type="submit"
                 variant="primary"
-                size="lg"
+                size="md"
                 isLoading={isSubmitting}
                 className="w-full mt-2"
               >
@@ -122,9 +117,9 @@ export const LoginPage: React.FC = () => {
         </Card>
 
         {/* Footer Info */}
-        <div className="text-center text-xs theme-muted flex items-center justify-center gap-1.5">
+        <div className="text-center text-xs text-[var(--color-muted)] flex items-center justify-center gap-1.5 opacity-80">
           <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Role-Based Tenant Isolation</span>
+          <span>Tenant Isolated &bull; WebRTC Voice</span>
         </div>
       </div>
     </div>

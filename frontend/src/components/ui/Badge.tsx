@@ -1,7 +1,7 @@
 import React from "react";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "primary" | "success" | "warning" | "danger" | "info" | "neutral";
+  variant?: "default" | "primary" | "success" | "warning" | "danger" | "info" | "neutral" | "outline";
   size?: "sm" | "md";
   dot?: boolean;
 }
@@ -15,43 +15,41 @@ export const Badge: React.FC<BadgeProps> = ({
   ...props
 }) => {
   const sizeClasses = {
-    sm: "px-2 py-0.5 text-[10px] gap-1",
-    md: "px-2.5 py-1 text-xs gap-1.5",
+    sm: "px-1.5 py-0.5 text-[11px] gap-1",
+    md: "px-2 py-0.5 text-xs gap-1.5",
   };
 
   const variantClasses = {
-    default: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
-    primary: "ui-badge-primary",
-    secondary: "ui-badge-secondary",
-    accent: "ui-badge-accent",
-    success: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800",
-    warning: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800",
-    danger: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800",
-    info: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-800",
-    neutral: "bg-slate-200/70 text-slate-800 border-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:border-slate-600",
+    default: "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border-[var(--color-border)]",
+    primary: "bg-[var(--color-primary-light)] text-[var(--color-primary)] border-[var(--color-primary-ring)]",
+    success: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+    danger: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
+    info: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
+    neutral: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700",
+    outline: "bg-transparent text-[var(--color-text)] border-[var(--color-border)]",
   };
 
   const dotClasses = {
     default: "bg-slate-400",
-    primary: "theme-primary-bg",
-    secondary: "bg-pink-500",
-    accent: "bg-purple-500",
-    success: "bg-emerald-500 animate-pulse",
+    primary: "bg-[var(--color-primary)]",
+    success: "bg-emerald-500",
     warning: "bg-amber-500",
     danger: "bg-rose-500",
     info: "bg-sky-500",
     neutral: "bg-slate-500",
+    outline: "bg-slate-400",
   };
 
   return (
     <span
-      className={`inline-flex items-center font-semibold rounded-md border uppercase tracking-wider ${
+      className={`inline-flex items-center font-medium rounded-md border ${
         sizeClasses[size]
-      } ${variantClasses[variant]} ${className}`}
+      } ${variantClasses[variant] || variantClasses.default} ${className}`}
       {...props}
     >
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotClasses[variant]}`} />}
-      {children}
+      {dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClasses[variant] || dotClasses.default}`} />}
+      <span>{children}</span>
     </span>
   );
 };
