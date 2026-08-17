@@ -156,19 +156,67 @@ class CallService:
         caller_id_override: Optional[str] = None,
         user_id: Optional[str] = None,
         from_caller: Optional[str] = None,
-        called_number: Optional[str] = None
+        called_number: Optional[str] = None,
+        call_sid: Optional[str] = None
     ) -> str:
         response = VoiceResponse()
 
-        org_id = user_id or "default"
+        # Resolve organization_id and user_id
+        org_id = "default"
+        resolved_user_id = user_id or "system"
+        if user_id and user_id != "default":
+            from app.repositories.user_repository import UserRepository
+            user = await UserRepository.get_by_id(user_id)
+            if user:
+                org_id = user.get("organization_id") or user_id
+                resolved_user_id = user["id"]
+            else:
+                org_id = user_id
+
         tw_cfg = await self.twilio_repo.get_by_org(org_id)
         
-        # If user_id wasn't provided or not found, try resolving via the called number (e.g. Inbound Call)
-        if (not tw_cfg) and called_number:
-            tw_cfg = await self.twilio_repo.get_by_phone_number(called_number)
+        # If not found by user's org, try resolving via caller_id_override or from_caller or called_number
+        if not tw_cfg:
+            for num in [caller_id_override, from_caller, called_number, to]:
+                if num:
+                    tw_cfg = await self.twilio_repo.get_by_phone_number(num)
+                    if tw_cfg:
+                        org_id = tw_cfg.organization_id
+                        break
+        
+        # Fallback to the first available Twilio config if only one exists in system
+        if not tw_cfg:
+            all_configs = await self.twilio_repo.list_all()
+            if all_configs:
+                tw_cfg = all_configs[0]
+                org_id = tw_cfg.organization_id
+
+        # Register the call history log dynamically if call_sid is present
+        if call_sid:
+            existing = await self.call_repo.get_by_call_sid(call_sid)
+            if not existing:
+                cfg_first_num = tw_cfg.phone_number.split(",")[0].strip() if (tw_cfg and tw_cfg.phone_number) else ""
+                selected_from = caller_id_override or from_caller or cfg_first_num or "WebRTC Softphone"
+                selected_to = to or called_number or ""
+                effective_org = tw_cfg.organization_id if tw_cfg else org_id
+                cfg_id = tw_cfg.id if tw_cfg else ""
+                new_call = Call(
+                    id=f"cal_{uuid.uuid4().hex[:12]}",
+                    organization_id=effective_org,
+                    user_id=resolved_user_id,
+                    twilio_configuration_id=cfg_id,
+                    call_sid=call_sid,
+                    from_number=selected_from,
+                    to_number=selected_to,
+                    duration=0,
+                    prompt="In-browser call via WebRTC" if (user_id and user_id != "default") else "Inbound Call",
+                    status="in-progress",
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
+                )
+                await self.call_repo.save(new_call)
 
         # Determine if this is an Inbound call from an external phone or an Outbound call from WebRTC browser
-        # WebRTC outgoing calls include 'userId' or destination 'To' is not one of the user's incoming Twilio numbers
         is_inbound = False
         target_twilio_number = called_number or to
         
@@ -241,7 +289,12 @@ class CallService:
 
     async def list_calls(self, ctx: TenantContext) -> List[Call]:
         calls = await self.call_repo.list_by_org(ctx.organization_id)
+        if not calls and ctx.user_id and ctx.user_id != ctx.organization_id:
+            calls = await self.call_repo.list_by_org(ctx.user_id)
+            
         tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
+        if not tw_cfg and ctx.user_id:
+            tw_cfg = await self.twilio_repo.get_by_org(ctx.user_id)
         
         if tw_cfg and calls:
             def _sync_twilio_updates():
@@ -261,5 +314,9 @@ class CallService:
                     pass
 
             await asyncio.to_thread(_sync_twilio_updates)
+            
+            # Persist any updated statuses/durations to database
+            for call in calls:
+                await self.call_repo.save(call)
 
         return calls

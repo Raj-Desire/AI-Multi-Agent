@@ -190,12 +190,15 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       call.on("ringing", () => {
         setCallState("ringing");
         setDeviceStatusText(`Ringing ${toNumber}...`);
+        // Refresh call list in background so new session entry displays immediately
+        fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
       });
 
       call.on("accept", () => {
         setCallState("connected");
         setDeviceStatusText("Call in Progress (WebRTC Audio Live)");
         startTimer();
+        fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
       });
 
       call.on("disconnect", () => {

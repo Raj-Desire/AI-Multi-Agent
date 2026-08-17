@@ -10,8 +10,8 @@ class CallRepository:
             container = get_calls_container()
             if not container:
                 return []
-            query = "SELECT * FROM c WHERE c.user_id = @user_id ORDER BY c.created_at DESC"
-            params = [{"name": "@user_id", "value": organization_id}]
+            query = "SELECT * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
+            params = [{"name": "@organization_id", "value": organization_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 calls = []
@@ -21,7 +21,7 @@ class CallRepository:
                     calls.append(Call(
                         id=item["id"],
                         organization_id=item.get("organization_id", organization_id),
-                        user_id=item["user_id"],
+                        user_id=item.get("user_id", ""),
                         twilio_configuration_id=item.get("twilio_configuration_id", ""),
                         call_sid=item.get("call_sid"),
                         from_number=item.get("from_number", ""),
@@ -38,6 +38,39 @@ class CallRepository:
                 return []
 
         return await asyncio.to_thread(_sync_list)
+
+    async def get_by_call_sid(self, call_sid: str) -> Optional[Call]:
+        def _sync_get():
+            container = get_calls_container()
+            if not container:
+                return None
+            query = "SELECT * FROM c WHERE c.call_sid = @call_sid"
+            params = [{"name": "@call_sid", "value": call_sid}]
+            try:
+                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                if items:
+                    item = items[0]
+                    created_dt = datetime.fromisoformat(item["created_at"]) if isinstance(item.get("created_at"), str) else datetime.now(timezone.utc)
+                    updated_dt = datetime.fromisoformat(item["updated_at"]) if isinstance(item.get("updated_at"), str) else datetime.now(timezone.utc)
+                    return Call(
+                        id=item["id"],
+                        organization_id=item.get("organization_id", ""),
+                        user_id=item.get("user_id", ""),
+                        twilio_configuration_id=item.get("twilio_configuration_id", ""),
+                        call_sid=item.get("call_sid"),
+                        from_number=item.get("from_number", ""),
+                        to_number=item.get("to_number", ""),
+                        duration=int(item.get("duration", 0)),
+                        prompt=item.get("prompt"),
+                        status=item.get("status", "initiated"),
+                        created_at=created_dt,
+                        updated_at=updated_dt
+                    )
+            except Exception as e:
+                print(f"[CallRepository Error] get_by_call_sid: {e}")
+            return None
+
+        return await asyncio.to_thread(_sync_get)
 
     async def save(self, call: Call) -> Call:
         def _sync_save():

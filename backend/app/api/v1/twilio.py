@@ -143,6 +143,7 @@ async def voice_twiml_webhook(request: Request):
     caller_id = form_data.get("callerId") or form_data.get("caller_id") or request.query_params.get("callerId")
     from_caller = form_data.get("From") or form_data.get("from") or request.query_params.get("From")
     called_number = form_data.get("Called") or form_data.get("called") or to
+    call_sid = form_data.get("CallSid") or form_data.get("call_sid") or request.query_params.get("CallSid") or request.query_params.get("call_sid")
 
     try:
         twiml_xml = await call_service.build_twiml_response(
@@ -150,7 +151,8 @@ async def voice_twiml_webhook(request: Request):
             caller_id_override=caller_id,
             user_id=user_id,
             from_caller=from_caller,
-            called_number=called_number
+            called_number=called_number,
+            call_sid=call_sid
         )
         return Response(content=twiml_xml, media_type="application/xml")
     except Exception as e:
