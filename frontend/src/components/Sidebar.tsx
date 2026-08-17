@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
   PhoneCall,
+  Bot,
   Sliders,
   Palette,
   Users,
@@ -15,7 +16,7 @@ import {
   Laptop,
 } from "lucide-react";
 
-export type NavTab = "dashboard" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "voice_agent" | "twilio" | "theme" | "admin" | "superadmin";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -60,6 +61,13 @@ export function Sidebar({
           label: "Calling Console",
           icon: PhoneCall,
           visible: true,
+        },
+        {
+          id: "voice_agent",
+          label: "AI Voice Agent",
+          icon: Bot,
+          visible: true,
+          badge: "Live",
         },
       ],
     },

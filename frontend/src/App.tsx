@@ -7,10 +7,12 @@ import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { DashboardView } from "./components/DashboardView";
 import { TwilioSettingsView } from "./components/TwilioSettingsView";
 import { ThemeStudioView } from "./components/ThemeStudioView";
+import { VoiceAgentView } from "./components/VoiceAgentView";
 import { Sidebar, NavTab } from "./components/Sidebar";
 import {
   Menu,
   PhoneCall,
+  Bot,
   Sliders,
   Palette,
   Users,
@@ -61,6 +63,12 @@ function MainContent() {
           title: "Calling Console",
           sub: "WebRTC Direct Dialing & Live AI Voice Sessions",
           icon: PhoneCall,
+        };
+      case "voice_agent":
+        return {
+          title: "AI Voice Agent Studio",
+          sub: "Deepgram Real-Time Voice Agent configuration & live telemetry",
+          icon: Bot,
         };
       case "twilio":
         return {
@@ -177,6 +185,8 @@ function MainContent() {
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
             <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
+          ) : currentTab === "voice_agent" ? (
+            <VoiceAgentView />
           ) : currentTab === "twilio" ? (
             <TwilioSettingsView />
           ) : currentTab === "theme" ? (

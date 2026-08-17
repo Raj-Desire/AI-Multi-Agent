@@ -8,7 +8,7 @@ from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
-from twilio.twiml.voice_response import VoiceResponse, Dial
+from twilio.twiml.voice_response import VoiceResponse, Dial, Connect, Stream
 
 from app.core.dependencies import TenantContext
 from app.core.security import decrypt_token
@@ -245,10 +245,12 @@ class CallService:
                 # If no specific mapping found, fallback to global number if available
                 if not target_forward_number:
                     target_forward_number = forward_global
-            elif forward_mode == "global":
-                target_forward_number = forward_global
+            if forward_mode == "disabled":
+                response.say("Thank you for calling. Inbound calling is currently disabled.")
+                response.hangup()
+                return str(response)
 
-            if target_forward_number:
+            if target_forward_number and forward_mode != "ai_agent":
                 fwd_destination = normalize_phone_number(target_forward_number)
                 fwd_caller_id = normalize_phone_number(from_caller) or normalize_phone_number(target_twilio_number)
                 print(f"[Twilio Inbound] Forwarding call from {from_caller} on {target_twilio_number} -> {fwd_destination}")
@@ -257,10 +259,23 @@ class CallService:
                 dial.number(fwd_destination)
                 response.append(dial)
                 return str(response)
-            elif forward_mode == "disabled":
-                response.say("Thank you for calling. Inbound call forwarding is currently disabled.")
-                response.hangup()
-                return str(response)
+
+            # Inbound Real-Time AI Agent Answering
+            base_url = (getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
+            ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
+            stream_url = f"{ws_base}/api/v1/voice/stream"
+            print(f"[Twilio Inbound AI] Connecting inbound caller {from_caller} to AI Voice Stream: {stream_url}")
+
+            connect = Connect()
+            stream = Stream(url=stream_url)
+            stream.parameter(name="organization_id", value=tw_cfg.organization_id)
+            stream.parameter(name="agent_id", value="agt_receptionist_default")
+            stream.parameter(name="direction", value="inbound")
+            stream.parameter(name="from", value=from_caller or "")
+            stream.parameter(name="to", value=target_twilio_number or "")
+            connect.append(stream)
+            response.append(connect)
+            return str(response)
 
         # Standard Outbound / Browser WebRTC Call Handling
         caller_number_default = tw_cfg.phone_number.split(",")[0].strip() if (tw_cfg and tw_cfg.phone_number) else None

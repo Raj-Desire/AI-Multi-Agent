@@ -167,3 +167,79 @@ export type PalettePreset =
   | 'Deep'
   | 'Spectrum';
 
+export interface AgentPersonality {
+  professionalism: number;
+  friendliness: number;
+  empathy: number;
+  patience: number;
+  confidence: number;
+  energy: number;
+  assertiveness: number;
+  humor: number;
+  curiosity: number;
+}
+
+export interface AgentVoiceConfig {
+  provider: string;
+  version?: string;
+  model?: string;
+  voice: string;
+  language?: string;
+  speed?: number;
+}
+
+export interface AgentLLMConfig {
+  provider: string;
+  model: string;
+  temperature: number;
+  reasoning_mode?: string;
+}
+
+export interface AgentListenConfig {
+  provider: string;
+  model: string;
+  language: string;
+  eot_threshold?: number;
+  keyterms?: string[];
+}
+
+export interface AgentConfig {
+  agent_id: string;
+  organization_id: string;
+  name: string;
+  description?: string;
+  status: string;
+  role: string;
+  objective: string;
+  communication_style: string;
+  response_length: string;
+  personality: AgentPersonality;
+  voice: AgentVoiceConfig;
+  llm: AgentLLMConfig;
+  listen?: AgentListenConfig;
+  greeting: string;
+  system_prompt?: string | null;
+}
+
+export interface ConversationTurnMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: string;
+  stt_latency_ms?: number;
+  llm_latency_ms?: number;
+  tts_latency_ms?: number;
+  turn_latency_ms?: number;
+}
+
+export interface VoiceTelemetryEvent {
+  event_type: string;
+  call_session_id: string;
+  organization_id: string;
+  agent_id?: string;
+  twilio_call_sid?: string;
+  timestamp: string;
+  payload: Record<string, any>;
+}
+
+
