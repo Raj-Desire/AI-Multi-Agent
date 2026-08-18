@@ -411,6 +411,8 @@ export const SuperAdminPanel: React.FC = () => {
           <DataTable
             columns={orgColumns}
             data={organizations}
+            isLoading={loading}
+            loadingMessage="Loading tenant organizations..."
             searchKey="org_name"
             searchPlaceholder="Search organizations by name or ID..."
             emptyTitle="No organizations provisioned"
@@ -460,6 +462,8 @@ export const SuperAdminPanel: React.FC = () => {
           <DataTable
             columns={userColumns}
             data={filteredUsers}
+            isLoading={loading}
+            loadingMessage="Loading global accounts..."
             searchKey="username"
             searchPlaceholder="Search users across all tenants..."
             emptyTitle="No accounts match filter criteria"

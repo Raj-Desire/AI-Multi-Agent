@@ -43,124 +43,110 @@ def get_cosmos_client() -> Optional[CosmosClient]:
             return None
     return _client
 
-def get_users_container():
-    global _database, _users_container
-    if _users_container is not None:
-        return _users_container
-    
+def get_database():
+    global _database
+    if _database is not None:
+        return _database
     client = get_cosmos_client()
     if not client:
         return None
-
     try:
-        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
-        _database = db
-        container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_USERS,
-            partition_key=PartitionKey(path="/email")
-        )
-        _users_container = container
+        _database = client.get_database_client(COSMOS_DATABASE)
+        return _database
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get database client: {e}")
+        return None
+
+def get_users_container():
+    global _users_container
+    if _users_container is not None:
+        return _users_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _users_container = db.get_container_client(COSMOS_CONTAINER_USERS)
         return _users_container
     except Exception as e:
-        print(f"[CosmosDB Error] Failed to get/create users container: {e}")
+        print(f"[CosmosDB Error] Failed to get users container: {e}")
         return None
 
 def get_twilio_container():
-    global _database, _twilio_container
+    global _twilio_container
     if _twilio_container is not None:
         return _twilio_container
-
-    client = get_cosmos_client()
-    if not client:
+    db = get_database()
+    if not db:
         return None
-
     try:
-        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
-        _database = db
-        container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_TWILIO,
-            partition_key=PartitionKey(path="/user_id")
-        )
-        _twilio_container = container
+        _twilio_container = db.get_container_client(COSMOS_CONTAINER_TWILIO)
         return _twilio_container
     except Exception as e:
-        print(f"[CosmosDB Error] Failed to get/create twilio container: {e}")
+        print(f"[CosmosDB Error] Failed to get twilio container: {e}")
         return None
 
 def get_calls_container():
-    global _database, _calls_container
+    global _calls_container
     if _calls_container is not None:
         return _calls_container
-
-    client = get_cosmos_client()
-    if not client:
+    db = get_database()
+    if not db:
         return None
-
     try:
-        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
-        _database = db
-        container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_CALLS,
-            partition_key=PartitionKey(path="/user_id")
-        )
-        _calls_container = container
+        _calls_container = db.get_container_client(COSMOS_CONTAINER_CALLS)
         return _calls_container
     except Exception as e:
-        print(f"[CosmosDB Error] Failed to get/create calls container: {e}")
+        print(f"[CosmosDB Error] Failed to get calls container: {e}")
         return None
 
 def get_themes_container():
-    global _database, _themes_container
+    global _themes_container
     if _themes_container is not None:
         return _themes_container
-
-    client = get_cosmos_client()
-    if not client:
+    db = get_database()
+    if not db:
         return None
-
     try:
-        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
-        _database = db
-        container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_THEMES,
-            partition_key=PartitionKey(path="/organization_id")
-        )
-        _themes_container = container
+        _themes_container = db.get_container_client(COSMOS_CONTAINER_THEMES)
         return _themes_container
     except Exception as e:
-        print(f"[CosmosDB Error] Failed to get/create themes container: {e}")
+        print(f"[CosmosDB Error] Failed to get themes container: {e}")
         return None
 
 def get_agents_container():
-    global _database, _agents_container
+    global _agents_container
     if _agents_container is not None:
         return _agents_container
-
-    client = get_cosmos_client()
-    if not client:
+    db = get_database()
+    if not db:
         return None
-
     try:
-        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
-        _database = db
-        container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_AGENTS,
-            partition_key=PartitionKey(path="/organization_id")
-        )
-        _agents_container = container
+        _agents_container = db.get_container_client(COSMOS_CONTAINER_AGENTS)
         return _agents_container
     except Exception as e:
-        print(f"[CosmosDB Error] Failed to get/create agents container: {e}")
+        print(f"[CosmosDB Error] Failed to get agents container: {e}")
         return None
 
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
-    container = get_users_container()
-    get_twilio_container()
-    get_calls_container()
-    get_themes_container()
-    get_agents_container()
+    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container
+    client = get_cosmos_client()
+    if not client:
+        print("[CosmosDB Warning] Cosmos client unavailable during startup.")
+        return
 
+    try:
+        db = client.create_database_if_not_exists(id=COSMOS_DATABASE)
+        _database = db
+        _users_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_USERS, partition_key=PartitionKey(path="/email"))
+        _twilio_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_TWILIO, partition_key=PartitionKey(path="/user_id"))
+        _calls_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CALLS, partition_key=PartitionKey(path="/user_id"))
+        _themes_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_THEMES, partition_key=PartitionKey(path="/organization_id"))
+        _agents_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_AGENTS, partition_key=PartitionKey(path="/organization_id"))
+    except Exception as e:
+        print(f"[CosmosDB Error] Container verification during startup: {e}")
+
+    container = get_users_container()
     if not container:
         print("[CosmosDB Warning] Users container unavailable. Skipping initial admin seed.")
         return

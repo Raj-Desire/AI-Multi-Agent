@@ -3,6 +3,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { Input } from "./Input";
 import { Button } from "./Button";
 import { EmptyState } from "./EmptyState";
+import { LoadingState } from "./LoadingState";
 import { Search, ChevronDown, ChevronUp, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface Column<T> {
@@ -17,6 +18,8 @@ export interface Column<T> {
 export interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
+  isLoading?: boolean;
+  loadingMessage?: string;
   searchKey?: keyof T | string;
   searchPlaceholder?: string;
   emptyTitle?: string;
@@ -31,6 +34,8 @@ export interface DataTableProps<T> {
 export function DataTable<T extends Record<string, any>>({
   columns,
   data,
+  isLoading = false,
+  loadingMessage = "Loading records...",
   searchKey,
   searchPlaceholder = "Search...",
   emptyTitle = "No records found",
@@ -115,7 +120,11 @@ export function DataTable<T extends Record<string, any>>({
       )}
 
       {/* Table Surface */}
-      {sortedData.length === 0 ? (
+      {isLoading ? (
+        <div className="p-12 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] shadow-xs">
+          <LoadingState message={loadingMessage} size="md" />
+        </div>
+      ) : sortedData.length === 0 ? (
         <EmptyState
           title={emptyTitle}
           description={searchTerm ? `No results matching "${searchTerm}"` : emptyDescription}

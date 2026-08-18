@@ -28,6 +28,7 @@ import { PageHeader } from "./ui/PageHeader";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { FormSection } from "./ui/FormSection";
 import { Tabs } from "./ui/Tabs";
+import { LoadingState } from "./ui/LoadingState";
 
 export function TwilioSettingsView() {
   const { user, isSuperAdmin } = useAuth();
@@ -327,9 +328,12 @@ export function TwilioSettingsView() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 space-y-3 text-[var(--color-muted)]">
-        <div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-xs font-medium">Loading Twilio configuration...</span>
+      <div className="py-16">
+        <LoadingState
+          message="Loading Twilio & AI Voice configurations..."
+          subMessage="Fetching phone numbers and inbound agent assignments"
+          size="lg"
+        />
       </div>
     );
   }
@@ -580,7 +584,7 @@ export function TwilioSettingsView() {
                   {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                     <optgroup label="My Organization Agents">
                       {availableAgents.my_agents.map((a) => (
-                        <option key={a.agent_id} value={a.agent_id}>
+                        <option key={`my_def_${a.agent_id}`} value={a.agent_id}>
                           {a.name} (v{a.version}) - {a.role}
                         </option>
                       ))}
@@ -588,11 +592,13 @@ export function TwilioSettingsView() {
                   )}
                   {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
                     <optgroup label="Desire AI Platform Defaults">
-                      {availableAgents.default_agents.map((a) => (
-                        <option key={a.agent_id} value={a.agent_id}>
-                          {a.name} - {a.role}
-                        </option>
-                      ))}
+                      {availableAgents.default_agents
+                        .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
+                        .map((a) => (
+                          <option key={`platform_def_${a.agent_id}`} value={a.agent_id}>
+                            {a.name} - {a.role}
+                          </option>
+                        ))}
                     </optgroup>
                   )}
                 </select>
@@ -627,7 +633,7 @@ export function TwilioSettingsView() {
                             {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                               <optgroup label="My Organization Agents">
                                 {availableAgents.my_agents.map((a) => (
-                                  <option key={a.agent_id} value={a.agent_id}>
+                                  <option key={`my_map_${num}_${a.agent_id}`} value={a.agent_id}>
                                     {a.name}
                                   </option>
                                 ))}
@@ -635,11 +641,13 @@ export function TwilioSettingsView() {
                             )}
                             {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
                               <optgroup label="Platform Defaults">
-                                {availableAgents.default_agents.map((a) => (
-                                  <option key={a.agent_id} value={a.agent_id}>
-                                    {a.name}
-                                  </option>
-                                ))}
+                                {availableAgents.default_agents
+                                  .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
+                                  .map((a) => (
+                                    <option key={`platform_map_${num}_${a.agent_id}`} value={a.agent_id}>
+                                      {a.name}
+                                    </option>
+                                  ))}
                               </optgroup>
                             )}
                           </select>

@@ -582,6 +582,8 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         <DataTable
           columns={myColumns}
           data={myAgentsList}
+          isLoading={loading}
+          loadingMessage="Loading organization voice agents..."
           emptyTitle="No organization agents created yet"
           emptyDescription="Create a tailored AI voice agent or duplicate one of the Desire AI Platform default agents."
           pagination={true}
@@ -602,6 +604,8 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         <DataTable
           columns={defaultColumns}
           data={defaultAgentsList}
+          isLoading={loading}
+          loadingMessage="Loading platform default agents..."
           emptyTitle="No platform default agents found"
           emptyDescription="Platform default agents are provisioned automatically."
           pagination={false}

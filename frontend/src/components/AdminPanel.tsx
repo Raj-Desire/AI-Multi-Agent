@@ -267,6 +267,8 @@ export const AdminPanel: React.FC = () => {
         <DataTable
           columns={columns}
           data={users}
+          isLoading={loading}
+          loadingMessage="Loading workspace team members..."
           searchKey="username"
           searchPlaceholder="Search members by name or email..."
           emptyTitle="No team members found"

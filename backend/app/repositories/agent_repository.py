@@ -4,14 +4,28 @@ Provides tenant-isolated persistence for AgentConfiguration models in Cosmos DB 
 Supports GLOBAL (platform default) and ORGANIZATION (private tenant) scopes, versioning, duplication, and status transitions.
 """
 
+import time
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import uuid
 import copy
 
 from app.agents.configuration import AgentConfiguration, get_default_platform_agents, get_default_receptionist_agent
 from app.core.cosmos import get_agents_container
+
+
+# In-memory agent list cache with TTL for fast load times (<1ms)
+_AGENT_CACHE: Dict[str, Tuple[List[AgentConfiguration], float]] = {}
+AGENT_CACHE_TTL_SECONDS = 60.0
+
+def _invalidate_agent_cache(org_id: Optional[str] = None):
+    if org_id and org_id in _AGENT_CACHE:
+        del _AGENT_CACHE[org_id]
+    if "global" in _AGENT_CACHE:
+        del _AGENT_CACHE["global"]
+    # Clear all org caches if a global agent was modified
+    _AGENT_CACHE.clear()
 
 
 class AgentRepository:
@@ -74,7 +88,7 @@ class AgentRepository:
                         org_item = next((i for i in items if i.get("organization_id") == organization_id), items[0])
                         return AgentConfiguration.model_validate(org_item)
                 except Exception as e:
-                    print(f"[AgentRepository Warning] get_by_id failed: {e}")
+                    print(f"[AgentRepository Warning] get_by_id failed for {agent_id}: {e}")
 
             # Memory fallback
             org_agents = self._memory_store.get(organization_id, {})
@@ -89,9 +103,17 @@ class AgentRepository:
 
     async def list_by_org(self, organization_id: str, include_global: bool = True) -> List[AgentConfiguration]:
         """Lists all agent configurations for a given organization (including global defaults if requested)."""
+        cache_key = f"{organization_id}_{include_global}"
+        cached = _AGENT_CACHE.get(cache_key)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < AGENT_CACHE_TTL_SECONDS:
+                return data
+            del _AGENT_CACHE[cache_key]
+
         def _sync_list():
             results: List[AgentConfiguration] = []
-            seen_keys = set()
+            seen_agent_ids = set()
 
             container = get_agents_container()
             if container:
@@ -101,9 +123,9 @@ class AgentRepository:
                     items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                     for item in items:
                         cfg = AgentConfiguration.model_validate(item)
-                        key = (cfg.organization_id, cfg.agent_id)
-                        results.append(cfg)
-                        seen_keys.add(key)
+                        if cfg.agent_id not in seen_agent_ids:
+                            results.append(cfg)
+                            seen_agent_ids.add(cfg.agent_id)
                 except Exception as e:
                     print(f"[AgentRepository Warning] list_by_org failed for org {organization_id}: {e}")
 
@@ -113,28 +135,27 @@ class AgentRepository:
                         g_items = list(container.query_items(query=g_query, enable_cross_partition_query=True))
                         for g_item in g_items:
                             g_cfg = AgentConfiguration.model_validate(g_item)
-                            key = (g_cfg.organization_id, g_cfg.agent_id)
-                            if key not in seen_keys:
+                            # Do not duplicate if org already overrode or has this agent_id
+                            if g_cfg.agent_id not in seen_agent_ids:
                                 results.append(g_cfg)
-                                seen_keys.add(key)
+                                seen_agent_ids.add(g_cfg.agent_id)
                     except Exception as e:
                         print(f"[AgentRepository Warning] list_by_org global fetch failed: {e}")
 
             # Memory fallback merge
             org_mem = self._memory_store.get(organization_id, {})
             for agt in org_mem.values():
-                key = (agt.organization_id, agt.agent_id)
-                if key not in seen_keys:
+                if agt.agent_id not in seen_agent_ids:
                     results.append(agt)
-                    seen_keys.add(key)
+                    seen_agent_ids.add(agt.agent_id)
 
             if include_global:
                 for g_agt in self._memory_store.get("global", {}).values():
-                    key = (g_agt.organization_id, g_agt.agent_id)
-                    if key not in seen_keys:
+                    if g_agt.agent_id not in seen_agent_ids:
                         results.append(g_agt)
-                        seen_keys.add(key)
+                        seen_agent_ids.add(g_agt.agent_id)
 
+            _AGENT_CACHE[cache_key] = (results, time.time())
             return results
 
         return await asyncio.to_thread(_sync_list)
@@ -175,6 +196,7 @@ class AgentRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[AgentRepository Warning] Cosmos DB save failed for {config.agent_id}: {e}")
+            _invalidate_agent_cache(org_key)
             return config
 
         return await asyncio.to_thread(_sync_save)

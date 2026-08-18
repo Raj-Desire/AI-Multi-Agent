@@ -1,19 +1,36 @@
-from typing import List, Optional, Dict, Any
+import time
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 import asyncio
 from app.models.call import Call
 from app.core.cosmos import get_calls_container
+
+_CALLS_CACHE: Dict[str, Tuple[List[Call], float]] = {}
+CALLS_CACHE_TTL_SECONDS = 15.0
+
+def _invalidate_calls_cache(org_id: Optional[str] = None):
+    if org_id and org_id in _CALLS_CACHE:
+        del _CALLS_CACHE[org_id]
+    else:
+        _CALLS_CACHE.clear()
 
 class CallRepository:
     def __init__(self):
         self._memory_store: Dict[str, Call] = {}
 
     async def list_by_org(self, organization_id: str) -> List[Call]:
+        cached = _CALLS_CACHE.get(organization_id)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < CALLS_CACHE_TTL_SECONDS:
+                return data
+            del _CALLS_CACHE[organization_id]
+
         def _sync_list():
             container = get_calls_container()
             if not container:
                 return [c for c in self._memory_store.values() if c.organization_id == organization_id]
-            query = "SELECT * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
+            query = "SELECT TOP 100 * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
             params = [{"name": "@organization_id", "value": organization_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
@@ -44,6 +61,7 @@ class CallRepository:
                         created_at=created_dt,
                         updated_at=updated_dt
                     ))
+                _CALLS_CACHE[organization_id] = (calls, time.time())
                 return calls
             except Exception as e:
                 print(f"[CallRepository Error] list_by_org: {e}")
@@ -145,6 +163,7 @@ class CallRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[CallRepository Error] save: {e}")
+            _invalidate_calls_cache(call.organization_id)
             return call
 
         return await asyncio.to_thread(_sync_save)

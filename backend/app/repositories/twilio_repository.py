@@ -1,11 +1,27 @@
-from typing import Dict, Optional, List
+import time
+from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timezone
 from app.models.twilio import TwilioConfiguration
 from app.core.cosmos import get_twilio_container
 
+_TWILIO_CACHE: Dict[str, Tuple[Optional[TwilioConfiguration], float]] = {}
+TWILIO_CACHE_TTL_SECONDS = 60.0
+
+def _invalidate_twilio_cache(org_id: Optional[str] = None):
+    if org_id and org_id in _TWILIO_CACHE:
+        del _TWILIO_CACHE[org_id]
+    else:
+        _TWILIO_CACHE.clear()
 
 class TwilioRepository:
     async def get_by_org(self, organization_id: str) -> Optional[TwilioConfiguration]:
+        cached = _TWILIO_CACHE.get(organization_id)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < TWILIO_CACHE_TTL_SECONDS:
+                return data
+            del _TWILIO_CACHE[organization_id]
+
         container = get_twilio_container()
         if not container:
             return None
@@ -16,7 +32,7 @@ class TwilioRepository:
             items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
             if items:
                 item = items[0]
-                return TwilioConfiguration(
+                cfg = TwilioConfiguration(
                     id=item.get("id", f"cfg_{organization_id}"),
                     organization_id=item.get("user_id", organization_id),
                     account_sid=item.get("account_sid", ""),
@@ -33,8 +49,14 @@ class TwilioRepository:
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
                 )
+                _TWILIO_CACHE[organization_id] = (cfg, time.time())
+                return cfg
+            else:
+                _TWILIO_CACHE[organization_id] = (None, time.time())
+                return None
         except Exception as e:
             print(f"[TwilioRepository Error] get_by_org: {e}")
+            return None
         
     async def list_all(self) -> List[TwilioConfiguration]:
         container = get_twilio_container()
@@ -127,6 +149,7 @@ class TwilioRepository:
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 container.upsert_item(body=doc)
+                _invalidate_twilio_cache(config.organization_id)
             except Exception as e:
                 print(f"[TwilioRepository Error] save: {e}")
         return config

@@ -11,6 +11,7 @@ import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
 import { AgentManagementView } from "./components/AgentManagementView";
 import { Sidebar, NavTab } from "./components/Sidebar";
+import { LoadingState } from "./components/ui/LoadingState";
 import {
   Menu,
   PhoneCall,
@@ -33,18 +34,12 @@ function MainContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div
-            style={{
-              borderColor: "var(--color-primary)",
-              borderTopColor: "transparent",
-            }}
-            className="w-7 h-7 border-2 rounded-full animate-spin"
-          />
-          <span className="text-xs font-medium text-[var(--color-muted)]">Loading session...</span>
-        </div>
-      </div>
+      <LoadingState
+        fullPage
+        message="Loading workspace session..."
+        subMessage="Applying organization identity and credentials"
+        size="md"
+      />
     );
   }
 

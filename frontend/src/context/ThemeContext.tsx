@@ -60,11 +60,26 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const THEME_CACHE_KEY = "desire_cached_org_theme";
+
+function getCachedTheme(): OrganizationThemeConfig {
+  try {
+    const saved = localStorage.getItem(THEME_CACHE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.colors && parsed.appearance) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+  return DEFAULT_ORG_THEME;
+}
+
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [theme, setTheme] = useState<OrganizationThemeConfig>(DEFAULT_ORG_THEME);
-  const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(DEFAULT_ORG_THEME);
-  const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<OrganizationThemeConfig>(getCachedTheme);
+  const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(getCachedTheme);
+  const [isLoading, setIsLoading] = useState(false);
 
   // User personal preferences stored locally (default: light)
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(() => {
@@ -84,8 +99,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     async function loadOrgTheme() {
       if (!user) {
-        setTheme(DEFAULT_ORG_THEME);
-        setDraftTheme(DEFAULT_ORG_THEME);
+        const fallback = DEFAULT_ORG_THEME;
+        setTheme(fallback);
+        setDraftTheme(fallback);
+        localStorage.removeItem(THEME_CACHE_KEY);
         setIsLoading(false);
         return;
       }
@@ -96,18 +113,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (data && data.colors) {
           setTheme(data);
           setDraftTheme(data);
+          try {
+            localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data));
+          } catch (e) {}
         }
       } catch (err) {
-        console.warn("Could not load organization theme from API, using default:", err);
-        setTheme(DEFAULT_ORG_THEME);
-        setDraftTheme(DEFAULT_ORG_THEME);
+        console.warn("Could not load organization theme from API, using cached or default:", err);
       } finally {
         setIsLoading(false);
       }
     }
 
     loadOrgTheme();
-  }, [user?.id]);
+  }, [user?.id, user?.organization_id]);
 
   // Apply draftTheme CSS tokens to document in real time
   useEffect(() => {
@@ -131,10 +149,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       setTheme(updated);
       setDraftTheme(updated);
+      try {
+        localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(updated));
+      } catch (e) {}
     } catch (err: any) {
       console.error("Failed to save theme to server:", err);
       // Still persist locally
       setTheme(draftTheme);
+      try {
+        localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(draftTheme));
+      } catch (e) {}
       throw err;
     }
   };
@@ -148,12 +172,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const resetData = await fetchApi<OrganizationThemeConfig>("/organization/theme/reset", {
         method: "POST",
       });
-      setTheme(resetData || DEFAULT_ORG_THEME);
-      setDraftTheme(resetData || DEFAULT_ORG_THEME);
+      const res = resetData || DEFAULT_ORG_THEME;
+      setTheme(res);
+      setDraftTheme(res);
+      try {
+        localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(res));
+      } catch (e) {}
     } catch (err) {
       console.warn("Reset API failed, using fallback:", err);
       setTheme(DEFAULT_ORG_THEME);
       setDraftTheme(DEFAULT_ORG_THEME);
+      try {
+        localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(DEFAULT_ORG_THEME));
+      } catch (e) {}
     }
   };
 

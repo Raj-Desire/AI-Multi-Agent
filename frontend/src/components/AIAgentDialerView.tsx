@@ -467,7 +467,7 @@ export function AIAgentDialerView({
                 {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                   <optgroup label="My Organization Agents">
                     {availableAgents.my_agents.map((a) => (
-                      <option key={a.agent_id} value={a.agent_id}>
+                      <option key={`my_agent_${a.agent_id}`} value={a.agent_id}>
                         {a.name} (v{a.version}) - {a.role}
                       </option>
                     ))}
@@ -475,11 +475,13 @@ export function AIAgentDialerView({
                 )}
                 {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
                   <optgroup label="Desire AI Platform Defaults">
-                    {availableAgents.default_agents.map((a) => (
-                      <option key={a.agent_id} value={a.agent_id}>
-                        {a.name} - {a.role}
-                      </option>
-                    ))}
+                    {availableAgents.default_agents
+                      .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
+                      .map((a) => (
+                        <option key={`platform_agent_${a.agent_id}`} value={a.agent_id}>
+                          {a.name} - {a.role}
+                        </option>
+                      ))}
                   </optgroup>
                 )}
               </select>
@@ -704,6 +706,8 @@ export function AIAgentDialerView({
         <DataTable
           columns={columns}
           data={calls}
+          isLoading={loading}
+          loadingMessage="Loading AI agent call records..."
           searchKey="to_number"
           searchPlaceholder="Search calls by phone number or agent name..."
           emptyTitle="No call records yet"

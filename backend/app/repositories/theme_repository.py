@@ -1,9 +1,14 @@
 import uuid
+import time
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from app.core.cosmos import get_themes_container
 from app.models.theme import OrganizationThemeConfig, ThemeIdentity, ThemeColors, ThemeAppearance, ThemeTypography
+
+# Organization Theme memory cache for instant <1ms lookups
+_THEME_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
+THEME_CACHE_TTL_SECONDS = 120.0
 
 DEFAULT_THEME = {
     "identity": {
@@ -47,31 +52,44 @@ DEFAULT_THEME = {
 class ThemeRepository:
     @staticmethod
     async def get_theme(organization_id: str) -> Dict[str, Any]:
+        cached = _THEME_CACHE.get(organization_id)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < THEME_CACHE_TTL_SECONDS:
+                return data
+            del _THEME_CACHE[organization_id]
+
         def _sync_get():
             container = get_themes_container()
             if not container:
-                return {
+                doc = {
                     "id": f"theme_{organization_id}",
                     "organization_id": organization_id,
                     **DEFAULT_THEME,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
+                _THEME_CACHE[organization_id] = (doc, time.time())
+                return doc
+
             query = "SELECT * FROM c WHERE c.organization_id = @org_id"
             params = [{"name": "@org_id", "value": organization_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 if items:
+                    _THEME_CACHE[organization_id] = (items[0], time.time())
                     return items[0]
             except Exception as e:
                 print(f"[ThemeRepository Error] get_theme: {e}")
             
             # Default theme fallback
-            return {
+            doc = {
                 "id": f"theme_{organization_id}",
                 "organization_id": organization_id,
                 **DEFAULT_THEME,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
+            _THEME_CACHE[organization_id] = (doc, time.time())
+            return doc
 
         return await asyncio.to_thread(_sync_get)
 
@@ -114,6 +132,7 @@ class ThemeRepository:
             theme_doc["updated_by"] = user_email
 
             container.upsert_item(body=theme_doc)
+            _THEME_CACHE[organization_id] = (theme_doc, time.time())
             return theme_doc
 
         return await asyncio.to_thread(_sync_save)
@@ -134,6 +153,7 @@ class ThemeRepository:
                 "updated_by": user_email
             }
             container.upsert_item(body=theme_doc)
+            _THEME_CACHE[organization_id] = (theme_doc, time.time())
             return theme_doc
 
         return await asyncio.to_thread(_sync_reset)

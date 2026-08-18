@@ -1,22 +1,60 @@
 import uuid
+import time
 import asyncio
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from app.core.cosmos import get_users_container
 from app.core.security import hash_password
+
+# In-memory user cache with TTL for ultra-fast auth token verification (<1ms)
+_USER_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
+_USER_EMAIL_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
+CACHE_TTL_SECONDS = 60.0
+
+def _get_cached_user(user_id: str) -> Optional[Dict[str, Any]]:
+    cached = _USER_CACHE.get(user_id)
+    if cached:
+        data, ts = cached
+        if time.time() - ts < CACHE_TTL_SECONDS:
+            return data
+        del _USER_CACHE[user_id]
+    return None
+
+def _set_cached_user(user_id: str, data: Dict[str, Any]):
+    now = time.time()
+    _USER_CACHE[user_id] = (data, now)
+    if "email" in data:
+        _USER_EMAIL_CACHE[data["email"].lower().strip()] = (data, now)
+
+def _invalidate_user_cache(user_id: Optional[str] = None, email: Optional[str] = None):
+    if user_id and user_id in _USER_CACHE:
+        del _USER_CACHE[user_id]
+    if email and email.lower().strip() in _USER_EMAIL_CACHE:
+        del _USER_EMAIL_CACHE[email.lower().strip()]
 
 class UserRepository:
     @staticmethod
     async def get_by_email(email: str) -> Optional[Dict[str, Any]]:
+        clean_email = email.lower().strip()
+        cached = _USER_EMAIL_CACHE.get(clean_email)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < CACHE_TTL_SECONDS:
+                return data
+            del _USER_EMAIL_CACHE[clean_email]
+
         def _sync_get():
             container = get_users_container()
             if not container:
                 return None
             query = "SELECT * FROM c WHERE c.email = @email"
-            params = [{"name": "@email", "value": email.lower().strip()}]
+            params = [{"name": "@email", "value": clean_email}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                return items[0] if items else None
+                if items:
+                    _set_cached_user(items[0]["id"], items[0])
+                    return items[0]
+                return None
             except Exception as e:
                 print(f"[UserRepository Error] get_by_email: {e}")
                 return None
@@ -24,6 +62,10 @@ class UserRepository:
 
     @staticmethod
     async def get_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+        cached = _get_cached_user(user_id)
+        if cached:
+            return cached
+
         def _sync_get():
             container = get_users_container()
             if not container:
@@ -32,7 +74,10 @@ class UserRepository:
             params = [{"name": "@user_id", "value": user_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                return items[0] if items else None
+                if items:
+                    _set_cached_user(user_id, items[0])
+                    return items[0]
+                return None
             except Exception as e:
                 print(f"[UserRepository Error] get_by_id: {e}")
                 return None
@@ -242,6 +287,7 @@ class UserRepository:
                 return None
             try:
                 container.upsert_item(body=target_user)
+                _invalidate_user_cache(user_id=user_id, email=target_user.get("email"))
                 return target_user
             except Exception as e:
                 print(f"[UserRepository Error] update_user: {e}")
@@ -262,6 +308,7 @@ class UserRepository:
             try:
                 target_user["hashed_password"] = hash_password(new_password)
                 container.upsert_item(body=target_user)
+                _invalidate_user_cache(user_id=user_id, email=target_user.get("email"))
                 return True
             except Exception as e:
                 print(f"[UserRepository Error] update_password: {e}")
@@ -277,6 +324,7 @@ class UserRepository:
                 return False
             try:
                 container.delete_item(item=user_id, partition_key=email.lower().strip())
+                _invalidate_user_cache(user_id=user_id, email=email)
                 return True
             except Exception as e:
                 print(f"[UserRepository Error] delete_user: {e}")

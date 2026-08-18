@@ -88,17 +88,20 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
   async function loadData() {
     try {
       setLoadingConfig(true);
-      const twCfg = await fetchApi<TwilioConfig | null>("/twilio/configuration");
+      const [twCfg, callList] = await Promise.all([
+        fetchApi<TwilioConfig | null>("/twilio/configuration").catch(() => null),
+        fetchApi<CallRecord[]>("/calls").catch(() => []),
+      ]);
+
       setConfig(twCfg);
+      setCalls(callList);
+
       if (twCfg?.phone_number) {
         const numbers = twCfg.phone_number.split(",").map((n) => n.trim()).filter(Boolean);
         if (numbers.length > 0) {
           setSelectedFromNumber(numbers[0]);
         }
       }
-
-      const callList = await fetchApi<CallRecord[]>("/calls");
-      setCalls(callList);
 
       if (twCfg && twCfg.account_sid) {
         initializeWebRTCDevice();
@@ -604,6 +607,8 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
         <DataTable
           columns={columns}
           data={calls}
+          isLoading={loadingConfig}
+          loadingMessage="Loading call sessions..."
           searchKey="to_number"
           searchPlaceholder="Search calls by number or SID..."
           emptyTitle="No calls recorded yet"
