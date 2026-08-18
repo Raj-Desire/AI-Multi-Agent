@@ -108,7 +108,7 @@ export function AIAgentDialerView({
       const [twCfg, agentsRes, callList] = await Promise.all([
         fetchApi<TwilioConfig | null>("/twilio/configuration").catch(() => null),
         fetchApi<AvailableAgentsResponse>("/agents/available").catch(() => ({ my_agents: [], default_agents: [] })),
-        fetchApi<CallRecord[]>("/calls").catch(() => []),
+        fetchApi<CallRecord[]>("/calls?type=ai").catch(() => []),
       ]);
 
       setConfig(twCfg);
@@ -377,7 +377,7 @@ export function AIAgentDialerView({
       {/* Top Header */}
       <PageHeader
         title="AI Voice Agent Dialer"
-        description="Select any AI Voice Agent, place conversational AI calls with full STT/LLM/TTS telemetry, and inspect live conversation transcripts."
+        description="Select any AI Voice Agent, place conversational AI calls."
         badge={
           <Badge variant="primary" size="md">
             AI Agent Mode
@@ -499,10 +499,10 @@ export function AIAgentDialerView({
                     <Volume2 className="w-3 h-3 text-[var(--color-primary)]" />
                     <span>Voice: <strong className="text-[var(--color-heading)] font-mono">{selectedAgent.voice?.voice}</strong></span>
                   </div>
-                  <div className="flex items-center gap-1 text-[var(--color-muted)]">
+                  {/* <div className="flex items-center gap-1 text-[var(--color-muted)]">
                     <Cpu className="w-3 h-3 text-[var(--color-primary)]" />
                     <span>LLM: <strong className="text-[var(--color-heading)] font-mono">{selectedAgent.llm?.model}</strong></span>
-                  </div>
+                  </div> */}
                 </div>
                 <p className="text-[11px] text-[var(--color-muted)] italic line-clamp-2">
                   "{selectedAgent.greeting}"

@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends, Request
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Request, Query
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.call import MakeCallRequest, CallResponse
 from app.schemas.common import ApiResponse
@@ -42,8 +42,16 @@ async def get_voice_token(
 
 @router.get("", response_model=ApiResponse[List[CallResponse]])
 async def list_calls(
+    type: Optional[str] = None,  # "simple" | "ai" | None
     ctx: TenantContext = Depends(get_tenant_context),
     service: CallService = Depends(get_call_service)
 ):
-    calls = await service.list_calls(ctx)
+    """
+    Returns call history for this organization.
+    Filter options:
+    - `type=simple`: only traditional WebRTC phone calls (no AI Agent)
+    - `type=ai`: only calls handled by AI Voice Agents
+    - `type=None`: all calls
+    """
+    calls = await service.list_calls(ctx, call_type=type)
     return ApiResponse.ok([CallResponse.model_validate(c) for c in calls])

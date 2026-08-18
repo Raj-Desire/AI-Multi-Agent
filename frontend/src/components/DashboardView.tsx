@@ -90,7 +90,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       setLoadingConfig(true);
       const [twCfg, callList] = await Promise.all([
         fetchApi<TwilioConfig | null>("/twilio/configuration").catch(() => null),
-        fetchApi<CallRecord[]>("/calls").catch(() => []),
+        fetchApi<CallRecord[]>("/calls?type=simple").catch(() => []),
       ]);
 
       setConfig(twCfg);

@@ -33,7 +33,7 @@ class SpeakProviderConfig(BaseModel):
     model: str = "aura"
     voice: str = "aura-orion-en"
     language: str = "en"
-    speed: float = 0.8
+    speed: float = 1.0
     pitch: Optional[float] = None
     volume: Optional[float] = None
 
@@ -327,7 +327,7 @@ def get_default_receptionist_agent(organization_id: str = "global") -> AgentConf
         objective="Understand the customer's reason for calling and provide appropriate assistance or route the conversation toward the next useful action.",
         communication_style="Professional + Friendly",
         greeting="Hi, thanks for calling. You're speaking with Desire AI. How can I help you today?",
-        voice=SpeakProviderConfig(voice="aura-orion-en", speed=0.8),
+        voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
         personality=AgentPersonality(
             professionalism=90,
             friendliness=85,

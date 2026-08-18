@@ -261,6 +261,14 @@ class CallService:
                 selected_to = to or called_number or ""
                 effective_org = tw_cfg.organization_id if tw_cfg else org_id
                 cfg_id = tw_cfg.id if tw_cfg else ""
+
+                # If this is a direct WebRTC browser call (not inbound AI and not explicitly assigned an agent), mark as simple direct call
+                record_agent_id = selected_agent_id if is_inbound else None
+                record_agent_name = agent_name if is_inbound else None
+                record_agent_version = agent_version if is_inbound else None
+                record_agent_scope = agent_scope if is_inbound else None
+                record_agent_snapshot = agent_snapshot if is_inbound else None
+
                 new_call = Call(
                     id=f"cal_{uuid.uuid4().hex[:12]}",
                     organization_id=effective_org,
@@ -270,13 +278,13 @@ class CallService:
                     from_number=selected_from,
                     to_number=selected_to,
                     duration=0,
-                    prompt=f"Agent: {agent_name} (v{agent_version})",
+                    prompt="Direct WebRTC Call" if not is_inbound else f"Agent: {agent_name} (v{agent_version})",
                     status="in-progress",
-                    agent_id=selected_agent_id,
-                    agent_version=agent_version,
-                    agent_name=agent_name,
-                    agent_scope=agent_scope,
-                    agent_config_snapshot=agent_snapshot,
+                    agent_id=record_agent_id,
+                    agent_version=record_agent_version,
+                    agent_name=record_agent_name,
+                    agent_scope=record_agent_scope,
+                    agent_config_snapshot=record_agent_snapshot,
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
                 )
@@ -355,36 +363,45 @@ class CallService:
 
         return str(response)
 
-    async def list_calls(self, ctx: TenantContext) -> List[Call]:
-        calls = await self.call_repo.list_by_org(ctx.organization_id)
-        if not calls and ctx.user_id and ctx.user_id != ctx.organization_id:
-            calls = await self.call_repo.list_by_org(ctx.user_id)
+    async def list_calls(self, ctx: TenantContext, call_type: Optional[str] = None) -> List[Call]:
+        try:
+            calls = await self.call_repo.list_by_org(ctx.organization_id, call_type=call_type)
+            if not calls and ctx.user_id and ctx.user_id != ctx.organization_id:
+                calls = await self.call_repo.list_by_org(ctx.user_id, call_type=call_type)
+                
+            tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
+            if not tw_cfg and ctx.user_id:
+                tw_cfg = await self.twilio_repo.get_by_org(ctx.user_id)
             
-        tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
-        if not tw_cfg and ctx.user_id:
-            tw_cfg = await self.twilio_repo.get_by_org(ctx.user_id)
-        
-        if tw_cfg and calls:
-            def _sync_twilio_updates():
-                try:
-                    auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
-                    client = Client(tw_cfg.account_sid, auth_token)
-                    for call in calls:
-                        if call.call_sid and call.status not in ["completed", "failed", "busy", "no-answer"]:
-                            try:
-                                tw_fetch = client.calls(call.call_sid).fetch()
-                                call.status = tw_fetch.status or call.status
-                                if tw_fetch.duration and str(tw_fetch.duration).isdigit():
-                                    call.duration = int(tw_fetch.duration)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+            if tw_cfg and calls:
+                def _sync_twilio_updates():
+                    try:
+                        if not tw_cfg.encrypted_auth_token:
+                            return
+                        auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
+                        client = Client(tw_cfg.account_sid, auth_token)
+                        for call in calls:
+                            if call.call_sid and call.status not in ["completed", "failed", "busy", "no-answer"]:
+                                try:
+                                    tw_fetch = client.calls(call.call_sid).fetch()
+                                    call.status = tw_fetch.status or call.status
+                                    if tw_fetch.duration and str(tw_fetch.duration).isdigit():
+                                        call.duration = int(tw_fetch.duration)
+                                except Exception:
+                                    pass
+                    except Exception as ex:
+                        print(f"[CallService Warning] _sync_twilio_updates: {ex}")
 
-            await asyncio.to_thread(_sync_twilio_updates)
-            
-            # Persist any updated statuses/durations to database
-            for call in calls:
-                await self.call_repo.save(call)
+                await asyncio.to_thread(_sync_twilio_updates)
+                
+                # Persist any updated statuses/durations to database
+                for call in calls:
+                    try:
+                        await self.call_repo.save(call)
+                    except Exception:
+                        pass
 
-        return calls
+            return calls
+        except Exception as e:
+            print(f"[CallService Error] list_calls: {e}")
+            return []

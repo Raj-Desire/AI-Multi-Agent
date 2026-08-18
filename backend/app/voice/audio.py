@@ -112,6 +112,18 @@ class AudioAdapter:
             return b""
 
     @staticmethod
+    def chunk_mulaw_audio(raw_audio: bytes, chunk_size: int = 320) -> list[bytes]:
+        """
+        Splits large audio buffers from TTS into optimal telephony chunks (default 320 bytes = 40ms of 8kHz mu-law audio).
+        This prevents buffer underruns, packet drops, and audio stuttering on Twilio Media Streams.
+        """
+        if not raw_audio:
+            return []
+        if len(raw_audio) <= chunk_size:
+            return [raw_audio]
+        return [raw_audio[i:i + chunk_size] for i in range(0, len(raw_audio), chunk_size)]
+
+    @staticmethod
     def bytes_to_twilio_media_payload(raw_audio: bytes) -> str:
         """Encodes raw audio bytes to base64 string for Twilio media stream."""
         if not raw_audio:

@@ -18,18 +18,25 @@ class CallRepository:
     def __init__(self):
         self._memory_store: Dict[str, Call] = {}
 
-    async def list_by_org(self, organization_id: str) -> List[Call]:
-        cached = _CALLS_CACHE.get(organization_id)
+    async def list_by_org(self, organization_id: str, call_type: Optional[str] = None) -> List[Call]:
+        cache_key = f"{organization_id}:{call_type or 'all'}"
+        cached = _CALLS_CACHE.get(cache_key)
         if cached:
             data, ts = cached
             if time.time() - ts < CALLS_CACHE_TTL_SECONDS:
                 return data
-            del _CALLS_CACHE[organization_id]
+            del _CALLS_CACHE[cache_key]
 
         def _sync_list():
             container = get_calls_container()
             if not container:
-                return [c for c in self._memory_store.values() if c.organization_id == organization_id]
+                all_calls = [c for c in self._memory_store.values() if c.organization_id == organization_id]
+                if call_type == "simple":
+                    return [c for c in all_calls if not c.agent_id or c.agent_id == ""]
+                elif call_type == "ai":
+                    return [c for c in all_calls if c.agent_id and c.agent_id != ""]
+                return all_calls
+
             query = "SELECT TOP 100 * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
             params = [{"name": "@organization_id", "value": organization_id}]
             try:
@@ -38,6 +45,13 @@ class CallRepository:
                 for item in items:
                     created_dt = datetime.fromisoformat(item["created_at"]) if isinstance(item.get("created_at"), str) else datetime.now(timezone.utc)
                     updated_dt = datetime.fromisoformat(item["updated_at"]) if isinstance(item.get("updated_at"), str) else datetime.now(timezone.utc)
+                    
+                    item_agent_id = item.get("agent_id")
+                    if call_type == "simple" and item_agent_id and item_agent_id != "":
+                        continue
+                    elif call_type == "ai" and (not item_agent_id or item_agent_id == ""):
+                        continue
+
                     calls.append(Call(
                         id=item["id"],
                         organization_id=item.get("organization_id", organization_id),
@@ -49,7 +63,7 @@ class CallRepository:
                         duration=int(item.get("duration", 0)),
                         prompt=item.get("prompt"),
                         status=item.get("status", "initiated"),
-                        agent_id=item.get("agent_id"),
+                        agent_id=item_agent_id,
                         agent_version=item.get("agent_version", 1),
                         agent_name=item.get("agent_name"),
                         agent_scope=item.get("agent_scope"),
@@ -61,11 +75,16 @@ class CallRepository:
                         created_at=created_dt,
                         updated_at=updated_dt
                     ))
-                _CALLS_CACHE[organization_id] = (calls, time.time())
+                _CALLS_CACHE[cache_key] = (calls, time.time())
                 return calls
             except Exception as e:
                 print(f"[CallRepository Error] list_by_org: {e}")
-                return [c for c in self._memory_store.values() if c.organization_id == organization_id]
+                all_calls = [c for c in self._memory_store.values() if c.organization_id == organization_id]
+                if call_type == "simple":
+                    return [c for c in all_calls if not c.agent_id or c.agent_id == ""]
+                elif call_type == "ai":
+                    return [c for c in all_calls if c.agent_id and c.agent_id != ""]
+                return all_calls
 
         return await asyncio.to_thread(_sync_list)
 

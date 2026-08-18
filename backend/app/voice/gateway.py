@@ -51,13 +51,17 @@ async def voice_stream_websocket(websocket: WebSocket):
     turn_start_time: float = time.perf_counter()
 
     async def handle_deepgram_audio(raw_audio: bytes):
-        """Forward audio from Deepgram TTS to Twilio Media Stream."""
+        """Forward audio from Deepgram TTS to Twilio Media Stream with smooth telephony chunking."""
         nonlocal stream_sid
         if not stream_sid:
             return
         try:
-            msg = AudioAdapter.create_twilio_media_message(stream_sid, raw_audio)
-            await websocket.send_text(msg)
+            # Twilio Media Streams expect 20ms-40ms frames (160-320 bytes).
+            # Sending giant un-chunked audio buffers causes Twilio jitter buffer overflow, packet drops, and audio stuttering.
+            chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=320)
+            for chunk in chunks:
+                msg = AudioAdapter.create_twilio_media_message(stream_sid, chunk)
+                await websocket.send_text(msg)
         except Exception as e:
             logger.error(f"[VoiceGateway] Error sending audio to Twilio: {e}")
 
@@ -227,6 +231,11 @@ async def voice_stream_websocket(websocket: WebSocket):
                     if session:
                         session.last_error = str(dg_err)
                         session.error_type = "deepgram_connection_error"
+                    # Immediately close client on connection failure to avoid dangling connections or credit consumption
+                    if deepgram_client:
+                        await deepgram_client.close()
+                        deepgram_client = None
+                    break
 
             elif event == "media":
                 media_data = data.get("media", {})
@@ -248,7 +257,17 @@ async def voice_stream_websocket(websocket: WebSocket):
             session.last_error = str(e)
             session.error_type = "stream_exception"
     finally:
+        # GUARANTEED CLEANUP: Always close the Deepgram WebSocket connection immediately when
+        # the call ends, is interrupted, or disconnects to avoid consuming Deepgram credits.
         if deepgram_client:
-            await deepgram_client.close()
+            try:
+                await deepgram_client.close()
+                logger.info(f"[VoiceGateway] Deepgram connection cleanly closed for stream {stream_sid}")
+            except Exception as close_err:
+                logger.error(f"[VoiceGateway] Error closing Deepgram client: {close_err}")
+            finally:
+                deepgram_client = None
+
         if session:
-            await call_session_service.finalize_session(session, final_status="completed")
+            final_status = "failed" if session.last_error and session.error_type == "deepgram_connection_error" else "completed"
+            await call_session_service.finalize_session(session, final_status=final_status)
