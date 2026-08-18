@@ -12,6 +12,8 @@ class SaveTwilioConfigRequest(BaseModel):
     inbound_forward_mode: Optional[str] = "global"
     inbound_forward_global_number: Optional[str] = None
     inbound_forward_mapping: Optional[Dict[str, str]] = None
+    default_agent_id: Optional[str] = None
+    inbound_agent_mapping: Optional[Dict[str, str]] = None
 
 class TwilioConfigResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -26,4 +28,6 @@ class TwilioConfigResponse(BaseModel):
     inbound_forward_mode: Optional[str] = "global"
     inbound_forward_global_number: Optional[str] = None
     inbound_forward_mapping: Optional[Dict[str, str]] = None
+    default_agent_id: Optional[str] = None
+    inbound_agent_mapping: Optional[Dict[str, str]] = None
     status: str

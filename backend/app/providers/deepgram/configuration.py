@@ -55,6 +55,10 @@ class DeepgramSpeakProvider(BaseModel):
 class DeepgramSpeakConfig(BaseModel):
     provider: DeepgramSpeakProvider = Field(default_factory=DeepgramSpeakProvider)
 
+    @property
+    def model(self) -> str:
+        return self.provider.model
+
 
 class DeepgramAgentConfig(BaseModel):
     greeting: Optional[str] = None

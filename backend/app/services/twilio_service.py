@@ -33,6 +33,8 @@ class TwilioService:
             inbound_forward_mode=cfg.inbound_forward_mode or "global",
             inbound_forward_global_number=cfg.inbound_forward_global_number,
             inbound_forward_mapping=cfg.inbound_forward_mapping or {},
+            default_agent_id=cfg.default_agent_id,
+            inbound_agent_mapping=cfg.inbound_agent_mapping or {},
             status=cfg.status
         )
 
@@ -127,6 +129,8 @@ class TwilioService:
             inbound_forward_mode=req.inbound_forward_mode or (existing.inbound_forward_mode if existing else "global"),
             inbound_forward_global_number=req.inbound_forward_global_number if req.inbound_forward_global_number is not None else (existing.inbound_forward_global_number if existing else None),
             inbound_forward_mapping=req.inbound_forward_mapping if req.inbound_forward_mapping is not None else (existing.inbound_forward_mapping if existing else {}),
+            default_agent_id=req.default_agent_id if req.default_agent_id is not None else (existing.default_agent_id if existing else None),
+            inbound_agent_mapping=req.inbound_agent_mapping if req.inbound_agent_mapping is not None else (existing.inbound_agent_mapping if existing else {}),
             status="CONNECTED",
             created_at=existing.created_at if existing else datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
@@ -143,6 +147,8 @@ class TwilioService:
             inbound_forward_mode=cfg.inbound_forward_mode,
             inbound_forward_global_number=cfg.inbound_forward_global_number,
             inbound_forward_mapping=cfg.inbound_forward_mapping,
+            default_agent_id=cfg.default_agent_id,
+            inbound_agent_mapping=cfg.inbound_agent_mapping,
             status=cfg.status
         )
 

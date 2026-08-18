@@ -21,7 +21,13 @@ async def make_call(
     ctx: TenantContext = Depends(get_tenant_context),
     service: CallService = Depends(get_call_service)
 ):
-    call = await service.make_call(ctx, payload.to, payload.from_number, payload.prompt)
+    call = await service.make_call(
+        ctx=ctx,
+        to_number=payload.to,
+        from_number=payload.from_number,
+        prompt=payload.prompt,
+        agent_id=payload.agent_id
+    )
     return ApiResponse.ok(CallResponse.model_validate(call))
 
 @router.get("/token", response_model=ApiResponse[dict])

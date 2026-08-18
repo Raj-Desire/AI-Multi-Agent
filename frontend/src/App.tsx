@@ -8,10 +8,13 @@ import { DashboardView } from "./components/DashboardView";
 import { TwilioSettingsView } from "./components/TwilioSettingsView";
 import { ThemeStudioView } from "./components/ThemeStudioView";
 import { VoiceAgentView } from "./components/VoiceAgentView";
+import { AIAgentDialerView } from "./components/AIAgentDialerView";
+import { AgentManagementView } from "./components/AgentManagementView";
 import { Sidebar, NavTab } from "./components/Sidebar";
 import {
   Menu,
   PhoneCall,
+  PhoneOutgoing,
   Bot,
   Sliders,
   Palette,
@@ -24,6 +27,7 @@ function MainContent() {
   const { user, isLoading, isAdmin, isSuperAdmin } = useAuth();
   const { draftTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
+  const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -61,13 +65,19 @@ function MainContent() {
       case "dashboard":
         return {
           title: "Calling Console",
-          sub: "WebRTC Direct Dialing & Live AI Voice Sessions",
+          sub: "Standard WebRTC Direct Dialing & Call History",
           icon: PhoneCall,
+        };
+      case "ai_dialer":
+        return {
+          title: "AI Voice Agent Dialer",
+          sub: "Conversational AI voice dispatching & live telemetry",
+          icon: PhoneOutgoing,
         };
       case "voice_agent":
         return {
-          title: "AI Voice Agent Studio",
-          sub: "Deepgram Real-Time Voice Agent configuration & live telemetry",
+          title: "AI Voice Agents",
+          sub: "Deepgram & LLM voice agent configurations, prompts & library",
           icon: Bot,
         };
       case "twilio":
@@ -185,8 +195,19 @@ function MainContent() {
         <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
             <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
+          ) : currentTab === "ai_dialer" ? (
+            <AIAgentDialerView
+              initialAgentId={activeDialerAgentId}
+              onNavigateSettings={() => setActiveTab("twilio")}
+              onNavigateAgents={() => setActiveTab("voice_agent")}
+            />
           ) : currentTab === "voice_agent" ? (
-            <VoiceAgentView />
+            <AgentManagementView
+              onNavigateToDialer={(agentId) => {
+                setActiveDialerAgentId(agentId);
+                setActiveTab("ai_dialer");
+              }}
+            />
           ) : currentTab === "twilio" ? (
             <TwilioSettingsView />
           ) : currentTab === "theme" ? (

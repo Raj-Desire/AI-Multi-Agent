@@ -31,7 +31,6 @@ export interface OrganizationSummary {
   created_at: string;
 }
 
-
 export interface PlatformOverviewMetrics {
   total_organizations: number;
   total_superadmins: number;
@@ -51,6 +50,8 @@ export interface TwilioConfig {
   inbound_forward_mode?: "global" | "per_number" | "disabled";
   inbound_forward_global_number?: string | null;
   inbound_forward_mapping?: Record<string, string>;
+  default_agent_id?: string | null;
+  inbound_agent_mapping?: Record<string, string>;
   status: string;
 }
 
@@ -65,21 +66,8 @@ export interface SaveTwilioPayload {
   inbound_forward_mode?: "global" | "per_number" | "disabled";
   inbound_forward_global_number?: string;
   inbound_forward_mapping?: Record<string, string>;
-}
-
-export interface CallRecord {
-  id: string;
-  organization_id: string;
-  user_id: string;
-  twilio_configuration_id: string;
-  call_sid: string | null;
-  from_number: string;
-  to_number: string;
-  duration: number;
-  prompt?: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
+  default_agent_id?: string;
+  inbound_agent_mapping?: Record<string, string>;
 }
 
 export type UIStyle =
@@ -92,6 +80,19 @@ export type UIStyle =
   | 'neomorphism'
   | 'retro';
 
+export type PalettePreset =
+  | 'Original'
+  | 'Dark'
+  | 'Vivid'
+  | 'Deep'
+  | 'Muted'
+  | 'Pastel'
+  | 'Monochrome'
+  | 'Complement'
+  | 'Triadic'
+  | 'Analogous'
+  | 'Mono'
+  | 'Spectrum';
 export type BorderRadius = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
 export type UIDensity = 'compact' | 'comfortable' | 'spacious';
 export type ColorMode = 'light' | 'dark' | 'system';
@@ -154,19 +155,6 @@ export interface UserPreferences {
   ui_density: UIDensity;
 }
 
-export type PalettePreset =
-  | 'Original'
-  | 'Dark'
-  | 'Muted'
-  | 'Vivid'
-  | 'Complement'
-  | 'Triadic'
-  | 'Analogous'
-  | 'Mono'
-  | 'Pastel'
-  | 'Deep'
-  | 'Spectrum';
-
 export interface AgentPersonality {
   professionalism: number;
   friendliness: number;
@@ -179,6 +167,13 @@ export interface AgentPersonality {
   curiosity: number;
 }
 
+export interface AgentServiceItem {
+  name: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+}
+
 export interface AgentVoiceConfig {
   provider: string;
   version?: string;
@@ -186,12 +181,15 @@ export interface AgentVoiceConfig {
   voice: string;
   language?: string;
   speed?: number;
+  pitch?: number;
+  volume?: number;
 }
 
 export interface AgentLLMConfig {
   provider: string;
   model: string;
   temperature: number;
+  max_tokens?: number;
   reasoning_mode?: string;
 }
 
@@ -200,25 +198,64 @@ export interface AgentListenConfig {
   model: string;
   language: string;
   eot_threshold?: number;
+  eager_eot?: boolean;
   keyterms?: string[];
+}
+
+export interface AgentRuntimeSettings {
+  barge_in_enabled: boolean;
+  interruption_sensitivity: number;
+  silence_timeout: number;
+  customer_response_timeout: number;
+  maximum_call_duration: number;
+  retry_attempts: number;
+  auto_hangup_on_completion?: boolean;
+}
+
+export interface AgentGuardrails {
+  allowed_actions: string[];
+  restricted_actions: string[];
+  escalation_rules: string[];
 }
 
 export interface AgentConfig {
   agent_id: string;
   organization_id: string;
+  owner_user_id?: string;
+  created_by?: string;
+  updated_by?: string;
   name: string;
   description?: string;
-  status: string;
+  scope: 'GLOBAL' | 'ORGANIZATION';
+  status: 'DRAFT' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  version: number;
   role: string;
   objective: string;
+  secondary_objectives?: string[];
+  responsibilities?: string[];
+  services?: AgentServiceItem[];
+  skills?: string[];
   communication_style: string;
+  greeting_style?: string;
+  closing_style?: string;
   response_length: string;
+  small_talk_level?: string;
   personality: AgentPersonality;
   voice: AgentVoiceConfig;
   llm: AgentLLMConfig;
   listen?: AgentListenConfig;
+  runtime?: AgentRuntimeSettings;
+  guardrails?: AgentGuardrails;
   greeting: string;
+  closing_message?: string;
   system_prompt?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AvailableAgentsResponse {
+  my_agents: AgentConfig[];
+  default_agents: AgentConfig[];
 }
 
 export interface ConversationTurnMessage {
@@ -232,6 +269,30 @@ export interface ConversationTurnMessage {
   turn_latency_ms?: number;
 }
 
+export interface CallRecord {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  twilio_configuration_id: string;
+  call_sid: string | null;
+  from_number: string;
+  to_number: string;
+  duration: number;
+  prompt?: string;
+  status: string;
+  agent_id?: string;
+  agent_version?: number;
+  agent_name?: string;
+  agent_scope?: string;
+  agent_config_snapshot?: Partial<AgentConfig> | Record<string, any>;
+  transcript?: ConversationTurnMessage[];
+  outcome?: string;
+  latency_metrics?: Record<string, any>;
+  error_information?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VoiceTelemetryEvent {
   event_type: string;
   call_session_id: string;
@@ -241,5 +302,3 @@ export interface VoiceTelemetryEvent {
   timestamp: string;
   payload: Record<string, any>;
 }
-
-

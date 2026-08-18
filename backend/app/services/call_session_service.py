@@ -1,7 +1,8 @@
 """
 Call Session Service
 Manages live voice sessions, records conversational turns, computes stage latencies,
-broadcasts telemetry to real-time subscribers, and persists final call records to Cosmos DB.
+broadcasts telemetry to real-time subscribers, and persists final call records to Cosmos DB
+with full immutable agent snapshots and transcripts.
 """
 
 import asyncio
@@ -175,7 +176,7 @@ class CallSessionService:
         ))
 
     async def finalize_session(self, session: CallSession, final_status: str = "completed"):
-        """Calculates final metrics, stores transcript in Call model, and persists to Cosmos DB."""
+        """Calculates final metrics, stores transcript and immutable agent snapshot in Call model, and persists to Cosmos DB."""
         session.status = final_status
         session.ended_at = datetime.now(timezone.utc)
         session.calculate_duration()
@@ -184,6 +185,18 @@ class CallSessionService:
         # Create combined transcript preview
         transcript_lines = [f"{m.role.upper()}: {m.content}" for m in session.messages]
         transcript_preview = "\n".join(transcript_lines) if transcript_lines else "No conversation recorded."
+
+        agent_version = 1
+        agent_scope = "ORGANIZATION"
+        if session.agent_config_snapshot:
+            agent_version = session.agent_config_snapshot.get("version", 1)
+            agent_scope = session.agent_config_snapshot.get("scope", "ORGANIZATION")
+
+        transcript_records = [
+            m.model_dump(mode="json") if hasattr(m, "model_dump") else m
+            for m in session.messages
+        ]
+        latency_dict = session.latest_latency.model_dump(mode="json") if hasattr(session.latest_latency, "model_dump") else None
 
         # Persist to Call model in Cosmos DB
         call_doc = Call(
@@ -197,13 +210,20 @@ class CallSessionService:
             duration=session.call_duration,
             prompt=transcript_preview,
             status=final_status,
+            agent_id=session.agent_id,
+            agent_version=agent_version,
+            agent_name=session.agent_name,
+            agent_scope=agent_scope,
+            agent_config_snapshot=session.agent_config_snapshot,
+            transcript=transcript_records,
+            latency_metrics=latency_dict,
             created_at=session.started_at,
             updated_at=session.ended_at
         )
 
         try:
             await self.call_repo.save(call_doc)
-            logger.info(f"Persisted CallSession {session.call_session_id} to database.")
+            logger.info(f"Persisted CallSession {session.call_session_id} to database with Agent {session.agent_name} (v{agent_version}).")
         except Exception as e:
             logger.error(f"Error saving CallSession to database: {e}")
 
@@ -218,7 +238,9 @@ class CallSessionService:
                 "call_duration": session.call_duration,
                 "turn_count": session.turn_count,
                 "status": final_status,
-                "message_count": len(session.messages)
+                "message_count": len(session.messages),
+                "agent_name": session.agent_name,
+                "agent_version": agent_version
             }
         ))
 

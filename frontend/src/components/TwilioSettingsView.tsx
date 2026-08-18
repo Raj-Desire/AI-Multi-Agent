@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../api-client";
-import { TwilioConfig, OrganizationSummary } from "../types";
+import { TwilioConfig, OrganizationSummary, AvailableAgentsResponse, AgentConfig } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
   Key,
@@ -17,6 +17,8 @@ import {
   Sliders,
   Check,
   Radio,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -41,10 +43,17 @@ export function TwilioSettingsView() {
   const [apiKeySecret, setApiKeySecret] = useState("");
   const [publicBaseUrl, setPublicBaseUrl] = useState("");
 
-  // Inbound Call Forwarding states
+  // Inbound Call Forwarding & Agent states
   const [inboundForwardMode, setInboundForwardMode] = useState<"global" | "per_number" | "disabled">("global");
   const [inboundForwardGlobalNumber, setInboundForwardGlobalNumber] = useState("");
   const [inboundForwardMapping, setInboundForwardMapping] = useState<Record<string, string>>({});
+  const [defaultAgentId, setDefaultAgentId] = useState<string>("agt_receptionist_default");
+  const [inboundAgentMapping, setInboundAgentMapping] = useState<Record<string, string>>({});
+
+  const [availableAgents, setAvailableAgents] = useState<AvailableAgentsResponse>({
+    my_agents: [],
+    default_agents: []
+  });
 
   // Master Phone Numbers List state
   const [phoneNumbers, setPhoneNumbers] = useState<string[]>([]);
@@ -59,6 +68,7 @@ export function TwilioSettingsView() {
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
+    loadAgents();
     if (isSuperAdmin) {
       loadOrganizations();
     } else {
@@ -71,6 +81,15 @@ export function TwilioSettingsView() {
       loadConfig(selectedOrgId);
     }
   }, [selectedOrgId]);
+
+  async function loadAgents() {
+    try {
+      const res = await fetchApi<AvailableAgentsResponse>("/agents/available");
+      setAvailableAgents(res);
+    } catch (e) {
+      console.warn("Could not load available agents for dropdown:", e);
+    }
+  }
 
   async function loadOrganizations() {
     try {
@@ -106,6 +125,9 @@ export function TwilioSettingsView() {
         setInboundForwardMode(data.inbound_forward_mode || "global");
         setInboundForwardGlobalNumber(data.inbound_forward_global_number || "");
         setInboundForwardMapping(data.inbound_forward_mapping || {});
+        setDefaultAgentId(data.default_agent_id || "agt_receptionist_default");
+        setInboundAgentMapping(data.inbound_agent_mapping || {});
+
         const parsed = (data.phone_number || "")
           .split(",")
           .map((n) => n.trim())
@@ -122,6 +144,8 @@ export function TwilioSettingsView() {
         setInboundForwardMode("global");
         setInboundForwardGlobalNumber("");
         setInboundForwardMapping({});
+        setDefaultAgentId("agt_receptionist_default");
+        setInboundAgentMapping({});
         setPhoneNumbers([]);
       }
     } catch (err: any) {
@@ -190,6 +214,13 @@ export function TwilioSettingsView() {
       setInboundForwardMapping(newMapping);
     }
 
+    if (inboundAgentMapping[oldNum]) {
+      const newAgentMapping = { ...inboundAgentMapping };
+      newAgentMapping[trimmed] = newAgentMapping[oldNum];
+      delete newAgentMapping[oldNum];
+      setInboundAgentMapping(newAgentMapping);
+    }
+
     setEditingIndex(null);
     setEditingValue("");
   };
@@ -204,12 +235,25 @@ export function TwilioSettingsView() {
       delete newMapping[numToDelete];
       setInboundForwardMapping(newMapping);
     }
+
+    if (inboundAgentMapping[numToDelete]) {
+      const newAgentMapping = { ...inboundAgentMapping };
+      delete newAgentMapping[numToDelete];
+      setInboundAgentMapping(newAgentMapping);
+    }
   };
 
   const handlePerNumberForwardChange = (twilioNum: string, targetNum: string) => {
     setInboundForwardMapping((prev) => ({
       ...prev,
       [twilioNum]: targetNum,
+    }));
+  };
+
+  const handlePerNumberAgentChange = (twilioNum: string, agentId: string) => {
+    setInboundAgentMapping((prev) => ({
+      ...prev,
+      [twilioNum]: agentId,
     }));
   };
 
@@ -241,6 +285,8 @@ export function TwilioSettingsView() {
           inbound_forward_mode: inboundForwardMode,
           inbound_forward_global_number: inboundForwardGlobalNumber,
           inbound_forward_mapping: inboundForwardMapping,
+          default_agent_id: defaultAgentId,
+          inbound_agent_mapping: inboundAgentMapping,
         }),
       });
       setConfig(updated);
@@ -248,7 +294,7 @@ export function TwilioSettingsView() {
       if (updated.api_key_secret_masked) {
         setApiKeySecret(updated.api_key_secret_masked);
       }
-      setMessage({ text: "Twilio settings and routing rules saved successfully.", type: "success" });
+      setMessage({ text: "Twilio settings, phone numbers, and AI Agent routing saved successfully.", type: "success" });
     } catch (err: any) {
       setMessage({ text: err.message, type: "error" });
     } finally {
@@ -290,12 +336,17 @@ export function TwilioSettingsView() {
 
   const isConnected = config?.status === "CONNECTED";
 
+  const allAgentOptions = [
+    ...(availableAgents.my_agents || []).map((a) => ({ id: a.agent_id, label: `${a.name} (Org Private)`, group: "My Agents" })),
+    ...(availableAgents.default_agents || []).map((a) => ({ id: a.agent_id, label: `${a.name} (Platform)`, group: "Platform Defaults" }))
+  ];
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
         title="Phone & Voice"
-        description="Connect your Twilio account, manage active caller IDs, and configure inbound call forwarding."
+        description="Connect your Twilio account, manage active caller IDs, and configure inbound AI agent routing."
         badge={
           <StatusIndicator
             status={isConnected ? "connected" : "idle"}
@@ -365,7 +416,7 @@ export function TwilioSettingsView() {
       <Tabs
         tabs={[
           { id: "credentials", label: "Connection & Numbers", icon: <Key className="w-3.5 h-3.5" /> },
-          { id: "routing", label: "Inbound Call Routing", icon: <PhoneForwarded className="w-3.5 h-3.5" /> },
+          { id: "routing", label: "Inbound Call Routing & AI Agents", icon: <PhoneForwarded className="w-3.5 h-3.5" /> },
           { id: "developer", label: "Developer & WebRTC", icon: <Code2 className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
@@ -508,19 +559,109 @@ export function TwilioSettingsView() {
           </div>
         )}
 
-        {/* TAB 2: Inbound Call Routing */}
+        {/* TAB 2: Inbound Call Routing & AI Agents */}
         {activeTab === "routing" && (
           <div className="divide-y divide-[var(--color-border)]">
+            {/* Primary Default AI Agent Assignment */}
+            <FormSection
+              title="Default AI Voice Agent"
+              description="Select the primary AI Voice Agent that answers inbound phone calls and acts as default for the calling console."
+            >
+              <div className="max-w-md">
+                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5 flex items-center gap-1.5">
+                  <Bot className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  <span>Primary Voice Agent</span>
+                </label>
+                <select
+                  value={defaultAgentId}
+                  onChange={(e) => setDefaultAgentId(e.target.value)}
+                  className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                >
+                  {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
+                    <optgroup label="My Organization Agents">
+                      {availableAgents.my_agents.map((a) => (
+                        <option key={a.agent_id} value={a.agent_id}>
+                          {a.name} (v{a.version}) - {a.role}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
+                    <optgroup label="Desire AI Platform Defaults">
+                      {availableAgents.default_agents.map((a) => (
+                        <option key={a.agent_id} value={a.agent_id}>
+                          {a.name} - {a.role}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                <p className="text-[11px] text-[var(--color-muted)] mt-1">
+                  Used when no specific per-number mapping is configured.
+                </p>
+              </div>
+            </FormSection>
+
+            {/* Per-Number Inbound AI Agent Assignment */}
+            {phoneNumbers.length > 0 && (
+              <FormSection
+                title="Per-Number AI Agent Assignment"
+                description="Assign distinct AI Voice Agents to answer each of your specific Twilio phone numbers."
+              >
+                <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] divide-y divide-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
+                  {phoneNumbers.map((num) => {
+                    const currentAssigned = inboundAgentMapping[num] || defaultAgentId;
+                    return (
+                      <div key={num} className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                          <span className="font-mono font-medium text-[var(--color-heading)]">{num}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[var(--color-muted)] text-[11px]">Assigned Agent:</span>
+                          <select
+                            value={currentAssigned}
+                            onChange={(e) => handlePerNumberAgentChange(num, e.target.value)}
+                            className="h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                          >
+                            {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
+                              <optgroup label="My Organization Agents">
+                                {availableAgents.my_agents.map((a) => (
+                                  <option key={a.agent_id} value={a.agent_id}>
+                                    {a.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
+                              <optgroup label="Platform Defaults">
+                                {availableAgents.default_agents.map((a) => (
+                                  <option key={a.agent_id} value={a.agent_id}>
+                                    {a.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </FormSection>
+            )}
+
+            {/* Inbound Routing Strategy */}
             <FormSection
               title="Inbound Routing Strategy"
-              description="Choose how incoming customer calls to your Twilio phone numbers are forwarded."
+              description="Choose how incoming customer calls to your Twilio phone numbers are handled."
             >
               <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
-                    { id: "global", label: "Global Forwarding", desc: "Route all inbound calls to one master destination number" },
-                    { id: "per_number", label: "Per-Number Mapping", desc: "Specify a custom forwarding destination per caller ID" },
-                    { id: "disabled", label: "Disabled", desc: "Do not forward inbound calls (AI softphone only)" },
+                    { id: "global", label: "AI Voice Agent (Standard)", desc: "Route inbound calls directly to assigned AI voice agent" },
+                    { id: "per_number", label: "Human PSTN Forwarding", desc: "Forward inbound calls to external mobile or office numbers" },
+                    { id: "disabled", label: "Disabled", desc: "Do not answer or forward inbound calls" },
                   ].map((mode) => (
                     <label
                       key={mode.id}
@@ -548,12 +689,12 @@ export function TwilioSettingsView() {
                 {inboundForwardMode === "global" && (
                   <div className="pt-2">
                     <Input
-                      label="Global Forwarding Destination Number"
+                      label="Fallback Forwarding Destination (Optional)"
                       value={inboundForwardGlobalNumber}
                       onChange={(e) => setInboundForwardGlobalNumber(e.target.value)}
                       placeholder="+1 (555) 123-4567"
                       className="font-mono text-xs"
-                      helperText="Calls to any of your organization's phone numbers will forward here."
+                      helperText="If the AI agent transfers to a human representative, calls bridge here."
                     />
                   </div>
                 )}
@@ -562,7 +703,7 @@ export function TwilioSettingsView() {
                 {inboundForwardMode === "per_number" && (
                   <div className="pt-2 space-y-2">
                     <label className="block text-xs font-medium text-[var(--color-heading)]">
-                      Per-Number Destination Mapping
+                      Per-Number Human Forwarding Mapping
                     </label>
                     <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] divide-y divide-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
                       {phoneNumbers.map((num) => (

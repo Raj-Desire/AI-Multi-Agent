@@ -47,6 +47,11 @@ class HangupCallRequest(BaseModel):
     call_sid: Optional[str] = None
 
 
+from app.voice.audio import AudioAdapter
+from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
+from app.agents.runtime import AgentRuntimeBuilder
+import time
+
 @router.websocket("/telemetry/{call_session_id}")
 async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
     """
@@ -66,6 +71,170 @@ async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
         logger.error(f"Telemetry stream error: {e}")
     finally:
         await telemetry_broadcaster.unsubscribe(call_session_id, q)
+
+
+@router.websocket("/preview-stream")
+async def browser_preview_stream_websocket(websocket: WebSocket):
+    """
+    Direct in-browser live voice preview stream (like Deepgram Playground).
+    Allows testing any agent directly with browser microphone & audio playback
+    without placing a Twilio phone call.
+    """
+    await websocket.accept()
+    logger.info("[VoicePreview] Browser Live Preview WebSocket connected.")
+
+    deepgram_client: Optional[DeepgramVoiceAgentClient] = None
+    session_id = f"prev_{int(time.time()*1000)}"
+    turn_start_time = time.perf_counter()
+
+    async def handle_dg_audio(raw_audio: bytes):
+        """Send synthesized audio back to browser client (mulaw encoded in JSON or raw)."""
+        try:
+            # Encode mulaw to base64 for browser WebAudio playback
+            import base64
+            payload = base64.b64encode(raw_audio).decode("utf-8")
+            await websocket.send_json({
+                "type": "audio",
+                "payload": payload
+            })
+        except Exception as e:
+            logger.error(f"[VoicePreview] Error sending audio to browser: {e}")
+
+    async def handle_dg_event(event_type: str, data: dict):
+        try:
+            await websocket.send_json({
+                "type": "event",
+                "event_type": event_type,
+                "data": data
+            })
+        except Exception as e:
+            pass
+
+    async def handle_dg_transcript(role: str, content: str):
+        nonlocal turn_start_time
+        now = time.perf_counter()
+        turn_latency = round((now - turn_start_time) * 1000.0, 2)
+        if role == "user":
+            turn_start_time = now
+        try:
+            await websocket.send_json({
+                "type": "transcript",
+                "role": role,
+                "content": content,
+                "latency_ms": turn_latency
+            })
+        except Exception as e:
+            pass
+
+    async def handle_dg_user_speaking():
+        try:
+            await websocket.send_json({
+                "type": "clear"
+            })
+        except Exception:
+            pass
+
+    try:
+        while True:
+            msg = await websocket.receive_text()
+            if not msg:
+                continue
+
+            try:
+                data = json.loads(msg)
+            except Exception:
+                continue
+
+            msg_type = data.get("type")
+
+            # 1. Initialize session with agent config parameters
+            if msg_type == "configure":
+                agent_dict = data.get("agent_config", {})
+                greeting = data.get("greeting") or agent_dict.get("greeting")
+                try:
+                    agent_config = AgentConfiguration.model_validate(agent_dict)
+                except Exception as e:
+                    logger.warning(f"[VoicePreview] Invalid agent configuration passed: {e}")
+                    agent_config = AgentConfiguration(
+                        name="Preview Agent",
+                        role="Assistant",
+                        objective="Helpful Assistant",
+                        greeting="Hello! I am ready to test."
+                    )
+
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config)
+
+                if deepgram_client:
+                    await deepgram_client.close()
+
+                deepgram_client = DeepgramVoiceAgentClient(
+                    on_audio=handle_dg_audio,
+                    on_event=handle_dg_event,
+                    on_transcript=handle_dg_transcript,
+                    on_user_speaking=handle_dg_user_speaking
+                )
+
+                try:
+                    await deepgram_client.connect_and_configure(
+                        settings=deepgram_settings,
+                        greeting=greeting or agent_config.greeting
+                    )
+                    await websocket.send_json({
+                        "type": "ready",
+                        "agent_name": agent_config.name,
+                        "voice": agent_config.voice.voice,
+                        "model": agent_config.llm.model
+                    })
+                    logger.info("[VoicePreview] Deepgram agent connected and configured for in-browser preview.")
+                except Exception as dg_err:
+                    logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": str(dg_err)
+                    })
+
+            # 2. Receive live microphone audio chunk from browser
+            elif msg_type == "audio":
+                audio_payload = data.get("payload")
+                if audio_payload and deepgram_client and deepgram_client.is_ready:
+                    import base64
+                    try:
+                        raw_bytes = base64.b64decode(audio_payload)
+                        # Browser sends either PCM16 or Mu-law
+                        format_type = data.get("format", "pcm16")
+                        if format_type == "pcm16":
+                            mulaw_bytes = AudioAdapter.pcm16_to_mulaw(raw_bytes)
+                            await deepgram_client.send_audio(mulaw_bytes)
+                        else:
+                            await deepgram_client.send_audio(raw_bytes)
+                    except Exception as e:
+                        logger.error(f"[VoicePreview] Error processing audio payload: {e}")
+
+            # 3. Dynamic Prompt / Parameter update while speaking
+            elif msg_type == "update_prompt":
+                new_prompt = data.get("prompt")
+                if new_prompt and deepgram_client and deepgram_client.is_ready:
+                    await deepgram_client.update_prompt(new_prompt)
+
+            # 4. Inject specific speech text
+            elif msg_type == "inject_text":
+                text = data.get("text")
+                if text and deepgram_client and deepgram_client.is_ready:
+                    await deepgram_client.inject_agent_message(text)
+
+            # 5. Stop preview session
+            elif msg_type == "stop":
+                if deepgram_client:
+                    await deepgram_client.close()
+                await websocket.send_json({"type": "stopped"})
+
+    except WebSocketDisconnect:
+        logger.info("[VoicePreview] Browser WebSocket disconnected.")
+    except Exception as e:
+        logger.error(f"[VoicePreview] Unexpected error: {e}")
+    finally:
+        if deepgram_client:
+            await deepgram_client.close()
 
 
 @router.get("/active-sessions", response_model=ApiResponse[List[Dict[str, Any]]])

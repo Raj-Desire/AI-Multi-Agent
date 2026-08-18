@@ -28,6 +28,79 @@ class AudioAdapter:
     CHANNELS = 1
     BYTES_PER_SAMPLE = 1  # G.711 mu-law is 8-bit
 
+    # Precomputed ITU-T / Sun G.711 mu-law conversion tables
+    _MU_TO_LINEAR = [0] * 256
+    _LINEAR_TO_MU = [0] * 65536
+
+    # Initialize lookup tables
+    _BIAS = 0x84
+    _CLIP = 32635
+    for _i in range(256):
+        _u_val = ~_i & 0xFF
+        _sign = _u_val & 0x80
+        _exponent = (_u_val >> 4) & 0x07
+        _mantissa = _u_val & 0x0F
+        _sample = ((_mantissa << 3) + _BIAS) << _exponent
+        _sample -= _BIAS
+        _MU_TO_LINEAR[_i] = -_sample if _sign != 0 else _sample
+
+    for _sample in range(-32768, 32768):
+        _s = _sample
+        if _s < 0:
+            _s = -_s
+            _sign = 0x80
+        else:
+            _sign = 0x00
+        if _s > _CLIP:
+            _s = _CLIP
+        _s += _BIAS
+
+        if _s >= 0x4000:
+            _exp = 7
+        elif _s >= 0x2000:
+            _exp = 6
+        elif _s >= 0x1000:
+            _exp = 5
+        elif _s >= 0x0800:
+            _exp = 4
+        elif _s >= 0x0400:
+            _exp = 3
+        elif _s >= 0x0200:
+            _exp = 2
+        elif _s >= 0x0100:
+            _exp = 1
+        else:
+            _exp = 0
+
+        _mant = (_s >> (_exp + 3)) & 0x0F
+        _ulawbyte = _sign | (_exp << 4) | _mant
+        _LINEAR_TO_MU[_sample + 32768] = ~_ulawbyte & 0xFF
+
+    @staticmethod
+    def pcm16_to_mulaw(pcm16_bytes: bytes) -> bytes:
+        """Converts raw 16-bit linear PCM (LE, 8000Hz mono) to 8-bit G.711 mu-law."""
+        if not pcm16_bytes:
+            return b""
+        lut = AudioAdapter._LINEAR_TO_MU
+        n = len(pcm16_bytes) // 2
+        mulaw_out = bytearray(n)
+        for i in range(n):
+            sample = int.from_bytes(pcm16_bytes[i*2:(i+1)*2], byteorder='little', signed=True)
+            mulaw_out[i] = lut[sample + 32768]
+        return bytes(mulaw_out)
+
+    @staticmethod
+    def mulaw_to_pcm16(mulaw_bytes: bytes) -> bytes:
+        """Converts 8-bit G.711 mu-law (8000Hz) to 16-bit linear PCM."""
+        if not mulaw_bytes:
+            return b""
+        lut = AudioAdapter._MU_TO_LINEAR
+        out = bytearray(len(mulaw_bytes) * 2)
+        for i, b in enumerate(mulaw_bytes):
+            sample = lut[b]
+            out[i*2:(i+1)*2] = sample.to_bytes(2, byteorder='little', signed=True)
+        return bytes(out)
+
     @staticmethod
     def twilio_media_to_bytes(payload_base64: str) -> bytes:
         """Decodes base64 payload from Twilio media packet into raw audio bytes."""

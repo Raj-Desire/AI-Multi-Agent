@@ -17,6 +17,8 @@ class TwilioConfiguration(BaseModel):
     inbound_forward_mode: Optional[str] = "global"  # "global", "per_number", or "disabled"
     inbound_forward_global_number: Optional[str] = None
     inbound_forward_mapping: Optional[Dict[str, str]] = None  # { "+1TwilioNumber": "+1ForwardTarget" }
+    default_agent_id: Optional[str] = None
+    inbound_agent_mapping: Optional[Dict[str, str]] = None  # { "+1TwilioNumber": "agent_id" }
     status: str = "CONNECTED"
     created_at: datetime
     updated_at: datetime
