@@ -237,6 +237,55 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             await deepgram_client.close()
 
 
+class SampleSpeechRequest(BaseModel):
+    voice: str = "aura-orion-en"
+    text: Optional[str] = None
+    speed: Optional[float] = 0.95
+
+
+@router.post("/sample-speech")
+async def generate_sample_speech(payload: SampleSpeechRequest):
+    """
+    Synthesizes a sample audio snippet using Deepgram Text-to-Speech (REST API).
+    Returns audio/mp3 or base64 data for instant in-browser playback.
+    """
+    import os
+    import httpx
+    from fastapi.responses import Response
+
+    api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Deepgram API Key is not configured on the server.")
+
+    sample_text = payload.text
+    if not sample_text or not sample_text.strip():
+        sample_text = "Hello! I am your Desire AI Voice Agent. How can I help you today?"
+
+    # Deepgram REST TTS requires container=wav with encoding=linear16 (or encoding=mp3 without container)
+    deepgram_url = f"https://api.deepgram.com/v1/speak?model={payload.voice}&container=wav&encoding=linear16"
+
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    body = {"text": sample_text}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(deepgram_url, json=body, headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"[SampleSpeech Error] Deepgram TTS returned {resp.status_code}: {resp.text}")
+                raise HTTPException(status_code=resp.status_code, detail=f"Deepgram TTS error: {resp.text}")
+
+            return Response(content=resp.content, media_type="audio/wav")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SampleSpeech Error] Failed to synthesize speech: {e}")
+        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {str(e)}")
+
+
 @router.get("/active-sessions", response_model=ApiResponse[List[Dict[str, Any]]])
 async def get_active_sessions(ctx: TenantContext = Depends(get_tenant_context)):
     """Lists currently active live call sessions for this tenant."""
