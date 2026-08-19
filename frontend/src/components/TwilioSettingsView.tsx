@@ -769,15 +769,6 @@ export function TwilioSettingsView() {
                   className="font-mono text-xs"
                   helperText="TwiML App configured with the voice webhook URL."
                 />
-                <Input
-                  label="Public Webhook Base URL"
-                  type="url"
-                  value={publicBaseUrl}
-                  onChange={(e) => setPublicBaseUrl(e.target.value)}
-                  placeholder="https://api.yourdomain.com"
-                  className="font-mono text-xs"
-                  helperText="Public endpoint Twilio sends call webhooks to."
-                />
               </div>
             </FormSection>
           </div>
