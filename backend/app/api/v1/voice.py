@@ -343,8 +343,8 @@ async def initiate_ai_test_call(
         )
 
     # Determine public stream URL
-    base_url = (tw_cfg.public_base_url or str(request.base_url)).strip().rstrip("/")
-    if not tw_cfg.public_base_url or "localhost" in base_url or "127.0.0.1" in base_url:
+    base_url = (os.getenv("PUBLIC_BASE_URL") or tw_cfg.public_base_url or str(request.base_url)).strip().rstrip("/")
+    if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
         raise HTTPException(
             status_code=400,
             detail="Twilio cannot reach localhost. Please start an ngrok tunnel (e.g. `ngrok http 8000`) and set the HTTPS URL in Twilio Settings -> Public Base URL."
