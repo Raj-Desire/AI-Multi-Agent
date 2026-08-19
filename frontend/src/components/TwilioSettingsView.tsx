@@ -39,6 +39,7 @@ import { StatusIndicator } from "./ui/StatusIndicator";
 import { FormSection } from "./ui/FormSection";
 import { Tabs } from "./ui/Tabs";
 import { LoadingState } from "./ui/LoadingState";
+import { Modal } from "./ui/Modal";
 
 export function TwilioSettingsView() {
   const { user, isSuperAdmin } = useAuth();
@@ -73,6 +74,7 @@ export function TwilioSettingsView() {
   const [newNumberInput, setNewNumberInput] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [numberToDelete, setNumberToDelete] = useState<{ index: number; number: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -301,8 +303,9 @@ export function TwilioSettingsView() {
     setEditingValue("");
   };
 
-  const handleDeleteNumber = (index: number) => {
-    const numToDelete = phoneNumbers[index];
+  const confirmDeleteNumber = () => {
+    if (!numberToDelete) return;
+    const { index, number: numToDelete } = numberToDelete;
     const updated = phoneNumbers.filter((_, i) => i !== index);
     setPhoneNumbers(updated);
 
@@ -317,6 +320,7 @@ export function TwilioSettingsView() {
       delete newAgentMapping[numToDelete];
       setInboundAgentMapping(newAgentMapping);
     }
+    setNumberToDelete(null);
   };
 
   const handlePerNumberForwardChange = (twilioNum: string, targetNum: string) => {
@@ -856,7 +860,7 @@ export function TwilioSettingsView() {
                               type="button"
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteNumber(idx)}
+                              onClick={() => setNumberToDelete({ index: idx, number: num })}
                               className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1083,6 +1087,55 @@ export function TwilioSettingsView() {
           </div>
         )}
       </form>
+
+      {/* Delete Phone Number Confirmation Modal */}
+      <Modal
+        isOpen={!!numberToDelete}
+        onClose={() => setNumberToDelete(null)}
+        title="Remove Phone Number"
+        description="Are you sure you want to remove this phone number from your organization?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setNumberToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteNumber}
+            >
+              Remove Number
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+              <Phone className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold font-mono text-[var(--color-heading)] text-sm">
+                {numberToDelete?.number}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                Active Organization Caller ID
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Removing this number will unbind any custom inbound call forwarding or dedicated AI agent mappings configured for it.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

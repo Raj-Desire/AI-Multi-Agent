@@ -95,7 +95,7 @@ function MainContent() {
         };
       case "superadmin":
         return {
-          title: "Master Console",
+          title: "Admin Control",
           sub: "Multi-tenant root governance and platform telemetries",
           icon: ShieldAlert,
         };

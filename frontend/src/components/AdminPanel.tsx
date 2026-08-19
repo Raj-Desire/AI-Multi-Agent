@@ -40,6 +40,10 @@ export const AdminPanel: React.FC = () => {
   const [newPassword, setNewPassword] = useState("");
   const [isResetting, setIsResetting] = useState(false);
 
+  // Delete user confirmation modal state
+  const [userToDelete, setUserToDelete] = useState<UserSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const loadUsers = async () => {
     try {
       setLoading(true);
@@ -58,22 +62,22 @@ export const AdminPanel: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     setError(null);
     setSuccessMsg(null);
-    setIsSubmitting(true);
 
     try {
-      const newUser = await fetchApi<UserSummary>("/admin/users", {
+      await fetchApi<UserSummary>("/admin/users", {
         method: "POST",
         body: JSON.stringify({ username, email, password, role }),
       });
 
-      setSuccessMsg(`Team member '${newUser.username}' (${newUser.email}) added successfully.`);
+      setSuccessMsg(`User '${username}' created successfully.`);
+      setInviteModalOpen(false);
       setUsername("");
       setEmail("");
       setPassword("");
       setRole("user");
-      setInviteModalOpen(false);
       await loadUsers();
     } catch (err: any) {
       setError(err.message || "Failed to create user.");
@@ -84,14 +88,14 @@ export const AdminPanel: React.FC = () => {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !newPassword) return;
+    if (!selectedUser) return;
 
+    setIsResetting(true);
     setError(null);
     setSuccessMsg(null);
-    setIsResetting(true);
 
     try {
-      await fetchApi<{ message: string }>(`/admin/users/${selectedUser.id}/password`, {
+      await fetchApi(`/admin/users/${selectedUser.id}/password`, {
         method: "PUT",
         body: JSON.stringify({ new_password: newPassword }),
       });
@@ -106,24 +110,28 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (user: UserSummary) => {
-    if (user.role === "admin" || user.role === "superadmin") {
-      alert("Admin accounts cannot be deleted directly.");
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    if (userToDelete.role === "admin" || userToDelete.role === "superadmin") {
+      setError("Admin accounts cannot be deleted directly.");
+      setUserToDelete(null);
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to remove ${user.email} from the workspace?`)) {
-      return;
-    }
+    setIsDeleting(true);
     setError(null);
     setSuccessMsg(null);
 
     try {
-      await fetchApi(`/admin/users/${user.id}`, { method: "DELETE" });
-      setSuccessMsg(`User ${user.email} removed.`);
+      await fetchApi(`/admin/users/${userToDelete.id}`, { method: "DELETE" });
+      setSuccessMsg(`User ${userToDelete.email} removed from the workspace.`);
+      setUserToDelete(null);
       await loadUsers();
     } catch (err: any) {
       setError(err.message || "Failed to delete user.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -191,7 +199,7 @@ export const AdminPanel: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleDeleteUser(u)}
+              onClick={() => setUserToDelete(u)}
               className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
               title="Remove Member"
             >
@@ -210,8 +218,8 @@ export const AdminPanel: React.FC = () => {
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Team"
-        description="Manage the people and credentials who have access to your workspace."
+        title="Team & Access Control"
+        description="Manage workspace team members, invite staff, and administer permissions."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -229,27 +237,11 @@ export const AdminPanel: React.FC = () => {
               onClick={() => setInviteModalOpen(true)}
               leftIcon={<UserPlus className="w-3.5 h-3.5" />}
             >
-              Add Member
+              Invite Member
             </Button>
           </div>
         }
       />
-
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
-          <span className="text-xs text-[var(--color-muted)] font-medium">Total Team Members</span>
-          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{memberCount}</div>
-        </div>
-        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs">
-          <span className="text-xs text-[var(--color-muted)] font-medium">Administrators</span>
-          <div className="text-xl font-semibold text-[var(--color-heading)] mt-1 font-mono">{adminCount}</div>
-        </div>
-        <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs col-span-2 sm:col-span-1">
-          <span className="text-xs text-[var(--color-muted)] font-medium">Active Seats</span>
-          <div className="text-xl font-semibold text-[var(--color-success)] mt-1 font-mono">{memberCount}</div>
-        </div>
-      </div>
 
       {error && (
         <Alert type="danger" onDismiss={() => setError(null)}>
@@ -262,46 +254,62 @@ export const AdminPanel: React.FC = () => {
         </Alert>
       )}
 
-      {/* Team Members DataTable */}
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-1">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Total Workspace Members</span>
+          <div className="text-2xl font-bold text-[var(--color-heading)]">{memberCount}</div>
+        </div>
+        <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-1">
+          <span className="text-xs text-[var(--color-muted)] font-medium">Administrators</span>
+          <div className="text-2xl font-bold text-[var(--color-heading)]">{adminCount}</div>
+        </div>
+      </div>
+
+      {/* Users DataTable */}
       <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--color-heading)]">Organization Members</h3>
+          <span className="text-xs text-[var(--color-muted)]">{users.length} members total</span>
+        </div>
+
         <DataTable
           columns={columns}
           data={users}
           isLoading={loading}
-          loadingMessage="Loading workspace team members..."
+          loadingMessage="Loading team members..."
           searchKey="username"
-          searchPlaceholder="Search members by name or email..."
-          emptyTitle="No team members found"
-          emptyDescription="Invite your team members to collaborate on AI calling campaigns."
+          searchPlaceholder="Search members by username or email..."
+          emptyTitle="No team members yet"
+          emptyDescription="Click 'Invite Member' above to grant access to your workspace."
           pagination={true}
           pageSize={10}
         />
       </div>
 
-      {/* Add Member Modal */}
+      {/* Invite Member Modal */}
       <Modal
         isOpen={inviteModalOpen}
         onClose={() => setInviteModalOpen(false)}
-        title="Add Team Member"
-        description="Create a login account for your organization workspace."
+        title="Invite New Team Member"
+        description="Create an account for a new colleague to join your organization."
       >
         <form onSubmit={handleCreateUser} className="space-y-4">
           <Input
-            label="Full Name or Username"
-            type="text"
+            label="Username"
             required
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. Alex Morgan"
+            placeholder="e.g. janesmith"
             leftIcon={<User className="w-4 h-4" />}
           />
           <Input
-            label="Work Email"
+            label="Email Address"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="alex@yourcompany.com"
+            placeholder="jane@company.com"
             leftIcon={<Mail className="w-4 h-4" />}
           />
           <Input
@@ -312,19 +320,18 @@ export const AdminPanel: React.FC = () => {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
-            helperText="Minimum 6 characters."
           />
           <div>
             <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
-              Workspace Role
+              Access Role
             </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as any)}
+              onChange={(e) => setRole(e.target.value as "user" | "admin")}
               className="w-full h-9 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none"
             >
-              <option value="user">User (Calling console and analytics)</option>
-              <option value="admin">Administrator (Full settings and team access)</option>
+              <option value="user">User (Standard Calling & Agent Access)</option>
+              <option value="admin">Admin (Full Organization & Settings Access)</option>
             </select>
           </div>
           <div className="pt-2 flex justify-end gap-2">
@@ -384,6 +391,57 @@ export const AdminPanel: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete User Confirmation Modal */}
+      <Modal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        title="Remove Team Member"
+        description="Are you sure you want to remove this user from the workspace?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setUserToDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isDeleting}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteUser}
+            >
+              Remove Member
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {userToDelete?.username}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate">
+                {userToDelete?.email} • <span className="capitalize">{userToDelete?.role}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            This action will permanently revoke workspace access for <strong>{userToDelete?.email}</strong>.
+          </p>
+        </div>
       </Modal>
     </div>
   );

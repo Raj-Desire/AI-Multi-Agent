@@ -27,7 +27,8 @@ import {
   Activity,
   Zap,
   Radio,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2
 } from "lucide-react";
 import { PageHeader } from "./ui/PageHeader";
 import { Button } from "./ui/Button";
@@ -35,6 +36,7 @@ import { Badge } from "./ui/Badge";
 import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { Drawer } from "./ui/Drawer";
+import { Modal } from "./ui/Modal";
 import { DataTable, Column } from "./ui/DataTable";
 import { AgentEditorModal } from "./AgentEditorModal";
 import { AgentLivePreview } from "./AgentLivePreview";
@@ -57,6 +59,8 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
   const [editingAgent, setEditingAgent] = useState<AgentConfig | null>(null);
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
+  const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   // Test Call states
   const [testModalOpen, setTestModalOpen] = useState(false);
@@ -160,19 +164,21 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
     }
   }
 
-  async function handleArchive(agent: AgentConfig) {
-    if (!confirm(`Are you sure you want to archive "${agent.name}"? Historical calls will retain this agent configuration.`)) {
-      return;
-    }
+  async function confirmArchiveAgent() {
+    if (!agentToArchive) return;
     try {
+      setIsArchiving(true);
       setStatusMessage(null);
-      await fetchApi<AgentConfig>(`/agents/${agent.agent_id}/archive`, {
+      await fetchApi<AgentConfig>(`/agents/${agentToArchive.agent_id}/archive`, {
         method: "POST"
       });
-      setStatusMessage({ type: "success", text: `Agent "${agent.name}" archived.` });
+      setStatusMessage({ type: "success", text: `Agent "${agentToArchive.name}" archived successfully.` });
+      setAgentToArchive(null);
       await loadData();
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message });
+    } finally {
+      setIsArchiving(false);
     }
   }
 
@@ -413,7 +419,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleArchive(a)}
+                onClick={() => setAgentToArchive(a)}
                 leftIcon={<Archive className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
                 className="h-7 px-2 text-xs text-[var(--color-danger)]"
                 title="Archive agent"
@@ -881,6 +887,57 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           </div>
         )}
       </Drawer>
+
+      {/* Archive Agent Confirmation Modal */}
+      <Modal
+        isOpen={!!agentToArchive}
+        onClose={() => setAgentToArchive(null)}
+        title="Archive AI Voice Agent"
+        description="Are you sure you want to archive this voice agent configuration?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAgentToArchive(null)}
+              disabled={isArchiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isArchiving}
+              leftIcon={<Archive className="w-3.5 h-3.5" />}
+              onClick={confirmArchiveAgent}
+            >
+              Archive Agent
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {agentToArchive?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToArchive?.version || 1}</span>
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
+                {agentToArchive?.role} • Voice: <span className="font-mono">{agentToArchive?.voice?.voice || "aura"}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Archiving this agent will remove it from active dialing campaigns. Existing call logs and metrics will retain their historical records.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }
