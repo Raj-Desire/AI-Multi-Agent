@@ -385,3 +385,19 @@ class TwilioService:
             message=f"Successfully configured Twilio account '{result['account_name']}' with {len(result['numbers'])} phone number(s) and WebRTC softphone."
         )
 
+    async def end_call(self, org_id: str, call_sid: str) -> bool:
+        """Hangs up an active Twilio call via Twilio REST API."""
+        cfg = await self.repo.get_by_org(org_id)
+        if not cfg or not cfg.account_sid or not cfg.encrypted_auth_token:
+            return False
+        real_auth = decrypt_token(cfg.encrypted_auth_token)
+        def _terminate():
+            client = Client(cfg.account_sid, real_auth)
+            client.calls(call_sid).update(status="completed")
+            return True
+        try:
+            return await asyncio.to_thread(_terminate)
+        except Exception as e:
+            print(f"[TwilioService] Error ending call {call_sid}: {e}")
+            return False
+

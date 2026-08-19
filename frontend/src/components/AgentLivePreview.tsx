@@ -143,6 +143,11 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             } else if (data.event_type === "UserStoppedSpeaking") {
               setIsUserSpeaking(false);
             }
+          } else if (data.type === "call_concluded") {
+            // Call concluded gracefully after max duration or silence timeout
+            setTimeout(() => {
+              stopPreviewSession();
+            }, 1200);
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
             stopPreviewSession();

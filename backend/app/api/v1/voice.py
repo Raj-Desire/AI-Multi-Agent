@@ -84,13 +84,24 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     logger.info("[VoicePreview] Browser Live Preview WebSocket connected.")
 
     deepgram_client: Optional[DeepgramVoiceAgentClient] = None
+    agent_config: Optional[AgentConfiguration] = None
     session_id = f"prev_{int(time.time()*1000)}"
     turn_start_time = time.perf_counter()
+
+    # Lifecycle state
+    call_start_time: float = time.time()
+    last_user_speech_time: float = time.time()
+    last_agent_speech_done_time: float = time.time()
+    is_agent_speaking: bool = False
+    is_user_speaking: bool = False
+    has_reprompted_silence: bool = False
+    is_concluding_call: bool = False
+    call_ended_event: asyncio.Event = asyncio.Event()
+    lifecycle_task: Optional[asyncio.Task] = None
 
     async def handle_dg_audio(raw_audio: bytes):
         """Send synthesized audio back to browser client (mulaw encoded in JSON or raw)."""
         try:
-            # Encode mulaw to base64 for browser WebAudio playback
             import base64
             payload = base64.b64encode(raw_audio).decode("utf-8")
             await websocket.send_json({
@@ -107,15 +118,20 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 "event_type": event_type,
                 "data": data
             })
-        except Exception as e:
+        except Exception:
             pass
 
     async def handle_dg_transcript(role: str, content: str):
-        nonlocal turn_start_time
+        nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
             turn_start_time = now
+            last_user_speech_time = time.time()
+            is_user_speaking = False
+            has_reprompted_silence = False
+        else:
+            is_agent_speaking = True
         try:
             await websocket.send_json({
                 "type": "transcript",
@@ -123,16 +139,100 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 "content": content,
                 "latency_ms": turn_latency
             })
-        except Exception as e:
+        except Exception:
             pass
 
     async def handle_dg_user_speaking():
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence
+        is_user_speaking = True
+        is_agent_speaking = False
+        last_user_speech_time = time.time()
+        has_reprompted_silence = False
         try:
             await websocket.send_json({
                 "type": "clear"
             })
         except Exception:
             pass
+
+    async def handle_dg_agent_speaking(data: dict):
+        nonlocal is_agent_speaking, is_user_speaking
+        is_agent_speaking = True
+        is_user_speaking = False
+
+    async def handle_dg_agent_audio_done():
+        nonlocal is_agent_speaking, last_agent_speech_done_time, is_concluding_call
+        is_agent_speaking = False
+        last_agent_speech_done_time = time.time()
+        if is_concluding_call:
+            logger.info("[VoicePreview] Conclusion audio finished playing. Concluding session.")
+            asyncio.create_task(terminate_preview_session())
+
+    async def terminate_preview_session():
+        nonlocal call_ended_event
+        call_ended_event.set()
+        await asyncio.sleep(1.2)
+        try:
+            await websocket.send_json({
+                "type": "call_concluded",
+                "reason": "completed"
+            })
+        except Exception:
+            pass
+
+    async def preview_lifecycle_monitor():
+        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time
+        try:
+            while not call_ended_event.is_set():
+                await asyncio.sleep(0.5)
+                if not deepgram_client or not deepgram_client.is_ready or not agent_config:
+                    continue
+
+                runtime = agent_config.runtime or AgentRuntimeSettings()
+                silence_timeout = max(3, runtime.silence_timeout)
+                hangup_delay = max(2, runtime.silence_hangup_delay or 5)
+                max_duration = max(10, runtime.maximum_call_duration or 1800)
+                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
+                reprompt_msg = (runtime.silence_reprompt_message or "Are you still there? I'm here if you have any questions.").strip()
+
+                now = time.time()
+                elapsed_call_time = now - call_start_time
+
+                # 1. Maximum Call Duration Check
+                if elapsed_call_time >= max_duration and not is_concluding_call:
+                    if is_user_speaking or is_agent_speaking:
+                        continue
+
+                    logger.info(f"[VoicePreview] Maximum duration ({max_duration}s) reached. Speaking conclusion message.")
+                    is_concluding_call = True
+                    await deepgram_client.inject_agent_message(conclusion_msg)
+                    asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
+                    break
+
+                # 2. Silence Timeout Check
+                if not is_concluding_call and not is_agent_speaking and not is_user_speaking:
+                    last_activity = max(last_user_speech_time, last_agent_speech_done_time)
+                    silence_elapsed = now - last_activity
+
+                    # Phase 1: Reprompt
+                    if silence_elapsed >= silence_timeout and not has_reprompted_silence:
+                        logger.info(f"[VoicePreview] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
+                        has_reprompted_silence = True
+                        last_agent_speech_done_time = now
+                        await deepgram_client.inject_agent_message(reprompt_msg)
+
+                    # Phase 2: Post-reprompt silence conclusion
+                    elif has_reprompted_silence and silence_elapsed >= (silence_timeout + hangup_delay):
+                        logger.info(f"[VoicePreview] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion.")
+                        is_concluding_call = True
+                        await deepgram_client.inject_agent_message(conclusion_msg)
+                        asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
+                        break
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"[VoicePreview] Error in preview_lifecycle_monitor: {e}")
 
     try:
         while True:
@@ -164,14 +264,28 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config)
 
+                if lifecycle_task:
+                    lifecycle_task.cancel()
+                    lifecycle_task = None
+
                 if deepgram_client:
                     await deepgram_client.close()
+
+                # Reset state
+                call_start_time = time.time()
+                last_user_speech_time = time.time()
+                last_agent_speech_done_time = time.time()
+                is_concluding_call = False
+                has_reprompted_silence = False
+                call_ended_event.clear()
 
                 deepgram_client = DeepgramVoiceAgentClient(
                     on_audio=handle_dg_audio,
                     on_event=handle_dg_event,
                     on_transcript=handle_dg_transcript,
-                    on_user_speaking=handle_dg_user_speaking
+                    on_user_speaking=handle_dg_user_speaking,
+                    on_agent_speaking=handle_dg_agent_speaking,
+                    on_agent_audio_done=handle_dg_agent_audio_done
                 )
 
                 try:
@@ -186,6 +300,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         "model": agent_config.llm.model
                     })
                     logger.info("[VoicePreview] Deepgram agent connected and configured for in-browser preview.")
+                    lifecycle_task = asyncio.create_task(preview_lifecycle_monitor())
                 except Exception as dg_err:
                     logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
                     await websocket.send_json({
@@ -200,7 +315,6 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     import base64
                     try:
                         raw_bytes = base64.b64decode(audio_payload)
-                        # Browser sends either PCM16 or Mu-law
                         format_type = data.get("format", "pcm16")
                         if format_type == "pcm16":
                             mulaw_bytes = AudioAdapter.pcm16_to_mulaw(raw_bytes)
@@ -224,6 +338,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
             # 5. Stop preview session
             elif msg_type == "stop":
+                call_ended_event.set()
+                if lifecycle_task:
+                    lifecycle_task.cancel()
+                    lifecycle_task = None
                 if deepgram_client:
                     await deepgram_client.close()
                 await websocket.send_json({"type": "stopped"})
@@ -233,6 +351,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"[VoicePreview] Unexpected error: {e}")
     finally:
+        call_ended_event.set()
+        if lifecycle_task:
+            lifecycle_task.cancel()
+            lifecycle_task = None
         if deepgram_client:
             await deepgram_client.close()
 

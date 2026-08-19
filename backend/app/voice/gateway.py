@@ -1,7 +1,8 @@
 """
 Voice Gateway
 FastAPI WebSocket endpoint bridging Twilio Media Streams and Deepgram Voice Agent API.
-Handles audio forwarding, barge-in clear events, telemetry, multi-tenant resolution, and graceful teardown.
+Handles audio forwarding, barge-in clear events, telemetry, silence management,
+maximum call duration enforcement with conclusion message, and graceful teardown.
 """
 
 import asyncio
@@ -15,10 +16,11 @@ from app.voice.audio import AudioAdapter
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
-from app.agents.configuration import AgentConfiguration
+from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
 from app.agents.runtime import AgentRuntimeBuilder
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
+from app.services.twilio_service import TwilioService
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.call_repository import CallRepository
@@ -34,6 +36,7 @@ agent_service = AgentService(agent_repo)
 call_repo = CallRepository()
 call_session_service = CallSessionService(call_repo)
 twilio_repo = TwilioRepository()
+twilio_service = TwilioService(twilio_repo)
 
 
 @router.websocket("/voice/stream")
@@ -45,10 +48,22 @@ async def voice_stream_websocket(websocket: WebSocket):
     logger.info("[VoiceGateway] Twilio Media Stream WebSocket connected.")
 
     session: Optional[CallSession] = None
+    agent_config: Optional[AgentConfiguration] = None
     deepgram_client: Optional[DeepgramVoiceAgentClient] = None
     stream_sid: Optional[str] = None
     call_sid: Optional[str] = None
     turn_start_time: float = time.perf_counter()
+
+    # Call lifecycle state
+    call_start_time: float = time.time()
+    last_user_speech_time: float = time.time()
+    last_agent_speech_done_time: float = time.time()
+    is_agent_speaking: bool = False
+    is_user_speaking: bool = False
+    has_reprompted_silence: bool = False
+    is_concluding_call: bool = False
+    call_ended_event: asyncio.Event = asyncio.Event()
+    lifecycle_task: Optional[asyncio.Task] = None
 
     async def handle_deepgram_audio(raw_audio: bytes):
         """Forward audio from Deepgram TTS to Twilio Media Stream with smooth telephony chunking."""
@@ -56,28 +71,46 @@ async def voice_stream_websocket(websocket: WebSocket):
         if not stream_sid:
             return
         try:
-            # Twilio Media Streams expect 20ms-40ms frames (160-320 bytes).
-            # Sending giant un-chunked audio buffers causes Twilio jitter buffer overflow, packet drops, and audio stuttering.
-            chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=320)
-            for chunk in chunks:
-                msg = AudioAdapter.create_twilio_media_message(stream_sid, chunk)
-                await websocket.send_text(msg)
+            chunk_size = 320  # 40ms audio chunks
+            for i in range(0, len(raw_audio), chunk_size):
+                chunk = raw_audio[i:i + chunk_size]
+                twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
+                await websocket.send_text(json.dumps(twilio_msg))
+                await asyncio.sleep(0.002)
         except Exception as e:
-            logger.error(f"[VoiceGateway] Error sending audio to Twilio: {e}")
+            logger.error(f"[VoiceGateway] Error streaming audio chunk to Twilio: {e}")
 
     async def handle_user_speaking():
-        """Barge-in / Interruption handler: instantly clear Twilio audio queue."""
-        nonlocal stream_sid, session
+        """Barge-in: Interrupt audio immediately when user starts speaking."""
+        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence
+        is_user_speaking = True
+        is_agent_speaking = False
+        last_user_speech_time = time.time()
+        has_reprompted_silence = False  # Reset silence reprompt on user speech
+
         if stream_sid:
+            clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
             try:
-                clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
-                await websocket.send_text(clear_msg)
-                logger.info(f"[VoiceGateway] Sent clear event to Twilio for Stream SID: {stream_sid}")
+                await websocket.send_text(json.dumps(clear_msg))
+                logger.info(f"[VoiceGateway] Barge-in clear signal sent to Twilio for stream {stream_sid}")
             except Exception as e:
-                logger.error(f"[VoiceGateway] Error sending clear to Twilio: {e}")
+                logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
 
         if session:
             await call_session_service.record_barge_in(session)
+
+    async def handle_agent_speaking(data: dict):
+        nonlocal is_agent_speaking, is_user_speaking
+        is_agent_speaking = True
+        is_user_speaking = False
+
+    async def handle_agent_audio_done():
+        nonlocal is_agent_speaking, last_agent_speech_done_time, is_concluding_call
+        is_agent_speaking = False
+        last_agent_speech_done_time = time.time()
+        if is_concluding_call:
+            logger.info("[VoiceGateway] Conclusion audio finished playing. Scheduling call termination.")
+            asyncio.create_task(terminate_call())
 
     async def handle_deepgram_event(event_type: str, data: dict):
         """Dispatch Deepgram events to frontend telemetry broadcaster."""
@@ -95,7 +128,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_transcript(role: str, content: str):
         """Record transcript turns and latencies."""
-        nonlocal session, turn_start_time
+        nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
         if not session:
             return
 
@@ -104,13 +137,94 @@ async def voice_stream_websocket(websocket: WebSocket):
 
         if role == "user":
             turn_start_time = now
+            last_user_speech_time = time.time()
+            is_user_speaking = False
+            has_reprompted_silence = False
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
         else:
+            is_agent_speaking = True
             await call_session_service.record_agent_transcript(
                 session,
                 content,
                 turn_latency_ms=turn_latency
             )
+
+    async def terminate_call():
+        """Gracefully terminates the Twilio call and closes connections."""
+        nonlocal session, call_ended_event
+        call_ended_event.set()
+        await asyncio.sleep(1.2)  # Allow Twilio buffer delivery
+        try:
+            if session and session.twilio_call_sid and session.organization_id:
+                logger.info(f"[VoiceGateway] Hanging up Twilio call {session.twilio_call_sid}...")
+                await twilio_service.end_call(session.organization_id, session.twilio_call_sid)
+        except Exception as e:
+            logger.warning(f"[VoiceGateway] Could not hang up Twilio call: {e}")
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close()
+        except Exception:
+            pass
+
+    async def call_lifecycle_monitor():
+        """
+        Monitors Silence Timeout (Reprompt -> Conclude & End)
+        and Maximum Call Duration (Finish current turn -> Conclude & End).
+        """
+        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time
+        try:
+            while not call_ended_event.is_set():
+                await asyncio.sleep(0.5)
+                if not deepgram_client or not deepgram_client.is_ready or not agent_config:
+                    continue
+
+                runtime = agent_config.runtime or AgentRuntimeSettings()
+                silence_timeout = max(3, runtime.silence_timeout)
+                hangup_delay = max(2, runtime.silence_hangup_delay or 5)
+                max_duration = max(10, runtime.maximum_call_duration or 1800)
+                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
+                reprompt_msg = (runtime.silence_reprompt_message or "Are you still there? I'm here if you have any questions.").strip()
+
+                now = time.time()
+                elapsed_call_time = now - call_start_time
+
+                # 1. Maximum Call Duration Check
+                if elapsed_call_time >= max_duration and not is_concluding_call:
+                    # If customer is speaking or agent is answering, allow current turn to finish
+                    if is_user_speaking or is_agent_speaking:
+                        continue
+
+                    logger.info(f"[VoiceGateway] Maximum call duration ({max_duration}s) reached. Speaking conclusion message.")
+                    is_concluding_call = True
+                    await deepgram_client.inject_agent_message(conclusion_msg)
+                    # Safeguard fallback timeout in case audio done event is missed
+                    asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                    break
+
+                # 2. Silence Timeout Check
+                if not is_concluding_call and not is_agent_speaking and not is_user_speaking:
+                    last_activity = max(last_user_speech_time, last_agent_speech_done_time)
+                    silence_elapsed = now - last_activity
+
+                    # Phase 1: Ask reprompt message if silent for silence_timeout
+                    if silence_elapsed >= silence_timeout and not has_reprompted_silence:
+                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
+                        has_reprompted_silence = True
+                        last_agent_speech_done_time = now
+                        await deepgram_client.inject_agent_message(reprompt_msg)
+
+                    # Phase 2: If still silent after reprompt + hangup_delay, speak conclusion and hang up
+                    elif has_reprompted_silence and silence_elapsed >= (silence_timeout + hangup_delay):
+                        logger.info(f"[VoiceGateway] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion and concluding call.")
+                        is_concluding_call = True
+                        await deepgram_client.inject_agent_message(conclusion_msg)
+                        asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                        break
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"[VoiceGateway] Exception in call_lifecycle_monitor: {e}")
 
     try:
         while True:
@@ -194,6 +308,11 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 await call_session_service.attach_stream(session, stream_sid, call_sid=call_sid)
 
+                # Reset timers
+                call_start_time = time.time()
+                last_user_speech_time = time.time()
+                last_agent_speech_done_time = time.time()
+
                 # 2. Build Deepgram Settings via AgentRuntimeBuilder
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config)
 
@@ -216,7 +335,9 @@ async def voice_stream_websocket(websocket: WebSocket):
                     on_audio=handle_deepgram_audio,
                     on_event=handle_deepgram_event,
                     on_transcript=handle_transcript,
-                    on_user_speaking=handle_user_speaking
+                    on_user_speaking=handle_user_speaking,
+                    on_agent_speaking=handle_agent_speaking,
+                    on_agent_audio_done=handle_agent_audio_done
                 )
 
                 # Execute official handshake (Welcome -> Settings -> SettingsApplied -> Inject Greeting)
@@ -226,12 +347,14 @@ async def voice_stream_websocket(websocket: WebSocket):
                         greeting=agent_config.greeting
                     )
                     logger.info("[VoiceGateway] Deepgram Voice Agent successfully connected and ready.")
+
+                    # Start background call lifecycle monitor (silence & duration)
+                    lifecycle_task = asyncio.create_task(call_lifecycle_monitor())
                 except Exception as dg_err:
                     logger.error(f"[VoiceGateway] Deepgram connection failed: {dg_err}")
                     if session:
                         session.last_error = str(dg_err)
                         session.error_type = "deepgram_connection_error"
-                    # Immediately close client on connection failure to avoid dangling connections or credit consumption
                     if deepgram_client:
                         await deepgram_client.close()
                         deepgram_client = None
@@ -257,8 +380,11 @@ async def voice_stream_websocket(websocket: WebSocket):
             session.last_error = str(e)
             session.error_type = "stream_exception"
     finally:
-        # GUARANTEED CLEANUP: Always close the Deepgram WebSocket connection immediately when
-        # the call ends, is interrupted, or disconnects to avoid consuming Deepgram credits.
+        call_ended_event.set()
+        if lifecycle_task:
+            lifecycle_task.cancel()
+            lifecycle_task = None
+
         if deepgram_client:
             try:
                 await deepgram_client.close()

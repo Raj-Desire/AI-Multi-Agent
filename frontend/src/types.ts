@@ -233,9 +233,12 @@ export interface AgentRuntimeSettings {
   barge_in_enabled: boolean;
   interruption_sensitivity: number;
   silence_timeout: number;
-  customer_response_timeout: number;
+  silence_reprompt_message?: string;
+  silence_hangup_delay?: number;
   maximum_call_duration: number;
-  retry_attempts: number;
+  conclusion_message?: string;
+  customer_response_timeout?: number;
+  retry_attempts?: number;
   auto_hangup_on_completion?: boolean;
 }
 

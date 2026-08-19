@@ -58,9 +58,12 @@ class ListenProviderConfig(BaseModel):
 class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
-    silence_timeout: int = 10
+    silence_timeout: int = 5  # Seconds of silence before asking reprompt message
+    silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
+    silence_hangup_delay: int = 5  # Seconds after reprompt before concluding and hanging up
+    maximum_call_duration: int = 300  # Max total call duration in seconds
+    conclusion_message: Optional[str] = "Thank you for your time. Have a great day!"
     customer_response_timeout: int = 15
-    maximum_call_duration: int = 1800
     retry_attempts: int = 2
     auto_hangup_on_completion: bool = True
 
