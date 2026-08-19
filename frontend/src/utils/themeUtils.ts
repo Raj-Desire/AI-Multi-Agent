@@ -545,19 +545,60 @@ export function applyThemeToCss(
   root.style.setProperty("--color-accent-rgb", `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
   root.style.setProperty("--color-accent-light", `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`);
 
-  // Direct injection of heading, text, and muted tokens
-  root.style.setProperty("--color-heading", colors.heading || colors.text || (isDark ? "#ffffff" : "#0f172a"));
-  root.style.setProperty("--color-text", colors.text || (isDark ? "#f8fafc" : "#1e293b"));
-  root.style.setProperty("--color-muted", colors.text_muted || (isDark ? "#94a3b8" : "#475569"));
-  
-  root.style.setProperty("--color-background", colors.background || (isDark ? "#090d16" : "#fafafa"));
-  root.style.setProperty("--color-surface", colors.surface || (isDark ? "#111827" : "#ffffff"));
-  root.style.setProperty("--color-surface-muted", isDark ? "#182234" : "#f4f5f7");
-  root.style.setProperty("--color-surface-elevated", isDark ? "#1e293b" : "#ffffff");
-  root.style.setProperty("--color-sidebar", colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa"));
-  root.style.setProperty("--color-sidebar-text", colors.sidebar_text || (isDark ? "#f3f4f6" : "#0f172a"));
-  root.style.setProperty("--color-border", colors.border || (isDark ? "#1f2937" : "#e5e7eb"));
-  root.style.setProperty("--color-border-strong", isDark ? "#374151" : "#d1d5db");
+  // Check luminance to correctly map dark/light colors dynamically
+  const isColorLight = (hex?: string, defaultVal = "#ffffff") => {
+    try {
+      return getLuminance(hex || defaultVal) > 0.45;
+    } catch {
+      return true;
+    }
+  };
+
+  const isColorDark = (hex?: string, defaultVal = "#000000") => !isColorLight(hex, defaultVal);
+
+  if (isDark) {
+    // Dark Mode Theme Tokens
+    const effectiveBg = isColorLight(colors.background, "#ffffff") ? "#090d16" : (colors.background || "#090d16");
+    const effectiveSurface = isColorLight(colors.surface, "#ffffff") ? "#111827" : (colors.surface || "#111827");
+    const effectiveSidebar = isColorLight(colors.sidebar, "#ffffff") ? "#0d131f" : (colors.sidebar || "#0d131f");
+    const effectiveHeading = isColorDark(colors.heading, "#000000") ? "#f8fafc" : (colors.heading || "#f8fafc");
+    const effectiveText = isColorDark(colors.text, "#000000") ? "#e2e8f0" : (colors.text || "#e2e8f0");
+    const effectiveMuted = isColorDark(colors.text_muted, "#000000") ? "#94a3b8" : (colors.text_muted || "#94a3b8");
+    const effectiveBorder = isColorLight(colors.border, "#ffffff") ? "#1f2937" : (colors.border || "#1f2937");
+
+    root.style.setProperty("--color-background", effectiveBg);
+    root.style.setProperty("--color-surface", effectiveSurface);
+    root.style.setProperty("--color-surface-muted", "#182234");
+    root.style.setProperty("--color-surface-elevated", "#1e293b");
+    root.style.setProperty("--color-sidebar", effectiveSidebar);
+    root.style.setProperty("--color-sidebar-text", "#f3f4f6");
+    root.style.setProperty("--color-heading", effectiveHeading);
+    root.style.setProperty("--color-text", effectiveText);
+    root.style.setProperty("--color-muted", effectiveMuted);
+    root.style.setProperty("--color-border", effectiveBorder);
+    root.style.setProperty("--color-border-strong", "#374151");
+  } else {
+    // Light Mode Theme Tokens
+    const effectiveBg = isColorDark(colors.background, "#000000") ? "#fafafa" : (colors.background || "#fafafa");
+    const effectiveSurface = isColorDark(colors.surface, "#000000") ? "#ffffff" : (colors.surface || "#ffffff");
+    const effectiveSidebar = isColorDark(colors.sidebar, "#000000") ? "#f8f9fa" : (colors.sidebar || "#f8f9fa");
+    const effectiveHeading = isColorLight(colors.heading, "#ffffff") ? "#0f172a" : (colors.heading || "#0f172a");
+    const effectiveText = isColorLight(colors.text, "#ffffff") ? "#1e293b" : (colors.text || "#1e293b");
+    const effectiveMuted = isColorLight(colors.text_muted, "#ffffff") ? "#64748b" : (colors.text_muted || "#64748b");
+    const effectiveBorder = isColorDark(colors.border, "#000000") ? "#e5e7eb" : (colors.border || "#e5e7eb");
+
+    root.style.setProperty("--color-background", effectiveBg);
+    root.style.setProperty("--color-surface", effectiveSurface);
+    root.style.setProperty("--color-surface-muted", "#f4f5f7");
+    root.style.setProperty("--color-surface-elevated", "#ffffff");
+    root.style.setProperty("--color-sidebar", effectiveSidebar);
+    root.style.setProperty("--color-sidebar-text", "#0f172a");
+    root.style.setProperty("--color-heading", effectiveHeading);
+    root.style.setProperty("--color-text", effectiveText);
+    root.style.setProperty("--color-muted", effectiveMuted);
+    root.style.setProperty("--color-border", effectiveBorder);
+    root.style.setProperty("--color-border-strong", "#d1d5db");
+  }
 
   root.style.setProperty("--color-success", colors.success || "#10b981");
   root.style.setProperty("--color-warning", colors.warning || "#f59e0b");

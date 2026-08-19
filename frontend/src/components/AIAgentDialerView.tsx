@@ -462,7 +462,7 @@ export function AIAgentDialerView({
                 value={selectedAgentId}
                 onChange={(e) => setSelectedAgentId(e.target.value)}
                 disabled={calling}
-                className="w-full h-10 text-xs px-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                className="w-full h-10 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
               >
                 {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                   <optgroup label="My Organization Agents">

@@ -55,6 +55,15 @@ export interface TwilioConfig {
   status: string;
 }
 
+export interface TwilioBalance {
+  configured: boolean;
+  account_sid?: string | null;
+  balance?: string | null;
+  currency?: string | null;
+  error?: string | null;
+  message?: string | null;
+}
+
 export interface SaveTwilioPayload {
   account_sid: string;
   auth_token: string;
@@ -69,6 +78,24 @@ export interface SaveTwilioPayload {
   default_agent_id?: string;
   inbound_agent_mapping?: Record<string, string>;
 }
+
+export interface AutoSetupTwilioPayload {
+  account_sid: string;
+  auth_token: string;
+  friendly_name?: string;
+}
+
+export interface AutoSetupTwilioResponse {
+  account_sid: string;
+  phone_numbers_found: number;
+  phone_numbers: string[];
+  twiml_app_sid: string;
+  api_key_sid: string;
+  voice_webhook_url: string;
+  status: string;
+  message: string;
+}
+
 
 export type UIStyle =
   | 'default'

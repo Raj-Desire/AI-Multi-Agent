@@ -31,3 +31,26 @@ class TwilioConfigResponse(BaseModel):
     default_agent_id: Optional[str] = None
     inbound_agent_mapping: Optional[Dict[str, str]] = None
     status: str
+
+class AutoSetupTwilioRequest(BaseModel):
+    account_sid: str
+    auth_token: str
+    friendly_name: Optional[str] = "Desire AI Calling Platform"
+
+class AutoSetupResponse(BaseModel):
+    account_sid: str
+    phone_numbers_found: int
+    phone_numbers: list[str]
+    twiml_app_sid: str
+    api_key_sid: str
+    voice_webhook_url: str
+    status: str
+    message: str
+
+class TwilioBalanceResponse(BaseModel):
+    configured: bool
+    account_sid: Optional[str] = None
+    balance: Optional[str] = None
+    currency: Optional[str] = "USD"
+    error: Optional[str] = None
+    message: Optional[str] = None

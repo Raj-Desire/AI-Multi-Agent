@@ -9,7 +9,7 @@ from twilio.base.exceptions import TwilioRestException
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial, Connect, Stream
-
+import os
 from app.core.dependencies import TenantContext
 from app.core.security import decrypt_token
 from app.models.call import Call
@@ -142,7 +142,7 @@ class CallService:
                         client.applications(tw_cfg.twiml_app_sid).update(
                             voice_url=expected_url,
                             voice_method="POST",
-                            voice_fallback_url=expected_voice_url,
+                            voice_fallback_url=expected_url,
                             voice_fallback_method="POST"
                         )
                 await asyncio.to_thread(_sync_url)
