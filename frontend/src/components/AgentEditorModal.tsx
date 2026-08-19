@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { fetchApi } from "../api-client";
 import { AgentConfig, AgentPersonality, AgentServiceItem, AgentGuardrails, AgentRuntimeSettings } from "../types";
 import { AgentLivePreview } from "./AgentLivePreview";
 import {
@@ -21,7 +22,14 @@ import {
   Trash2,
   Radio,
   FileText,
-  AlertCircle
+  AlertCircle,
+  Wand2,
+  CornerDownLeft,
+  Send,
+  Rocket,
+  RotateCcw,
+  Bell,
+  Target
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
@@ -48,46 +56,86 @@ const LLM_MODELS = [
   { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku (Fast & Balanced)" }
 ];
 
-const ROLE_PRESETS = [
+const AGENT_ARCHETYPES = [
   {
-    role: "Sales Representative",
-    objective: "Engage prospects, uncover buying criteria, present core product value, and secure next steps.",
-    skills: ["Lead Qualification", "Product Knowledge", "Objection Handling", "Appointment Booking"]
+    id: "marketing",
+    label: "Marketing & Sales",
+    tagline: "Outbound Hook, Value Pitch & Offers",
+    icon: Rocket,
+    tone: "Confident + Persuasive",
+    defaultRole: "Sales & Marketing Specialist",
+    placeholderDesc: "e.g., Call prospective leads to introduce our SaaS CRM software with 30% savings. Hook their curiosity in 1 sentence, ask if they are open to cutting software costs, and book a 10-minute live demo...",
+    suggestions: [
+      "Add 20% promotional discount offer code SAVE20",
+      "Handle 'Not interested' with 1 quick value point",
+      "Offer 14-day free trial with no credit card",
+      "Ask for a 5-minute meeting or Zoom demo slot"
+    ],
+    personality: { professionalism: 90, friendliness: 85, empathy: 75, patience: 80, confidence: 95, energy: 85, assertiveness: 80, humor: 15, curiosity: 85 }
   },
   {
-    role: "Customer Support Agent",
-    objective: "Listen patiently to customer inquiries, troubleshoot common issues, and log or escalate tickets.",
-    skills: ["Ticket Creation", "FAQ Handling", "Objection Handling", "Order Status Lookup"]
+    id: "follow_up",
+    label: "Customer Follow-Up",
+    tagline: "Account Review & Satisfaction",
+    icon: RotateCcw,
+    tone: "Empathetic + Consultative",
+    defaultRole: "Customer Care Specialist",
+    placeholderDesc: "e.g., Call bank customers who recently opened a checking account. Check if they received their debit card, checkbook, and mobile app login, resolve any questions, and collect satisfaction feedback...",
+    suggestions: [
+      "Verify debit card and checkbook delivery",
+      "Ask if mobile app setup went smoothly",
+      "Express sincere empathy if items are delayed",
+      "Offer quick callback from branch manager"
+    ],
+    personality: { professionalism: 85, friendliness: 90, empathy: 95, patience: 90, confidence: 80, energy: 65, assertiveness: 50, humor: 10, curiosity: 75 }
   },
   {
-    role: "Appointment Scheduler",
-    objective: "Coordinate schedules, book consultations, reschedule existing appointments, and verify dates.",
-    skills: ["Appointment Booking", "Information Gathering", "SMS Follow-up"]
+    id: "query_solver",
+    label: "Query Solver & Support",
+    tagline: "Helpdesk & Troubleshooting",
+    icon: HelpCircle,
+    tone: "Helpful + Patient",
+    defaultRole: "Customer Support Specialist",
+    placeholderDesc: "e.g., Answer inbound customer calls for an e-commerce store. Help with order tracking, return requests, and refund status. Give step-by-step guidance and escalate unresolved issues to supervisors...",
+    suggestions: [
+      "Add 30-day money-back return policy",
+      "Explain tracking number lookup process",
+      "Transfer angry customers to supervisor immediately",
+      "Send SMS confirmation link after call"
+    ],
+    personality: { professionalism: 90, friendliness: 85, empathy: 90, patience: 95, confidence: 85, energy: 60, assertiveness: 45, humor: 10, curiosity: 80 }
   },
   {
-    role: "Receptionist",
-    objective: "Warmly greet callers, identify their inquiry, answer general FAQs, and route to appropriate departments.",
-    skills: ["FAQ Handling", "Call Transfer", "Information Gathering", "Appointment Booking"]
+    id: "reminder",
+    label: "Appointment Reminder",
+    tagline: "Dates, Deadlines & Confirmation",
+    icon: Bell,
+    tone: "Polite + Efficient",
+    defaultRole: "Appointment Coordinator",
+    placeholderDesc: "e.g., Call dental patients to remind them of their cleaning appointment scheduled for tomorrow at 3 PM. Confirm attendance, provide parking info, and offer alternative morning or afternoon slots if they need to reschedule...",
+    suggestions: [
+      "Confirm attendance for scheduled time",
+      "Offer 2 alternative dates if rescheduling",
+      "Mention free parking in building basement",
+      "Remind them to bring photo ID & insurance card"
+    ],
+    personality: { professionalism: 95, friendliness: 80, empathy: 75, patience: 90, confidence: 85, energy: 60, assertiveness: 70, humor: 5, curiosity: 50 }
   },
   {
-    role: "Lead Qualification Agent",
-    objective: "Screen inbound leads using BANT criteria and route qualified accounts to senior sales teams.",
-    skills: ["Lead Qualification", "Information Gathering", "Call Routing"]
-  },
-  {
-    role: "Customer Follow-Up Agent",
-    objective: "Check customer satisfaction post-service, answer follow-up questions, and collect feedback.",
-    skills: ["Information Gathering", "FAQ Handling", "SMS Follow-up"]
-  },
-  {
-    role: "Technical Support",
-    objective: "Guide callers through technical troubleshooting steps systematically to resolve software issues.",
-    skills: ["Product Knowledge", "FAQ Handling", "Ticket Creation"]
-  },
-  {
-    role: "Custom Role",
-    objective: "Define a tailored conversational objective specific to your company's business workflow.",
-    skills: ["Information Gathering", "FAQ Handling"]
+    id: "lead_qualification",
+    label: "Lead Qualification",
+    tagline: "BANT Criteria & Screening",
+    icon: Target,
+    tone: "Articulate + Direct",
+    defaultRole: "Lead Qualification Specialist",
+    placeholderDesc: "e.g., Qualify inbound demo requests for real estate investments. Ask 3 quick screening questions regarding target investment budget, location preference, and purchase timeline, then schedule VIP private viewing...",
+    suggestions: [
+      "Screen for commercial vs residential interest",
+      "Ask budget range above $500,000",
+      "Confirm purchase decision timeline within 60 days",
+      "Schedule private VIP site visit"
+    ],
+    personality: { professionalism: 90, friendliness: 80, empathy: 75, patience: 85, confidence: 90, energy: 75, assertiveness: 75, humor: 10, curiosity: 90 }
   }
 ];
 
@@ -107,7 +155,7 @@ const ALL_SKILLS = [
 ];
 
 const STEPS = [
-  { id: 1, label: "Basic Info & Role", icon: Bot },
+  { id: 1, label: "Identity & AI Prompt", icon: Bot },
   { id: 2, label: "Voice & AI Model", icon: Volume2 },
   { id: 3, label: "Style & Personality", icon: Sliders },
   { id: 4, label: "Runtime & Guardrails", icon: ShieldAlert },
@@ -134,6 +182,9 @@ export function AgentEditorModal({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Selected Call Intent / Archetype
+  const [selectedArchetype, setSelectedArchetype] = useState<string>("marketing");
+
   // Sample Voice Testing State
   const [previewSampleText, setPreviewSampleText] = useState("Hello! I am your AI Voice Agent. How can I help you today?");
   const [isPlayingSample, setIsPlayingSample] = useState(false);
@@ -143,9 +194,26 @@ export function AgentEditorModal({
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [generationSuccessMsg, setGenerationSuccessMsg] = useState<string | null>(null);
 
+  // Interactive AI Prompt Refinement ("Add this to Prompt") State
+  const [refinementText, setRefinementText] = useState("");
+  const [isRefiningPrompt, setIsRefiningPrompt] = useState(false);
+
+  const activeArchetypeObj = AGENT_ARCHETYPES.find((a) => a.id === selectedArchetype) || AGENT_ARCHETYPES[0];
+
+  const handleArchetypeSelect = (arch: typeof AGENT_ARCHETYPES[0]) => {
+    setSelectedArchetype(arch.id);
+    setAgentData((prev) => ({
+      ...prev,
+      role: prev.role === "Sales Representative" || !prev.role ? arch.defaultRole : prev.role,
+      communication_style: arch.tone,
+      personality: { ...prev.personality, ...arch.personality }
+    }));
+  };
+
   async function handleGeneratePrompt() {
-    if (!agentData.objective || !agentData.objective.trim()) {
-      setErrorMsg("Please enter a Primary Objective first before generating prompt instructions.");
+    const desc = (agentData.description || agentData.objective || "").trim();
+    if (!desc) {
+      setErrorMsg("Please enter an Agent Description or Purpose first before generating prompt instructions.");
       return;
     }
 
@@ -154,43 +222,86 @@ export function AgentEditorModal({
     setGenerationSuccessMsg(null);
 
     try {
-      const token = localStorage.getItem("desire_token");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-
-      const response = await fetch("http://localhost:8000/api/v1/agents/generate-prompt", {
+      const res = await fetchApi<{
+        system_prompt: string;
+        suggested_greeting: string;
+        suggested_objective?: string;
+        communication_style?: string;
+        recommended_voice?: string;
+      }>("/agents/generate-prompt", {
         method: "POST",
-        headers,
         body: JSON.stringify({
           name: agentData.name || "Voice Assistant",
-          role: agentData.role || "Sales Representative",
-          objective: agentData.objective,
-          communication_style: agentData.communication_style || "Professional + Friendly"
+          description: desc,
+          agent_type: selectedArchetype,
+          role: agentData.role || activeArchetypeObj.defaultRole,
+          objective: agentData.objective || desc,
+          communication_style: agentData.communication_style || activeArchetypeObj.tone
         })
       });
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => null);
-        throw new Error(errJson?.detail || "Failed to generate prompt instructions");
+      if (res) {
+        setAgentData((prev) => ({
+          ...prev,
+          system_prompt: res.system_prompt,
+          greeting: res.suggested_greeting || prev.greeting,
+          objective: res.suggested_objective || prev.objective || desc,
+          voice: res.recommended_voice ? { ...prev.voice, voice: res.recommended_voice } : prev.voice
+        }));
+
+        setGenerationSuccessMsg(`✨ Spoken phone prompt & ${activeArchetypeObj.label} greeting generated with Azure GPT-4o!`);
       }
-
-      const data = await response.json();
-      const generated = data.data;
-
-      setAgentData((prev) => ({
-        ...prev,
-        system_prompt: generated.system_prompt,
-        greeting: generated.suggested_greeting || prev.greeting
-      }));
-
-      setGenerationSuccessMsg("Prompt instructions and call handling flows generated successfully!");
     } catch (err: any) {
       console.error("Generate prompt error:", err);
-      setErrorMsg(err.message || "Failed to generate prompt instructions.");
+      setErrorMsg(err.message || "Failed to generate prompt instructions with Azure GPT-4o.");
     } finally {
       setIsGeneratingPrompt(false);
+    }
+  }
+
+  async function handleRefinePrompt() {
+    if (!refinementText.trim()) {
+      setErrorMsg("Please type what instruction or rule you want to add or modify in the prompt assistant box.");
+      return;
+    }
+    if (!agentData.system_prompt?.trim()) {
+      setErrorMsg("Please generate or enter a base prompt first before adding custom instructions.");
+      return;
+    }
+
+    setIsRefiningPrompt(true);
+    setErrorMsg(null);
+    setGenerationSuccessMsg(null);
+
+    try {
+      const res = await fetchApi<{
+        system_prompt: string;
+        suggested_greeting?: string;
+        summary_of_changes?: string;
+      }>("/agents/refine-prompt", {
+        method: "POST",
+        body: JSON.stringify({
+          current_prompt: agentData.system_prompt,
+          instruction: refinementText.trim(),
+          name: agentData.name || "Voice Assistant",
+          description: agentData.description || ""
+        })
+      });
+
+      if (res) {
+        setAgentData((prev) => ({
+          ...prev,
+          system_prompt: res.system_prompt,
+          greeting: res.suggested_greeting || prev.greeting
+        }));
+        setGenerationSuccessMsg(`✨ ${res.summary_of_changes || "Custom instruction incorporated into prompt with Azure GPT-4o!"}`);
+        setRefinementText("");
+      }
+    } catch (err: any) {
+      console.error("Refine prompt error:", err);
+      setErrorMsg(err.message || "Failed to refine prompt with Azure GPT-4o.");
+    } finally {
+      setIsRefiningPrompt(false);
     }
   }
 
@@ -378,20 +489,6 @@ export function AgentEditorModal({
     }));
   }
 
-  function handleRoleSelect(roleName: string) {
-    const preset = ROLE_PRESETS.find((r) => r.role === roleName);
-    if (preset) {
-      setAgentData((prev) => ({
-        ...prev,
-        role: preset.role,
-        objective: preset.objective,
-        skills: [...preset.skills]
-      }));
-    } else {
-      setAgentData((prev) => ({ ...prev, role: roleName }));
-    }
-  }
-
   function toggleSkill(skill: string) {
     setAgentData((prev) => {
       const current = prev.skills || [];
@@ -504,12 +601,55 @@ export function AgentEditorModal({
             </Alert>
           )}
 
-          {/* COMBINED STEP 1: Basic Info, Role, Services & Skills */}
+          {/* STEP 1: Agent Identity & AI Prompt Generator Studio */}
           {currentStep === 1 && (
             <div className="space-y-5">
-              {/* Identity & Scope */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
+              {/* Archetype / Call Purpose Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-[var(--color-heading)] mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                    <span>Select Call Purpose & Agent Archetype</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--color-muted)] font-normal">
+                    Calibrates conversation psychology, hook greetings & objection handling
+                  </span>
+                </label>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+                  {AGENT_ARCHETYPES.map((arch) => {
+                    const isSelected = selectedArchetype === arch.id;
+                    const Icon = arch.icon;
+                    return (
+                      <button
+                        key={arch.id}
+                        type="button"
+                        onClick={() => handleArchetypeSelect(arch)}
+                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                          isSelected
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] text-[var(--color-primary)] font-semibold shadow-xs ring-1 ring-[var(--color-primary)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className={`p-1.5 rounded-md ${isSelected ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-surface-muted)] text-[var(--color-muted)]"}`}>
+                            <Icon className="w-3.5 h-3.5" />
+                          </div>
+                          {isSelected && <Check className="w-3 h-3 text-[var(--color-primary)]" />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold truncate leading-tight">{arch.label}</div>
+                          <div className="text-[10px] opacity-75 line-clamp-1 mt-0.5">{arch.tagline}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Agent Identity & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
                     Agent Name <span className="text-[var(--color-danger)]">*</span>
                   </label>
@@ -517,14 +657,14 @@ export function AgentEditorModal({
                     type="text"
                     value={agentData.name}
                     onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
-                    placeholder="e.g., Customer Follow-Up Agent"
+                    placeholder="e.g., Sophia - Sales Closer"
                     className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
-                    Initial Status
+                    Status
                   </label>
                   <select
                     value={agentData.status}
@@ -532,115 +672,190 @@ export function AgentEditorModal({
                     className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   >
                     <option value="DRAFT">Draft (Testing only)</option>
-                    <option value="ACTIVE">Active (Available for live calls)</option>
+                    <option value="ACTIVE">Active (Live calls)</option>
                     <option value="INACTIVE">Inactive (Disabled)</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
-                  Description
-                </label>
-                <input
-                  type="text"
+              {/* Agent Description / Business Goal */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                    Agent Description & Business Offer <span className="text-[var(--color-danger)]">*</span>
+                  </label>
+                  <span className="text-[10px] text-[var(--color-primary)] font-medium">
+                    {activeArchetypeObj.label} Mode Active
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
                   value={agentData.description || ""}
-                  onChange={(e) => setAgentData({ ...agentData, description: e.target.value })}
-                  placeholder="Brief summary of what this voice assistant handles..."
-                  className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  onChange={(e) => {
+                    setAgentData({
+                      ...agentData,
+                      description: e.target.value,
+                      objective: e.target.value
+                    });
+                  }}
+                  placeholder={activeArchetypeObj.placeholderDesc}
+                  className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] leading-relaxed resize-y font-normal"
                 />
               </div>
 
-              {/* Role Template Selector */}
-              <div className="pt-2 border-t border-[var(--color-border)]">
-                <label className="block text-xs font-semibold text-[var(--color-heading)] mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                  <span>Choose Role Template</span>
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {ROLE_PRESETS.map((p) => {
-                    const isSelected = agentData.role === p.role;
-                    return (
-                      <button
-                        key={p.role}
-                        type="button"
-                        onClick={() => handleRoleSelect(p.role)}
-                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border text-left transition-colors cursor-pointer ${
-                          isSelected
-                            ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] text-[var(--color-primary)] font-semibold shadow-2xs"
-                            : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
-                        }`}
-                      >
-                        <div className="text-xs truncate">{p.role}</div>
-                      </button>
-                    );
-                  })}
+              {/* Main AI Generation Action Bar */}
+              <div className="p-3.5 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                      <span>Azure OpenAI GPT-4o ({activeArchetypeObj.label})</span>
+                      <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                        Live GPT-4o
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[var(--color-muted)]">
+                      Synthesize calibrated {activeArchetypeObj.label.toLowerCase()} conversation branches, hook greeting & 1-2 sentence rules.
+                    </div>
+                  </div>
                 </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  disabled={isGeneratingPrompt || !agentData.description?.trim()}
+                  onClick={handleGeneratePrompt}
+                  className="h-8 px-3.5 text-xs font-semibold gap-1.5 shadow-xs whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  {isGeneratingPrompt ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Generating with GPT-4o...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>Generate AI Voice Prompt</span>
+                    </>
+                  )}
+                </Button>
               </div>
 
-              {/* Primary Objective Input with AI Prompt Generator */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                    Primary Objective <span className="text-[var(--color-danger)]">*</span>
-                  </label>
+              {/* Status Message Notification */}
+              {generationSuccessMsg && (
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-[var(--radius-main,0.375rem)] flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-300 animate-fade-in font-medium">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                  <span>{generationSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* SIDE-BY-SIDE PROMPT STUDIO & AI PROMPT ASSISTANT */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-1">
+                {/* Left Column: Spoken Opening Line & Full System Prompt (7 cols) */}
+                <div className="lg:col-span-7 space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1 flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      <span>Spoken Opening Line (Greeting)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={agentData.greeting}
+                      onChange={(e) => setAgentData({ ...agentData, greeting: e.target.value })}
+                      placeholder="e.g., Hi! This is Sophia. Are you currently looking into solar savings?"
+                      className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                        <span>Spoken Telephony System Prompt</span>
+                      </span>
+                      <span className="text-[10px] text-[var(--color-muted)] font-normal">
+                        Strict 1-2 sentences, single question per turn
+                      </span>
+                    </label>
+                    <textarea
+                      rows={11}
+                      value={agentData.system_prompt || ""}
+                      onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
+                      placeholder="Click 'Generate AI Voice Prompt' above or type your prompt instructions here..."
+                      className="w-full p-3 font-mono text-[11px] leading-relaxed bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-y"
+                    />
+                  </div>
+                </div>
+
+                {/* Right Column: AI Prompt Assistant / "Add this" Refinement Box (5 cols) */}
+                <div className="lg:col-span-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] p-3.5 flex flex-col justify-between space-y-3 shadow-2xs">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-xs text-[var(--color-heading)]">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>AI Prompt Co-Pilot</span>
+                      </div>
+                      <span className="text-[10px] text-[var(--color-muted)]">
+                        Refine & Add Rules
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+                      Want to add a discount, policy, FAQ, objection rule, or transfer behavior? Write it below and GPT-4o will seamlessly update your prompt.
+                    </p>
+
+                    <textarea
+                      rows={4}
+                      value={refinementText}
+                      onChange={(e) => setRefinementText(e.target.value)}
+                      placeholder="e.g. Add that if customer asks for discount, offer 10% off code SAVE10; and if they have an urgent issue, transfer to supervisor..."
+                      className="w-full p-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] leading-relaxed resize-none"
+                    />
+
+                    {/* Dynamic Quick Suggestion Chips based on Archetype */}
+                    <div className="space-y-1 pt-1">
+                      <div className="text-[10px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                        Quick Add Suggestions:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(activeArchetypeObj.suggestions || []).map((chip) => (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => setRefinementText(chip)}
+                            className="text-[10px] px-2 py-1 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:border-[var(--color-primary)] transition-colors cursor-pointer text-left truncate max-w-full"
+                          >
+                            + {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <Button
                     type="button"
                     size="sm"
                     variant="primary"
-                    disabled={isGeneratingPrompt || !agentData.objective?.trim()}
-                    onClick={handleGeneratePrompt}
-                    className="h-7 text-[11px] gap-1.5 shadow-2xs"
+                    disabled={isRefiningPrompt || !refinementText.trim() || !agentData.system_prompt?.trim()}
+                    onClick={handleRefinePrompt}
+                    className="w-full h-8 text-xs font-semibold gap-1.5 shadow-xs cursor-pointer"
                   >
-                    {isGeneratingPrompt ? (
+                    {isRefiningPrompt ? (
                       <>
-                        <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Generating Instructions...</span>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Updating Prompt with GPT-4o...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3 h-3" />
-                        <span>Generate AI Prompt & Call Script</span>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>✨ Add / Update Prompt with GPT-4o</span>
                       </>
                     )}
                   </Button>
                 </div>
-                <textarea
-                  rows={2}
-                  value={agentData.objective}
-                  onChange={(e) => setAgentData({ ...agentData, objective: e.target.value })}
-                  placeholder="e.g., Take the follow-up review for the bank after customer opened an account: check if they received checkbook, ATM card, and passbook..."
-                  className="w-full p-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] leading-relaxed"
-                />
-              </div>
-
-              {/* Generated Call Instructions & Branches */}
-              <div className="pt-2 border-t border-[var(--color-border)] space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                    <span className="text-xs font-semibold text-[var(--color-heading)]">
-                      AI Generated System Prompt & Conversation Logic
-                    </span>
-                  </div>
-                  {generationSuccessMsg && (
-                    <span className="text-[11px] text-emerald-600 font-medium animate-fade-in">
-                      {generationSuccessMsg}
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-[11px] text-[var(--color-muted)]">
-                  Specifies how the agent conducts the phone call, responds to positive feedback, handles negative responses / missing items, and adheres to voice cadence rules.
-                </p>
-
-                <textarea
-                  rows={9}
-                  value={agentData.system_prompt || ""}
-                  onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
-                  placeholder="Click 'Generate AI Prompt & Call Script' above to automatically construct complete phone call handling rules..."
-                  className="w-full p-3 font-mono text-[11px] leading-relaxed bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-y"
-                />
               </div>
             </div>
           )}

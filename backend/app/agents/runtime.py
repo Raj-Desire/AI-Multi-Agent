@@ -49,10 +49,11 @@ class AgentRuntimeBuilder:
         )
 
         # 3. Think configuration (LLM)
+        think_temp = config.llm.temperature if config.llm.temperature is not None else 0.35
         think_provider = DeepgramThinkProvider(
             type=config.llm.provider or "open_ai",
             model=config.llm.model or "gpt-4o-mini",
-            temperature=config.llm.temperature if config.llm.temperature is not None else 0.7
+            temperature=think_temp
         )
         think_config = DeepgramThinkConfig(
             provider=think_provider,

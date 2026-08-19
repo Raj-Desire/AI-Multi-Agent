@@ -66,7 +66,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         })
       );
     }
-  }, [agentConfig.llm?.model, agentConfig.voice?.voice, agentConfig.system_prompt, agentConfig.objective]);
+  }, [JSON.stringify(agentConfig)]);
 
   useEffect(() => {
     if (transcriptBoxRef.current) {
