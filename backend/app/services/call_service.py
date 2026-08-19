@@ -130,10 +130,10 @@ class CallService:
         if not tw_cfg.api_key_sid or not api_key_secret:
             raise HTTPException(status_code=400, detail="Twilio API Key SID & Secret are required for WebRTC browser calling. Add them in Twilio Settings.")
 
-        # Check and auto-sync TwiML App URL if public base url is available
-        effective_base_url = tw_cfg.public_base_url or req_base_url
+        # Check and auto-sync TwiML App URL if public base url is available (Env var takes priority over DB)
+        effective_base_url = (os.getenv("PUBLIC_BASE_URL") or tw_cfg.public_base_url or req_base_url or "").strip().rstrip("/")
         if effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
-            expected_url = f"{effective_base_url.strip().rstrip('/')}/api/v1/twilio/voice/twiml"
+            expected_url = f"{effective_base_url}/api/v1/twilio/voice/twiml"
             try:
                 def _sync_url():
                     client = Client(tw_cfg.account_sid, auth_token)
@@ -321,8 +321,8 @@ class CallService:
                 response.append(dial)
                 return str(response)
 
-            # Inbound Real-Time AI Agent Answering
-            base_url = (getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
+            # Inbound Real-Time AI Agent Answering (Env var takes priority over DB)
+            base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
             ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
             stream_url = f"{ws_base}/api/v1/voice/stream"
             print(f"[Twilio Inbound AI] Connecting inbound caller {from_caller} to AI Voice Stream ({agent_name}): {stream_url}")
