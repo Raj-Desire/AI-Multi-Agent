@@ -35,14 +35,20 @@ class AgentRuntimeBuilder:
             output=DeepgramAudioOutput(encoding="mulaw", sample_rate=8000, container="none")
         )
 
-        # 2. Listen configuration (STT) - defaults to latest Nova-3
-        listen_model = config.listen.model if config.listen.model and "nova" in config.listen.model else "nova-3"
+        # 2. Listen configuration (STT) - defaults to latest Nova-3 with multilingual support
+        configured_lang = "en"
+        if config.listen and config.listen.language:
+            configured_lang = config.listen.language.lower().strip()
+        elif config.voice and config.voice.language:
+            configured_lang = config.voice.language.lower().strip()
+
+        listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         listen_provider = DeepgramListenProvider(
             type="deepgram",
             model=listen_model,
-            language=config.listen.language or "en",
+            language=configured_lang,
             smart_format=True,
-            keyterms=config.listen.keyterms if config.listen.keyterms else None
+            keyterms=config.listen.keyterms if config.listen and config.listen.keyterms else None
         )
         listen_config = DeepgramListenConfig(
             provider=listen_provider

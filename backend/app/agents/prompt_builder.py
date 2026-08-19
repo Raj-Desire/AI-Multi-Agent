@@ -92,12 +92,67 @@ class VoicePromptBuilder:
             )
 
     @staticmethod
+    def _build_language_directives(config: AgentConfiguration) -> str:
+        lang = "en"
+        if config.voice and config.voice.language:
+            lang = config.voice.language.lower().strip()
+        elif config.listen and config.listen.language:
+            lang = config.listen.language.lower().strip()
+
+        if lang in ["gu", "gujarati", "gu-in"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: GUJARATI (ગુજરાતી)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, fluent spoken Gujarati (ગુજરાતી).\n"
+                "- When the customer speaks Gujarati (e.g. 'અરે અમદાવાદ માં પ્રોપર્ટી જોઈએ છે'), ALWAYS answer in fluent, polite Gujarati (e.g., 'હા, ચોક્કસ! અમદાવાદમાં તમને કેવા પ્રકારની પ્રોપર્ટીમાં રસ છે?').\n"
+                "- NEVER reply in English when Gujarati is configured or when the customer speaks Gujarati.\n"
+                "- Keep every response to 1 or 2 concise, natural Gujarati sentences."
+            )
+        elif lang in ["hi", "hindi", "hi-in"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: HINDI (हिन्दी)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, polite spoken Hindi (हिन्दी).\n"
+                "- When the customer speaks Hindi, ALWAYS answer in clear, friendly Hindi (e.g., 'नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की प्रॉपर्टी चाहिए?').\n"
+                "- NEVER reply in English when Hindi is configured or when the customer speaks Hindi.\n"
+                "- Keep every response to 1 or 2 concise sentences."
+            )
+        elif lang in ["es", "spanish", "es-es", "es-us"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: SPANISH (ESPAÑOL)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent Spanish (Español).\n"
+                "- When the customer speaks Spanish, answer in polite, clear Spanish."
+            )
+        elif lang in ["fr", "french", "fr-fr"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: FRENCH (FRANÇAIS)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent French (Français)."
+            )
+        elif lang in ["de", "german", "de-de"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: GERMAN (DEUTSCH)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural German (Deutsch)."
+            )
+        elif lang in ["ja", "japanese", "ja-jp"]:
+            return (
+                "[MANDATORY LANGUAGE DIRECTIVE: JAPANESE (日本語)]\n"
+                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, polite Japanese (日本語)."
+            )
+        else:
+            return (
+                "[LANGUAGE MIRRORING DIRECTIVE]\n"
+                "- If the customer speaks in Gujarati (ગુજરાતી), answer in natural Gujarati.\n"
+                "- If the customer speaks in Hindi (हिन्दी), answer in natural Hindi.\n"
+                "- If the customer speaks in English, answer in English.\n"
+                "- Always seamlessly match and mirror the language spoken by the customer."
+            )
+
+    @staticmethod
     def build_prompt(config: AgentConfiguration) -> str:
         """
         Generates the complete, compiled spoken system prompt combining identity,
-        mission, length enforcement, personality profile, and telephony audio rules.
+        mission, length enforcement, personality profile, language directives, and telephony audio rules.
         """
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
+        language_rule = VoicePromptBuilder._build_language_directives(config)
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
         personality_text = "\n".join(f"- {d}" for d in personality_directives)
 
@@ -136,6 +191,8 @@ class VoicePromptBuilder:
 
         compiled_prompt = f"""You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.
 
+{language_rule}
+
 {length_rule}
 
 {custom_instructions}
@@ -147,8 +204,8 @@ BEHAVIOR & PERSONALITY MATRIX:
 
 CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
 1. SPOKEN BREVITY: Strictly 1 to 2 short, natural spoken sentences per turn. Never give long speeches.
-2. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code syntax. Speak everyday conversational English.
-3. ACTIVE LISTENING: Always acknowledge what the customer just said (e.g. 'Got it,', 'That makes sense,', 'I understand,') before asking your next single question.
+2. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
+3. ACTIVE LISTENING: Always acknowledge what the customer just said before asking your next single question.
 4. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
 5. CONVERSATION FLOW:
    - Positive response: Validate warmly and take the next step.

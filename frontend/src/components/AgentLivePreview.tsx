@@ -395,6 +395,11 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     const nextBuffer = audioQueueRef.current.shift()!;
     const sourceNode = audioCtx.createBufferSource();
     sourceNode.buffer = nextBuffer;
+
+    // Apply voice speaking speed
+    const voiceSpeed = agentConfig?.voice?.speed || 1.0;
+    sourceNode.playbackRate.value = Math.max(0.5, Math.min(2.0, voiceSpeed));
+
     sourceNode.connect(audioCtx.destination);
     activeSourceNodeRef.current = sourceNode;
 

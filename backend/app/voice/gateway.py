@@ -67,10 +67,19 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_deepgram_audio(raw_audio: bytes):
         """Forward audio from Deepgram TTS to Twilio Media Stream with smooth telephony chunking."""
-        nonlocal stream_sid
+        nonlocal stream_sid, is_agent_speaking, last_agent_speech_done_time
         if not stream_sid:
             return
         try:
+            # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio
+            audio_duration = len(raw_audio) / 8000.0
+            now = time.time()
+            if last_agent_speech_done_time < now:
+                last_agent_speech_done_time = now + audio_duration
+            else:
+                last_agent_speech_done_time += audio_duration
+            is_agent_speaking = True
+
             chunk_size = 320  # 40ms audio chunks
             for i in range(0, len(raw_audio), chunk_size):
                 chunk = raw_audio[i:i + chunk_size]
@@ -105,9 +114,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         is_user_speaking = False
 
     async def handle_agent_audio_done():
-        nonlocal is_agent_speaking, last_agent_speech_done_time, is_concluding_call
-        is_agent_speaking = False
-        last_agent_speech_done_time = time.time()
+        nonlocal is_agent_speaking, is_concluding_call
         if is_concluding_call:
             logger.info("[VoiceGateway] Conclusion audio finished playing. Scheduling call termination.")
             asyncio.create_task(terminate_call())
@@ -171,7 +178,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         Monitors Silence Timeout (Reprompt -> Conclude & End)
         and Maximum Call Duration (Finish current turn -> Conclude & End).
         """
-        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time
+        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
@@ -188,21 +195,27 @@ async def voice_stream_websocket(websocket: WebSocket):
                 now = time.time()
                 elapsed_call_time = now - call_start_time
 
+                # Check if agent is currently speaking or audio is still playing in user's speaker
+                if now < last_agent_speech_done_time:
+                    is_agent_speaking = True
+                    continue
+                else:
+                    is_agent_speaking = False
+
                 # 1. Maximum Call Duration Check
                 if elapsed_call_time >= max_duration and not is_concluding_call:
-                    # If customer is speaking or agent is answering, allow current turn to finish
-                    if is_user_speaking or is_agent_speaking:
+                    # If customer is speaking, allow current turn to finish
+                    if is_user_speaking:
                         continue
 
                     logger.info(f"[VoiceGateway] Maximum call duration ({max_duration}s) reached. Speaking conclusion message.")
                     is_concluding_call = True
                     await deepgram_client.inject_agent_message(conclusion_msg)
-                    # Safeguard fallback timeout in case audio done event is missed
                     asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                     break
 
-                # 2. Silence Timeout Check
-                if not is_concluding_call and not is_agent_speaking and not is_user_speaking:
+                # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
+                if not is_concluding_call and not is_user_speaking:
                     last_activity = max(last_user_speech_time, last_agent_speech_done_time)
                     silence_elapsed = now - last_activity
 
@@ -210,7 +223,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     if silence_elapsed >= silence_timeout and not has_reprompted_silence:
                         logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
                         has_reprompted_silence = True
-                        last_agent_speech_done_time = now
+                        last_agent_speech_done_time = now + 2.5
                         await deepgram_client.inject_agent_message(reprompt_msg)
 
                     # Phase 2: If still silent after reprompt + hangup_delay, speak conclusion and hang up

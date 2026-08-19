@@ -101,7 +101,17 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
     async def handle_dg_audio(raw_audio: bytes):
         """Send synthesized audio back to browser client (mulaw encoded in JSON or raw)."""
+        nonlocal is_agent_speaking, last_agent_speech_done_time
         try:
+            # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio
+            audio_duration = len(raw_audio) / 8000.0
+            now = time.time()
+            if last_agent_speech_done_time < now:
+                last_agent_speech_done_time = now + audio_duration
+            else:
+                last_agent_speech_done_time += audio_duration
+            is_agent_speaking = True
+
             import base64
             payload = base64.b64encode(raw_audio).decode("utf-8")
             await websocket.send_json({
@@ -161,9 +171,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         is_user_speaking = False
 
     async def handle_dg_agent_audio_done():
-        nonlocal is_agent_speaking, last_agent_speech_done_time, is_concluding_call
-        is_agent_speaking = False
-        last_agent_speech_done_time = time.time()
+        nonlocal is_agent_speaking, is_concluding_call
         if is_concluding_call:
             logger.info("[VoicePreview] Conclusion audio finished playing. Concluding session.")
             asyncio.create_task(terminate_preview_session())
@@ -181,7 +189,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def preview_lifecycle_monitor():
-        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time
+        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
@@ -198,9 +206,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 now = time.time()
                 elapsed_call_time = now - call_start_time
 
+                # Check if agent is currently speaking or audio is still playing in user's speaker
+                if now < last_agent_speech_done_time:
+                    is_agent_speaking = True
+                    continue
+                else:
+                    is_agent_speaking = False
+
                 # 1. Maximum Call Duration Check
                 if elapsed_call_time >= max_duration and not is_concluding_call:
-                    if is_user_speaking or is_agent_speaking:
+                    if is_user_speaking:
                         continue
 
                     logger.info(f"[VoicePreview] Maximum duration ({max_duration}s) reached. Speaking conclusion message.")
@@ -209,8 +224,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
                     break
 
-                # 2. Silence Timeout Check
-                if not is_concluding_call and not is_agent_speaking and not is_user_speaking:
+                # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
+                if not is_concluding_call and not is_user_speaking:
                     last_activity = max(last_user_speech_time, last_agent_speech_done_time)
                     silence_elapsed = now - last_activity
 
@@ -218,7 +233,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     if silence_elapsed >= silence_timeout and not has_reprompted_silence:
                         logger.info(f"[VoicePreview] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
                         has_reprompted_silence = True
-                        last_agent_speech_done_time = now
+                        last_agent_speech_done_time = now + 2.5
                         await deepgram_client.inject_agent_message(reprompt_msg)
 
                     # Phase 2: Post-reprompt silence conclusion
@@ -368,29 +383,56 @@ class SampleSpeechRequest(BaseModel):
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
-    Synthesizes a sample audio snippet using Deepgram Text-to-Speech (REST API).
-    Returns audio/mp3 or base64 data for instant in-browser playback.
+    Synthesizes a sample audio snippet using Neural Text-to-Speech (native Gujarati, Hindi, English, Spanish).
+    Returns audio/mp3 or audio/wav for instant in-browser playback.
     """
     import os
     import httpx
     from fastapi.responses import Response
 
-    api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
-    if not api_key:
-        raise HTTPException(status_code=400, detail="Deepgram API Key is not configured on the server.")
-
     sample_text = payload.text
     if not sample_text or not sample_text.strip():
         sample_text = "Hello! I am your Desire AI Voice Agent. How can I help you today?"
 
-    # Deepgram REST TTS requires container=wav with encoding=linear16 (or encoding=mp3 without container)
-    deepgram_url = f"https://api.deepgram.com/v1/speak?model={payload.voice}&container=wav&encoding=linear16"
+    sample_text = sample_text.strip()
+    voice = payload.voice or "aura-orion-en"
 
+    # Check if voice is a Native Neural Voice (Gujarati, Hindi, Spanish, etc.) or contains Indic characters
+    is_neural_voice = "Neural" in voice or voice.startswith("gu-") or voice.startswith("hi-") or voice.startswith("es-")
+    has_indic_text = any(ord(c) >= 0x0900 and ord(c) <= 0x0D7F for c in sample_text)
+
+    if is_neural_voice or has_indic_text:
+        try:
+            import edge_tts
+            target_voice = voice
+            if not is_neural_voice:
+                # Pick appropriate native voice based on text script
+                if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in sample_text):
+                    target_voice = "gu-IN-DhwaniNeural"
+                else:
+                    target_voice = "hi-IN-SwaraNeural"
+
+            communicate = edge_tts.Communicate(sample_text, target_voice)
+            audio_data = bytearray()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data.extend(chunk["data"])
+
+            return Response(content=bytes(audio_data), media_type="audio/mp3")
+        except Exception as e:
+            logger.error(f"[SampleSpeech Error] Native Neural TTS error: {e}")
+            # Fall through to Deepgram if error occurs
+
+    # Fallback to Deepgram Aura REST TTS
+    api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="TTS service configuration error.")
+
+    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&container=wav&encoding=linear16"
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json"
     }
-
     body = {"text": sample_text}
 
     try:
