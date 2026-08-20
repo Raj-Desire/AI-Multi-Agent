@@ -161,29 +161,22 @@ export function Step3VoiceLanguage({
               }}
               className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
             >
-              <optgroup label="Gujarati (Native Neural)">
-                {AURA_VOICES.filter((v) => v.language === "gu").map((v) => (
+              <optgroup label="Deepgram Aura (English)">
+                {AURA_VOICES.filter((v) => v.language === "en" && !v.id.startsWith("aura-2")).map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} ({v.gender} • {v.style})
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Hindi (Native Neural)">
-                {AURA_VOICES.filter((v) => v.language === "hi").map((v) => (
+              <optgroup label="Deepgram Aura-2 Next-Gen (English)">
+                {AURA_VOICES.filter((v) => v.language === "en" && v.id.startsWith("aura-2")).map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} ({v.gender} • {v.style})
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="English & Global (Deepgram Aura)">
-                {AURA_VOICES.filter((v) => v.language === "en").map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.gender} • {v.style})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Spanish (Native Neural)">
-                {AURA_VOICES.filter((v) => v.language === "es").map((v) => (
+              <optgroup label="Deepgram Aura-2 Multilingual">
+                {AURA_VOICES.filter((v) => v.language !== "en").map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} ({v.gender} • {v.style})
                   </option>
@@ -274,18 +267,22 @@ export function Step3VoiceLanguage({
               let defaultVoice = "aura-orion-en";
               let defaultGreeting = "Hello! Thank you for calling. How can I assist you today?";
 
-              if (lang === "gu") {
-                defaultSample = "નમસ્તે! હું તમારો એઆઈ વોઇસ આસિસ્ટન્ટ છું. આજે હું તમને કેવી રીતે મદદ કરી શકું?";
-                defaultVoice = "gu-IN-DhwaniNeural";
-                defaultGreeting = "નમસ્તે! વાત કરવા બદલ આભાર. હું તમને કેવી રીતે મદદ કરી શકું?";
-              } else if (lang === "hi") {
-                defaultSample = "नमस्ते! मैं आपका एઆઈ वॉयस असिस्टेंट हूँ। आज मैं आपकी क्या मदद कर सकता हूँ?";
-                defaultVoice = "hi-IN-SwaraNeural";
-                defaultGreeting = "नमस्ते! कॉल करने के लिए धन्यवाद। मैं आज आपकी क्या मदद कर सकता हूँ?";
-              } else if (lang === "es") {
+              if (lang === "es") {
                 defaultSample = "¡Hola! Soy tu asistente de voz con IA. ¿Cómo puedo ayudarte hoy?";
-                defaultVoice = "es-ES-ElviraNeural";
+                defaultVoice = "aura-2-agustina-es";
                 defaultGreeting = "¡Hola! Gracias por llamar. ¿En qué puedo ayudarte hoy?";
+              } else if (lang === "fr") {
+                defaultSample = "Bonjour! Je suis votre assistant vocal IA. Comment puis-je vous aider aujourd'hui?";
+                defaultVoice = "aura-2-agathe-fr";
+                defaultGreeting = "Bonjour! Merci de votre appel. Comment puis-je vous aider?";
+              } else if (lang === "de") {
+                defaultSample = "Hallo! Ich bin Ihr KI-Sprachassistent. Wie kann ich Ihnen heute helfen?";
+                defaultVoice = "aura-2-aurelia-de";
+                defaultGreeting = "Hallo! Vielen Dank für Ihren Anruf. Wie kann ich Ihnen helfen?";
+              } else if (lang === "ja") {
+                defaultSample = "こんにちは！AI音声アシスタントです。本日はどのようなご用件でしょうか？";
+                defaultVoice = "aura-2-ama-ja";
+                defaultGreeting = "お電話ありがとうございます。本日はどのようなご用件でしょうか？";
               }
 
               setSampleText(defaultSample);

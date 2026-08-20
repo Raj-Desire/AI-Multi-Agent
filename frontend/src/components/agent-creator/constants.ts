@@ -289,15 +289,7 @@ export const DEFAULT_CONVERSATION_FLOWS = [
 ];
 
 export const AURA_VOICES = [
-  // Gujarati Native Neural Voices
-  { id: "gu-IN-DhwaniNeural", name: "Dhwani (Gujarati)", language: "gu", gender: "Female", style: "Native Gujarati • Natural & Warm", description: "Authentic native Gujarati female voice with clear pronunciation and natural inflection." },
-  { id: "gu-IN-NiranjanNeural", name: "Niranjan (Gujarati)", language: "gu", gender: "Male", style: "Native Gujarati • Professional & Clear", description: "Authentic native Gujarati male voice suited for business calls and consultations." },
-
-  // Hindi Native Neural Voices
-  { id: "hi-IN-SwaraNeural", name: "Swara (Hindi)", language: "hi", gender: "Female", style: "Native Hindi • Warm & Expressive", description: "Natural, polite native Hindi female voice with authentic Indian conversational tone." },
-  { id: "hi-IN-MadhurNeural", name: "Madhur (Hindi)", language: "hi", gender: "Male", style: "Native Hindi • Confident & Clear", description: "Clear, authoritative native Hindi male voice suited for customer outreach and support." },
-
-  // English & Global Aura Voices
+  // Deepgram Aura Voices (English)
   { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales." },
   { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups." },
   { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking." },
@@ -308,10 +300,18 @@ export const AURA_VOICES = [
   { id: "aura-perseus-en", name: "Perseus", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead generation." },
   { id: "aura-angus-en", name: "Angus", language: "en", gender: "Male", style: "Deep & Formal", description: "Deep, formal, and trustworthy. Suited for healthcare and legal reminders." },
   { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates." },
+  { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice." },
 
-  // Spanish Native Neural Voices
-  { id: "es-ES-ElviraNeural", name: "Elvira (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Fluent", description: "Natural, fluent Spanish voice with authentic European and Latin pronunciation." },
-  { id: "es-MX-DaliaNeural", name: "Dalia (Spanish - Latin America)", language: "es", gender: "Female", style: "Native Spanish • Friendly & Clear", description: "Expressive Latin American Spanish voice ideal for customer calls." }
+  // Deepgram Aura-2 Multilingual Voices
+  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Deepgram Aura-2 next-gen expressive conversational female voice." },
+  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Deepgram Aura-2 expressive conversational female voice." },
+  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Deepgram Aura-2 dynamic conversational male voice." },
+  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Deepgram Aura-2 natural Spanish female voice." },
+  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Deepgram Aura-2 natural Spanish male voice." },
+  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Deepgram Aura-2 natural German female voice." },
+  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Deepgram Aura-2 natural French female voice." },
+  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Deepgram Aura-2 natural Italian male voice." },
+  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Deepgram Aura-2 natural Japanese female voice." }
 ];
 
 export const LLM_MODELS = [

@@ -383,8 +383,8 @@ class SampleSpeechRequest(BaseModel):
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
-    Synthesizes a sample audio snippet using Neural Text-to-Speech (native Gujarati, Hindi, English, Spanish).
-    Returns audio/mp3 or audio/wav for instant in-browser playback.
+    Synthesizes a sample audio snippet using Deepgram Aura Text-to-Speech.
+    Returns audio/wav for instant in-browser playback.
     """
     import os
     import httpx
@@ -392,41 +392,15 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
 
     sample_text = payload.text
     if not sample_text or not sample_text.strip():
-        sample_text = "Hello! I am your Desire AI Voice Agent. How can I help you today?"
+        sample_text = "Hello! I am your AI Voice Agent. How can I help you today?"
 
     sample_text = sample_text.strip()
     voice = payload.voice or "aura-orion-en"
 
-    # Check if voice is a Native Neural Voice (Gujarati, Hindi, Spanish, etc.) or contains Indic characters
-    is_neural_voice = "Neural" in voice or voice.startswith("gu-") or voice.startswith("hi-") or voice.startswith("es-")
-    has_indic_text = any(ord(c) >= 0x0900 and ord(c) <= 0x0D7F for c in sample_text)
-
-    if is_neural_voice or has_indic_text:
-        try:
-            import edge_tts
-            target_voice = voice
-            if not is_neural_voice:
-                # Pick appropriate native voice based on text script
-                if any(ord(c) >= 0x0A80 and ord(c) <= 0x0AFF for c in sample_text):
-                    target_voice = "gu-IN-DhwaniNeural"
-                else:
-                    target_voice = "hi-IN-SwaraNeural"
-
-            communicate = edge_tts.Communicate(sample_text, target_voice)
-            audio_data = bytearray()
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_data.extend(chunk["data"])
-
-            return Response(content=bytes(audio_data), media_type="audio/mp3")
-        except Exception as e:
-            logger.error(f"[SampleSpeech Error] Native Neural TTS error: {e}")
-            # Fall through to Deepgram if error occurs
-
-    # Fallback to Deepgram Aura REST TTS
+    # Deepgram Aura REST TTS
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
-        raise HTTPException(status_code=400, detail="TTS service configuration error.")
+        raise HTTPException(status_code=400, detail="Deepgram API key is not configured.")
 
     deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&container=wav&encoding=linear16"
     headers = {
