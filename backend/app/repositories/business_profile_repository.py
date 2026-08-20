@@ -36,35 +36,48 @@ def get_profiles_container():
 class BusinessProfileRepository:
     @staticmethod
     async def get_profile(organization_id: str) -> Dict[str, Any]:
-        cached = _PROFILE_CACHE.get(organization_id)
+        org_key = organization_id or "default"
+        cached = _PROFILE_CACHE.get(org_key)
         if cached:
             data, ts = cached
             if time.time() - ts < PROFILE_CACHE_TTL_SECONDS:
                 return data
-            del _PROFILE_CACHE[organization_id]
+            del _PROFILE_CACHE[org_key]
 
         def _sync_get():
             container = get_profiles_container()
             if not container:
-                default_obj = CompanyBusinessProfile(organization_id=organization_id).model_dump(mode="json")
-                default_obj["id"] = f"profile_{organization_id}"
-                _PROFILE_CACHE[organization_id] = (default_obj, time.time())
+                default_obj = CompanyBusinessProfile(organization_id=org_key).model_dump(mode="json")
+                default_obj["id"] = f"profile_{org_key}"
+                _PROFILE_CACHE[org_key] = (default_obj, time.time())
                 return default_obj
 
+            # 1. Primary lookup by exact organization_id
             query = "SELECT * FROM c WHERE c.organization_id = @org_id"
-            params = [{"name": "@org_id", "value": organization_id}]
+            params = [{"name": "@org_id", "value": org_key}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 if items:
-                    _PROFILE_CACHE[organization_id] = (items[0], time.time())
+                    _PROFILE_CACHE[org_key] = (items[0], time.time())
                     return items[0]
             except Exception as e:
-                print(f"[BusinessProfileRepository Error] get_profile: {e}")
+                print(f"[BusinessProfileRepository Error] get_profile query: {e}")
 
-            # Fallback default
-            default_obj = CompanyBusinessProfile(organization_id=organization_id).model_dump(mode="json")
-            default_obj["id"] = f"profile_{organization_id}"
-            _PROFILE_CACHE[organization_id] = (default_obj, time.time())
+            # 2. Fallback lookup: If org_key is 'default' or not found, check for ANY existing profile in container
+            try:
+                fallback_query = "SELECT * FROM c WHERE IS_DEFINED(c.company_name) AND c.company_name != ''"
+                fallback_items = list(container.query_items(query=fallback_query, enable_cross_partition_query=True))
+                if fallback_items:
+                    # Return the first or most recently updated populated profile
+                    _PROFILE_CACHE[org_key] = (fallback_items[0], time.time())
+                    return fallback_items[0]
+            except Exception as e:
+                print(f"[BusinessProfileRepository Error] fallback profile query: {e}")
+
+            # 3. Default empty profile
+            default_obj = CompanyBusinessProfile(organization_id=org_key).model_dump(mode="json")
+            default_obj["id"] = f"profile_{org_key}"
+            _PROFILE_CACHE[org_key] = (default_obj, time.time())
             return default_obj
 
         return await asyncio.to_thread(_sync_get)

@@ -10,7 +10,7 @@ interface AgentStepperProps {
 export function AgentStepper({ currentStep, onSelectStep }: AgentStepperProps) {
   return (
     <nav aria-label="Creation Progress" className="p-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs select-none">
-      <ol className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5 list-none m-0 p-0">
+      <ol className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5 list-none m-0 p-0">
         {CREATOR_STEPS.map((step) => {
           const isCurrent = step.id === currentStep;
           const isCompleted = step.id < currentStep;

@@ -1,4 +1,5 @@
 import React from "react";
+import { Loader2 } from "lucide-react";
 
 export interface LoadingStateProps {
   message?: string;
@@ -15,32 +16,22 @@ export const LoadingState: React.FC<LoadingStateProps> = ({
   fullPage = false,
   className = "",
 }) => {
-  const sizeMap = {
-    sm: "w-5 h-5 border-2",
-    md: "w-8 h-8 border-2.5",
-    lg: "w-11 h-11 border-3",
+  const iconSizeMap = {
+    sm: "w-4 h-4",
+    md: "w-5 h-5",
+    lg: "w-7 h-7",
   };
 
   const content = (
-    <div className={`flex flex-col items-center justify-center gap-3 p-6 text-center ${className}`}>
-      {/* High-fidelity circle loader */}
+    <div className={`flex flex-col items-center justify-center gap-2.5 py-8 px-4 text-center animate-fade-in ${className}`}>
+      {/* Clean, high-tech minimalist spinner */}
       <div className="relative flex items-center justify-center">
-        <div
-          className={`${sizeMap[size]} rounded-full border-solid border-[var(--color-border)] animate-spin`}
-          style={{
-            borderTopColor: "var(--color-primary, #4f46e5)",
-            borderRightColor: "var(--color-primary, #4f46e5)",
-          }}
-        />
-        <div
-          className="absolute inset-0 rounded-full blur-xs opacity-25"
-          style={{ backgroundColor: "var(--color-primary, #4f46e5)" }}
-        />
+        <Loader2 className={`${iconSizeMap[size]} text-[var(--color-primary)] animate-spin stroke-[2.25]`} />
       </div>
 
       {/* Primary & Sub-message */}
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-[var(--color-heading)] tracking-wide">
+      <div className="space-y-0.5">
+        <p className="text-xs font-medium text-[var(--color-heading)] tracking-tight">
           {message}
         </p>
         {subMessage && (

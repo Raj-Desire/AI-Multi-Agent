@@ -11,6 +11,7 @@ import { Step2RoleConversation } from "./agent-creator/Step2RoleConversation";
 import { Step3VoiceLanguage } from "./agent-creator/Step3VoiceLanguage";
 import { Step4PersonalityCommunication } from "./agent-creator/Step4PersonalityCommunication";
 import { Step5BehaviorSafety } from "./agent-creator/Step5BehaviorSafety";
+import { Step6PromptInstructions } from "./agent-creator/Step6PromptInstructions";
 import { Step6TestPreview } from "./agent-creator/Step6TestPreview";
 import { Step7ReviewActivate } from "./agent-creator/Step7ReviewActivate";
 
@@ -94,7 +95,7 @@ export function AgentEditorModal({
     }
     if (!agentData.greeting.trim()) {
       setErrorMsg("Please provide a spoken greeting message.");
-      setCurrentStep(4);
+      setCurrentStep(2);
       return;
     }
 
@@ -185,16 +186,24 @@ export function AgentEditorModal({
           />
         )}
 
-        {/* STEP 6: Live Test & Preview */}
+        {/* STEP 6: AI Prompt & Spoken Instructions */}
         {currentStep === 6 && (
+          <Step6PromptInstructions
+            agentData={agentData}
+            setAgentData={setAgentData}
+          />
+        )}
+
+        {/* STEP 7: Live Test & Preview */}
+        {currentStep === 7 && (
           <Step6TestPreview
             agentData={agentData}
             onTestCall={onTestCall}
           />
         )}
 
-        {/* STEP 7: Review & Activate */}
-        {currentStep === 7 && (
+        {/* STEP 8: Review & Activate */}
+        {currentStep === 8 && (
           <Step7ReviewActivate
             agentData={agentData}
             saving={saving}

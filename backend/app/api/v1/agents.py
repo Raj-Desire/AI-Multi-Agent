@@ -28,6 +28,13 @@ class GeneratePromptRequest(BaseModel):
     role: Optional[str] = "Representative"
     objective: Optional[str] = ""
     communication_style: Optional[str] = "Professional + Friendly"
+    response_length: Optional[str] = "short"  # "short" | "balanced" | "detailed"
+    language: Optional[str] = "en"
+    skills: Optional[List[str]] = None
+    custom_knowledge: Optional[str] = None
+    guardrails: Optional[Dict[str, Any]] = None
+    personality: Optional[Dict[str, Any]] = None
+    include_business_knowledge: Optional[bool] = True
 
 
 class GeneratedPromptResponse(BaseModel):
@@ -45,6 +52,7 @@ class RefinePromptRequest(BaseModel):
     instruction: str
     name: Optional[str] = "Voice Assistant"
     description: Optional[str] = ""
+    response_length: Optional[str] = "short"
 
 
 class RefinePromptResponse(BaseModel):
@@ -60,7 +68,8 @@ async def generate_prompt(
 ):
     """
     Synthesizes a structured telephone call script and prompt instructions using Azure OpenAI GPT-4o
-    based on the agent name, description, archetype (marketing, follow_up, query_solver, reminder), and communication style.
+    based on all agent parameters: name, role, description, archetype, communication style, response length, language,
+    guardrails, personality sliders, skills, and custom knowledge.
     """
     desc = (payload.description or payload.objective or "").strip()
     if not desc:
@@ -75,7 +84,16 @@ async def generate_prompt(
             name=name,
             description=desc,
             agent_type=agent_type,
-            tone=style
+            tone=style,
+            response_length=payload.response_length or "short",
+            role=payload.role or "Representative",
+            objective=payload.objective or desc,
+            language=payload.language or "en",
+            skills=payload.skills,
+            custom_knowledge=payload.custom_knowledge,
+            guardrails=payload.guardrails,
+            personality=payload.personality,
+            include_business_knowledge=payload.include_business_knowledge
         )
         return ApiResponse.ok(GeneratedPromptResponse(
             system_prompt=gen.get("system_prompt", ""),
@@ -110,7 +128,8 @@ async def refine_prompt(
             current_prompt=payload.current_prompt,
             user_instruction=payload.instruction.strip(),
             agent_name=payload.name or "Voice Assistant",
-            description=payload.description or ""
+            description=payload.description or "",
+            response_length=payload.response_length or "short"
         )
         return ApiResponse.ok(RefinePromptResponse(
             system_prompt=res.get("system_prompt", payload.current_prompt),

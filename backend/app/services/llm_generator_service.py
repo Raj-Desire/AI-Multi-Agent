@@ -87,13 +87,34 @@ class LLMGeneratorService:
         name: str,
         description: str,
         agent_type: Optional[str] = "marketing",
-        tone: Optional[str] = "Professional + Friendly"
+        tone: Optional[str] = "Professional + Friendly",
+        response_length: Optional[str] = "short",
+        role: Optional[str] = "Assistant",
+        objective: Optional[str] = "",
+        language: Optional[str] = "en",
+        skills: Optional[list] = None,
+        custom_knowledge: Optional[str] = None,
+        guardrails: Optional[dict] = None,
+        personality: Optional[dict] = None,
+        include_business_knowledge: Optional[bool] = True
     ) -> Dict[str, Any]:
         """
         Generates a tailored telephone voice agent prompt and spoken greeting line
-        based on the Agent Archetype / Intent (Marketing, Follow-Up, Query Solver, Reminder, Lead Gen).
+        based on the Agent Archetype, Tone, Response Length, and full configuration parameters.
         """
         type_key = (agent_type or "marketing").lower()
+        len_key = (response_length or "short").lower()
+
+        # Dynamic Spoken Length Constraint
+        if len_key in ["detailed", "long"]:
+            spoken_length_rule = "3 to 4 comprehensive spoken sentences per turn (around 50 to 75 words total). Deliver thorough explanations, step-by-step answers, and complete details while maintaining natural telephone dialogue."
+            fallback_length_desc = "3 to 4 comprehensive spoken sentences per turn (detailed explanations)."
+        elif len_key in ["balanced", "medium"]:
+            spoken_length_rule = "2 to 3 well-structured, natural spoken sentences per turn (around 35 to 45 words total). Provide helpful context without giving overly long monologues."
+            fallback_length_desc = "2 to 3 well-structured spoken sentences per turn."
+        else:
+            spoken_length_rule = "STRICTLY 1 to 2 short, crisp, natural conversational sentences per turn (maximum 20 to 25 words total). Keep turn-taking fast and conversational."
+            fallback_length_desc = "STRICTLY 1 to 2 short, crisp conversational sentences per turn (under 25 words)."
 
         # Intent-specific guidance
         intent_guidance = ""
@@ -101,21 +122,21 @@ class LLMGeneratorService:
 
         if type_key in ["marketing", "sales", "outreach"]:
             intent_guidance = """INTENT: MARKETING & SALES OUTREACH
-- The primary goal is to hook interest, pitch value concisely in 1 sentence, handle objections, and secure a demo or appointment.
+- The primary goal is to hook interest, pitch value concisely, handle objections, and secure a demo or appointment.
 - GREETING: Must be an engaging hook with a direct qualification question (e.g. 'Hi! This is {name}. I'm calling to see if you are currently looking to [key benefit]—do you have a quick 30 seconds?').
 - OBJECTION HANDLING: When caller says 'Not interested' or doubts price, validate warmly, state one strong unique differentiator, and ask if they'd prefer a brief email or follow-up."""
-            greeting_instruction = "Engaging sales hook asking a direct qualifying question like 'Are you currently interested in...?'"
+            greeting_instruction = "Engaging sales hook asking a direct qualifying question like 'Are you currently looking to...?'"
         elif type_key in ["follow_up", "review"]:
             intent_guidance = """INTENT: CUSTOMER FOLLOW-UP & SATISFACTION REVIEW
 - The primary goal is to check on an existing customer, verify if they received their product/service/documents, check satisfaction, and offer assistance.
-- GREETING: Warm check-in (e.g. 'Hi! This is {name} following up on your recent service to see how everything went and if you received everything?').
+- GREETING: Warm check-in (e.g. 'Hi! This is {name} following up on your recent inquiry to see how everything went and if you have any questions?').
 - OBJECTION/ISSUE HANDLING: Express sincere empathy if items are missing or if caller is unhappy, log details, and offer immediate resolution."""
             greeting_instruction = "Warm follow-up check-in verifying satisfaction or receipt of services"
-        elif type_key in ["query_solver", "support", "helpdesk"]:
+        elif type_key in ["query_solver", "support", "helpdesk", "customer_support"]:
             intent_guidance = """INTENT: INBOUND QUERY SOLVER & CUSTOMER SUPPORT
-- The primary goal is to listen to caller questions, troubleshoot systematically, and provide clear 1-2 sentence answers.
+- The primary goal is to listen to caller questions, troubleshoot systematically, and provide clear, helpful answers.
 - GREETING: Welcoming support greeting (e.g. 'Thank you for calling! This is {name}. How can I help you today?').
-- TROUBLESHOOTING: Provide 1 clear step at a time, check if that resolved it, and escalate to human supervisor if unresolved."""
+- TROUBLESHOOTING: Provide clear steps, check if that resolved it, and offer further help."""
             greeting_instruction = "Polite support opening asking how to assist"
         elif type_key in ["reminder", "appointment_reminder", "payment_reminder"]:
             intent_guidance = """INTENT: APPOINTMENT & PAYMENT REMINDER
@@ -132,17 +153,21 @@ class LLMGeneratorService:
             intent_guidance = "INTENT: CUSTOM BUSINESS ASSISTANT\n- Deliver a tailored conversational workflow."
             greeting_instruction = "Clear, friendly telephone greeting"
 
+        # Language directive
+        lang_note = f"Language: {language}" if language and language != "en" else "Language: English (with multilingual mirroring)"
+
         system_instruction = f"""You are an elite conversational AI voice architect for real-time telephone voice agents.
-Given an Agent Name, Description, Agent Type, and Tone, synthesize complete spoken telephone system prompt instructions.
+Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response Length, synthesize complete spoken telephone system prompt instructions.
 
 {intent_guidance}
 
 CRITICAL TELEPHONE SPOKEN VOICE RULES:
-1. SPOKEN BREVITY: Spoken length MUST strictly be 1 to 2 short, crisp, natural conversational sentences per turn (maximum 20 to 25 words total). Under NO circumstances should the agent produce 3 or more sentences in one turn.
-2. SINGLE QUESTION PER TURN: NEVER ask more than ONE single question per turn. Never combine multiple suggestions or questions.
+1. SPOKEN LENGTH RULE: {spoken_length_rule}
+2. SINGLE QUESTION PER TURN: Ask only ONE single question at a time so the conversation feels collaborative and natural.
 3. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken script or greeting.
-4. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before asking the next single question.
+4. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before continuing.
 5. GREETING: {greeting_instruction}.
+6. {lang_note}.
 
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -156,12 +181,34 @@ Return ONLY a valid JSON object matching this schema:
   "negative_flow": string
 }}"""
 
-        user_prompt = f"""Agent Name: {name}
-Agent Type / Archetype: {agent_type}
-Description / Business Workflow: {description}
-Communication Tone: {tone}
+        skills_str = ", ".join(skills) if skills else "Standard conversational capabilities"
+        custom_ctx = f"\nCustom Business Rules & Knowledge:\n{custom_knowledge.strip()}" if custom_knowledge and custom_knowledge.strip() else ""
 
-Synthesize the telephone conversation prompt instructions, opening greeting matching this archetype, and objection handling rules."""
+        guardrail_ctx = ""
+        if guardrails and isinstance(guardrails, dict):
+            restrictions = guardrails.get("restricted_actions", [])
+            escalations = guardrails.get("escalation_rules", [])
+            if restrictions:
+                guardrail_ctx += f"\nStrict Restrictions: {', '.join(restrictions)}"
+            if escalations:
+                guardrail_ctx += f"\nEscalation Triggers: {', '.join(escalations)}"
+
+        personality_ctx = ""
+        if personality and isinstance(personality, dict):
+            personality_ctx = f" (Traits: Professionalism {personality.get('professionalism', 80)}/100, Friendliness {personality.get('friendliness', 80)}/100, Empathy {personality.get('empathy', 80)}/100)"
+
+        kb_note = "\nOrganization Knowledge Base: Connected (services, office address, operating hours, phone, email, and FAQs)" if include_business_knowledge else ""
+
+        user_prompt = f"""Agent Name: {name}
+Agent Role: {role or 'Assistant'}
+Primary Objective: {objective or description}
+Description / Business Workflow: {description}
+Agent Archetype: {agent_type}
+Communication Tone: {tone}{personality_ctx}
+Configured Spoken Response Length: {len_key} ({spoken_length_rule})
+Enabled Capabilities: {skills_str}{custom_ctx}{guardrail_ctx}{kb_note}
+
+Synthesize the complete telephone conversation prompt instructions, opening greeting matching this archetype, and objection handling rules."""
 
         json_text = None
         if self.is_azure_configured():
@@ -184,32 +231,32 @@ Synthesize the telephone conversation prompt instructions, opening greeting matc
 
         # Fallback heuristic
         clean_name = name.strip() or "Voice Assistant"
-        clean_desc = description.strip() or "General voice assistant for customer calls."
+        clean_desc = (objective or description).strip() or "General voice assistant for customer calls."
         
         fallback_greeting = f"Hi! This is {clean_name}. How can I help you today?"
         if type_key in ["marketing", "sales"]:
             fallback_greeting = f"Hi! This is {clean_name}. I'm calling regarding {clean_desc.lower().rstrip('.')}. Are you currently looking into this?"
         elif type_key in ["follow_up", "review"]:
-            fallback_greeting = f"Hi! This is {clean_name} following up on your recent account. How has everything been going with you?"
+            fallback_greeting = f"Hi! This is {clean_name} following up on your recent inquiry. How has everything been going with you?"
         elif type_key in ["reminder"]:
             fallback_greeting = f"Hi! This is {clean_name} with a quick reminder regarding your scheduled appointment. Will you still be able to make it?"
 
         return {
-            "system_prompt": f"""You are {clean_name}, a genuine, warm, and highly capable assistant speaking on a real-time telephone call.
+            "system_prompt": f"""You are {clean_name}, a genuine, warm, and highly capable {role or 'assistant'} speaking on a real-time telephone call.
 
 PRIMARY MISSION:
 {clean_desc}
 
 SPOKEN TELEPHONE RULES:
 - Communication Style: {tone}
-- Spoken Length: STRICTLY 1 to 2 short, crisp, natural conversational sentences per turn (under 25 words).
+- Spoken Length: {fallback_length_desc}
 - Telephone Audio Rules: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.
 - Pacing: Speak naturally at a calm, relaxed pace.
 
 CALL FLOW & CONVERSATION BRANCHES:
 1. WARM HUMAN GREETING: State who you are and ask your primary single question.
 2. ATTENTIVE LISTENING: Acknowledge what the customer just said before asking your next single question.
-3. POSITIVE RESPONSES: Validate enthusiastically, verify details, and offer next steps.
+3. POSITIVE RESPONSES: Validate warmly, verify details, and offer next steps.
 4. OBJECTIONS OR ISSUES: Respond with immediate empathy, explain key options simply, and never argue.
 5. NATURAL POLITE CLOSING: Confirm everything is covered, thank them genuinely, and wish them a great day.""",
             "suggested_greeting": fallback_greeting,
@@ -226,27 +273,36 @@ CALL FLOW & CONVERSATION BRANCHES:
         current_prompt: str,
         user_instruction: str,
         agent_name: Optional[str] = "Voice Assistant",
-        description: Optional[str] = ""
+        description: Optional[str] = "",
+        response_length: Optional[str] = "short"
     ) -> Dict[str, Any]:
         """
         Takes an existing system prompt and incorporates a user instruction
         using Azure OpenAI GPT-4o to seamlessly update and format the telephone conversation script.
         """
-        system_instruction = """You are an expert AI prompt engineer for real-time telephone voice agents.
+        len_key = (response_length or "short").lower()
+        if len_key in ["detailed", "long"]:
+            len_guideline = "3 to 4 comprehensive spoken sentences per turn (around 50 to 75 words total)."
+        elif len_key in ["balanced", "medium"]:
+            len_guideline = "2 to 3 well-structured spoken sentences per turn (around 35 to 45 words total)."
+        else:
+            len_guideline = "STRICTLY 1 to 2 short spoken sentences per turn under 25 words."
+
+        system_instruction = f"""You are an expert AI prompt engineer for real-time telephone voice agents.
 The user has provided an existing telephone system prompt and wants to ADD or REFINE a specific behavior, business rule, FAQ, objection handling step, or capability.
 
 YOUR TASK:
 1. Seamlessly integrate the user's new instruction into the existing telephone prompt.
-2. Keep the strict telephone audio rules intact (STRICTLY 1 to 2 short spoken sentences per turn under 25 words, ask only ONE single question at a time, never give monologues or multiple options, no markdown/bullets/asterisks/emojis).
+2. Keep the telephone audio rules intact (Spoken Length: {len_guideline}, ask only ONE single question at a time, never give monologues or multiple options, no markdown/bullets/asterisks/emojis).
 3. Ensure the tone and personality remain coherent.
 4. If the instruction affects the greeting, provide an updated suggested greeting as well.
 
 Return ONLY a valid JSON object matching this schema:
-{
+{{
   "system_prompt": string (The complete rewritten and updated system prompt),
   "suggested_greeting": string (Updated opening greeting if relevant, or current greeting),
   "summary_of_changes": string (1-sentence description of what was added/updated)
-}"""
+}}"""
 
         user_prompt = f"""AGENT NAME: {agent_name}
 BUSINESS CONTEXT: {description}

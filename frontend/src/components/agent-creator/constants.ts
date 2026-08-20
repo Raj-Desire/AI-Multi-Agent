@@ -365,12 +365,13 @@ export const CALL_DURATION_PRESETS = [
 
 export const CREATOR_STEPS = [
   { id: 1, label: "Basics", title: "Agent Basics", subtitle: "Tell us what this agent is for" },
-  { id: 2, label: "Role", title: "Role & Conversation", subtitle: "How should this agent handle conversations?" },
+  { id: 2, label: "Role", title: "Role & Knowledge", subtitle: "Objective, capabilities, and business knowledge" },
   { id: 3, label: "Voice", title: "Voice & Language", subtitle: "How should your agent sound?" },
   { id: 4, label: "Style", title: "Personality & Style", subtitle: "How should your agent communicate?" },
   { id: 5, label: "Behavior", title: "Behavior & Safety", subtitle: "How should it behave and what should it avoid?" },
-  { id: 6, label: "Test", title: "Test & Preview", subtitle: "Try a conversation before activating your agent" },
-  { id: 7, label: "Review", title: "Review & Activate", subtitle: "Verify all configurations and launch your agent" }
+  { id: 6, label: "Prompt", title: "Prompt & Instructions", subtitle: "Synthesize, refine, and customize spoken call instructions" },
+  { id: 7, label: "Test", title: "Test & Preview", subtitle: "Try a conversation before activating your agent" },
+  { id: 8, label: "Review", title: "Review & Activate", subtitle: "Verify all configurations and launch your agent" }
 ];
 
 export function getInitialAgentData(): AgentConfig {

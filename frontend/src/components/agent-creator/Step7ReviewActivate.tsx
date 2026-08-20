@@ -10,7 +10,10 @@ import {
   Save,
   ChevronLeft,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Brain,
+  FileCode,
+  Check
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -37,14 +40,23 @@ export function Step7ReviewActivate({
   const escalationCount = agentData.guardrails?.escalation_rules?.length || 0;
   const enabledSkills = agentData.skills || [];
 
+  const responseLengthLabel =
+    agentData.response_length === "detailed"
+      ? "Detailed (3–4 sentences)"
+      : agentData.response_length === "balanced"
+      ? "Balanced (2–3 sentences)"
+      : "Short (1–2 sentences)";
+
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
-      <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Review & Activate</h2>
-        <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Verify all configurations before deploying your AI voice agent to your organization.
-        </p>
+      <div className="border-b border-[var(--color-border)] pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-bold text-[var(--color-heading)]">Review & Activate</h2>
+          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+            Verify all parameters, spoken prompt instructions, and guardrails before launching your AI voice agent.
+          </p>
+        </div>
       </div>
 
       {/* Review Cards Grid */}
@@ -87,7 +99,7 @@ export function Step7ReviewActivate({
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>2. Role & Objective</span>
+              <span>2. Role & Knowledge Base</span>
             </div>
             <button
               type="button"
@@ -104,8 +116,14 @@ export function Step7ReviewActivate({
               <span className="text-[var(--color-muted)] text-[11px] block">Primary Objective</span>
               <p className="text-[var(--color-text)] font-medium leading-relaxed">{agentData.objective}</p>
             </div>
+            <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]">
+              <span className="text-[var(--color-muted)]">Company Knowledge:</span>
+              <Badge variant={agentData.include_business_knowledge ? "success" : "neutral"} size="sm">
+                {agentData.include_business_knowledge ? "Connected" : "Disabled"}
+              </Badge>
+            </div>
             <div>
-              <span className="text-[var(--color-muted)] text-[11px] block">Enabled Capabilities ({enabledSkills.length})</span>
+              <span className="text-[var(--color-muted)] text-[11px] block">Capabilities ({enabledSkills.length})</span>
               <div className="flex flex-wrap gap-1 mt-1">
                 {enabledSkills.map((sk) => (
                   <Badge key={sk} variant="neutral" size="sm">
@@ -122,7 +140,7 @@ export function Step7ReviewActivate({
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
               <Volume2 className="w-4 h-4 text-[var(--color-primary)]" />
-              <span>3. Voice & Audio Engine</span>
+              <span>3. Voice & Engine</span>
             </div>
             <button
               type="button"
@@ -148,7 +166,7 @@ export function Step7ReviewActivate({
               <span className="font-medium text-[var(--color-heading)]">{agentData.voice?.language?.toUpperCase() || "EN"}</span>
             </div>
             <div>
-              <span className="text-[var(--color-muted)] text-[11px] block">Conversational LLM</span>
+              <span className="text-[var(--color-muted)] text-[11px] block">LLM Model</span>
               <span className="font-mono font-medium text-[var(--color-heading)]">{agentData.llm?.model || "gpt-4o-mini"}</span>
             </div>
           </div>
@@ -184,12 +202,14 @@ export function Step7ReviewActivate({
             </div>
             <div className="flex justify-between items-center">
               <span className="text-[var(--color-muted)]">Response Length:</span>
-              <span className="capitalize text-[var(--color-heading)]">{agentData.response_length || "short"}</span>
+              <span className="capitalize text-[var(--color-heading)] font-semibold text-[var(--color-primary)]">
+                {responseLengthLabel}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Card 5: Behavior & Safety */}
+        {/* Card 5: Behavior & Safety Guardrails */}
         <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
             <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
@@ -247,6 +267,30 @@ export function Step7ReviewActivate({
                 ))}
               </ul>
             </div>
+          </div>
+        </div>
+
+        {/* Card 6: AI Spoken Prompt & Instructions */}
+        <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
+            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+              <FileCode className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>6. AI Spoken Prompt & Instructions</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onJumpToStep(6)}
+              className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-medium cursor-pointer"
+            >
+              <Edit2 className="w-3 h-3" />
+              <span>Edit Prompt</span>
+            </button>
+          </div>
+
+          <div className="p-3 bg-[var(--color-surface-muted)] rounded border border-[var(--color-border)] max-h-36 overflow-y-auto">
+            <p className="text-[11px] font-mono text-[var(--color-heading)] whitespace-pre-wrap leading-relaxed">
+              {agentData.system_prompt?.trim() || "No prompt generated yet. Jump to Step 6 to synthesize your prompt."}
+            </p>
           </div>
         </div>
       </div>

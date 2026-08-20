@@ -5,7 +5,7 @@ spoken cadence, response length limits (1-2 sentences), personality sliders,
 active listening confirmations, psychological empathy, and guardrails.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
 from app.agents.configuration import AgentConfiguration
 
 
@@ -98,25 +98,27 @@ class VoicePromptBuilder:
     @staticmethod
     def _build_length_enforcement(response_length: Optional[str]) -> str:
         length_key = (response_length or "short").lower()
-        if length_key == "short":
+        if length_key in ["detailed", "long"]:
             return (
-                "[MANDATORY SPOKEN LENGTH CONSTRAINT]\n"
+                "[MANDATORY SPOKEN LENGTH CONSTRAINT: DETAILED (3–4 SENTENCES)]\n"
+                "- Response Length: 3 to 4 comprehensive, detailed spoken sentences per turn (around 50-75 words total).\n"
+                "- Deliver thorough explanations, step-by-step answers, and complete context.\n"
+                "- Keep the conversation interactive and conversational. Ask only ONE single question at a time."
+            )
+        elif length_key in ["balanced", "medium"]:
+            return (
+                "[MANDATORY SPOKEN LENGTH CONSTRAINT: BALANCED (2–3 SENTENCES)]\n"
+                "- Response Length: 2 to 3 well-structured, clear spoken sentences per turn (around 35-45 words total).\n"
+                "- Provide helpful context without giving overly long monologues.\n"
+                "- Ask only ONE single question at a time to allow the caller to respond."
+            )
+        else:
+            return (
+                "[MANDATORY SPOKEN LENGTH CONSTRAINT: SHORT (1–2 SENTENCES)]\n"
                 "- Response Length: STRICTLY 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (maximum 20-25 words total).\n"
                 "- NEVER produce 3 or more sentences in a single turn.\n"
                 "- NEVER give long explanations, monologues, or multiple paragraphs.\n"
                 "- Ask only ONE single question at a time to allow the caller to respond."
-            )
-        elif length_key == "medium":
-            return (
-                "[SPOKEN LENGTH CONSTRAINT]\n"
-                "- Response Length: 2 to 3 concise spoken sentences per turn (maximum 35-40 words total).\n"
-                "- Ask only ONE single question at a time. Do not give monologues."
-            )
-        else:
-            return (
-                "[SPOKEN LENGTH CONSTRAINT]\n"
-                "- Response Length: 3 to 4 concise sentences per turn.\n"
-                "- Keep responses crisp and conversational for phone audio."
             )
 
     @staticmethod
@@ -132,16 +134,14 @@ class VoicePromptBuilder:
                 "[MANDATORY LANGUAGE DIRECTIVE: GUJARATI (ગુજરાતી)]\n"
                 "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, fluent spoken Gujarati (ગુજરાતી).\n"
                 "- When the customer speaks Gujarati (e.g. 'અરે અમદાવાદ માં પ્રોપર્ટી જોઈએ છે'), ALWAYS answer in fluent, polite Gujarati (e.g., 'હા, ચોક્કસ! અમદાવાદમાં તમને કેવા પ્રકારની પ્રોપર્ટીમાં રસ છે?').\n"
-                "- NEVER reply in English when Gujarati is configured or when the customer speaks Gujarati.\n"
-                "- Keep every response to 1 or 2 concise, natural Gujarati sentences."
+                "- NEVER reply in English when Gujarati is configured or when the customer speaks Gujarati."
             )
         elif lang in ["hi", "hindi", "hi-in"]:
             return (
                 "[MANDATORY LANGUAGE DIRECTIVE: HINDI (हिन्दी)]\n"
                 "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, polite spoken Hindi (हिन्दी).\n"
                 "- When the customer speaks Hindi, ALWAYS answer in clear, friendly Hindi (e.g., 'नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की प्रॉपर्टी चाहिए?').\n"
-                "- NEVER reply in English when Hindi is configured or when the customer speaks Hindi.\n"
-                "- Keep every response to 1 or 2 concise sentences."
+                "- NEVER reply in English when Hindi is configured or when the customer speaks Hindi."
             )
         elif lang in ["es", "spanish", "es-es", "es-us"]:
             return (
@@ -174,52 +174,98 @@ class VoicePromptBuilder:
             )
 
     @staticmethod
-    def _build_business_knowledge_section(config: AgentConfiguration, business_profile: Optional[dict] = None) -> str:
+    def _build_business_knowledge_section(config: AgentConfiguration, business_profile: Optional[Union[dict, Any]] = None) -> str:
         """Constructs human-grade, spoken telephony business facts with custom prompt overrides."""
-        if not config.include_business_knowledge and not config.custom_knowledge:
+        include_bk = config.include_business_knowledge if config.include_business_knowledge is not None else True
+        if not include_bk and not config.custom_knowledge:
             return ""
 
         sections = []
 
-        # 1. Organization Knowledge Base (if enabled)
-        if config.include_business_knowledge and business_profile:
-            name = business_profile.get("company_name", "Desire AI")
-            intro = business_profile.get("company_introduction", "")
-            address = business_profile.get("address", "")
-            phone = business_profile.get("phone", "")
-            email = business_profile.get("email", "")
-            website = business_profile.get("website", "")
-            hours = business_profile.get("operating_hours", {})
-            services = business_profile.get("services", [])
-            faqs = business_profile.get("faqs", [])
+        # Convert Pydantic object if needed
+        profile_dict = business_profile
+        if hasattr(business_profile, "model_dump"):
+            profile_dict = business_profile.model_dump(mode="json")
+        elif hasattr(business_profile, "dict"):
+            profile_dict = business_profile.dict()
 
-            lines = [f"ORGANIZATION BUSINESS KNOWLEDGE BASE (You represent '{name}'):"]
+        # 1. Organization Knowledge Base (if enabled)
+        if include_bk and isinstance(profile_dict, dict):
+            name = profile_dict.get("company_name") or config.name or "our company"
+            tagline = profile_dict.get("tagline", "")
+            intro = profile_dict.get("company_introduction", "")
+            phone = profile_dict.get("phone", "")
+            email = profile_dict.get("email", "")
+            website = profile_dict.get("website", "")
+            
+            addr_parts = [
+                profile_dict.get("address", ""),
+                profile_dict.get("city", ""),
+                profile_dict.get("state", ""),
+                profile_dict.get("country", "")
+            ]
+            full_address = ", ".join([p.strip() for p in addr_parts if p and p.strip()])
+
+            hours = profile_dict.get("operating_hours", {})
+            services = profile_dict.get("services", [])
+            faqs = profile_dict.get("faqs", [])
+            notes = profile_dict.get("additional_notes", "")
+
+            lines = [f"[ORGANIZATION BUSINESS KNOWLEDGE BASE (You represent '{name}')]"]
+            if tagline:
+                lines.append(f"- Company Tagline: {tagline}")
             if intro:
-                lines.append(f"- Company Introduction: {intro}")
+                lines.append(f"- Company Overview: {intro}")
             if phone:
                 lines.append(f"- Contact Phone Number: {phone}")
             if email:
-                lines.append(f"- Support Email: {email}")
+                lines.append(f"- Support / Inquiries Email: {email}")
             if website:
                 lines.append(f"- Official Website: {website}")
-            if address:
-                lines.append(f"- Head Office Location: {address}")
+            if full_address:
+                lines.append(f"- Head Office Location / Address: {full_address}")
+            
             if hours:
-                days = hours.get("days", "Monday - Saturday")
-                h_str = hours.get("hours", "9:00 AM - 7:00 PM")
-                tz = hours.get("timezone", "IST")
-                closed = hours.get("closed_on", "Sunday")
-                lines.append(f"- Operating Hours: {days}, {h_str} ({tz}). Closed on {closed}.")
+                if isinstance(hours, dict):
+                    days = hours.get("days", "Monday - Saturday")
+                    h_str = hours.get("hours", "9:00 AM - 7:00 PM")
+                    tz = hours.get("timezone", "IST")
+                    closed = hours.get("closed_on", "Sunday")
+                    lines.append(f"- Operating Hours: {days}, {h_str} ({tz}). Closed on {closed}.")
+                elif hasattr(hours, "days"):
+                    lines.append(f"- Operating Hours: {hours.days}, {hours.hours} ({hours.timezone}). Closed on {hours.closed_on}.")
 
+            # Extract services from business profile or fallback to agent config services
+            srv_strs = []
             if services:
-                srv_strs = []
                 for s in services:
                     if isinstance(s, dict) and s.get("enabled", True):
                         name_val = s.get("name", "")
                         desc_val = s.get("description", "")
-                        srv_strs.append(f"{name_val}: {desc_val}".strip(": "))
-                if srv_strs:
-                    lines.append(f"- Company Services & Products Offered:\n  * " + "\n  * ".join(srv_strs))
+                        price_val = s.get("pricing", "")
+                        srv_line = f"{name_val}: {desc_val}".strip(": ")
+                        if price_val:
+                            srv_line += f" (Pricing: {price_val})"
+                        srv_strs.append(srv_line)
+                    elif hasattr(s, "name") and getattr(s, "enabled", True):
+                        desc_val = getattr(s, "description", "")
+                        srv_line = f"{s.name}: {desc_val}".strip(": ")
+                        srv_strs.append(srv_line)
+                    elif isinstance(s, str) and s.strip():
+                        srv_strs.append(s.strip())
+
+            # Fallback/supplement with agent's own configured services if profile has none
+            if not srv_strs and config.services:
+                for s in config.services:
+                    if isinstance(s, dict) and s.get("enabled", True):
+                        srv_strs.append(f"{s.get('name', '')}: {s.get('description', '')}".strip(": "))
+                    elif hasattr(s, "name") and getattr(s, "enabled", True):
+                        srv_strs.append(f"{s.name}: {getattr(s, 'description', '')}".strip(": "))
+                    elif isinstance(s, str) and s.strip():
+                        srv_strs.append(s.strip())
+
+            if srv_strs:
+                lines.append(f"- Company Services & Solutions Offered:\n  * " + "\n  * ".join(srv_strs))
 
             if faqs:
                 faq_strs = []
@@ -227,17 +273,27 @@ class VoicePromptBuilder:
                     if isinstance(f, dict) and f.get("enabled", True):
                         q_val = f.get("question", "").strip()
                         a_val = f.get("answer", "").strip()
-                        faq_strs.append(f"Q: {q_val} -> A: {a_val}")
+                        if q_val and a_val:
+                            faq_strs.append(f"Q: {q_val} -> A: {a_val}")
+                    elif hasattr(f, "question") and getattr(f, "enabled", True):
+                        q_val = getattr(f, "question", "").strip()
+                        a_val = getattr(f, "answer", "").strip()
+                        if q_val and a_val:
+                            faq_strs.append(f"Q: {q_val} -> A: {a_val}")
                 if faq_strs:
                     lines.append(f"- Verified Company FAQs & Exact Spoken Answers:\n  * " + "\n  * ".join(faq_strs))
 
-            sections.append("\n".join(lines))
+            if notes and notes.strip():
+                lines.append(f"- Additional Business Guidelines: {notes.strip()}")
+
+            if len(lines) > 1:
+                sections.append("\n".join(lines))
 
         # 2. Agent-Specific Custom Knowledge & Parameter Overrides (HIGHEST PRIORITY)
         if config.custom_knowledge and config.custom_knowledge.strip():
             sections.append(
                 f"[AGENT-SPECIFIC CUSTOM KNOWLEDGE & PRIORITY OVERRIDES]\n"
-                f"- The following instructions and facts are specific to this agent and OVERRIDE any default company facts above whenever there is a conflict (e.g. custom phone number, dedicated contact person, special discount or policy):\n"
+                f"- The following instructions and facts are specific to this agent and OVERRIDE any default company facts above whenever there is a conflict:\n"
                 f"{config.custom_knowledge.strip()}"
             )
 
@@ -245,17 +301,18 @@ class VoicePromptBuilder:
             return ""
 
         return (
-            "[VERIFIED SPOKEN KNOWLEDGE BASE]\n"
+            "[VERIFIED SPOKEN KNOWLEDGE BASE & TELEPHONY FACTS]\n"
             + "\n\n".join(sections)
-            + "\n\nCRITICAL SPOKEN KNOWLEDGE & FAQ RULES (MANDATORY):\n"
-            "- EXACT FACT FIDELITY: When the customer asks about your phone number, email, address, company introduction, services (e.g., SharePoint, Webparts, AI receptionist, etc.), or FAQs, you MUST use ONLY the exact numbers, details, and answers listed above.\n"
-            "- SEMANTIC FAQ MATCHING: Match the caller's intent regardless of how they phrase the question (e.g., 'give me your number', 'what's your phone no', 'how can I call you', 'contact number' all trigger the Contact Phone Number above).\n"
-            "- OVERRIDE PRIORITY: If a custom number, email, or rule is specified in [AGENT-SPECIFIC CUSTOM KNOWLEDGE], ALWAYS speak that custom detail instead of the general company default.\n"
-            "- SPOKEN DELIVERY: Answer in 1 to 2 natural, warm spoken conversational sentences. Never invent or hallucinate facts or numbers outside of this knowledge base."
+            + "\n\nCRITICAL SPOKEN KNOWLEDGE & FAQ GROUNDING RULES (MANDATORY):\n"
+            "- EXACT FACT FIDELITY: When the customer asks about your company name, services, products, pricing, phone number, email, website, office location/address, operating hours, or FAQs, YOU MUST CITE AND USE ONLY THE VERIFIED FACTS LISTED ABOVE.\n"
+            "- SEMANTIC INTENT MATCHING: Recognize caller questions regardless of phrasing (e.g., 'where are you located', 'what's your address', 'head office', 'office location' all match the Head Office Location; 'how do I call you', 'phone number', 'contact number' match Contact Phone Number).\n"
+            "- FACTUAL CONFIDENCE: Never claim you do not know or lack information if the fact is present in this knowledge base.\n"
+            "- OVERRIDE PRIORITY: If a custom detail is specified in [AGENT-SPECIFIC CUSTOM KNOWLEDGE], ALWAYS speak that custom detail instead of the general company default.\n"
+            "- ZERO HALLUCINATION: Never invent, guess, or hallucinate phone numbers, emails, addresses, discounts, or services outside of this verified knowledge base."
         )
 
     @staticmethod
-    def build_prompt(config: AgentConfiguration, business_profile: Optional[dict] = None) -> str:
+    def build_prompt(config: AgentConfiguration, business_profile: Optional[Union[dict, Any]] = None) -> str:
         """
         Generates the complete, compiled spoken system prompt combining identity,
         mission, length enforcement, personality profile, language directives,
@@ -266,6 +323,18 @@ class VoicePromptBuilder:
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
         personality_text = "\n".join(f"- {d}" for d in personality_directives)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
+
+        # Spoken Length Reminder matching configured response_length
+        len_key = (config.response_length or "short").lower()
+        if len_key in ["detailed", "long"]:
+            length_brevity_rule = "Deliver 3 to 4 comprehensive, informative sentences per turn. Answer questions thoroughly with complete context."
+            length_reminder = "REMINDER: Speak 3 to 4 comprehensive sentences per turn. Ask only ONE single question at a time."
+        elif len_key in ["balanced", "medium"]:
+            length_brevity_rule = "Deliver 2 to 3 clear, well-structured spoken sentences per turn. Provide helpful context without giving monologues."
+            length_reminder = "REMINDER: Speak 2 to 3 well-structured sentences per turn. Ask only ONE single question at a time."
+        else:
+            length_brevity_rule = "Strictly 1 to 2 short, crisp spoken sentences per turn (under 25 words total). Never give long speeches or monologues."
+            length_reminder = "REMINDER: Keep EVERY turn to STRICTLY 1 to 2 short sentences (under 25 words total). Ask only ONE question."
 
         # Small talk rule
         small_talk = (config.small_talk_level or "low").lower()
@@ -316,17 +385,17 @@ BEHAVIOR & PERSONALITY MATRIX:
 {personality_text}
 
 CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
-1. SPOKEN BREVITY: Strictly 1 to 2 short, natural spoken sentences per turn. Never give long speeches.
+1. SPOKEN CADENCE: {length_brevity_rule}
 2. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
 3. ACTIVE LISTENING: Always acknowledge what the customer just said before asking your next single question.
 4. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
 5. CONVERSATION FLOW:
    - Positive response: Validate warmly and take the next step.
-   - Objection / Hesitation: Empathize sincerely in one sentence and offer a simple alternative.
+   - Objection / Hesitation: Empathize sincerely and offer a simple alternative.
    - Polite wrap-up: Thank them genuinely and wish them a great day.
 
 {guardrails_text}
 
-REMINDER: Keep EVERY turn to STRICTLY 1 to 2 short sentences (under 25 words total). Ask only ONE question."""
+{length_reminder}"""
 
         return compiled_prompt.strip()
