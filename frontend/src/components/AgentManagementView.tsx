@@ -57,6 +57,18 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
   // Modals & Drawers
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<AgentConfig | null>(null);
+  const [isOpeningStudio, setIsOpeningStudio] = useState(false);
+  const [openingActionLabel, setOpeningActionLabel] = useState("Initializing Voice Studio...");
+
+  const openStudioWithTransition = (agent: AgentConfig | null, actionLabel?: string) => {
+    setOpeningActionLabel(actionLabel || (agent ? `Loading ${agent.name}...` : "Initializing AI Voice Studio..."));
+    setIsOpeningStudio(true);
+    setTimeout(() => {
+      setEditingAgent(agent);
+      setIsOpeningStudio(false);
+      setEditorOpen(true);
+    }, 2200);
+  };
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
   const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
@@ -276,7 +288,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         } else if (event.event_type === "CallEnded") {
           setCalling(false);
         }
-      } catch (err) {}
+      } catch (err) { }
     };
 
     telemetryWsRef.current = ws;
@@ -395,10 +407,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setEditingAgent(a);
-                  setEditorOpen(true);
-                }}
+                onClick={() => openStudioWithTransition(a, `Opening ${a.name}...`)}
                 leftIcon={<Edit className="w-3.5 h-3.5" />}
                 className="h-7 px-2 text-xs"
               >
@@ -408,11 +417,10 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
                 variant="ghost"
                 size="sm"
                 onClick={() => handleToggleStatus(a)}
-                className={`h-7 px-2 text-xs ${
-                  a.status.toUpperCase() === "ACTIVE"
-                    ? "text-[var(--color-muted)] hover:text-amber-500"
-                    : "text-[var(--color-success)]"
-                }`}
+                className={`h-7 px-2 text-xs ${a.status.toUpperCase() === "ACTIVE"
+                  ? "text-[var(--color-muted)] hover:text-amber-500"
+                  : "text-[var(--color-success)]"
+                  }`}
               >
                 {a.status.toUpperCase() === "ACTIVE" ? "Deactivate" : "Activate"}
               </Button>
@@ -499,6 +507,35 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
       )
     }
   ];
+
+  if (isOpeningStudio) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center space-y-5 animate-fade-in text-center max-w-md mx-auto">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center animate-pulse-glow shadow-md">
+            <Bot className="w-8 h-8 text-[var(--color-primary)] animate-bounce" />
+          </div>
+          <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--color-primary)] flex items-center justify-center animate-spin-slow shadow-xs">
+            <Sparkles className="w-3 h-3 text-white" />
+          </div>
+        </div>
+        
+        <div className="space-y-1.5 w-full">
+          <h3 className="text-sm font-bold text-[var(--color-heading)] tracking-tight">
+            {openingActionLabel}
+          </h3>
+          <p className="text-xs text-[var(--color-muted)]">
+            Synthesizing conversational canvas & telephony speech models...
+          </p>
+
+          {/* Smooth 2-second Progress Bar */}
+          <div className="w-52 h-1.5 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-full overflow-hidden mx-auto mt-3">
+            <div className="h-full bg-[var(--color-primary)] rounded-full animate-progress" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (editorOpen) {
     return (
@@ -619,11 +656,9 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => {
-                  setEditingAgent(null);
-                  setEditorOpen(true);
-                }}
+                onClick={() => openStudioWithTransition(null, "Initializing AI Voice Studio...")}
                 leftIcon={<Plus className="w-3.5 h-3.5" />}
+                className="cursor-pointer font-semibold shadow-xs"
               >
                 Create Agent
               </Button>
@@ -918,11 +953,10 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
                         {msg.role === "user" ? "Customer" : testAgent.name}
                       </div>
                       <div
-                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${
-                          msg.role === "user"
-                            ? "bg-[var(--color-primary)] text-white"
-                            : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                        }`}
+                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${msg.role === "user"
+                          ? "bg-[var(--color-primary)] text-white"
+                          : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
+                          }`}
                       >
                         {msg.content}
                       </div>
