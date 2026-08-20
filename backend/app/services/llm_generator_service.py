@@ -157,7 +157,7 @@ class LLMGeneratorService:
         lang_note = f"Language: {language}" if language and language != "en" else "Language: English (with multilingual mirroring)"
 
         system_instruction = f"""You are an elite conversational AI voice architect for real-time telephone voice agents.
-Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response Length, synthesize complete spoken telephone system prompt instructions.
+Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response Length, synthesize complete spoken telephone system prompt instructions and 3 distinct opening greeting options.
 
 {intent_guidance}
 
@@ -166,13 +166,23 @@ CRITICAL TELEPHONE SPOKEN VOICE RULES:
 2. SINGLE QUESTION PER TURN: Ask only ONE single question at a time so the conversation feels collaborative and natural.
 3. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken script or greeting.
 4. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before continuing.
-5. GREETING: {greeting_instruction}.
+5. GREETING GENERATION RULES:
+   - Generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective:
+     * 'Direct & Warm': A warm, welcoming opening stating who is speaking and asking how to help.
+     * 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description (e.g. 'I am following up regarding your recent inquiry about [topic]...') and asking a conversational opening question.
+     * 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow.
+   - NEVER use robotic phrases like 'This is Customer Follow-Up Agent' or 'I am an AI assistant'. Speak naturally like an empathetic human representative.
 6. {lang_note}.
 
 Return ONLY a valid JSON object matching this schema:
 {{
   "system_prompt": string (Full telephone system prompt instructions),
-  "suggested_greeting": string (Warm, natural telephone opening line matching the intent),
+  "suggested_greeting": string (Primary natural telephone opening line),
+  "suggested_greetings": [
+    {{"label": "Direct & Warm", "text": string}},
+    {{"label": "Engaging Hook & Discovery", "text": string}},
+    {{"label": "Consultative & Professional", "text": string}}
+  ],
   "suggested_objective": string (1-sentence primary objective),
   "communication_style": string,
   "recommended_voice": "aura-orion-en" | "aura-luna-en" | "aura-asteria-en" | "aura-stella-en" | "aura-arcas-en" | "aura-athena-en" | "aura-perseus-en",
@@ -208,7 +218,7 @@ Communication Tone: {tone}{personality_ctx}
 Configured Spoken Response Length: {len_key} ({spoken_length_rule})
 Enabled Capabilities: {skills_str}{custom_ctx}{guardrail_ctx}{kb_note}
 
-Synthesize the complete telephone conversation prompt instructions, opening greeting matching this archetype, and objection handling rules."""
+Synthesize the complete telephone conversation prompt instructions and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
 
         json_text = None
         if self.is_azure_configured():
@@ -225,21 +235,54 @@ Synthesize the complete telephone conversation prompt instructions, opening gree
 
         if json_text:
             try:
-                return json.loads(json_text)
+                parsed = json.loads(json_text)
+                if "suggested_greetings" not in parsed or not parsed["suggested_greetings"]:
+                    main_g = parsed.get("suggested_greeting", f"Hi! Thanks for calling. How can I help you today?")
+                    parsed["suggested_greetings"] = [
+                        {"label": "Direct & Warm", "text": f"Hi! Thanks for calling. How can I assist you today?"},
+                        {"label": "Engaging Hook & Discovery", "text": main_g},
+                        {"label": "Consultative & Professional", "text": f"Hello! I am here to help with {description.lower().rstrip('.')}—how can I assist?"}
+                    ]
+                return parsed
             except Exception as e:
                 print(f"[LLMGenerator] JSON parse error: {e}")
 
         # Fallback heuristic
         clean_name = name.strip() or "Voice Assistant"
-        clean_desc = (objective or description).strip() or "General voice assistant for customer calls."
+        clean_desc = (objective or description).strip() or "Customer support and follow-up."
+        clean_role = (role or "Representative").strip()
         
-        fallback_greeting = f"Hi! This is {clean_name}. How can I help you today?"
-        if type_key in ["marketing", "sales"]:
-            fallback_greeting = f"Hi! This is {clean_name}. I'm calling regarding {clean_desc.lower().rstrip('.')}. Are you currently looking into this?"
+        # Clean persona name for natural human telephone speech
+        spoken_persona = clean_name
+        for suffix in [" Agent", " Assistant", " Bot", " AI"]:
+            if spoken_persona.endswith(suffix):
+                spoken_persona = "Alex"
+                break
+
+        if type_key in ["marketing", "sales", "outreach"]:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! Thanks for connecting with us today. My name is {spoken_persona}, how can I help you?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} reaching out regarding {clean_desc.lower().rstrip('.')}. Do you have a quick 30 seconds to chat?"},
+                {"label": "Consultative & Professional", "text": f"Hello! This is {spoken_persona}, your {clean_role}. How can I best assist with your inquiry today?"}
+            ]
         elif type_key in ["follow_up", "review"]:
-            fallback_greeting = f"Hi! This is {clean_name} following up on your recent inquiry. How has everything been going with you?"
-        elif type_key in ["reminder"]:
-            fallback_greeting = f"Hi! This is {clean_name} with a quick reminder regarding your scheduled appointment. Will you still be able to make it?"
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! Thanks for taking my call. This is {spoken_persona}, following up to see how everything is going with you today?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} following up on {clean_desc.lower().rstrip('.')}. Did you have a moment to go over any questions?"},
+                {"label": "Consultative & Professional", "text": f"Hello! This is {spoken_persona} with customer follow-up. I am checking in to ensure everything is resolved to your satisfaction."}
+            ]
+        elif type_key in ["reminder", "appointment_reminder"]:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} with a quick friendly reminder regarding {clean_desc.lower().rstrip('.')}. Will you still be able to make it?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona}. I'm calling to confirm your upcoming scheduled appointment—do you have a quick moment?"},
+                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} reaching out to confirm your booking and see if you need to reschedule or have any questions."}
+            ]
+        else:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! Thank you for calling. This is {spoken_persona}, how can I help you today?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona} regarding {clean_desc.lower().rstrip('.')}. How can I assist you?"},
+                {"label": "Consultative & Professional", "text": f"Hi there! This is {spoken_persona}, your {clean_role}. How can I best assist with your request today?"}
+            ]
 
         return {
             "system_prompt": f"""You are {clean_name}, a genuine, warm, and highly capable {role or 'assistant'} speaking on a real-time telephone call.
@@ -259,7 +302,8 @@ CALL FLOW & CONVERSATION BRANCHES:
 3. POSITIVE RESPONSES: Validate warmly, verify details, and offer next steps.
 4. OBJECTIONS OR ISSUES: Respond with immediate empathy, explain key options simply, and never argue.
 5. NATURAL POLITE CLOSING: Confirm everything is covered, thank them genuinely, and wish them a great day.""",
-            "suggested_greeting": fallback_greeting,
+            "suggested_greeting": fallback_greetings[0]["text"],
+            "suggested_greetings": fallback_greetings,
             "suggested_objective": f"Assist customers effectively with {clean_desc.lower().rstrip('.')}.",
             "communication_style": tone,
             "recommended_voice": "aura-orion-en",

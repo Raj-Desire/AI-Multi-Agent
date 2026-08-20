@@ -4,7 +4,7 @@ Allows tenant users, admins, and platform superadmins to view, create, update, d
 activate, deactivate, archive, and manage their AI Voice Agent configurations.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.core.dependencies import TenantContext, get_tenant_context
@@ -40,6 +40,7 @@ class GeneratePromptRequest(BaseModel):
 class GeneratedPromptResponse(BaseModel):
     system_prompt: str
     suggested_greeting: str
+    suggested_greetings: Optional[List[Dict[str, str]]] = Field(default_factory=list)
     suggested_objective: Optional[str] = None
     communication_style: Optional[str] = None
     recommended_voice: Optional[str] = None
@@ -98,6 +99,7 @@ async def generate_prompt(
         return ApiResponse.ok(GeneratedPromptResponse(
             system_prompt=gen.get("system_prompt", ""),
             suggested_greeting=gen.get("suggested_greeting", f"Hi! This is {name}. How can I help you today?"),
+            suggested_greetings=gen.get("suggested_greetings", []),
             suggested_objective=gen.get("suggested_objective", desc),
             communication_style=gen.get("communication_style", style),
             recommended_voice=gen.get("recommended_voice", "aura-orion-en"),
@@ -271,3 +273,19 @@ async def get_agent_versions(
         "status": agent.status,
         "updated_at": agent.updated_at
     })
+
+
+@router.delete("/{agent_id}", response_model=ApiResponse[Dict[str, Any]])
+async def delete_agent(
+    agent_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: AgentService = Depends(get_agent_service)
+):
+    """Permanently deletes a custom agent from the caller's organization."""
+    success = await service.delete_agent(ctx, agent_id)
+    return ApiResponse.ok({
+        "deleted": success,
+        "agent_id": agent_id,
+        "message": "Agent deleted successfully."
+    })
+

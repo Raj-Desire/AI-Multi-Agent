@@ -40,6 +40,7 @@ import { Modal } from "./ui/Modal";
 import { DataTable, Column } from "./ui/DataTable";
 import { AgentEditorModal } from "./AgentEditorModal";
 import { AgentLivePreview } from "./AgentLivePreview";
+import { toast } from "sonner";
 
 export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer?: (agentId: string) => void }) {
   const { user, isAdmin, isSuperAdmin } = useAuth();
@@ -73,6 +74,8 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
   const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
+  const [agentToDelete, setAgentToDelete] = useState<AgentConfig | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Test Call states
   const [testModalOpen, setTestModalOpen] = useState(false);
@@ -185,12 +188,34 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         method: "POST"
       });
       setStatusMessage({ type: "success", text: `Agent "${agentToArchive.name}" archived successfully.` });
+      toast.success(`Agent "${agentToArchive.name}" archived successfully.`);
       setAgentToArchive(null);
       await loadData();
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message });
+      toast.error(err.message || "Failed to archive agent.");
     } finally {
       setIsArchiving(false);
+    }
+  }
+
+  async function confirmDeleteAgent() {
+    if (!agentToDelete) return;
+    try {
+      setIsDeleting(true);
+      setStatusMessage(null);
+      await fetchApi(`/agents/${agentToDelete.agent_id}`, {
+        method: "DELETE"
+      });
+      setStatusMessage({ type: "success", text: `Agent "${agentToDelete.name}" permanently deleted.` });
+      toast.success(`Agent "${agentToDelete.name}" deleted permanently.`);
+      setAgentToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      setStatusMessage({ type: "error", text: err.message });
+      toast.error(err.message || "Failed to delete agent.");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -428,9 +453,17 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
                 variant="ghost"
                 size="sm"
                 onClick={() => setAgentToArchive(a)}
-                leftIcon={<Archive className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
-                className="h-7 px-2 text-xs text-[var(--color-danger)]"
+                leftIcon={<Archive className="w-3.5 h-3.5 text-amber-500" />}
+                className="h-7 px-2 text-xs text-amber-500 hover:bg-amber-500/10"
                 title="Archive agent"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAgentToDelete(a)}
+                leftIcon={<Trash2 className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
+                className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+                title="Delete agent permanently"
               />
             </>
           )}
@@ -1051,6 +1084,57 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           </div>
           <p className="text-[var(--color-muted)] leading-relaxed">
             Archiving this agent will remove it from active dialing campaigns. Existing call logs and metrics will retain their historical records.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Delete Agent Confirmation Modal */}
+      <Modal
+        isOpen={!!agentToDelete}
+        onClose={() => !isDeleting && setAgentToDelete(null)}
+        title="Delete AI Voice Agent Permanently"
+        description="This action cannot be undone. Are you sure you want to permanently delete this agent?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAgentToDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isDeleting}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteAgent}
+            >
+              Delete Permanently
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs text-left">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/20">
+            <div className="w-8 h-8 rounded-full bg-[var(--color-danger)]/20 text-[var(--color-danger)] flex items-center justify-center shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {agentToDelete?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToDelete?.version || 1}</span>
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
+                {agentToDelete?.role} • {agentToDelete?.scope || "ORGANIZATION"}
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Permanently deleting this agent will remove its voice configuration and prompt instructions from your organization.
           </p>
         </div>
       </Modal>

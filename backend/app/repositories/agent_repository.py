@@ -298,3 +298,26 @@ class AgentRepository:
         # Fallback to global default receptionist
         global_rec = await self.get_by_id("global", "agt_receptionist_default")
         return global_rec or get_default_receptionist_agent(organization_id=organization_id)
+
+    async def delete(self, organization_id: str, agent_id: str) -> bool:
+        """
+        Permanently deletes an agent from Cosmos DB and in-memory store.
+        """
+        def _sync_delete():
+            container = get_agents_container()
+            if container:
+                doc_id = f"{organization_id}_{agent_id}"
+                try:
+                    container.delete_item(item=doc_id, partition_key=organization_id)
+                except Exception as e:
+                    print(f"[AgentRepository Warning] Cosmos DB delete failed for {doc_id}: {e}")
+
+            if organization_id in self._memory_store and agent_id in self._memory_store[organization_id]:
+                del self._memory_store[organization_id][agent_id]
+            if organization_id == "global" and "global" in self._memory_store and agent_id in self._memory_store["global"]:
+                del self._memory_store["global"][agent_id]
+
+            _invalidate_agent_cache(organization_id)
+            return True
+
+        return await asyncio.to_thread(_sync_delete)

@@ -42,35 +42,13 @@ export function Step4PersonalityCommunication({
     <div className="space-y-6 text-left">
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Personality & Communication</h2>
+        <h2 className="text-sm font-bold text-[var(--color-heading)]">Personality & Style</h2>
         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Define your agent's conversational tone, spoken greeting, response pacing, and personality characteristics.
+          Define your agent's conversational tone, turn response length, and core personality traits.
         </p>
       </div>
 
-      {/* Section 1: Spoken Greeting */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Spoken Greeting Line <span className="text-[var(--color-danger)]">*</span>
-          </label>
-          <Badge variant="neutral" className="text-[10px] py-0">
-            First spoken sentence
-          </Badge>
-        </div>
-        <input
-          type="text"
-          value={agentData.greeting}
-          onChange={(e) => setAgentData({ ...agentData, greeting: e.target.value })}
-          placeholder="e.g., Hi, thank you for calling! How can I assist you today?"
-          className="w-full h-10 px-3.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium shadow-2xs font-mono"
-        />
-        <p className="text-[11px] text-[var(--color-muted)]">
-          The agent speaks this greeting line immediately when the phone call is answered.
-        </p>
-      </div>
-
-      {/* Section 2: Communication Style & Response Length */}
+      {/* Section 1: Communication Style & Response Length */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Style selection */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3">

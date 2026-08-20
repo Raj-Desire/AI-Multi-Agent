@@ -15,7 +15,13 @@ import {
   Clock,
   RotateCcw,
   Zap,
-  Info
+  Info,
+  MessageSquare,
+  Radio,
+  Edit3,
+  Target,
+  Shield,
+  Smile
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -28,6 +34,11 @@ interface Step6PromptInstructionsProps {
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
 }
 
+interface GreetingOption {
+  label: string;
+  text: string;
+}
+
 export function Step6PromptInstructions({
   agentData,
   setAgentData
@@ -36,13 +47,25 @@ export function Step6PromptInstructions({
   const [isRefining, setIsRefining] = useState(false);
   const [refinementInput, setRefinementInput] = useState("");
   const [copied, setCopied] = useState(false);
+  const [greetingOptions, setGreetingOptions] = useState<GreetingOption[]>([]);
 
-  // Auto-synthesize on first view if prompt is empty
-  useEffect(() => {
-    if (!agentData.system_prompt || !agentData.system_prompt.trim()) {
-      handleGenerateInstructions(true);
+  // Default fallback options if none returned yet
+  const defaultGreetings: GreetingOption[] = [
+    {
+      label: "Direct & Warm",
+      text: `Hi! Thanks for calling ${agentData.name ? agentData.name : "Desire AI"}. How can I assist you today?`
+    },
+    {
+      label: "Engaging Hook & Discovery",
+      text: `Hi! This is ${agentData.name || "Alex"} reaching out regarding your inquiry. Do you have a quick 30 seconds to chat?`
+    },
+    {
+      label: "Consultative & Professional",
+      text: `Hello! This is ${agentData.name || "Alex"}. I'm here to help with any questions you have today.`
     }
-  }, []);
+  ];
+
+  const activeGreetings = greetingOptions.length > 0 ? greetingOptions : defaultGreetings;
 
   async function handleGenerateInstructions(silent = false) {
     const desc = agentData.description || agentData.objective || "";
@@ -61,6 +84,7 @@ export function Step6PromptInstructions({
       const res = await fetchApi<{
         system_prompt: string;
         suggested_greeting?: string;
+        suggested_greetings?: GreetingOption[];
         suggested_objective?: string;
         communication_style?: string;
         recommended_voice?: string;
@@ -84,16 +108,23 @@ export function Step6PromptInstructions({
       });
 
       if (res) {
+        if (res.suggested_greetings && res.suggested_greetings.length > 0) {
+          setGreetingOptions(res.suggested_greetings);
+        }
+
+        const chosenGreeting = res.suggested_greeting || (res.suggested_greetings && res.suggested_greetings[0]?.text) || agentData.greeting;
+
         setAgentData((prev) => ({
           ...prev,
           system_prompt: res.system_prompt,
-          greeting: res.suggested_greeting || prev.greeting || "Hello! How can I help you today?",
+          greeting: chosenGreeting,
           objective: res.suggested_objective || prev.objective || desc,
           voice: res.recommended_voice ? { ...(prev.voice as any), voice: res.recommended_voice } : prev.voice
         }));
+
         if (!silent) {
           toast.success("Instructions generated successfully!", {
-            description: `Synthesized spoken prompt tailored for ${agentData.response_length || "short"} response length and configured tone.`
+            description: `Synthesized spoken prompt and 3 greeting options for ${agentData.response_length || "short"} response length.`
           });
         }
       }
@@ -179,9 +210,9 @@ export function Step6PromptInstructions({
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-bold text-[var(--color-heading)]">AI Prompt & Instructions</h2>
+          <h2 className="text-sm font-bold text-[var(--color-heading)]">Prompt & Spoken Instructions</h2>
           <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            Synthesize, refine, and customize your agent's real-time spoken call script based on all configured parameters.
+            Select your opening greeting option, synthesize full spoken instructions, or edit script rules directly.
           </p>
         </div>
 
@@ -207,7 +238,7 @@ export function Step6PromptInstructions({
             leftIcon={<Sparkles className={`w-3.5 h-3.5 ${isGenerating ? "animate-spin" : "text-amber-300"}`} />}
             className="cursor-pointer text-xs h-8 px-3"
           >
-            {isGenerating ? "Synthesizing Prompt..." : "Re-Generate with AI"}
+            {isGenerating ? "Synthesizing Prompt..." : (agentData.system_prompt ? "Re-Generate with AI" : "Generate with AI")}
           </Button>
         </div>
       </div>
@@ -225,33 +256,142 @@ export function Step6PromptInstructions({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)]">
-            🎯 <strong>Role:</strong> {agentData.role || "Assistant"}
+          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center gap-1">
+            <Target className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+            <span><strong>Role:</strong> {agentData.role || "Assistant"}</span>
           </Badge>
-          <Badge variant="primary" className="text-[11px] py-0.5 px-2">
-            ⏱️ <strong>Length:</strong> {responseLengthLabel}
+          <Badge variant="primary" className="text-[11px] py-0.5 px-2 flex items-center gap-1">
+            <Clock className="w-3 h-3 shrink-0" />
+            <span><strong>Length:</strong> {responseLengthLabel}</span>
           </Badge>
-          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)]">
-            🎭 <strong>Tone:</strong> {agentData.communication_style || "Professional"}
+          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center gap-1">
+            <Smile className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+            <span><strong>Tone:</strong> {agentData.communication_style || "Professional"}</span>
           </Badge>
-          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)]">
-            🌐 <strong>Language:</strong> {agentData.voice?.language?.toUpperCase() || "EN"}
+          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center gap-1">
+            <Globe className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+            <span><strong>Language:</strong> {agentData.voice?.language?.toUpperCase() || "EN"}</span>
           </Badge>
-          <Badge variant={agentData.include_business_knowledge ? "success" : "neutral"} className="text-[11px] py-0.5 px-2">
-            🧠 <strong>Knowledge Base:</strong> {agentData.include_business_knowledge ? "Connected" : "Custom Only"}
+          <Badge variant={agentData.include_business_knowledge ? "success" : "neutral"} className="text-[11px] py-0.5 px-2 flex items-center gap-1">
+            <Brain className="w-3 h-3 shrink-0" />
+            <span><strong>Knowledge Base:</strong> {agentData.include_business_knowledge ? "Connected" : "Custom Only"}</span>
           </Badge>
-          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)]">
-            🛡️ <strong>Guardrails:</strong> {agentData.guardrails?.restricted_actions?.length || 0} active
+          <Badge variant="neutral" className="text-[11px] py-0.5 px-2 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center gap-1">
+            <Shield className="w-3 h-3 text-amber-500 shrink-0" />
+            <span><strong>Guardrails:</strong> {agentData.guardrails?.restricted_actions?.length || 0} active</span>
           </Badge>
         </div>
       </div>
 
-      {/* Main Prompt Editor Section */}
+      {/* SECTION 1: Generated Spoken Greeting Options & Direct Customization */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" />
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)]">
+                Spoken Opening Greeting (Select Option or Modify Manually)
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)]">
+                The exact first sentence spoken immediately when the call is answered.
+              </p>
+            </div>
+          </div>
+          <Badge variant="primary" className="text-[10px] py-0.5 px-2">
+            3 AI Options
+          </Badge>
+        </div>
+
+        {/* 2-3 Clickable Greeting Option Cards or Generation Invitation */}
+        {greetingOptions.length === 0 ? (
+          <div className="p-3.5 bg-[var(--color-surface-muted)]/80 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-[11px] text-[var(--color-heading)] leading-relaxed">
+                Click <strong>"Generate with AI"</strong> above to synthesize 3 custom opening greeting options tailored to your <strong>{agentData.role || "Role"}</strong> and business description.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isGenerating}
+              onClick={() => handleGenerateInstructions(false)}
+              leftIcon={<Sparkles className="w-3 h-3 text-amber-400" />}
+              className="text-xs h-7 px-2.5 shrink-0"
+            >
+              Generate Greetings
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+            {activeGreetings.map((opt, idx) => {
+              const isSelected = agentData.greeting === opt.text;
+              return (
+                <div
+                  key={idx}
+                  onClick={() => setAgentData({ ...agentData, greeting: opt.text })}
+                  className={`p-3 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all flex flex-col justify-between ${
+                    isSelected
+                      ? "bg-[var(--color-primary-light)]/25 border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] shadow-2xs"
+                      : "bg-[var(--color-surface-muted)]/60 border-[var(--color-border)] hover:border-[var(--color-primary)]/70"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
+                        {opt.label}
+                      </span>
+                      <div
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          isSelected
+                            ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                            : "border-[var(--color-border)] bg-[var(--color-surface)]"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[var(--color-heading)] font-mono leading-relaxed">
+                      "{opt.text}"
+                    </p>
+                  </div>
+                  <span className="text-[9px] text-[var(--color-muted)] mt-2 block">
+                    {isSelected ? "Active selection" : "Click to select"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Manual Greeting Input / Modification */}
+        <div className="pt-2 border-t border-[var(--color-border)]/60 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+              <Edit3 className="w-3 h-3 text-[var(--color-muted)]" />
+              Active Greeting Line (Directly Editable)
+            </label>
+            <span className="text-[10px] text-[var(--color-muted)] font-mono">
+              {agentData.greeting?.length || 0} characters
+            </span>
+          </div>
+          <input
+            type="text"
+            value={agentData.greeting || ""}
+            onChange={(e) => setAgentData({ ...agentData, greeting: e.target.value })}
+            placeholder="e.g., Hi! Thanks for calling Desire AI. How can I help you today?"
+            className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono font-medium shadow-2xs"
+          />
+        </div>
+      </div>
+
+      {/* SECTION 2: Main System Prompt Editor */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="block text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
             <FileCode className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-            Spoken System Prompt (Directly Editable)
+            Spoken System Prompt Instructions (Directly Editable)
           </label>
           <span className="text-[11px] text-[var(--color-muted)] font-mono">
             {agentData.system_prompt?.length || 0} characters
@@ -259,20 +399,20 @@ export function Step6PromptInstructions({
         </div>
 
         <textarea
-          rows={11}
+          rows={10}
           value={agentData.system_prompt || ""}
           onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
-          placeholder="Synthesizing your spoken prompt based on all selected parameters... You can also type or edit instructions directly here."
+          placeholder="Click 'Generate with AI' above to auto-create spoken prompt instructions from your configured parameters, or write and customize instructions here directly..."
           className="w-full p-3.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono leading-relaxed shadow-2xs resize-y"
         />
 
         <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)] pt-0.5">
-          <span>✨ You can edit this script directly, or use the AI Co-Pilot below to refine specific rules.</span>
+          <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-amber-500" /> You can edit this script directly, or use the AI Co-Pilot below to refine specific rules.</span>
           <span className="text-[10px] text-[var(--color-muted)]">Audio Rule: Keep spoken text free of markdown or emojis</span>
         </div>
       </div>
 
-      {/* AI Co-Pilot / Model-Driven Prompt Refiner */}
+      {/* SECTION 3: AI Co-Pilot / Model-Driven Prompt Refiner */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

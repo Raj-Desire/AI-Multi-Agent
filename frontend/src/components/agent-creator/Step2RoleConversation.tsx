@@ -41,7 +41,7 @@ export function Step2RoleConversation({
         </p>
       </div>
 
-      {/* Section 1: Objective & Greeting */}
+      {/* Section 1: Objective */}
       <div className="space-y-4">
         <div className="space-y-1.5">
           <label className="block text-xs font-semibold text-[var(--color-heading)]">
@@ -56,22 +56,6 @@ export function Step2RoleConversation({
           />
           <p className="text-[11px] text-[var(--color-muted)]">
             In 1–2 sentences, what is the single most important goal of every phone call?
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Spoken Telephone Opening Greeting <span className="text-[var(--color-danger)]">*</span>
-          </label>
-          <input
-            type="text"
-            value={agentData.greeting || ""}
-            onChange={(e) => setAgentData({ ...agentData, greeting: e.target.value })}
-            placeholder="e.g., Hi! Thanks for calling Desire AI. How can I help you today?"
-            className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
-          />
-          <p className="text-[11px] text-[var(--color-muted)]">
-            The exact first sentence the AI speaks immediately upon answering the phone.
           </p>
         </div>
       </div>

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
+import { Modal } from "./ui/Modal";
 import { PageHeader } from "./ui/PageHeader";
 import { LoadingState } from "./ui/LoadingState";
 import { toast } from "sonner";
@@ -34,6 +35,14 @@ export function BusinessProfileView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"company" | "services" | "hours" | "faqs">("company");
+
+  // Delete confirmation modal state
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{
+    type: "faq" | "service";
+    index: number;
+    title: string;
+  } | null>(null);
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
 
   // Determine editing privileges
   const canEdit = isAdmin || isSuperAdmin || (profile?.allow_user_edits ?? false);
@@ -66,6 +75,28 @@ export function BusinessProfileView() {
     }
   }
 
+  async function persistProfile(updated: CompanyBusinessProfile, successMsg?: string) {
+    setProfile(updated);
+    try {
+      setSaving(true);
+      const saved = await fetchApi<CompanyBusinessProfile>("/business-profile", {
+        method: "POST",
+        body: JSON.stringify(updated)
+      });
+      if (saved) {
+        setProfile(saved);
+        if (successMsg) {
+          toast.success(successMsg);
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to save profile:", err);
+      toast.error(err.message || "Failed to persist changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleSaveProfile() {
     if (!profile) return;
     try {
@@ -88,31 +119,23 @@ export function BusinessProfileView() {
     }
   }
 
-  const addService = () => {
+  const addService = async () => {
     if (!newServiceName.trim() || !profile) return;
     const newService: BusinessServiceItem = {
       name: newServiceName.trim(),
       description: newServiceDesc.trim(),
       enabled: true
     };
-    setProfile({
+    const updated: CompanyBusinessProfile = {
       ...profile,
       services: [...(profile.services || []), newService]
-    });
+    };
     setNewServiceName("");
     setNewServiceDesc("");
-    toast.success(`Added service "${newService.name}"`);
+    await persistProfile(updated, `Service "${newService.name}" added and saved!`);
   };
 
-  const removeService = (index: number) => {
-    if (!profile) return;
-    const updated = [...(profile.services || [])];
-    const removed = updated.splice(index, 1);
-    setProfile({ ...profile, services: updated });
-    toast.info(`Removed service "${removed[0]?.name || "item"}"`);
-  };
-
-  const addFAQ = () => {
+  const addFAQ = async () => {
     if (!newFAQQuestion.trim() || !newFAQAnswer.trim() || !profile) return;
     const newFaq: CompanyFAQItem = {
       question: newFAQQuestion.trim(),
@@ -120,21 +143,34 @@ export function BusinessProfileView() {
       category: newFAQCategory,
       enabled: true
     };
-    setProfile({
+    const updated: CompanyBusinessProfile = {
       ...profile,
       faqs: [...(profile.faqs || []), newFaq]
-    });
+    };
     setNewFAQQuestion("");
     setNewFAQAnswer("");
-    toast.success("Added new FAQ item");
+    await persistProfile(updated, "FAQ added and saved to Knowledge Base!");
   };
 
-  const removeFAQ = (index: number) => {
-    if (!profile) return;
-    const updated = [...(profile.faqs || [])];
-    updated.splice(index, 1);
-    setProfile({ ...profile, faqs: updated });
-    toast.info("Removed FAQ item");
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmItem || !profile) return;
+    try {
+      setIsDeletingItem(true);
+      if (deleteConfirmItem.type === "faq") {
+        const updatedFaqs = [...(profile.faqs || [])];
+        updatedFaqs.splice(deleteConfirmItem.index, 1);
+        const updatedProfile = { ...profile, faqs: updatedFaqs };
+        await persistProfile(updatedProfile, `Deleted FAQ "${deleteConfirmItem.title}"`);
+      } else if (deleteConfirmItem.type === "service") {
+        const updatedServices = [...(profile.services || [])];
+        updatedServices.splice(deleteConfirmItem.index, 1);
+        const updatedProfile = { ...profile, services: updatedServices };
+        await persistProfile(updatedProfile, `Deleted service "${deleteConfirmItem.title}"`);
+      }
+      setDeleteConfirmItem(null);
+    } finally {
+      setIsDeletingItem(false);
+    }
   };
 
   if (loading) {
@@ -456,7 +492,7 @@ export function BusinessProfileView() {
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => removeService(idx)}
+                    onClick={() => setDeleteConfirmItem({ type: "service", index: idx, title: service.name })}
                     className="text-[var(--color-muted)] hover:text-[var(--color-danger)] p-1 rounded transition-colors cursor-pointer"
                     title="Remove Service"
                   >
@@ -691,7 +727,7 @@ export function BusinessProfileView() {
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => removeFAQ(idx)}
+                    onClick={() => setDeleteConfirmItem({ type: "faq", index: idx, title: faq.question })}
                     className="text-[var(--color-muted)] hover:text-[var(--color-danger)] p-1 rounded transition-colors cursor-pointer"
                     title="Remove FAQ"
                   >
@@ -703,6 +739,56 @@ export function BusinessProfileView() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteConfirmItem}
+        onClose={() => !isDeletingItem && setDeleteConfirmItem(null)}
+        title={`Delete ${deleteConfirmItem?.type === "faq" ? "FAQ Question" : "Service"}`}
+        maxWidth="sm"
+      >
+        <div className="space-y-4 text-left">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-[var(--color-danger)]/10 text-[var(--color-danger)] shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs text-[var(--color-heading)] font-semibold">
+                Are you sure you want to delete this {deleteConfirmItem?.type === "faq" ? "FAQ" : "service"}?
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] mt-1 font-mono break-words">
+                "{deleteConfirmItem?.title}"
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] mt-2">
+                This item will be permanently removed from your verified Knowledge Base and will no longer be used during voice calls.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isDeletingItem}
+              onClick={() => setDeleteConfirmItem(null)}
+              className="cursor-pointer text-xs h-8"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              disabled={isDeletingItem}
+              onClick={handleConfirmDelete}
+              className="cursor-pointer text-xs h-8"
+            >
+              {isDeletingItem ? "Deleting..." : "Yes, Delete"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
