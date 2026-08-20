@@ -326,8 +326,10 @@ async def voice_stream_websocket(websocket: WebSocket):
                 last_user_speech_time = time.time()
                 last_agent_speech_done_time = time.time()
 
-                # 2. Build Deepgram Settings via AgentRuntimeBuilder
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config)
+                # 2. Build Deepgram Settings via AgentRuntimeBuilder (with Business Profile Knowledge Base)
+                from app.repositories.business_profile_repository import BusinessProfileRepository
+                business_profile = await BusinessProfileRepository.get_profile(org_id)
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config, business_profile=business_profile)
 
                 # Override with custom prompt if specified for this test call session
                 if session and session.custom_prompt:

@@ -16,11 +16,13 @@ import {
   Moon,
   Laptop,
   AlertTriangle,
+  Building2,
+  BookOpen
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -86,6 +88,13 @@ export function Sidebar({
     {
       title: "Configuration",
       items: [
+        {
+          id: "business_profile",
+          label: "Company Knowledge",
+          icon: Building2,
+          visible: true,
+          badge: "Brain",
+        },
         {
           id: "twilio",
           label: "Phone & Voice",

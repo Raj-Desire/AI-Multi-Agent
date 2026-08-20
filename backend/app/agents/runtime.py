@@ -4,6 +4,7 @@ Translates high-level platform AgentConfiguration into provider-specific Deepgra
 SettingsConfiguration, ensuring decoupled architecture and future extensibility.
 """
 
+from typing import Optional, Dict, Any
 from app.agents.configuration import AgentConfiguration
 from app.agents.prompt_builder import VoicePromptBuilder
 from app.providers.deepgram.configuration import (
@@ -25,9 +26,9 @@ class AgentRuntimeBuilder:
     """Converts tenant AgentConfiguration into Deepgram Voice Agent settings payload."""
 
     @staticmethod
-    def build_deepgram_settings(config: AgentConfiguration) -> DeepgramSettingsConfiguration:
-        # Build optimized spoken prompt
-        system_prompt = VoicePromptBuilder.build_prompt(config)
+    def build_deepgram_settings(config: AgentConfiguration, business_profile: Optional[Dict[str, Any]] = None) -> DeepgramSettingsConfiguration:
+        # Build optimized spoken prompt with optional business knowledge base
+        system_prompt = VoicePromptBuilder.build_prompt(config, business_profile=business_profile)
 
         # 1. Audio formatting (standard telephony: mulaw 8000Hz)
         audio_config = DeepgramAudioConfig(

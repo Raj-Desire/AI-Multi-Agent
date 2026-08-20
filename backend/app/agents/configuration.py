@@ -150,10 +150,12 @@ class AgentConfiguration(BaseModel):
     runtime: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
     guardrails: AgentGuardrails = Field(default_factory=AgentGuardrails)
 
-    # Spoken Greetings & Custom Prompts
+    # Spoken Greetings, Business Knowledge & Custom Prompts
     greeting: str = "Hi, thanks for calling. You're speaking with Desire AI. How can I help you today?"
     closing_message: Optional[str] = "Thank you for speaking with us today. Have a great day!"
     system_prompt: Optional[str] = None
+    include_business_knowledge: bool = True
+    custom_knowledge: Optional[str] = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

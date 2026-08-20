@@ -503,13 +503,15 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         {isConnected && (
           <div className="flex items-center gap-2">
             {isUserSpeaking && (
-              <Badge variant="primary" size="sm" className="animate-pulse">
-                🎤 User Speaking...
+              <Badge variant="primary" size="sm" className="animate-pulse flex items-center gap-1">
+                <Mic className="w-3 h-3 text-white" />
+                User Speaking...
               </Badge>
             )}
             {isAgentSpeaking && (
-              <Badge variant="success" size="sm" className="animate-pulse">
-                🔊 Agent Answering...
+              <Badge variant="success" size="sm" className="animate-pulse flex items-center gap-1">
+                <Volume2 className="w-3 h-3 text-white" />
+                Agent Answering...
               </Badge>
             )}
           </div>

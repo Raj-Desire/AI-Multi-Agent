@@ -223,7 +223,7 @@ export function TwilioSettingsView() {
       await loadConfig(selectedOrgId || undefined);
       
       setMessage({
-        text: `🎉 Auto-Setup complete! Discovered ${res.phone_numbers_found} phone numbers, configured TwiML App, and generated WebRTC voice keys.`,
+        text: `Auto-Setup complete! Discovered ${res.phone_numbers_found} phone numbers, configured TwiML App, and generated WebRTC voice keys.`,
         type: "success"
       });
     } catch (err: any) {

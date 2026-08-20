@@ -10,8 +10,10 @@ import { ThemeStudioView } from "./components/ThemeStudioView";
 import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
 import { AgentManagementView } from "./components/AgentManagementView";
+import { BusinessProfileView } from "./components/BusinessProfileView";
 import { Sidebar, NavTab } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
+import { Toaster } from "sonner";
 import {
   Menu,
   PhoneCall,
@@ -22,6 +24,7 @@ import {
   Users,
   ShieldAlert,
   Wifi,
+  Building2
 } from "lucide-react";
 
 function MainContent() {
@@ -74,6 +77,12 @@ function MainContent() {
           title: "AI Voice Agents",
           sub: "Deepgram & LLM voice agent configurations, prompts & library",
           icon: Bot,
+        };
+      case "business_profile":
+        return {
+          title: "Company Knowledge Base",
+          sub: "Business identity, services, office address & working hours for AI calls",
+          icon: Building2,
         };
       case "twilio":
         return {
@@ -203,6 +212,8 @@ function MainContent() {
                 setActiveTab("ai_dialer");
               }}
             />
+          ) : currentTab === "business_profile" ? (
+            <BusinessProfileView />
           ) : currentTab === "twilio" ? (
             <TwilioSettingsView />
           ) : currentTab === "theme" ? (
@@ -235,6 +246,15 @@ export function App() {
     <AuthProvider>
       <ThemeProvider>
         <MainContent />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            duration: 4000,
+            className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
+          }}
+        />
       </ThemeProvider>
     </AuthProvider>
   );

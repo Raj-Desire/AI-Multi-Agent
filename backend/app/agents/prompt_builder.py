@@ -17,53 +17,81 @@ class VoicePromptBuilder:
         p = config.personality
         directives = []
 
-        # Professionalism (0-100)
-        if p.professionalism >= 80:
-            directives.append("Tone: Highly professional, articulate, and respectful business tone.")
-        elif p.professionalism <= 40:
-            directives.append("Tone: Casual, relaxed, and approachable peer-to-peer conversation.")
+        # 1. Professionalism (0-100)
+        if p.professionalism >= 85:
+            directives.append("Tone & Demeanor: Highly professional, polished, articulate, and formal business demeanor.")
+        elif p.professionalism >= 65:
+            directives.append("Tone & Demeanor: Balanced professional warmth, courteous and respectful.")
+        elif p.professionalism >= 40:
+            directives.append("Tone & Demeanor: Conversational, relaxed, everyday approachable business style.")
         else:
-            directives.append("Tone: Balanced professional warmth.")
+            directives.append("Tone & Demeanor: Very casual, informal peer-to-peer conversational manner.")
 
-        # Friendliness (0-100)
-        if p.friendliness >= 80:
-            directives.append("Warmth: Warm, welcoming, and encouraging voice with polite conversational ease.")
-        elif p.friendliness <= 40:
-            directives.append("Warmth: Direct, neutral, and matter-of-fact.")
+        # 2. Friendliness (0-100)
+        if p.friendliness >= 85:
+            directives.append("Warmth & Rapport: Exceptionally warm, welcoming, polite, and enthusiastic.")
+        elif p.friendliness >= 60:
+            directives.append("Warmth & Rapport: Friendly, pleasant, and positive.")
+        elif p.friendliness >= 35:
+            directives.append("Warmth & Rapport: Neutral, balanced, and direct.")
+        else:
+            directives.append("Warmth & Rapport: Purely matter-of-fact, strictly transactional, no extra pleasantries.")
 
-        # Empathy (0-100)
-        if p.empathy >= 70:
-            directives.append("Empathy: If the caller shares any hesitation, stress, or problem, express sincere understanding before answering.")
+        # 3. Empathy (0-100)
+        if p.empathy >= 80:
+            directives.append("Empathy & Active Listening: Deeply empathetic and validating. Always acknowledge and validate any caller concern or emotion before proceeding.")
+        elif p.empathy >= 55:
+            directives.append("Empathy: Sincere understanding when callers express doubts or hesitation.")
+        else:
+            directives.append("Empathy: Practical and focused directly on solutions without emotional dwell time.")
 
-        # Patience (0-100)
-        if p.patience >= 75:
-            directives.append("Patience: Unhurried and calm. Never rush the caller or pressure them.")
-
-        # Confidence (0-100)
+        # 4. Confidence (0-100)
         if p.confidence >= 80:
-            directives.append("Confidence: Speak with calm authority, clear knowledge, and reassuring confidence.")
-
-        # Energy (0-100)
-        if p.energy >= 75:
-            directives.append("Energy: Upbeat, dynamic, and lively conversational energy.")
-        elif p.energy <= 40:
-            directives.append("Energy: Grounded, soothing, and calm speaking pace.")
-
-        # Assertiveness (0-100)
-        if p.assertiveness >= 75:
-            directives.append("Assertiveness: Proactively guide the conversation forward toward the concrete next step or appointment.")
-        elif p.assertiveness <= 40:
-            directives.append("Assertiveness: Gentle and receptive; let the caller lead the pace.")
-
-        # Humor (0-100)
-        if p.humor >= 60:
-            directives.append("Humor: Light, friendly charm and appropriate humor when welcomed by the caller.")
+            directives.append("Confidence & Authority: High authority, decisive, commanding clarity, and unwavering reassurance.")
+        elif p.confidence >= 55:
+            directives.append("Confidence: Clear, reliable, and composed.")
         else:
-            directives.append("Humor: Strictly serious and business-focused.")
+            directives.append("Confidence: Modest, gentle, and collaborative tone.")
 
-        # Curiosity (0-100)
-        if p.curiosity >= 70:
-            directives.append("Curiosity: Show genuine interest in uncovering the caller's specific requirements.")
+        # 5. Patience (0-100)
+        if p.patience >= 80:
+            directives.append("Patience: Unhurried, supportive, and accommodating. Never rush or pressure the caller.")
+        elif p.patience >= 50:
+            directives.append("Patience: Steady and measured speaking cadence.")
+        else:
+            directives.append("Patience: Fast, decisive, and efficient, moving the dialogue forward quickly.")
+
+        # 6. Energy (0-100)
+        if p.energy >= 80:
+            directives.append("Vocal Energy: High energy, upbeat, dynamic, and lively pacing.")
+        elif p.energy >= 50:
+            directives.append("Vocal Energy: Balanced, natural conversational energy.")
+        else:
+            directives.append("Vocal Energy: Calm, soothing, grounded, and low-key cadence.")
+
+        # 7. Assertiveness (0-100)
+        if p.assertiveness >= 80:
+            directives.append("Assertiveness & Direction: Proactively steer the conversation towards concrete decisions, scheduled appointments, and firm next steps.")
+        elif p.assertiveness >= 50:
+            directives.append("Assertiveness: Gently guide the caller while remaining flexible.")
+        else:
+            directives.append("Assertiveness: Passive and accommodating; allow the caller to entirely drive the flow.")
+
+        # 8. Humor (0-100)
+        if p.humor >= 70:
+            directives.append("Humor & Charm: Playful, witty, and lighthearted charm when appropriate.")
+        elif p.humor >= 40:
+            directives.append("Humor: Mild warmth and occasional subtle cheerfulness.")
+        else:
+            directives.append("Humor: Zero humor. Strictly focused and serious.")
+
+        # 9. Curiosity (0-100)
+        if p.curiosity >= 75:
+            directives.append("Curiosity & Discovery: Inquisitive and probing; ask thoughtful clarifying questions to uncover caller needs.")
+        elif p.curiosity >= 45:
+            directives.append("Curiosity: Standard discovery, asking necessary qualifying questions.")
+        else:
+            directives.append("Curiosity: Minimal questions; answer only what was directly asked.")
 
         return directives
 
@@ -146,15 +174,80 @@ class VoicePromptBuilder:
             )
 
     @staticmethod
-    def build_prompt(config: AgentConfiguration) -> str:
+    def _build_business_knowledge_section(config: AgentConfiguration, business_profile: Optional[dict] = None) -> str:
+        """Constructs human-grade, spoken telephony business facts."""
+        if not config.include_business_knowledge and not config.custom_knowledge:
+            return ""
+
+        sections = []
+
+        if config.include_business_knowledge and business_profile:
+            name = business_profile.get("company_name", "Desire AI")
+            intro = business_profile.get("company_introduction", "")
+            address = business_profile.get("address", "")
+            phone = business_profile.get("phone", "")
+            email = business_profile.get("email", "")
+            website = business_profile.get("website", "")
+            hours = business_profile.get("operating_hours", {})
+            services = business_profile.get("services", [])
+            faqs = business_profile.get("faqs", [])
+
+            lines = [f"COMPANY & BUSINESS KNOWLEDGE (Representing '{name}'):"]
+            if intro:
+                lines.append(f"- Company Introduction: {intro}")
+            if address:
+                lines.append(f"- Head Office Location: {address}")
+            if phone or email or website:
+                lines.append(f"- Official Contact Info: Phone: {phone} | Email: {email} | Website: {website}")
+            if hours:
+                days = hours.get("days", "Monday - Saturday")
+                h_str = hours.get("hours", "9:00 AM - 7:00 PM")
+                tz = hours.get("timezone", "IST")
+                closed = hours.get("closed_on", "Sunday")
+                lines.append(f"- Operating Hours: {days}, {h_str} ({tz}). Closed on {closed}.")
+
+            if services:
+                srv_strs = []
+                for s in services:
+                    if isinstance(s, dict) and s.get("enabled", True):
+                        srv_strs.append(f"{s.get('name')}: {s.get('description', '')}".strip(": "))
+                if srv_strs:
+                    lines.append(f"- Services Offered:\n  * " + "\n  * ".join(srv_strs))
+
+            if faqs:
+                faq_strs = []
+                for f in faqs:
+                    if isinstance(f, dict) and f.get("enabled", True):
+                        faq_strs.append(f"Q: {f.get('question')} -> A: {f.get('answer')}")
+                if faq_strs:
+                    lines.append(f"- Company FAQs:\n  * " + "\n  * ".join(faq_strs))
+
+            sections.append("\n".join(lines))
+
+        if config.custom_knowledge and config.custom_knowledge.strip():
+            sections.append(f"ADDITIONAL CUSTOM AGENT KNOWLEDGE & INSTRUCTIONS:\n{config.custom_knowledge.strip()}")
+
+        if not sections:
+            return ""
+
+        return (
+            "[VERIFIED COMPANY KNOWLEDGE BASE]\n"
+            + "\n\n".join(sections)
+            + "\n- SPOKEN CONVERSATIONAL RULE: When the caller asks about company address, services, pricing, email, or hours, answer warmly using the facts above in 1 to 2 short spoken sentences. Never read out robotic bullet points."
+        )
+
+    @staticmethod
+    def build_prompt(config: AgentConfiguration, business_profile: Optional[dict] = None) -> str:
         """
         Generates the complete, compiled spoken system prompt combining identity,
-        mission, length enforcement, personality profile, language directives, and telephony audio rules.
+        mission, length enforcement, personality profile, language directives,
+        business profile knowledge, and telephony audio rules.
         """
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
         personality_text = "\n".join(f"- {d}" for d in personality_directives)
+        knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
 
         # Small talk rule
         small_talk = (config.small_talk_level or "low").lower()
@@ -194,6 +287,8 @@ class VoicePromptBuilder:
 {language_rule}
 
 {length_rule}
+
+{knowledge_section}
 
 {custom_instructions}
 

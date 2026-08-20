@@ -277,7 +277,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         greeting="Hello! I am ready to test."
                     )
 
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config)
+                from app.repositories.business_profile_repository import BusinessProfileRepository
+                business_profile = await BusinessProfileRepository.get_profile(agent_config.organization_id or "default")
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config, business_profile=business_profile)
 
                 if lifecycle_task:
                     lifecycle_task.cancel()

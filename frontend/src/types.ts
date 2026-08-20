@@ -248,6 +248,49 @@ export interface AgentGuardrails {
   escalation_rules: string[];
 }
 
+export interface BusinessServiceItem {
+  name: string;
+  description?: string;
+  pricing?: string;
+  enabled: boolean;
+}
+
+export interface BusinessHours {
+  days: string;
+  hours: string;
+  timezone: string;
+  closed_on: string;
+}
+
+export interface CompanyFAQItem {
+  question: string;
+  answer: string;
+  category?: string;
+  enabled: boolean;
+}
+
+export interface CompanyBusinessProfile {
+  id?: string;
+  organization_id: string;
+  company_name: string;
+  tagline?: string;
+  company_introduction: string;
+  email: string;
+  phone: string;
+  website?: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  operating_hours: BusinessHours;
+  services: BusinessServiceItem[];
+  faqs: CompanyFAQItem[];
+  allow_user_edits?: boolean;
+  additional_notes?: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
 export interface AgentConfig {
   agent_id: string;
   organization_id: string;
@@ -279,6 +322,8 @@ export interface AgentConfig {
   greeting: string;
   closing_message?: string;
   system_prompt?: string | null;
+  include_business_knowledge?: boolean;
+  custom_knowledge?: string | null;
   created_at?: string;
   updated_at?: string;
 }
