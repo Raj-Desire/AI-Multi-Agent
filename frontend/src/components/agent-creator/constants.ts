@@ -455,6 +455,8 @@ export function getInitialAgentData(): AgentConfig {
     },
     greeting: "Hello! I am following up on your recent request with us. I wanted to make sure everything went smoothly and see if you have any questions.",
     closing_message: "Thank you for speaking with us today. Have a wonderful day!",
-    system_prompt: ""
+    system_prompt: "",
+    include_business_knowledge: true,
+    custom_knowledge: ""
   };
 }

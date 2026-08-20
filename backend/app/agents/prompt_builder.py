@@ -175,12 +175,13 @@ class VoicePromptBuilder:
 
     @staticmethod
     def _build_business_knowledge_section(config: AgentConfiguration, business_profile: Optional[dict] = None) -> str:
-        """Constructs human-grade, spoken telephony business facts."""
+        """Constructs human-grade, spoken telephony business facts with custom prompt overrides."""
         if not config.include_business_knowledge and not config.custom_knowledge:
             return ""
 
         sections = []
 
+        # 1. Organization Knowledge Base (if enabled)
         if config.include_business_knowledge and business_profile:
             name = business_profile.get("company_name", "Desire AI")
             intro = business_profile.get("company_introduction", "")
@@ -192,13 +193,17 @@ class VoicePromptBuilder:
             services = business_profile.get("services", [])
             faqs = business_profile.get("faqs", [])
 
-            lines = [f"COMPANY & BUSINESS KNOWLEDGE (Representing '{name}'):"]
+            lines = [f"ORGANIZATION BUSINESS KNOWLEDGE BASE (You represent '{name}'):"]
             if intro:
                 lines.append(f"- Company Introduction: {intro}")
+            if phone:
+                lines.append(f"- Contact Phone Number: {phone}")
+            if email:
+                lines.append(f"- Support Email: {email}")
+            if website:
+                lines.append(f"- Official Website: {website}")
             if address:
                 lines.append(f"- Head Office Location: {address}")
-            if phone or email or website:
-                lines.append(f"- Official Contact Info: Phone: {phone} | Email: {email} | Website: {website}")
             if hours:
                 days = hours.get("days", "Monday - Saturday")
                 h_str = hours.get("hours", "9:00 AM - 7:00 PM")
@@ -210,30 +215,43 @@ class VoicePromptBuilder:
                 srv_strs = []
                 for s in services:
                     if isinstance(s, dict) and s.get("enabled", True):
-                        srv_strs.append(f"{s.get('name')}: {s.get('description', '')}".strip(": "))
+                        name_val = s.get("name", "")
+                        desc_val = s.get("description", "")
+                        srv_strs.append(f"{name_val}: {desc_val}".strip(": "))
                 if srv_strs:
-                    lines.append(f"- Services Offered:\n  * " + "\n  * ".join(srv_strs))
+                    lines.append(f"- Company Services & Products Offered:\n  * " + "\n  * ".join(srv_strs))
 
             if faqs:
                 faq_strs = []
                 for f in faqs:
                     if isinstance(f, dict) and f.get("enabled", True):
-                        faq_strs.append(f"Q: {f.get('question')} -> A: {f.get('answer')}")
+                        q_val = f.get("question", "").strip()
+                        a_val = f.get("answer", "").strip()
+                        faq_strs.append(f"Q: {q_val} -> A: {a_val}")
                 if faq_strs:
-                    lines.append(f"- Company FAQs:\n  * " + "\n  * ".join(faq_strs))
+                    lines.append(f"- Verified Company FAQs & Exact Spoken Answers:\n  * " + "\n  * ".join(faq_strs))
 
             sections.append("\n".join(lines))
 
+        # 2. Agent-Specific Custom Knowledge & Parameter Overrides (HIGHEST PRIORITY)
         if config.custom_knowledge and config.custom_knowledge.strip():
-            sections.append(f"ADDITIONAL CUSTOM AGENT KNOWLEDGE & INSTRUCTIONS:\n{config.custom_knowledge.strip()}")
+            sections.append(
+                f"[AGENT-SPECIFIC CUSTOM KNOWLEDGE & PRIORITY OVERRIDES]\n"
+                f"- The following instructions and facts are specific to this agent and OVERRIDE any default company facts above whenever there is a conflict (e.g. custom phone number, dedicated contact person, special discount or policy):\n"
+                f"{config.custom_knowledge.strip()}"
+            )
 
         if not sections:
             return ""
 
         return (
-            "[VERIFIED COMPANY KNOWLEDGE BASE]\n"
+            "[VERIFIED SPOKEN KNOWLEDGE BASE]\n"
             + "\n\n".join(sections)
-            + "\n- SPOKEN CONVERSATIONAL RULE: When the caller asks about company address, services, pricing, email, or hours, answer warmly using the facts above in 1 to 2 short spoken sentences. Never read out robotic bullet points."
+            + "\n\nCRITICAL SPOKEN KNOWLEDGE & FAQ RULES (MANDATORY):\n"
+            "- EXACT FACT FIDELITY: When the customer asks about your phone number, email, address, company introduction, services (e.g., SharePoint, Webparts, AI receptionist, etc.), or FAQs, you MUST use ONLY the exact numbers, details, and answers listed above.\n"
+            "- SEMANTIC FAQ MATCHING: Match the caller's intent regardless of how they phrase the question (e.g., 'give me your number', 'what's your phone no', 'how can I call you', 'contact number' all trigger the Contact Phone Number above).\n"
+            "- OVERRIDE PRIORITY: If a custom number, email, or rule is specified in [AGENT-SPECIFIC CUSTOM KNOWLEDGE], ALWAYS speak that custom detail instead of the general company default.\n"
+            "- SPOKEN DELIVERY: Answer in 1 to 2 natural, warm spoken conversational sentences. Never invent or hallucinate facts or numbers outside of this knowledge base."
         )
 
     @staticmethod

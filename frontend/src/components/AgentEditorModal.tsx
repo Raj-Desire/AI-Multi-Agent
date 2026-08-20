@@ -65,6 +65,12 @@ export function AgentEditorModal({
       if (!cloned.llm) {
         cloned.llm = getInitialAgentData().llm;
       }
+      if (cloned.include_business_knowledge === undefined) {
+        cloned.include_business_knowledge = true;
+      }
+      if (cloned.custom_knowledge === undefined) {
+        cloned.custom_knowledge = "";
+      }
       setAgentData(cloned);
     } else {
       setAgentData(getInitialAgentData());

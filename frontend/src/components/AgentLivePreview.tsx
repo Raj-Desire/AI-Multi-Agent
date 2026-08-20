@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
+import { useAuth } from "../context/AuthContext";
 
 interface AgentLivePreviewProps {
   agentConfig: AgentConfig;
@@ -29,6 +30,7 @@ interface AgentLivePreviewProps {
 }
 
 export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePreviewProps) {
+  const { user } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
@@ -95,12 +97,18 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Ensure active organization_id is embedded in the agentConfig payload
+      const fullAgentConfig = {
+        ...agentConfig,
+        organization_id: agentConfig.organization_id || user?.organization_id || "default"
+      };
+
       ws.onopen = () => {
         // Send initial agent configuration payload
         ws.send(
           JSON.stringify({
             type: "configure",
-            agent_config: agentConfig,
+            agent_config: fullAgentConfig,
             greeting: agentConfig.greeting,
           })
         );
