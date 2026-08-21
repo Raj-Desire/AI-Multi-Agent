@@ -115,7 +115,7 @@ export function AgentEditorModal({
   const nextStepObj = CREATOR_STEPS.find((s) => s.id === currentStep + 1);
 
   return (
-    <div className="w-full max-w-[1150px] mx-auto space-y-4 animate-agent-entrance text-left">
+    <div className="w-full max-w-full space-y-4 animate-agent-entrance text-left">
       {/* 1. Global Page Header */}
       <AgentStepHeader
         agentData={agentData}

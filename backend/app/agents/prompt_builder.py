@@ -369,6 +369,28 @@ class VoicePromptBuilder:
                 + (f"Description: {config.description}\n" if config.description else "")
             )
 
+        # Pre-trained Conversational Workflows & Capabilities
+        skills_directives = []
+        if config.skills and len(config.skills) > 0:
+            skills_directives.append("ENABLED CONVERSATIONAL CAPABILITIES & WORKFLOWS (MANDATORY INSTRUCTIONS):")
+            SKILL_WORKFLOW_RULES = {
+                "Answer FAQs": "Answer FAQs: Provide clear, accurate, and direct spoken answers to customer questions using verified business knowledge. If a question cannot be answered, offer to follow up or connect to a team member.",
+                "Collect customer information": "Collect Customer Information: When gathering customer details (such as full name, phone number, email address, or specific inquiry specifics), ask for ONE item at a time politely, confirm receipt, and note it down before asking for the next.",
+                "Qualify leads": "Qualify Leads: Ask concise, targeted discovery questions regarding needs, timeline, decision authority, and budget to evaluate fit before recommending services or next steps.",
+                "Book appointments": "Book Appointments: Guide the caller smoothly through booking an appointment, consultation, or meeting. Inquire about their preferred day/time, propose or confirm available slots, and confirm their contact info for the booking.",
+                "Confirm appointments": "Confirm Appointments: Verify upcoming appointment dates, times, and attendee details. If the caller needs to reschedule or cancel, assist them with alternative slots pleasantly.",
+                "Handle objections": "Handle Objections: When a customer expresses hesitation, price concern, or doubt, listen attentively, acknowledge their perspective with empathy, share a concise value differentiator or flexible alternative, and never argue.",
+                "Provide product information": "Provide Product Information: Explain products, services, features, and packages clearly and concisely. Highlight core benefits without overwhelming the caller with overly technical jargon.",
+                "Transfer to a human": "Transfer to a Human: When a customer explicitly requests a human representative or when an issue exceeds automated resolution, acknowledge calmly, assure them you are initiating the transfer or escalation immediately, and provide expectations.",
+                "Create a support request": "Create a Support Request: Log customer issues and support tickets methodically by asking for a brief summary of the problem, verifying customer contact details, and confirming that a support ticket has been created.",
+                "Send SMS follow-up": "Send SMS Follow-Up: Inform the caller that a confirmation or summary link can be sent to their mobile number via SMS, verify their mobile number, and confirm dispatch."
+            }
+            for sk in config.skills:
+                rule = SKILL_WORKFLOW_RULES.get(sk, f"{sk}: Actively execute this capability when relevant during the call.")
+                skills_directives.append(f"- {rule}")
+
+        skills_text = "\n".join(skills_directives) if skills_directives else ""
+
         # Guardrails
         guardrail_lines = []
         if config.guardrails:
@@ -397,6 +419,8 @@ BEHAVIOR & PERSONALITY MATRIX:
 - Communication Style: {config.communication_style}
 - {small_talk_rule}
 {personality_text}
+
+{skills_text}
 
 CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
 1. SPOKEN CADENCE: {length_brevity_rule}

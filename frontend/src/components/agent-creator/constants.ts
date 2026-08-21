@@ -314,11 +314,22 @@ export const AURA_VOICES = [
   { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Deepgram Aura-2 natural Japanese female voice." }
 ];
 
+export const DEEPGRAM_SUPPORTED_LANGUAGES = [
+  { code: "en", label: "English (US / Global Standard)", native: "English" },
+  { code: "es", label: "Spanish (Español)", native: "Español" },
+  { code: "fr", label: "French (Français)", native: "Français" },
+  { code: "de", label: "German (Deutsch)", native: "Deutsch" },
+  { code: "it", label: "Italian (Italiano)", native: "Italiano" },
+  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands" },
+  { code: "ja", label: "Japanese (日本語)", native: "日本語" }
+];
+
 export const LLM_MODELS = [
   {
     id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    description: "Fast responses and lower cost. Recommended for most phone calls.",
+    provider: "open_ai",
+    name: "GPT-4o Mini (OpenAI)",
+    description: "Fast responses, highly reliable for real-time conversational telephony.",
     speed: "Ultra-Fast (<400ms)",
     quality: "High Quality",
     cost: "Economical",
@@ -326,18 +337,30 @@ export const LLM_MODELS = [
   },
   {
     id: "gpt-4o",
-    name: "GPT-4o",
-    description: "Deep reasoning and high-complexity contextual decision making.",
-    speed: "Fast (<750ms)",
+    provider: "open_ai",
+    name: "GPT-4o (OpenAI)",
+    description: "Deep reasoning, high-complexity multi-step decision making.",
+    speed: "Fast (<700ms)",
     quality: "Highest Quality",
     cost: "Standard",
     recommended: false
   },
   {
     id: "claude-3-5-haiku-20241022",
-    name: "Claude 3.5 Haiku",
-    description: "Fast, natural conversational flow with balanced token throughput.",
-    speed: "Fast (<500ms)",
+    provider: "anthropic",
+    name: "Claude 3.5 Haiku (Anthropic)",
+    description: "Natural flow, fast token throughput with empathetic conversational tone.",
+    speed: "Fast (<450ms)",
+    quality: "High Quality",
+    cost: "Economical",
+    recommended: false
+  },
+  {
+    id: "gemini-2.0-flash",
+    provider: "google",
+    name: "Gemini 2.0 Flash (Google)",
+    description: "Next-gen low latency multimodal thinking engine.",
+    speed: "Ultra-Fast (<350ms)",
     quality: "High Quality",
     cost: "Economical",
     recommended: false
@@ -364,14 +387,62 @@ export const CALL_DURATION_PRESETS = [
 ];
 
 export const CREATOR_STEPS = [
-  { id: 1, label: "Basics", title: "Agent Basics", subtitle: "Tell us what this agent is for" },
-  { id: 2, label: "Role", title: "Role & Knowledge", subtitle: "Objective, capabilities, and business knowledge" },
-  { id: 3, label: "Voice", title: "Voice & Language", subtitle: "How should your agent sound?" },
-  { id: 4, label: "Style", title: "Personality & Style", subtitle: "How should your agent communicate?" },
-  { id: 5, label: "Behavior", title: "Behavior & Safety", subtitle: "How should it behave and what should it avoid?" },
-  { id: 6, label: "Prompt", title: "Prompt & Instructions", subtitle: "Synthesize, refine, and customize spoken call instructions" },
-  { id: 7, label: "Test", title: "Test & Preview", subtitle: "Try a conversation before activating your agent" },
-  { id: 8, label: "Review", title: "Review & Activate", subtitle: "Verify all configurations and launch your agent" }
+  {
+    id: 1,
+    label: "Basics",
+    title: "Agent Basics",
+    subtitle: "Define agent name, primary purpose, and basic identity",
+    description: "Set your voice agent's name, description, and select a predefined or custom business purpose template."
+  },
+  {
+    id: 2,
+    label: "Role & Knowledge",
+    title: "Role & Business Knowledge",
+    subtitle: "Set job title, primary goal, company services, and capabilities",
+    description: "Define the agent's job role, core objectives, skills, and sync your company's Knowledge Base & business services."
+  },
+  {
+    id: 3,
+    label: "Voice & Speech",
+    title: "Voice, Speech & AI Model",
+    subtitle: "Choose spoken voice, audio speed, language, and LLM engine",
+    description: "Pick Deepgram natural voice avatars, listening language, playback speed, and select the underlying AI model (e.g., GPT-4o Mini, Gemini)."
+  },
+  {
+    id: 4,
+    label: "Personality",
+    title: "Personality & Tone",
+    subtitle: "Configure conversation style, conciseness, and personality traits",
+    description: "Fine-tune how the agent speaks: tone of voice, response length (concise vs detailed), empathy, friendliness, and professionalism sliders."
+  },
+  {
+    id: 5,
+    label: "Behavior & Safety",
+    title: "Call Behavior & Guardrails",
+    subtitle: "Set call duration limits, silence timeouts, restricted topics, and human escalations",
+    description: "Configure telephony controls like maximum call duration, silence detection timeouts, restricted topics, and human agent transfer rules."
+  },
+  {
+    id: 6,
+    label: "Prompt & Greeting",
+    title: "AI Instructions & Spoken Greeting",
+    subtitle: "Auto-generate, preview, and refine the AI system prompt and opening greeting",
+    description: "Generate and customize the AI system prompt, opening greeting message, and closing statement using AI prompt assistance."
+  },
+  {
+    id: 7,
+    label: "Test Simulator",
+    title: "Live Voice Simulator & Test Call",
+    subtitle: "Simulate a live phone conversation in your browser before publishing",
+    description: "Test your agent in real-time using browser voice chat or initiate an actual phone test call to verify how it sounds."
+  },
+  {
+    id: 8,
+    label: "Review & Launch",
+    title: "Final Review & Activation",
+    subtitle: "Inspect full summary of all configurations and deploy your agent",
+    description: "Review a comprehensive summary of all 7 configuration steps, make any final edits, and activate your agent for live production calls."
+  }
 ];
 
 export function getInitialAgentData(): AgentConfig {

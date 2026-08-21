@@ -1,4 +1,5 @@
 import React from "react";
+import { InfoTooltip } from "./Tooltip";
 
 export interface SelectOption {
   value: string;
@@ -8,24 +9,28 @@ export interface SelectOption {
 
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
+  tooltip?: string;
   error?: string | null;
   helperText?: string;
   options?: SelectOption[];
 }
 
 export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, helperText, options, children, className = "", id, ...props }, ref) => {
+  ({ label, tooltip, error, helperText, options, children, className = "", id, ...props }, ref) => {
     const selectId = id || (label ? `select-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
 
     return (
       <div className="w-full space-y-1.5 text-left">
         {label && (
-          <label
-            htmlFor={selectId}
-            className="block text-xs font-medium text-[var(--color-heading)]"
-          >
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor={selectId}
+              className="block text-xs font-medium text-[var(--color-heading)]"
+            >
+              {label}
+            </label>
+            {tooltip && <InfoTooltip content={tooltip} position="top" />}
+          </div>
         )}
         <div className="relative">
           <select

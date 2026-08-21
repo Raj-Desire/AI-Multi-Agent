@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
-import { AURA_VOICES, LLM_MODELS } from "./constants";
+import { InfoTooltip } from "../ui/Tooltip";
+import { AURA_VOICES, DEEPGRAM_SUPPORTED_LANGUAGES, LLM_MODELS } from "./constants";
 import { AgentConfig } from "../../types";
 
 interface Step3VoiceLanguageProps {
@@ -28,11 +29,14 @@ export function Step3VoiceLanguage({
   // Sample speech playback state
   const [sampleText, setSampleText] = useState("Hello, thank you for calling. How can I help you today?");
   const [isPlayingSample, setIsPlayingSample] = useState(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
 
   // Advanced accordion
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
+
+  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
 
   // Clean up audio on unmount
   useEffect(() => {
@@ -46,7 +50,7 @@ export function Step3VoiceLanguage({
     };
   }, [currentAudio]);
 
-  async function handlePlaySample() {
+  async function playVoiceSample(voiceId: string) {
     if (currentAudio) {
       currentAudio.onended = null;
       currentAudio.onerror = null;
@@ -55,11 +59,13 @@ export function Step3VoiceLanguage({
       setCurrentAudio(null);
     }
 
-    if (isPlayingSample) {
+    if (playingVoiceId === voiceId) {
+      setPlayingVoiceId(null);
       setIsPlayingSample(false);
       return;
     }
 
+    setPlayingVoiceId(voiceId);
     setIsPlayingSample(true);
     setAudioError(null);
 
@@ -73,7 +79,7 @@ export function Step3VoiceLanguage({
         headers,
         body: JSON.stringify({
           text: sampleText.trim() || "Hello, thank you for calling. How can I help you today?",
-          voice: agentData.voice?.voice || "aura-orion-en"
+          voice: voiceId
         })
       });
 
@@ -90,113 +96,237 @@ export function Step3VoiceLanguage({
       audio.playbackRate = Math.max(0.5, Math.min(2.0, speed));
 
       audio.onended = () => {
+        setPlayingVoiceId(null);
         setIsPlayingSample(false);
         setCurrentAudio(null);
       };
 
       audio.onerror = () => {
+        setPlayingVoiceId(null);
         setIsPlayingSample(false);
         setCurrentAudio(null);
-        setAudioError("Unable to play synthesized audio sample.");
+        setAudioError("Sample audio not currently available for preview.");
       };
 
       setCurrentAudio(audio);
       await audio.play();
-    } catch (err: any) {
-      console.error("Audio sample error:", err);
+    } catch (e: any) {
+      setPlayingVoiceId(null);
       setIsPlayingSample(false);
-      setAudioError("Failed to play voice sample. Please ensure backend is running.");
+      setAudioError(e?.message || "Failed to play voice sample.");
     }
   }
 
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  async function handlePlaySample() {
+    await playVoiceSample(selectedVoiceId);
+  }
+
+  const handleVoiceChange = (voiceId: string) => {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.src = "";
+      setCurrentAudio(null);
+      setIsPlayingSample(false);
+      setPlayingVoiceId(null);
+    }
+
+    const vObj = AURA_VOICES.find((v) => v.id === voiceId);
+    const lang = vObj?.language || "en";
+    setAgentData((prev) => ({
+      ...prev,
+      voice: {
+        ...prev.voice,
+        voice: voiceId,
+        language: lang
+      },
+      listen: {
+        ...prev.listen,
+        provider: prev.listen?.provider || "deepgram",
+        model: prev.listen?.model || "nova-3",
+        language: lang
+      }
+    }));
+  };
+
+  // Custom Dropdown State
+  const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
+  const voiceDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (voiceDropdownRef.current && !voiceDropdownRef.current.contains(event.target as Node)) {
+        setIsVoiceDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
 
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Voice & Language</h2>
+        <h2 className="text-sm font-bold text-[var(--color-heading)]">Voice, Speed & Language</h2>
         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Select how your voice assistant sounds and the language parameters it uses during calls.
+          Select Deepgram Aura ultra-low latency lifelike telephony voice, conversational speed, and AI intelligence model.
         </p>
       </div>
 
-      {/* Section 1: Voice Selection & Instant Preview */}
-      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Section 1: Deepgram Voice Picker */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div>
-            <label className="block text-xs font-bold text-[var(--color-heading)]">
-              Voice Model (Deepgram Aura Engine)
+            <label className="block text-xs font-semibold text-[var(--color-heading)]">
+              Voice Model (Deepgram Aura-2 Lifelike)
             </label>
             <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-              Select your AI voice and preview speech synthesis directly.
+              Optimized for real-time natural conversational rhythm and zero robotic hesitation.
             </p>
           </div>
           <Badge variant="neutral" className="text-[10px] py-0.5 self-start sm:self-auto">
-            Deepgram Aura TTS
+            ⚡ Ultra-Low Latency (~200ms)
           </Badge>
         </div>
 
-        {/* Dropdown + Sample Text + Play Voice Button Row */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5 pt-1">
-          {/* Voice Dropdown */}
-          <div className="w-full md:w-64 shrink-0">
-            <select
-              value={selectedVoiceId}
-              onChange={(e) => {
-                const voiceId = e.target.value;
-                const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
-                const voiceLang = voiceObj?.language || "en";
-                setAgentData((prev) => ({
-                  ...prev,
-                  voice: { ...prev.voice, voice: voiceId, language: voiceLang },
-                  listen: {
-                    ...prev.listen,
-                    provider: prev.listen?.provider || "deepgram",
-                    model: prev.listen?.model || "nova-3",
-                    language: voiceLang
-                  }
-                }));
-              }}
-              className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
+        {/* Dropdown + Play Button in one cohesive responsive row */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+          {/* Custom Controlled Voice Dropdown (Opens downwards, fits 7 items with scroll) */}
+          <div className="flex-1 min-w-0 relative" ref={voiceDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
+              className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2 focus:outline-none focus:border-[var(--color-primary)] cursor-pointer select-none transition-colors hover:border-[var(--color-border-strong,var(--color-border))]"
             >
-              <optgroup label="Deepgram Aura (English)">
-                {AURA_VOICES.filter((v) => v.language === "en" && !v.id.startsWith("aura-2")).map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.gender} • {v.style})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Deepgram Aura-2 Next-Gen (English)">
-                {AURA_VOICES.filter((v) => v.language === "en" && v.id.startsWith("aura-2")).map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.gender} • {v.style})
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Deepgram Aura-2 Multilingual">
-                {AURA_VOICES.filter((v) => v.language !== "en").map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.gender} • {v.style})
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+              <div className="flex items-center gap-2 min-w-0 truncate">
+                <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                <span className="truncate">
+                  {selectedVoiceObj.name} ({selectedVoiceObj.gender} • {selectedVoiceObj.style})
+                </span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-[var(--color-muted)] shrink-0 transition-transform duration-200 ${isVoiceDropdownOpen ? "rotate-180 text-[var(--color-primary)]" : ""}`} />
+            </button>
+
+            {/* Dropdown Menu - Opens BELOW (top-full mt-1) with max height of ~7 items (max-h-[250px]) and scrollable */}
+            {isVoiceDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-xl z-50 overflow-hidden animate-fade-in text-xs">
+                <div className="max-h-[255px] overflow-y-auto divide-y divide-[var(--color-border)]/50 focus:outline-none scrollbar-thin">
+                  {/* Aura-1 Group */}
+                  <div className="py-1">
+                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] bg-[var(--color-surface-muted)]/60">
+                      Deepgram Aura-1 (English)
+                    </div>
+                    {AURA_VOICES.filter((v) => v.language === "en" && !v.id.startsWith("aura-2")).map((v) => {
+                      const isSelected = selectedVoiceId === v.id;
+                      const isVoicePlaying = playingVoiceId === v.id;
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => {
+                            handleVoiceChange(v.id);
+                            setIsVoiceDropdownOpen(false);
+                          }}
+                          className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors group ${
+                            isSelected
+                              ? "bg-[var(--color-primary-light)]/25 text-[var(--color-primary)] font-bold"
+                              : "hover:bg-[var(--color-surface-muted)] text-[var(--color-heading)]"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <div className="font-semibold text-xs truncate">
+                              {v.name} <span className="font-normal text-[11px] opacity-75">({v.gender} • {v.style})</span>
+                            </div>
+                            {v.description && (
+                              <div className="text-[10px] text-[var(--color-muted)] truncate">{v.description}</div>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Inline Voice Test Audio Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playVoiceSample(v.id);
+                              }}
+                              className={`p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                                isVoicePlaying
+                                  ? "bg-red-500 text-white border-red-500 animate-pulse"
+                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] opacity-80 group-hover:opacity-100"
+                              }`}
+                              title={isVoicePlaying ? "Stop voice preview" : `Test ${v.name} voice`}
+                            >
+                              {isVoicePlaying ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current" />}
+                            </button>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0 stroke-[2.5]" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Aura-2 Group */}
+                  <div className="py-1">
+                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] bg-[var(--color-surface-muted)]/60">
+                      Deepgram Aura-2 (Next-Gen Multilingual)
+                    </div>
+                    {AURA_VOICES.filter((v) => v.id.startsWith("aura-2")).map((v) => {
+                      const isSelected = selectedVoiceId === v.id;
+                      const isVoicePlaying = playingVoiceId === v.id;
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => {
+                            handleVoiceChange(v.id);
+                            setIsVoiceDropdownOpen(false);
+                          }}
+                          className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors group ${
+                            isSelected
+                              ? "bg-[var(--color-primary-light)]/25 text-[var(--color-primary)] font-bold"
+                              : "hover:bg-[var(--color-surface-muted)] text-[var(--color-heading)]"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <div className="font-semibold text-xs truncate">
+                              {v.name} <span className="font-normal text-[11px] opacity-75">({v.gender} • {v.style})</span>
+                            </div>
+                            {v.description && (
+                              <div className="text-[10px] text-[var(--color-muted)] truncate">{v.description}</div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Inline Voice Test Audio Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playVoiceSample(v.id);
+                              }}
+                              className={`p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                                isVoicePlaying
+                                  ? "bg-red-500 text-white border-red-500 animate-pulse"
+                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] opacity-80 group-hover:opacity-100"
+                              }`}
+                              title={isVoicePlaying ? "Stop voice preview" : `Test ${v.name} voice`}
+                            >
+                              {isVoicePlaying ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current" />}
+                            </button>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0 stroke-[2.5]" />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Sample Text Input */}
-          <div className="flex-1 min-w-0">
-            <input
-              type="text"
-              value={sampleText}
-              onChange={(e) => setSampleText(e.target.value)}
-              placeholder="Type sample text to preview voice..."
-              className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-            />
-          </div>
-
-          {/* Play Voice Button right beside dropdown */}
           <Button
             type="button"
             variant={isPlayingSample ? "danger" : "primary"}
@@ -205,22 +335,10 @@ export function Step3VoiceLanguage({
             leftIcon={isPlayingSample ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             className="cursor-pointer text-xs h-9 px-4 font-semibold shrink-0"
           >
-            {isPlayingSample ? "Stop Audio" : "▶ Play Voice"}
+            {isPlayingSample ? "Stop" : "Preview"}
           </Button>
         </div>
-
-        {/* Active Voice Summary Meta */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[var(--color-border)]/60 text-[11px]">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[var(--color-heading)]">{selectedVoiceObj.name}</span>
-            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal">
-              {selectedVoiceObj.gender}
-            </Badge>
-            <span className="text-[var(--color-primary)] font-medium">• {selectedVoiceObj.style}</span>
-            <span className="text-[var(--color-muted)] hidden sm:inline">— {selectedVoiceObj.description}</span>
-          </div>
-          {audioError && <span className="text-[11px] text-[var(--color-danger)] font-medium">{audioError}</span>}
-        </div>
+        {audioError && <p className="text-[10px] text-[var(--color-danger)] font-medium">{audioError}</p>}
       </div>
 
       {/* Section 2: Speaking Speed & Language */}
@@ -248,72 +366,34 @@ export function Step3VoiceLanguage({
             className="w-full accent-[var(--color-primary)] cursor-pointer"
           />
           <div className="flex justify-between text-[10px] text-[var(--color-muted)] font-medium">
-            <span>Slow (0.8x)</span>
-            <span>Normal (1.0x)</span>
-            <span>Fast (1.2x)</span>
+            <span>0.8x (Slower)</span>
+            <span>1.0x (Natural Default)</span>
+            <span>1.2x (Faster)</span>
           </div>
         </div>
 
         {/* Primary Language */}
-        <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2.5">
+        <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2">
           <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Primary Language
+            Spoken Language & Accent
           </label>
           <select
             value={agentData.voice?.language || "en"}
-            onChange={(e) => {
-              const lang = e.target.value;
-              let defaultSample = "Hello! I am your AI Voice Agent. How can I help you today?";
-              let defaultVoice = "aura-orion-en";
-              let defaultGreeting = "Hello! Thank you for calling. How can I assist you today?";
-
-              if (lang === "es") {
-                defaultSample = "¡Hola! Soy tu asistente de voz con IA. ¿Cómo puedo ayudarte hoy?";
-                defaultVoice = "aura-2-agustina-es";
-                defaultGreeting = "¡Hola! Gracias por llamar. ¿En qué puedo ayudarte hoy?";
-              } else if (lang === "fr") {
-                defaultSample = "Bonjour! Je suis votre assistant vocal IA. Comment puis-je vous aider aujourd'hui?";
-                defaultVoice = "aura-2-agathe-fr";
-                defaultGreeting = "Bonjour! Merci de votre appel. Comment puis-je vous aider?";
-              } else if (lang === "de") {
-                defaultSample = "Hallo! Ich bin Ihr KI-Sprachassistent. Wie kann ich Ihnen heute helfen?";
-                defaultVoice = "aura-2-aurelia-de";
-                defaultGreeting = "Hallo! Vielen Dank für Ihren Anruf. Wie kann ich Ihnen helfen?";
-              } else if (lang === "ja") {
-                defaultSample = "こんにちは！AI音声アシスタントです。本日はどのようなご用件でしょうか？";
-                defaultVoice = "aura-2-ama-ja";
-                defaultGreeting = "お電話ありがとうございます。本日はどのようなご用件でしょうか？";
-              }
-
-              setSampleText(defaultSample);
-              setAgentData((prev) => ({
-                ...prev,
-                greeting: defaultGreeting,
-                voice: { ...prev.voice, voice: defaultVoice, language: lang },
-                listen: { ...prev.listen, language: lang, provider: "deepgram", model: "nova-3" }
-              }));
-            }}
-            className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer font-medium"
+            onChange={(e) => setAgentData({
+              ...agentData,
+              voice: { ...agentData.voice, language: e.target.value }
+            })}
+            className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
           >
-            <option value="en">English (US / Global)</option>
-            <option value="hi">Hindi (हिन्दी)</option>
-            <option value="gu">Gujarati (ગુજરાતી)</option>
-            <option value="es">Spanish (Español)</option>
-            <option value="fr">French (Français)</option>
-            <option value="de">German (Deutsch)</option>
-            <option value="ja">Japanese (日本語)</option>
+            {DEEPGRAM_SUPPORTED_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.label}
+              </option>
+            ))}
           </select>
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="auto-detect-lang"
-              defaultChecked={true}
-              className="w-3.5 h-3.5 accent-[var(--color-primary)] cursor-pointer"
-            />
-            <label htmlFor="auto-detect-lang" className="text-[11px] text-[var(--color-muted)] cursor-pointer">
-              Automatically detect customer accent & language
-            </label>
-          </div>
+          <p className="text-[11px] text-[var(--color-muted)]">
+            Deepgram Aura-2 & Nova-3 native telephony speech language.
+          </p>
         </div>
       </div>
 
@@ -338,7 +418,7 @@ export function Step3VoiceLanguage({
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
                 Conversational LLM Model
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                 {LLM_MODELS.map((model) => {
                   const isSelected = (agentData.llm?.model || "gpt-4o-mini") === model.id;
 
@@ -347,25 +427,31 @@ export function Step3VoiceLanguage({
                       key={model.id}
                       onClick={() => setAgentData({
                         ...agentData,
-                        llm: { ...agentData.llm, model: model.id }
+                        llm: {
+                          ...agentData.llm,
+                          model: model.id,
+                          provider: (model as any).provider || agentData.llm?.provider || "open_ai"
+                        }
                       })}
-                      className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex flex-col justify-between ${isSelected
+                      className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex flex-col justify-between select-none ${isSelected
                           ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]"
-                          : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)]"
+                          : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
                         }`}
                     >
                       <div>
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-[var(--color-heading)]">{model.name}</h4>
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <h4 className="text-xs font-bold text-[var(--color-heading)] truncate">{model.name}</h4>
+                            {model.description && (
+                              <InfoTooltip content={model.description} position="top" />
+                            )}
+                          </div>
                           {model.recommended && (
-                            <Badge variant="success" className="text-[9px] py-0 px-1 font-semibold">
+                            <Badge variant="success" className="text-[9px] py-0 px-1 font-semibold shrink-0">
                               Recommended
                             </Badge>
                           )}
                         </div>
-                        <p className="text-[11px] text-[var(--color-muted)] mt-1 leading-snug">
-                          {model.description}
-                        </p>
                       </div>
                       <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)] mt-2 pt-1 border-t border-[var(--color-border)]">
                         <span>Speed: <strong>{model.speed}</strong></span>

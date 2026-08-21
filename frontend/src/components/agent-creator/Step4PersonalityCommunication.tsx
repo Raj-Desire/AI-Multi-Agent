@@ -9,6 +9,7 @@ import {
   Smile
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
+import { InfoTooltip } from "../ui/Tooltip";
 import { COMMUNICATION_STYLES } from "./constants";
 import { AgentConfig, AgentPersonality } from "../../types";
 
@@ -23,6 +24,21 @@ export function Step4PersonalityCommunication({
 }: Step4PersonalityCommunicationProps) {
   const [showAdvancedPersonality, setShowAdvancedPersonality] = useState(false);
 
+  const currentStyles = (agentData.communication_style || "Professional").split("+").map((s) => s.trim());
+  const primaryStyle = currentStyles[0] || "Professional";
+  const secondaryStyle = currentStyles[1] || "None";
+
+  const handleStyleChange = (primary: string, secondary: string) => {
+    let combined = primary;
+    if (secondary && secondary !== "None" && secondary !== primary) {
+      combined = `${primary} + ${secondary}`;
+    }
+    setAgentData({
+      ...agentData,
+      communication_style: combined
+    });
+  };
+
   const updatePersonality = (key: keyof AgentPersonality, val: number) => {
     setAgentData((prev) => ({
       ...prev,
@@ -30,34 +46,26 @@ export function Step4PersonalityCommunication({
     }));
   };
 
-  const primaryStyle = (agentData.communication_style || "").split("+")[0]?.trim() || "Professional";
-  const secondaryStyle = (agentData.communication_style || "").split("+")[1]?.trim() || "Friendly";
-
-  const handleStyleChange = (prim: string, sec?: string) => {
-    const combined = sec && sec !== "None" ? `${prim} + ${sec}` : prim;
-    setAgentData({ ...agentData, communication_style: combined });
-  };
-
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Personality & Style</h2>
+        <h2 className="text-sm font-bold text-[var(--color-heading)]">Personality & Communication Style</h2>
         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Define your agent's conversational tone, turn response length, and core personality traits.
+          Tune conversational demeanor, conciseness, pacing, and customer empathy.
         </p>
       </div>
 
-      {/* Section 1: Communication Style & Response Length */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Style selection */}
+      {/* Section 1 & 2: Primary Tone & Length */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Tone Selection */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3">
           <div>
             <label className="block text-xs font-semibold text-[var(--color-heading)]">
-              Communication Style
+              Communication Tone & Demeanor
             </label>
             <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-              Select primary and optional secondary tone.
+              Select one or combine two styles.
             </p>
           </div>
 
@@ -94,13 +102,11 @@ export function Step4PersonalityCommunication({
         {/* Response Length */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex items-center gap-1.5">
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
                 Response Length
               </label>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                How long the AI speaks in a single turn.
-              </p>
+              <InfoTooltip content="How long the AI speaks in a single turn without pausing for caller input." position="top" />
             </div>
             <Badge variant="success" className="text-[9px] py-0 px-1 font-semibold">
               Voice Recommended
@@ -109,9 +115,9 @@ export function Step4PersonalityCommunication({
 
           <div className="grid grid-cols-3 gap-2">
             {[
-              { id: "short", label: "Short (1–2 sentences)", sub: "Best for telephony" },
-              { id: "balanced", label: "Balanced (2–3 sentences)", sub: "Standard queries" },
-              { id: "detailed", label: "Detailed (3+ sentences)", sub: "Complex guidance" }
+              { id: "short", label: "Short (1–2 sentences)", sub: "Best for telephony: Keeps conversational turns fast and reactive." },
+              { id: "balanced", label: "Balanced (2–3 sentences)", sub: "Standard queries: Provides complete answers while maintaining flow." },
+              { id: "detailed", label: "Detailed (3+ sentences)", sub: "Complex guidance: Thorough explanations for detailed procedures." }
             ].map((len) => {
               const isSelected = (agentData.response_length || "short") === len.id;
 
@@ -119,18 +125,16 @@ export function Step4PersonalityCommunication({
                 <div
                   key={len.id}
                   onClick={() => setAgentData({ ...agentData, response_length: len.id })}
-                  className={`p-2 rounded-[var(--radius-main,0.375rem)] border text-center cursor-pointer transition-all ${
+                  className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all select-none ${
                     isSelected
-                      ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] shadow-2xs"
-                      : "bg-[var(--color-surface-muted)] border-[var(--color-border)] hover:border-[var(--color-primary)]"
+                      ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] shadow-2xs font-semibold"
+                      : "bg-[var(--color-surface-muted)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
                   }`}
                 >
-                  <span className="text-xs font-bold text-[var(--color-heading)] block leading-tight">
+                  <span className="text-xs font-bold text-[var(--color-heading)] leading-tight truncate">
                     {len.label.split(" ")[0]}
                   </span>
-                  <span className="text-[10px] text-[var(--color-muted)] block mt-0.5">
-                    {len.sub}
-                  </span>
+                  <InfoTooltip content={len.sub} position="top" />
                 </div>
               );
             })}

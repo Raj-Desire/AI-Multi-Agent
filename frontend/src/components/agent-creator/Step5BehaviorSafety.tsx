@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
+import { InfoTooltip } from "../ui/Tooltip";
 import { CALL_DURATION_PRESETS } from "./constants";
 import { AgentConfig } from "../../types";
 
@@ -30,7 +31,9 @@ export function Step5BehaviorSafety({
   const [newRestriction, setNewRestriction] = useState("");
   const [newEscalation, setNewEscalation] = useState("");
 
-  // Advanced collapsible
+  // Guardrails & Escalations collapsibles (default false / click heading to open)
+  const [showRestrictions, setShowRestrictions] = useState(false);
+  const [showEscalations, setShowEscalations] = useState(false);
   const [showAdvancedRuntime, setShowAdvancedRuntime] = useState(false);
 
   const restrictedActions = agentData.guardrails?.restricted_actions || [];
@@ -94,13 +97,11 @@ export function Step5BehaviorSafety({
 
       {/* Section 1: Interruption Handling */}
       <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs flex items-center justify-between">
-        <div>
-          <div className="text-xs font-semibold text-[var(--color-heading)]">
+        <div className="flex items-center gap-1.5 min-w-0 pr-3">
+          <div className="text-xs font-semibold text-[var(--color-heading)] truncate">
             Allow customer to interrupt the agent
           </div>
-          <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-            When enabled, the agent immediately stops speaking when the customer starts talking.
-          </p>
+          <InfoTooltip content="When enabled, the agent immediately stops speaking (barge-in) as soon as the caller starts talking." position="top" />
         </div>
         <input
           type="checkbox"
@@ -184,10 +185,13 @@ export function Step5BehaviorSafety({
         {/* Maximum Call Duration */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-amber-500" />
-              <span>Maximum Call Duration</span>
-            </label>
+            <div className="flex items-center gap-1.5">
+              <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                <span>Maximum Call Duration</span>
+              </label>
+              <InfoTooltip content="If reached, the AI finishes answering the caller's last question, speaks the goodbye message, and gracefully ends the call." position="top" />
+            </div>
             <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
               {Math.round(currentDurationSeconds / 60)} min ({currentDurationSeconds}s)
             </span>
@@ -222,16 +226,16 @@ export function Step5BehaviorSafety({
               );
             })}
           </div>
-          <p className="text-[11px] text-[var(--color-muted)]">
-            If reached, the AI finishes answering the caller's last question, speaks the goodbye message, and ends the call.
-          </p>
         </div>
 
         {/* Goodbye Message */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2">
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Call Ending & Goodbye Message
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label className="block text-xs font-semibold text-[var(--color-heading)]">
+              Call Ending & Goodbye Message
+            </label>
+            <InfoTooltip content="Spoken right before the agent gracefully hangs up live telephone calls." position="top" />
+          </div>
           <input
             type="text"
             value={agentData.runtime?.conclusion_message ?? "Thank you for your time. Have a great day!"}
@@ -242,122 +246,169 @@ export function Step5BehaviorSafety({
             placeholder="e.g., Thank you for your time. Have a wonderful day!"
             className="w-full h-8 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
           />
-          <p className="text-[11px] text-[var(--color-muted)]">
-            Spoken right before the agent gracefully hangs up live calls.
-          </p>
         </div>
       </div>
 
-      {/* Section 4: What the Agent Should Not Do (Guardrails) */}
-      <div className="space-y-3 pt-2">
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            What the Agent Should Not Do (Safety Guardrails)
-          </label>
-          <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-            Strict behavioral limitations enforced during telephone conversations.
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          {restrictedActions.map((rule, idx) => (
-            <div
-              key={idx}
-              className="p-2 px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs shadow-2xs group"
-            >
-              <div className="flex items-center gap-2 min-w-0 pr-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveRestriction(idx)}
-                className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
-                title="Remove rule"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+      {/* Section 4: What the Agent Should Not Do (Guardrails) - Collapsible */}
+      <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] overflow-hidden shadow-2xs transition-all">
+        <button
+          type="button"
+          onClick={() => setShowRestrictions(!showRestrictions)}
+          className="w-full px-3.5 py-3 flex items-center justify-between text-left bg-[var(--color-surface-muted)]/50 hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer select-none"
+        >
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-[var(--color-heading)] cursor-pointer">
+                What the Agent Should Not Do (Safety Guardrails)
+              </label>
+              <Badge variant="neutral" size="sm" className="text-[10px] py-0 px-1.5 font-mono font-medium">
+                {restrictedActions.length} {restrictedActions.length === 1 ? "rule" : "rules"}
+              </Badge>
             </div>
-          ))}
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Strict behavioral limitations enforced during telephone conversations.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)] shrink-0 pl-2">
+            <span className="text-[10px] font-medium hidden sm:inline">
+              {showRestrictions ? "Click to collapse" : "Click to view / edit"}
+            </span>
+            <div className={`transition-transform duration-200 ease-out ${showRestrictions ? "rotate-180" : "rotate-0"}`}>
+              <ChevronDown className="w-4 h-4 text-[var(--color-heading)]" />
+            </div>
+          </div>
+        </button>
 
-          {/* Add Rule Row */}
-          <div className="flex gap-2 pt-1">
-            <input
-              type="text"
-              value={newRestriction}
-              onChange={(e) => setNewRestriction(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddRestriction(); }}
-              placeholder="Add a new safety restriction (e.g. Never promise legal commitments)..."
-              className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!newRestriction.trim()}
-              onClick={handleAddRestriction}
-              leftIcon={<Plus className="w-3 h-3" />}
-              className="cursor-pointer text-xs h-8 px-3 shrink-0"
-            >
-              + Add Rule
-            </Button>
+        <div className={`accordion-content ${showRestrictions ? "expanded" : ""}`}>
+          <div className="accordion-inner">
+            <div className="p-3.5 space-y-2 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+              <div className="space-y-1.5">
+                {restrictedActions.map((rule, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 px-3 bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs shadow-2xs group transition-all"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 pr-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                      <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRestriction(idx)}
+                      className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
+                      title="Remove rule"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add Rule Row */}
+                <div className="flex gap-2 pt-1.5">
+                  <input
+                    type="text"
+                    value={newRestriction}
+                    onChange={(e) => setNewRestriction(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddRestriction(); }}
+                    placeholder="Add a new safety restriction (e.g. Never promise legal commitments)..."
+                    className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!newRestriction.trim()}
+                    onClick={handleAddRestriction}
+                    leftIcon={<Plus className="w-3 h-3" />}
+                    className="cursor-pointer text-xs h-8 px-3 shrink-0"
+                  >
+                    + Add Rule
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Section 5: When Should the Agent Get Help? (Escalation Rules) */}
-      <div className="space-y-3 pt-2">
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            When Should the Agent Get Help? (Escalation Triggers)
-          </label>
-          <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-            Conditions under which the agent routes the caller to a human or logs an urgent callback.
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          {escalationRules.map((rule, idx) => (
-            <div
-              key={idx}
-              className="p-2 px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs shadow-2xs group"
-            >
-              <div className="flex items-center gap-2 min-w-0 pr-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveEscalation(idx)}
-                className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
-                title="Remove escalation trigger"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+      {/* Section 5: When Should the Agent Get Help? (Escalation Rules) - Collapsible */}
+      <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] overflow-hidden shadow-2xs transition-all">
+        <button
+          type="button"
+          onClick={() => setShowEscalations(!showEscalations)}
+          className="w-full px-3.5 py-3 flex items-center justify-between text-left bg-[var(--color-surface-muted)]/50 hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer select-none"
+        >
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-[var(--color-heading)] cursor-pointer">
+                When Should the Agent Get Help? (Escalation Triggers)
+              </label>
+              <Badge variant="neutral" size="sm" className="text-[10px] py-0 px-1.5 font-mono font-medium">
+                {escalationRules.length} {escalationRules.length === 1 ? "trigger" : "triggers"}
+              </Badge>
             </div>
-          ))}
+            <p className="text-[11px] text-[var(--color-muted)]">
+              Conditions under which the agent routes the caller to a human or logs an urgent callback.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)] shrink-0 pl-2">
+            <span className="text-[10px] font-medium hidden sm:inline">
+              {showEscalations ? "Click to collapse" : "Click to view / edit"}
+            </span>
+            <div className={`transition-transform duration-200 ease-out ${showEscalations ? "rotate-180" : "rotate-0"}`}>
+              <ChevronDown className="w-4 h-4 text-[var(--color-heading)]" />
+            </div>
+          </div>
+        </button>
 
-          {/* Add Escalation Row */}
-          <div className="flex gap-2 pt-1">
-            <input
-              type="text"
-              value={newEscalation}
-              onChange={(e) => setNewEscalation(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAddEscalation(); }}
-              placeholder="Add an escalation condition (e.g. Caller asks for supervisor twice)..."
-              className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!newEscalation.trim()}
-              onClick={handleAddEscalation}
-              leftIcon={<Plus className="w-3 h-3" />}
-              className="cursor-pointer text-xs h-8 px-3 shrink-0"
-            >
-              + Add Escalation Trigger
-            </Button>
+        <div className={`accordion-content ${showEscalations ? "expanded" : ""}`}>
+          <div className="accordion-inner">
+            <div className="p-3.5 space-y-2 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+              <div className="space-y-1.5">
+                {escalationRules.map((rule, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 px-3 bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs shadow-2xs group transition-all"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 pr-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveEscalation(idx)}
+                      className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
+                      title="Remove escalation trigger"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add Escalation Row */}
+                <div className="flex gap-2 pt-1.5">
+                  <input
+                    type="text"
+                    value={newEscalation}
+                    onChange={(e) => setNewEscalation(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddEscalation(); }}
+                    placeholder="Add an escalation condition (e.g. Caller asks for supervisor twice)..."
+                    className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!newEscalation.trim()}
+                    onClick={handleAddEscalation}
+                    leftIcon={<Plus className="w-3 h-3" />}
+                    className="cursor-pointer text-xs h-8 px-3 shrink-0"
+                  >
+                    + Add Escalation Trigger
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -437,3 +437,20 @@ body {
 .animate-progress {
   animation: progress 2.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
+
+/* Accordion Smooth Expand/Collapse */
+.accordion-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.24s ease;
+  opacity: 0;
+}
+
+.accordion-content.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-inner {
+  overflow: hidden;
+}

@@ -195,8 +195,8 @@ function MainContent() {
           </div>
         </header>
 
-        {/* Dynamic Main View */}
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 transition-all text-left">
+        {/* Dynamic Main View - Full Width & Fully Responsive */}
+        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
             <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
           ) : currentTab === "ai_dialer" ? (

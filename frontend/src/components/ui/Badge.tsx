@@ -49,7 +49,7 @@ export const Badge: React.FC<BadgeProps> = ({
       {...props}
     >
       {dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClasses[variant] || dotClasses.default}`} />}
-      <span>{children}</span>
+      {children}
     </span>
   );
 };

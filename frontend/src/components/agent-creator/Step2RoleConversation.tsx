@@ -14,6 +14,7 @@ import {
   DollarSign
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
+import { InfoTooltip } from "../ui/Tooltip";
 import { AVAILABLE_CAPABILITIES } from "./constants";
 import { AgentConfig, CompanyBusinessProfile, BusinessServiceItem, AgentServiceItem } from "../../types";
 import { fetchApi } from "../../api-client";
@@ -30,143 +31,136 @@ export function Step2RoleConversation({
   setAgentData,
   selectedPurposeId
 }: Step2RoleConversationProps) {
-  const currentCaps: string[] = agentData.skills || [];
+  const currentCaps = agentData.skills || [];
 
-  // Knowledge base profile & services state
   const [kbProfile, setKbProfile] = useState<CompanyBusinessProfile | null>(null);
   const [loadingKb, setLoadingKb] = useState(false);
   const [isAddingService, setIsAddingService] = useState(false);
   const [savingService, setSavingService] = useState(false);
+
+  // New Service Form State
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDesc, setNewServiceDesc] = useState("");
   const [newServicePricing, setNewServicePricing] = useState("");
 
   useEffect(() => {
-    loadKnowledgeBase();
+    fetchBusinessProfile();
   }, []);
 
-  async function loadKnowledgeBase() {
+  const fetchBusinessProfile = async () => {
     try {
       setLoadingKb(true);
-      const profile = await fetchApi<CompanyBusinessProfile>("/business-profile");
-      if (profile) {
-        setKbProfile(profile);
-
-        // If agentData.services is not yet initialized or empty, initialize from KB services
+      const res = await fetchApi<CompanyBusinessProfile>("/business-profile");
+      if (res) {
+        setKbProfile(res);
+        // If agent doesn't have services set yet, auto-select all enabled services by default
         if (!agentData.services || agentData.services.length === 0) {
-          if (profile.services && profile.services.length > 0) {
-            const initialServices: AgentServiceItem[] = profile.services.map((s, idx) => ({
+          const defaultServices: AgentServiceItem[] = (res.services || [])
+            .filter((s) => s.enabled)
+            .map((s, idx) => ({
               name: s.name,
               description: s.description || "",
-              enabled: s.enabled ?? true,
+              enabled: true,
               priority: idx + 1
             }));
-            setAgentData((prev) => ({
-              ...prev,
-              services: initialServices
-            }));
-          }
+          setAgentData((prev) => ({ ...prev, services: defaultServices }));
         }
       }
     } catch (err) {
-      console.error("Failed to load Knowledge Base profile in Step 2:", err);
+      console.warn("Could not fetch business profile for step 2:", err);
     } finally {
       setLoadingKb(false);
     }
-  }
-
-  const toggleCapability = (id: string) => {
-    const next = currentCaps.includes(id)
-      ? currentCaps.filter((c) => c !== id)
-      : [...currentCaps, id];
-    setAgentData({ ...agentData, skills: next });
   };
 
-  // Helper to check if a service is enabled for this agent
-  const isServiceSelected = (serviceName: string): boolean => {
-    if (!agentData.services || agentData.services.length === 0) return true;
-    const match = agentData.services.find((s) => s.name.toLowerCase() === serviceName.toLowerCase());
-    return match ? match.enabled : true;
+  const toggleCapability = (capId: string) => {
+    const updated = currentCaps.includes(capId)
+      ? currentCaps.filter((c) => c !== capId)
+      : [...currentCaps, capId];
+    setAgentData((prev) => ({ ...prev, skills: updated }));
   };
 
-  // Toggle selection of a knowledge base service for this agent
+  const isServiceSelected = (serviceName: string) => {
+    return (agentData.services || []).some((s) => s.name === serviceName && s.enabled !== false);
+  };
+
   const toggleServiceSelection = (service: BusinessServiceItem) => {
-    const currentServices: AgentServiceItem[] = agentData.services ? [...agentData.services] : [];
-    const existingIndex = currentServices.findIndex(
-      (s) => s.name.toLowerCase() === service.name.toLowerCase()
-    );
+    const currentServices = agentData.services || [];
+    const exists = currentServices.find((s) => s.name === service.name);
 
-    if (existingIndex >= 0) {
-      currentServices[existingIndex] = {
-        ...currentServices[existingIndex],
-        enabled: !currentServices[existingIndex].enabled
-      };
+    let updated: AgentServiceItem[];
+    if (exists) {
+      // Toggle enabled state
+      updated = currentServices.map((s) =>
+        s.name === service.name ? { ...s, enabled: !s.enabled } : s
+      );
     } else {
-      currentServices.push({
-        name: service.name,
-        description: service.description || "",
-        enabled: false,
-        priority: currentServices.length + 1
-      });
+      // Add as enabled
+      updated = [
+        ...currentServices,
+        {
+          name: service.name,
+          description: service.description || "",
+          enabled: true,
+          priority: currentServices.length + 1
+        }
+      ];
     }
-
-    setAgentData({ ...agentData, services: currentServices });
+    setAgentData((prev) => ({ ...prev, services: updated }));
   };
 
-  // Add new service and persist to Knowledge Base
   const handleAddNewService = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newServiceName.trim() || !kbProfile) {
-      toast.error("Please enter a valid service name.");
-      return;
-    }
+    if (!newServiceName.trim()) return;
 
     try {
       setSavingService(true);
-      const newService: BusinessServiceItem = {
+      const newServiceItem: BusinessServiceItem = {
         name: newServiceName.trim(),
         description: newServiceDesc.trim(),
-        pricing: newServicePricing.trim() || undefined,
+        pricing: newServicePricing.trim(),
         enabled: true
       };
 
-      const updatedProfile: CompanyBusinessProfile = {
-        ...kbProfile,
-        services: [...(kbProfile.services || []), newService]
-      };
+      const existingServices = kbProfile?.services || [];
+      const updatedServices = [...existingServices, newServiceItem];
 
-      const saved = await fetchApi<CompanyBusinessProfile>("/business-profile", {
-        method: "POST",
-        body: JSON.stringify(updatedProfile)
+      // Update globally in profile
+      await fetchApi("/business-profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          ...kbProfile,
+          services: updatedServices
+        })
       });
 
-      if (saved) {
-        setKbProfile(saved);
-
-        // Also add to agent's selected services
-        const currentServices = agentData.services ? [...agentData.services] : [];
-        currentServices.push({
-          name: newService.name,
-          description: newService.description || "",
-          enabled: true,
-          priority: currentServices.length + 1
-        });
-
-        setAgentData((prev) => ({
-          ...prev,
-          services: currentServices
-        }));
-
-        setNewServiceName("");
-        setNewServiceDesc("");
-        setNewServicePricing("");
-        setIsAddingService(false);
-
-        toast.success(`Service "${newService.name}" saved to Knowledge Base & enabled for this agent!`);
+      // Update local KB state
+      if (kbProfile) {
+        setKbProfile({ ...kbProfile, services: updatedServices });
       }
+
+      // Also enable for this agent
+      const currentAgentServices = agentData.services || [];
+      setAgentData((prev) => ({
+        ...prev,
+        services: [
+          ...currentAgentServices,
+          {
+            name: newServiceItem.name,
+            description: newServiceItem.description || "",
+            enabled: true,
+            priority: currentAgentServices.length + 1
+          }
+        ]
+      }));
+
+      toast.success(`"${newServiceItem.name}" added to Knowledge Base and enabled for this agent!`);
+      setIsAddingService(false);
+      setNewServiceName("");
+      setNewServiceDesc("");
+      setNewServicePricing("");
     } catch (err: any) {
-      console.error("Failed to save service to Knowledge Base:", err);
-      toast.error(err.message || "Failed to save service to Knowledge Base.");
+      toast.error(err.message || "Failed to add new service to Knowledge Base.");
     } finally {
       setSavingService(false);
     }
@@ -177,7 +171,6 @@ export function Step2RoleConversation({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5">
         <h2 className="text-sm font-bold text-[var(--color-heading)]">Role & Business Knowledge</h2>
         <p className="text-xs text-[var(--color-muted)] mt-0.5">
@@ -185,12 +178,14 @@ export function Step2RoleConversation({
         </p>
       </div>
 
-      {/* Section 1: Objective */}
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Primary Agent Objective <span className="text-[var(--color-danger)]">*</span>
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label className="block text-xs font-semibold text-[var(--color-heading)]">
+              Primary Agent Objective <span className="text-[var(--color-danger)]">*</span>
+            </label>
+            <InfoTooltip content="In 1–2 sentences, define the single most important goal and outcome of every phone call." position="top" />
+          </div>
           <input
             type="text"
             value={agentData.objective || ""}
@@ -198,13 +193,9 @@ export function Step2RoleConversation({
             placeholder="e.g., Qualify inbound real-estate buyer leads and schedule tours"
             className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
           />
-          <p className="text-[11px] text-[var(--color-muted)]">
-            In 1–2 sentences, what is the single most important goal of every phone call?
-          </p>
         </div>
       </div>
 
-      {/* Section 2: Conversational Capabilities */}
       <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
         <div>
           <label className="block text-xs font-semibold text-[var(--color-heading)]">
@@ -215,43 +206,42 @@ export function Step2RoleConversation({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {AVAILABLE_CAPABILITIES.map((cap) => {
             const isEnabled = currentCaps.includes(cap.id);
             return (
               <div
                 key={cap.id}
                 onClick={() => toggleCapability(cap.id)}
-                className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-start gap-2.5 ${
+                className={`p-2.5 px-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between gap-2.5 select-none ${
                   isEnabled
-                    ? "bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-heading)] shadow-2xs"
-                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border)]/80 text-[var(--color-muted)]"
+                    ? "bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-heading)] shadow-2xs font-semibold"
+                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] text-[var(--color-heading)]"
                 }`}
               >
-                <div
-                  className={`w-4 h-4 rounded border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                    isEnabled
-                      ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                      : "border-[var(--color-border)] bg-[var(--color-surface)]"
-                  }`}
-                >
-                  {isEnabled && <Check className="w-3 h-3 stroke-[2.5]" />}
-                </div>
-                <div className="min-w-0">
-                  <h4 className="text-xs font-semibold text-[var(--color-heading)] leading-snug">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                      isEnabled
+                        ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)]"
+                    }`}
+                  >
+                    {isEnabled && <Check className="w-3 h-3 stroke-[2.5]" />}
+                  </div>
+                  <h4 className="text-xs font-semibold text-[var(--color-heading)] leading-snug truncate">
                     {cap.label}
                   </h4>
-                  <p className="text-[11px] leading-tight mt-0.5 opacity-80">
-                    {cap.description}
-                  </p>
                 </div>
+                {cap.description && (
+                  <InfoTooltip content={cap.description} position="top" />
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Section 3: Verified Company Knowledge Base & Services */}
       <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-4">
           <div className="flex items-center justify-between">
@@ -260,9 +250,9 @@ export function Step2RoleConversation({
                 <Brain className="w-4 h-4 text-[var(--color-primary)]" />
                 Organization Business Knowledge Base
               </span>
-              <Badge variant="primary" className="text-[10px] py-0 px-1.5 font-semibold">
+              {/* <Badge variant="primary" className="text-[10px] py-0 px-1.5 font-semibold">
                 Auto-Integrated
-              </Badge>
+              </Badge> */}
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -426,45 +416,44 @@ export function Step2RoleConversation({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {allKbServices.map((service, idx) => {
                     const isSelected = isServiceSelected(service.name);
                     return (
                       <div
                         key={idx}
                         onClick={() => toggleServiceSelection(service)}
-                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-start gap-2.5 text-left relative ${
+                        className={`p-2.5 px-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between gap-2 text-left relative select-none ${
                           isSelected
-                            ? "bg-[var(--color-surface)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/40"
-                            : "bg-[var(--color-surface)] border-[var(--color-border)] opacity-65 hover:opacity-100 hover:border-[var(--color-border)]"
+                            ? "bg-[var(--color-surface)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/40 font-semibold"
+                            : "bg-[var(--color-surface)] border-[var(--color-border)] opacity-75 hover:opacity-100 hover:border-[var(--color-border-strong,var(--color-border))]"
                         }`}
                       >
-                        <div
-                          className={`w-4 h-4 rounded border flex items-center justify-center mt-0.5 shrink-0 transition-colors ${
-                            isSelected
-                              ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                              : "border-[var(--color-border)] bg-[var(--color-surface-muted)]"
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected
+                                ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                                : "border-[var(--color-border)] bg-[var(--color-surface-muted)]"
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
                             <h4 className="text-xs font-bold text-[var(--color-heading)] leading-snug truncate">
                               {service.name}
                             </h4>
-                            {service.pricing && (
-                              <span className="text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.2 rounded shrink-0">
-                                {service.pricing}
-                              </span>
+                            {service.description && (
+                              <InfoTooltip content={service.description} position="top" />
                             )}
                           </div>
-                          {service.description && (
-                            <p className="text-[11px] text-[var(--color-muted)] leading-tight mt-0.5 line-clamp-2">
-                              {service.description}
-                            </p>
-                          )}
                         </div>
+
+                        {service.pricing && (
+                          <span className="text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded shrink-0">
+                            {service.pricing}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
