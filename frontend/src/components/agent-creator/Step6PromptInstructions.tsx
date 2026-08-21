@@ -100,6 +100,7 @@ export function Step6PromptInstructions({
           agent_type: (agentData as any).agent_type || "marketing",
           language: agentData.voice?.language || "en",
           skills: agentData.skills || [],
+          services: agentData.services || [],
           custom_knowledge: agentData.custom_knowledge || "",
           guardrails: agentData.guardrails || {},
           personality: agentData.personality || {},

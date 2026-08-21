@@ -235,9 +235,30 @@ class VoicePromptBuilder:
                 elif hasattr(hours, "days"):
                     lines.append(f"- Operating Hours: {hours.days}, {hours.hours} ({hours.timezone}). Closed on {hours.closed_on}.")
 
-            # Extract services from business profile or fallback to agent config services
+            # Extract services: prioritize agent's explicitly selected services if present, otherwise fallback to business profile services
             srv_strs = []
-            if services:
+            selected_agent_services = [s for s in (config.services or []) if (isinstance(s, dict) and s.get("enabled", True)) or (hasattr(s, "enabled") and getattr(s, "enabled", True))]
+            
+            if selected_agent_services:
+                for s in selected_agent_services:
+                    if isinstance(s, dict):
+                        name_val = s.get("name", "")
+                        desc_val = s.get("description", "")
+                        price_val = s.get("pricing", "")
+                        srv_line = f"{name_val}: {desc_val}".strip(": ")
+                        if price_val:
+                            srv_line += f" (Pricing: {price_val})"
+                        srv_strs.append(srv_line)
+                    elif hasattr(s, "name"):
+                        desc_val = getattr(s, "description", "")
+                        price_val = getattr(s, "pricing", None)
+                        srv_line = f"{s.name}: {desc_val}".strip(": ")
+                        if price_val:
+                            srv_line += f" (Pricing: {price_val})"
+                        srv_strs.append(srv_line)
+                    elif isinstance(s, str) and s.strip():
+                        srv_strs.append(s.strip())
+            elif services:
                 for s in services:
                     if isinstance(s, dict) and s.get("enabled", True):
                         name_val = s.get("name", "")
@@ -249,18 +270,11 @@ class VoicePromptBuilder:
                         srv_strs.append(srv_line)
                     elif hasattr(s, "name") and getattr(s, "enabled", True):
                         desc_val = getattr(s, "description", "")
+                        price_val = getattr(s, "pricing", None)
                         srv_line = f"{s.name}: {desc_val}".strip(": ")
+                        if price_val:
+                            srv_line += f" (Pricing: {price_val})"
                         srv_strs.append(srv_line)
-                    elif isinstance(s, str) and s.strip():
-                        srv_strs.append(s.strip())
-
-            # Fallback/supplement with agent's own configured services if profile has none
-            if not srv_strs and config.services:
-                for s in config.services:
-                    if isinstance(s, dict) and s.get("enabled", True):
-                        srv_strs.append(f"{s.get('name', '')}: {s.get('description', '')}".strip(": "))
-                    elif hasattr(s, "name") and getattr(s, "enabled", True):
-                        srv_strs.append(f"{s.name}: {getattr(s, 'description', '')}".strip(": "))
                     elif isinstance(s, str) and s.strip():
                         srv_strs.append(s.strip())
 

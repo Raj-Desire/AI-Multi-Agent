@@ -31,6 +31,7 @@ class GeneratePromptRequest(BaseModel):
     response_length: Optional[str] = "short"  # "short" | "balanced" | "detailed"
     language: Optional[str] = "en"
     skills: Optional[List[str]] = None
+    services: Optional[List[Any]] = None
     custom_knowledge: Optional[str] = None
     guardrails: Optional[Dict[str, Any]] = None
     personality: Optional[Dict[str, Any]] = None
@@ -91,6 +92,7 @@ async def generate_prompt(
             objective=payload.objective or desc,
             language=payload.language or "en",
             skills=payload.skills,
+            services=payload.services,
             custom_knowledge=payload.custom_knowledge,
             guardrails=payload.guardrails,
             personality=payload.personality,

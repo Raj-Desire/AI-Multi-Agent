@@ -65,13 +65,23 @@ async def voice_stream_websocket(websocket: WebSocket):
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
 
+    # Outbound audio metrics
+    outbound_chunk_counter: int = 0
+    total_outbound_audio_bytes: int = 0
+    total_outbound_audio_duration_s: float = 0.0
+
     async def handle_deepgram_audio(raw_audio: bytes):
-        """Forward audio from Deepgram TTS to Twilio Media Stream with smooth telephony chunking."""
+        """
+        Forward audio from Deepgram TTS to Twilio Media Stream in standard 160-byte (20ms) frames.
+        Preserves audio order, avoids buffer flooding or artificial sleep starvation,
+        and logs precise duration & byte metrics.
+        """
         nonlocal stream_sid, is_agent_speaking, last_agent_speech_done_time
-        if not stream_sid:
+        nonlocal outbound_chunk_counter, total_outbound_audio_bytes, total_outbound_audio_duration_s
+        if not stream_sid or not raw_audio:
             return
         try:
-            # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio
+            # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio (1 byte = 0.125ms)
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
             if last_agent_speech_done_time < now:
@@ -80,12 +90,23 @@ async def voice_stream_websocket(websocket: WebSocket):
                 last_agent_speech_done_time += audio_duration
             is_agent_speaking = True
 
-            chunk_size = 320  # 40ms audio chunks
-            for i in range(0, len(raw_audio), chunk_size):
-                chunk = raw_audio[i:i + chunk_size]
+            total_outbound_audio_bytes += len(raw_audio)
+            total_outbound_audio_duration_s += audio_duration
+
+            # Split into 160-byte frames (20ms @ 8kHz mu-law) matching Twilio Media Streams specification
+            chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=160)
+            for chunk in chunks:
+                outbound_chunk_counter += 1
+                chunk_duration_ms = (len(chunk) / 8000.0) * 1000.0
                 twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
                 await websocket.send_text(json.dumps(twilio_msg))
-                await asyncio.sleep(0.002)
+
+                logger.debug(
+                    f"[VoiceGateway:OutboundAudio] Chunk #{outbound_chunk_counter} | "
+                    f"Bytes: {len(chunk)} | Duration: {chunk_duration_ms:.1f}ms | "
+                    f"SendTime: {time.time():.4f} | "
+                    f"CumulativeAudio: {total_outbound_audio_duration_s:.2f}s ({total_outbound_audio_bytes} B)"
+                )
         except Exception as e:
             logger.error(f"[VoiceGateway] Error streaming audio chunk to Twilio: {e}")
 

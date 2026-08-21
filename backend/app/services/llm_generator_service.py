@@ -93,6 +93,7 @@ class LLMGeneratorService:
         objective: Optional[str] = "",
         language: Optional[str] = "en",
         skills: Optional[list] = None,
+        services: Optional[list] = None,
         custom_knowledge: Optional[str] = None,
         guardrails: Optional[dict] = None,
         personality: Optional[dict] = None,
@@ -192,6 +193,24 @@ Return ONLY a valid JSON object matching this schema:
 }}"""
 
         skills_str = ", ".join(skills) if skills else "Standard conversational capabilities"
+        
+        services_str = ""
+        if services and isinstance(services, list):
+            enabled_srvs = []
+            for s in services:
+                if isinstance(s, dict) and s.get("enabled", True):
+                    s_name = s.get("name", "")
+                    s_desc = s.get("description", "")
+                    enabled_srvs.append(f"{s_name} ({s_desc})" if s_desc else s_name)
+                elif hasattr(s, "name") and getattr(s, "enabled", True):
+                    s_name = s.name
+                    s_desc = getattr(s, "description", "")
+                    enabled_srvs.append(f"{s_name} ({s_desc})" if s_desc else s_name)
+                elif isinstance(s, str) and s.strip():
+                    enabled_srvs.append(s.strip())
+            if enabled_srvs:
+                services_str = f"\nSpecific Services Handled by Agent: {', '.join(enabled_srvs)}"
+
         custom_ctx = f"\nCustom Business Rules & Knowledge:\n{custom_knowledge.strip()}" if custom_knowledge and custom_knowledge.strip() else ""
 
         guardrail_ctx = ""
@@ -216,7 +235,7 @@ Description / Business Workflow: {description}
 Agent Archetype: {agent_type}
 Communication Tone: {tone}{personality_ctx}
 Configured Spoken Response Length: {len_key} ({spoken_length_rule})
-Enabled Capabilities: {skills_str}{custom_ctx}{guardrail_ctx}{kb_note}
+Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}
 
 Synthesize the complete telephone conversation prompt instructions and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
 

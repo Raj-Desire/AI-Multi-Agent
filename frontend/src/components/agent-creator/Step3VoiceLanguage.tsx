@@ -349,11 +349,10 @@ export function Step3VoiceLanguage({
                         ...agentData,
                         llm: { ...agentData.llm, model: model.id }
                       })}
-                      className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex flex-col justify-between ${
-                        isSelected
+                      className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex flex-col justify-between ${isSelected
                           ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]"
                           : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)]"
-                      }`}
+                        }`}
                     >
                       <div>
                         <div className="flex items-center justify-between">

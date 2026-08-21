@@ -46,9 +46,8 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
-  const audioQueueRef = useRef<AudioBuffer[]>([]);
-  const isPlayingRef = useRef<boolean>(false);
-  const activeSourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const nextPlayTimeRef = useRef<number>(0);
+  const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -83,13 +82,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       setTranscriptMessages([]);
       setLatestLatency({ stt: 0, llm: 0, tts: 0, turn: 0 });
 
-      // 1. Initialize Web Audio Context at 8000Hz (telephony standard)
+      // 1. Initialize Web Audio Context at native browser hardware rate (e.g. 44.1kHz or 48kHz)
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx({ sampleRate: 8000 });
+      const audioCtx = new AudioCtx(); // Native hardware clock, no downsampling distortion
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
       audioContextRef.current = audioCtx;
+      nextPlayTimeRef.current = 0;
+      scheduledSourcesRef.current = [];
+
+      console.info(`[VoicePlayground] Initialized native AudioContext at ${audioCtx.sampleRate} Hz`);
 
       // 2. Open WebSocket to backend preview stream
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -122,7 +125,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             setIsConnecting(false);
             startMicrophoneStream(ws);
           } else if (data.type === "audio" && data.payload) {
-            playIncomingAudio(data.payload);
+            playIncomingHDLinearAudio(data.payload, data.sample_rate || 24000, data.encoding || "linear16");
           } else if (data.type === "transcript") {
             setTranscriptMessages((prev) => [
               ...prev,
@@ -137,22 +140,18 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
               setLatestLatency((prev) => ({ ...prev, turn: data.latency_ms || prev.turn }));
             }
           } else if (data.type === "clear") {
-            // User interrupted / barged in - stop playing current queued audio
+            // User interrupted / barged in - stop playing scheduled audio immediately
             clearAudioQueue();
             setIsUserSpeaking(true);
             setTimeout(() => setIsUserSpeaking(false), 800);
-          } else if (data.type === "event") {
-            const ev = data.data;
-            if (data.event_type === "AgentThinking") {
-              setIsAgentSpeaking(true);
-            } else if (data.event_type === "UserStartedSpeaking") {
-              setIsUserSpeaking(true);
-              clearAudioQueue();
-            } else if (data.event_type === "UserStoppedSpeaking") {
-              setIsUserSpeaking(false);
-            }
+          } else if (data.event_type === "AgentThinking" || data.type === "event" && data.event_type === "AgentThinking") {
+            setIsAgentSpeaking(true);
+          } else if (data.event_type === "UserStartedSpeaking" || data.type === "event" && data.event_type === "UserStartedSpeaking") {
+            setIsUserSpeaking(true);
+            clearAudioQueue();
+          } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
+            setIsUserSpeaking(false);
           } else if (data.type === "call_concluded") {
-            // Call concluded gracefully after max duration or silence timeout
             setTimeout(() => {
               stopPreviewSession();
             }, 1200);
@@ -202,7 +201,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
       const source = audioCtx.createMediaStreamSource(stream);
 
-      // Inline AudioWorklet code: batches 128-sample render quanta into ~1024 samples (128ms) for standard streaming
+      // Inline AudioWorklet code: batches render quanta into ~1024 samples for linear16 streaming
       const workletCode = `
         class MicProcessor extends AudioWorkletProcessor {
           constructor() {
@@ -240,10 +239,30 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           const inputData: Float32Array = e.data;
           if (!inputData || inputData.length === 0) return;
 
-          // Convert Float32 to Int16 PCM (16-bit)
-          const pcm16Buffer = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
+          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to Deepgram input rate (24000Hz)
+          const targetSampleRate = 24000;
+          const srcSampleRate = audioCtx.sampleRate;
+          let resampledData: Float32Array;
+
+          if (srcSampleRate === targetSampleRate) {
+            resampledData = inputData;
+          } else {
+            const ratio = srcSampleRate / targetSampleRate;
+            const newLength = Math.round(inputData.length / ratio);
+            resampledData = new Float32Array(newLength);
+            for (let i = 0; i < newLength; i++) {
+              const srcIdx = i * ratio;
+              const i0 = Math.floor(srcIdx);
+              const i1 = Math.min(i0 + 1, inputData.length - 1);
+              const frac = srcIdx - i0;
+              resampledData[i] = inputData[i0] * (1 - frac) + inputData[i1] * frac;
+            }
+          }
+
+          // Convert Float32 to Int16 PCM (16-bit linear at 24000Hz)
+          const pcm16Buffer = new Int16Array(resampledData.length);
+          for (let i = 0; i < resampledData.length; i++) {
+            const s = Math.max(-1, Math.min(1, resampledData[i]));
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
@@ -267,16 +286,36 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         source.connect(workletNode);
       } catch (workletErr) {
         console.warn("AudioWorklet fallback to ScriptProcessor:", workletErr);
-        // Fallback to ScriptProcessor if AudioWorklet is blocked in environment
         const processor = audioCtx.createScriptProcessor(2048, 1, 1);
         processorNodeRef.current = processor;
 
         processor.onaudioprocess = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return;
           const inputData = e.inputBuffer.getChannelData(0);
-          const pcm16Buffer = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            const s = Math.max(-1, Math.min(1, inputData[i]));
+
+          // Resample from browser native sample rate to 24000Hz
+          const targetSampleRate = 24000;
+          const srcSampleRate = audioCtx.sampleRate;
+          let resampledData: Float32Array;
+
+          if (srcSampleRate === targetSampleRate) {
+            resampledData = inputData;
+          } else {
+            const ratio = srcSampleRate / targetSampleRate;
+            const newLength = Math.round(inputData.length / ratio);
+            resampledData = new Float32Array(newLength);
+            for (let i = 0; i < newLength; i++) {
+              const srcIdx = i * ratio;
+              const i0 = Math.floor(srcIdx);
+              const i1 = Math.min(i0 + 1, inputData.length - 1);
+              const frac = srcIdx - i0;
+              resampledData[i] = inputData[i0] * (1 - frac) + inputData[i1] * frac;
+            }
+          }
+
+          const pcm16Buffer = new Int16Array(resampledData.length);
+          for (let i = 0; i < resampledData.length; i++) {
+            const s = Math.max(-1, Math.min(1, resampledData[i]));
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
@@ -338,85 +377,97 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   }
 
   function clearAudioQueue() {
-    if (activeSourceNodeRef.current) {
+    // Instantly stop all scheduled audio buffers on timeline
+    scheduledSourcesRef.current.forEach((source) => {
       try {
-        activeSourceNodeRef.current.stop();
-        activeSourceNodeRef.current.disconnect();
+        source.stop();
+        source.disconnect();
       } catch (e) {}
-      activeSourceNodeRef.current = null;
-    }
-    audioQueueRef.current = [];
-    isPlayingRef.current = false;
+    });
+    scheduledSourcesRef.current = [];
+    nextPlayTimeRef.current = 0;
     setIsAgentSpeaking(false);
   }
 
-  // Decodes incoming base64 mu-law audio from Deepgram TTS and queues for seamless playback
-  function playIncomingAudio(base64Payload: string) {
+  /**
+   * Decodes incoming high-definition 24kHz 16-bit linear PCM audio from Deepgram TTS
+   * and schedules playback seamlessly on the Web Audio timeline (zero micro-gaps, zero jitter).
+   */
+  function playIncomingHDLinearAudio(base64Payload: string, sampleRate: number = 24000, encoding: string = "linear16") {
     const audioCtx = audioContextRef.current;
     if (!audioCtx) return;
 
     try {
       const binaryStr = atob(base64Payload);
-      const len = binaryStr.length;
-      const mulawBytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        mulawBytes[i] = binaryStr.charCodeAt(i);
+      const byteLen = binaryStr.length;
+      if (byteLen === 0) return;
+
+      const bytes = new Uint8Array(byteLen);
+      for (let i = 0; i < byteLen; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
       }
 
-      // Convert 8kHz mu-law bytes to Float32 [-1, 1]
-      const float32Samples = new Float32Array(len);
-      for (let i = 0; i < len; i++) {
-        // Mu-law to linear expansion
-        let b = ~mulawBytes[i] & 0xff;
-        let sign = b & 0x80;
-        let exponent = (b >> 4) & 0x07;
-        let mantissa = b & 0x0f;
-        let sample = ((mantissa << 3) + 0x84) << exponent;
-        sample -= 0x84;
-        if (sign === 0) sample = -sample;
-        float32Samples[i] = sample / 32768.0;
+      let float32Samples: Float32Array;
+
+      if (encoding === "linear16" || encoding === "pcm16") {
+        // 16-bit signed integer Linear PCM (Little-Endian)
+        const int16View = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+        float32Samples = new Float32Array(int16View.length);
+        for (let i = 0; i < int16View.length; i++) {
+          float32Samples[i] = int16View[i] / 32768.0;
+        }
+      } else {
+        // Fallback standard mu-law decoding if legacy payload received
+        float32Samples = new Float32Array(byteLen);
+        for (let i = 0; i < byteLen; i++) {
+          let b = ~bytes[i] & 0xff;
+          let sign = b & 0x80;
+          let exponent = (b >> 4) & 0x07;
+          let mantissa = b & 0x0f;
+          let sample = ((mantissa << 3) + 0x84) << exponent;
+          sample -= 0x84;
+          float32Samples[i] = (sign !== 0 ? -sample : sample) / 32768.0;
+        }
       }
 
-      // Create AudioBuffer at 8000Hz (native TTS mulaw sample rate)
-      const audioBuffer = audioCtx.createBuffer(1, float32Samples.length, 8000);
-      audioBuffer.copyToChannel(float32Samples, 0);
+      const numSamples = float32Samples.length;
+      const audioBuffer = audioCtx.createBuffer(1, numSamples, sampleRate);
+      audioBuffer.getChannelData(0).set(float32Samples);
 
-      audioQueueRef.current.push(audioBuffer);
-      if (!isPlayingRef.current) {
-        playNextAudioInQueue();
-      }
+      // Schedule seamlessly onto the audio timeline
+      const sourceNode = audioCtx.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+
+      const voiceSpeed = agentConfig?.voice?.speed || 1.0;
+      sourceNode.playbackRate.value = Math.max(0.5, Math.min(2.0, voiceSpeed));
+
+      sourceNode.connect(audioCtx.destination);
+
+      const currentTime = audioCtx.currentTime;
+      // If queue fell behind current time, schedule with small 10ms safety buffer
+      const startTime = Math.max(currentTime + 0.01, nextPlayTimeRef.current);
+      const chunkDuration = audioBuffer.duration / sourceNode.playbackRate.value;
+
+      sourceNode.start(startTime);
+      nextPlayTimeRef.current = startTime + chunkDuration;
+      scheduledSourcesRef.current.push(sourceNode);
+      setIsAgentSpeaking(true);
+
+      // Clean up reference when ended
+      sourceNode.onended = () => {
+        scheduledSourcesRef.current = scheduledSourcesRef.current.filter((s) => s !== sourceNode);
+        if (scheduledSourcesRef.current.length === 0 && audioCtx.currentTime >= nextPlayTimeRef.current - 0.05) {
+          setIsAgentSpeaking(false);
+        }
+      };
+
+      console.debug(
+        `[VoicePlayground:Playback] Scheduled ${numSamples} samples (${(chunkDuration * 1000).toFixed(1)}ms) | ` +
+        `Rate: ${sampleRate}Hz | StartTime: ${startTime.toFixed(3)}s (currentTime: ${currentTime.toFixed(3)}s)`
+      );
     } catch (e) {
-      console.error("Audio playback error:", e);
+      console.error("[VoicePlayground] Audio playback decode/schedule error:", e);
     }
-  }
-
-  function playNextAudioInQueue() {
-    const audioCtx = audioContextRef.current;
-    if (!audioCtx || audioQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      setIsAgentSpeaking(false);
-      return;
-    }
-
-    isPlayingRef.current = true;
-    setIsAgentSpeaking(true);
-    const nextBuffer = audioQueueRef.current.shift()!;
-    const sourceNode = audioCtx.createBufferSource();
-    sourceNode.buffer = nextBuffer;
-
-    // Apply voice speaking speed
-    const voiceSpeed = agentConfig?.voice?.speed || 1.0;
-    sourceNode.playbackRate.value = Math.max(0.5, Math.min(2.0, voiceSpeed));
-
-    sourceNode.connect(audioCtx.destination);
-    activeSourceNodeRef.current = sourceNode;
-
-    sourceNode.onended = () => {
-      activeSourceNodeRef.current = null;
-      playNextAudioInQueue();
-    };
-
-    sourceNode.start();
   }
 
   function handleSendTypedMessage() {

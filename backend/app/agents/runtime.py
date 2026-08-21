@@ -26,15 +26,27 @@ class AgentRuntimeBuilder:
     """Converts tenant AgentConfiguration into Deepgram Voice Agent settings payload."""
 
     @staticmethod
-    def build_deepgram_settings(config: AgentConfiguration, business_profile: Optional[Dict[str, Any]] = None) -> DeepgramSettingsConfiguration:
+    def build_deepgram_settings(
+        config: AgentConfiguration,
+        business_profile: Optional[Dict[str, Any]] = None,
+        audio_profile: str = "telephony"
+    ) -> DeepgramSettingsConfiguration:
         # Build optimized spoken prompt with optional business knowledge base
         system_prompt = VoicePromptBuilder.build_prompt(config, business_profile=business_profile)
 
-        # 1. Audio formatting (standard telephony: mulaw 8000Hz)
-        audio_config = DeepgramAudioConfig(
-            input=DeepgramAudioInput(encoding="mulaw", sample_rate=8000),
-            output=DeepgramAudioOutput(encoding="mulaw", sample_rate=8000, container="none")
-        )
+        # 1. Audio formatting based on pipeline profile
+        if audio_profile == "playground":
+            # Studio-grade Linear PCM (16-bit, 24000Hz) for crisp in-browser web playground audio
+            audio_config = DeepgramAudioConfig(
+                input=DeepgramAudioInput(encoding="linear16", sample_rate=24000),
+                output=DeepgramAudioOutput(encoding="linear16", sample_rate=24000, container="none")
+            )
+        else:
+            # Standard Telephony: G.711 mu-law (8-bit, 8000Hz) for Twilio PSTN Media Streams
+            audio_config = DeepgramAudioConfig(
+                input=DeepgramAudioInput(encoding="mulaw", sample_rate=8000),
+                output=DeepgramAudioOutput(encoding="mulaw", sample_rate=8000, container="none")
+            )
 
         # 2. Listen configuration (STT) - defaults to latest Nova-3 with multilingual support
         configured_lang = "en"
@@ -69,7 +81,7 @@ class AgentRuntimeBuilder:
         )
 
         # 4. Speak configuration (TTS)
-        voice_model = config.voice.voice or "aura-orion-en"
+        voice_model = config.voice.voice or "aura-2-thalia-en"
         speak_provider = DeepgramSpeakProvider(
             type="deepgram",
             model=voice_model

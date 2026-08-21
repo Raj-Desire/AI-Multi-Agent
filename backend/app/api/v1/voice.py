@@ -14,7 +14,7 @@ from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster
-from app.agents.configuration import AgentConfiguration
+from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
 from app.repositories.twilio_repository import TwilioRepository
@@ -99,12 +99,17 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
 
+    preview_chunk_counter: int = 0
+    total_preview_bytes: int = 0
+    total_preview_duration_s: float = 0.0
+
     async def handle_dg_audio(raw_audio: bytes):
-        """Send synthesized audio back to browser client (mulaw encoded in JSON or raw)."""
+        """Send high-definition linear16 (24000Hz) synthesized audio back to browser client."""
         nonlocal is_agent_speaking, last_agent_speech_done_time
+        nonlocal preview_chunk_counter, total_preview_bytes, total_preview_duration_s
         try:
-            # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio
-            audio_duration = len(raw_audio) / 8000.0
+            # 24,000 samples/sec * 2 bytes/sample (16-bit linear PCM) = 48,000 bytes/sec
+            audio_duration = len(raw_audio) / 48000.0
             now = time.time()
             if last_agent_speech_done_time < now:
                 last_agent_speech_done_time = now + audio_duration
@@ -112,12 +117,27 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 last_agent_speech_done_time += audio_duration
             is_agent_speaking = True
 
+            preview_chunk_counter += 1
+            total_preview_bytes += len(raw_audio)
+            total_preview_duration_s += audio_duration
+
             import base64
             payload = base64.b64encode(raw_audio).decode("utf-8")
             await websocket.send_json({
                 "type": "audio",
-                "payload": payload
+                "payload": payload,
+                "encoding": "linear16",
+                "sample_rate": 24000,
+                "channels": 1,
+                "bytes": len(raw_audio),
+                "duration_ms": round(audio_duration * 1000.0, 2)
             })
+
+            logger.debug(
+                f"[VoicePreview:HD_Audio] Chunk #{preview_chunk_counter} | "
+                f"Bytes: {len(raw_audio)} | Duration: {audio_duration*1000:.1f}ms | "
+                f"Rate: 24kHz Linear PCM | Cumulative: {total_preview_duration_s:.2f}s"
+            )
         except Exception as e:
             logger.error(f"[VoicePreview] Error sending audio to browser: {e}")
 
@@ -279,7 +299,11 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
                 from app.repositories.business_profile_repository import BusinessProfileRepository
                 business_profile = await BusinessProfileRepository.get_profile(agent_config.organization_id or "default")
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config, business_profile=business_profile)
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
+                    agent_config,
+                    business_profile=business_profile,
+                    audio_profile="playground"
+                )
 
                 if lifecycle_task:
                     lifecycle_task.cancel()
@@ -314,9 +338,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         "type": "ready",
                         "agent_name": agent_config.name,
                         "voice": agent_config.voice.voice,
-                        "model": agent_config.llm.model
+                        "model": agent_config.llm.model,
+                        "audio_profile": "playground",
+                        "sample_rate": 24000,
+                        "encoding": "linear16"
                     })
-                    logger.info("[VoicePreview] Deepgram agent connected and configured for in-browser preview.")
+                    logger.info("[VoicePreview] Deepgram agent connected in HD Studio mode (24kHz Linear PCM) for in-browser preview.")
                     lifecycle_task = asyncio.create_task(preview_lifecycle_monitor())
                 except Exception as dg_err:
                     logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
@@ -325,19 +352,15 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         "message": str(dg_err)
                     })
 
-            # 2. Receive live microphone audio chunk from browser
+            # 2. Receive live microphone audio chunk from browser (linear16 PCM at 24000Hz)
             elif msg_type == "audio":
                 audio_payload = data.get("payload")
                 if audio_payload and deepgram_client and deepgram_client.is_ready:
                     import base64
                     try:
                         raw_bytes = base64.b64decode(audio_payload)
-                        format_type = data.get("format", "pcm16")
-                        if format_type == "pcm16":
-                            mulaw_bytes = AudioAdapter.pcm16_to_mulaw(raw_bytes)
-                            await deepgram_client.send_audio(mulaw_bytes)
-                        else:
-                            await deepgram_client.send_audio(raw_bytes)
+                        # In playground mode, audio is 24kHz Linear16 PCM - stream directly to Deepgram
+                        await deepgram_client.send_audio(raw_bytes)
                     except Exception as e:
                         logger.error(f"[VoicePreview] Error processing audio payload: {e}")
 

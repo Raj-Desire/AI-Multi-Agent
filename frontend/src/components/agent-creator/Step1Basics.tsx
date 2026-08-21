@@ -24,24 +24,18 @@ export function Step1Basics({
   const handlePurposeSelect = (purpose: AgentPurposeItem) => {
     setSelectedPurposeId(purpose.id);
 
-    setAgentData((prev) => {
-      // If user hasn't typed custom name, use default
-      const shouldUpdateName = !prev.name || prev.name === "Customer Follow-Up Agent" || prev.name === "New Voice Agent";
-      const newName = shouldUpdateName ? `${purpose.title} Agent` : prev.name;
-
-      return {
-        ...prev,
-        name: newName,
-        description: prev.description || purpose.description,
-        role: purpose.defaultRole,
-        objective: purpose.defaultObjective,
-        greeting: purpose.defaultGreeting,
-        communication_style: purpose.defaultCommunicationStyle,
-        response_length: purpose.defaultResponseLength,
-        skills: purpose.defaultCapabilities,
-        personality: { ...prev.personality, ...purpose.defaultPersonality }
-      };
-    });
+    setAgentData((prev) => ({
+      ...prev,
+      name: `${purpose.title} Agent`,
+      description: purpose.description,
+      role: purpose.defaultRole,
+      objective: purpose.defaultObjective,
+      greeting: purpose.defaultGreeting,
+      communication_style: purpose.defaultCommunicationStyle,
+      response_length: purpose.defaultResponseLength,
+      skills: purpose.defaultCapabilities,
+      personality: { ...prev.personality, ...purpose.defaultPersonality }
+    }));
   };
 
   return (

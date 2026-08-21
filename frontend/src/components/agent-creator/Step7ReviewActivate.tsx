@@ -39,6 +39,7 @@ export function Step7ReviewActivate({
   const restrictedCount = agentData.guardrails?.restricted_actions?.length || 0;
   const escalationCount = agentData.guardrails?.escalation_rules?.length || 0;
   const enabledSkills = agentData.skills || [];
+  const enabledServices = (agentData.services || []).filter((s) => s.enabled !== false);
 
   const responseLengthLabel =
     agentData.response_length === "detailed"
@@ -132,6 +133,18 @@ export function Step7ReviewActivate({
                 ))}
               </div>
             </div>
+            {enabledServices.length > 0 && (
+              <div>
+                <span className="text-[var(--color-muted)] text-[11px] block">Knowledge Base Services ({enabledServices.length})</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {enabledServices.map((srv, idx) => (
+                    <Badge key={idx} variant="primary" size="sm">
+                      {srv.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
