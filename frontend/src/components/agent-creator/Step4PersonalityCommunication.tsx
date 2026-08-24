@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Sparkles,
   Volume2,
@@ -18,16 +18,16 @@ import {
   Clock,
   Compass,
   Search,
-  Plus,
-  Minus,
   Bot,
   Activity,
   MessageSquareQuote,
-  CheckCircle2,
   FileText,
   ChevronDown,
   CircleOff,
-  Loader2
+  Loader2,
+  Sliders,
+  Move,
+  Info
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
@@ -68,7 +68,6 @@ function CustomToneSelect({
   value,
   onChange,
   options,
-  placeholder = "Select tone...",
   isSecondary = false
 }: CustomToneSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -140,8 +139,6 @@ function CustomToneSelect({
                     className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
                       isSelected
                         ? "text-[var(--color-primary)]"
-                        : isOptionNone
-                        ? "text-[var(--color-muted)]"
                         : "text-[var(--color-muted)]"
                     }`}
                   >
@@ -161,17 +158,16 @@ function CustomToneSelect({
   );
 }
 
-
 // Intensity helper
 function getIntensityLabel(val: number): string {
-  if (val <= 25) return "Very Low";
-  if (val <= 45) return "Low";
-  if (val <= 65) return "Moderate";
-  if (val <= 85) return "High";
+  if (val <= 20) return "Very Low";
+  if (val <= 40) return "Low";
+  if (val <= 60) return "Balanced";
+  if (val <= 80) return "High";
   return "Very High";
 }
 
-// Semi-Circle Gauge Component for Core Traits
+// Semi-Circle Gauge Component for Core Traits (Row 2)
 interface SemiCircleGaugeProps {
   value: number;
   label: string;
@@ -190,7 +186,6 @@ function SemiCircleGaugeCard({
   const intensity = getIntensityLabel(value);
   const radius = 38;
   const strokeWidth = 7;
-  // Circumference of half circle = PI * r
   const halfCircumference = Math.PI * radius;
   const strokeDashoffset = halfCircumference - (value / 100) * halfCircumference;
 
@@ -232,7 +227,6 @@ function SemiCircleGaugeCard({
       <div className="flex flex-col items-center justify-center py-1">
         <div className="relative w-36 h-20 flex items-end justify-center overflow-hidden">
           <svg viewBox="0 0 100 55" className="w-full h-full">
-            {/* Background Arc */}
             <path
               d="M 12 50 A 38 38 0 0 1 88 50"
               fill="none"
@@ -240,7 +234,6 @@ function SemiCircleGaugeCard({
               strokeWidth={strokeWidth}
               strokeLinecap="round"
             />
-            {/* Value Arc */}
             <path
               d="M 12 50 A 38 38 0 0 1 88 50"
               fill="none"
@@ -252,7 +245,6 @@ function SemiCircleGaugeCard({
               className="transition-all duration-300 ease-out"
             />
           </svg>
-          {/* Centered Readout */}
           <div className="absolute bottom-0 inset-x-0 flex flex-col items-center justify-center text-center">
             <span className="text-xl font-extrabold text-[var(--color-heading)] tracking-tight leading-none">
               {value}%
@@ -287,126 +279,505 @@ function SemiCircleGaugeCard({
             );
           })}
         </div>
-
-        {/* Fine-Tuning Increment/Decrement Row */}
-        <div className="flex items-center justify-between gap-2 px-1">
-          <button
-            type="button"
-            onClick={() => onChange(Math.max(10, value - 5))}
-            disabled={value <= 10}
-            className="w-6 h-6 rounded flex items-center justify-center bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] transition-colors cursor-pointer disabled:opacity-30"
-          >
-            <Minus className="w-3 h-3" />
-          </button>
-          <div className="flex-1 px-1">
-            <input
-              type="range"
-              min="10"
-              max="100"
-              step="5"
-              value={value}
-              onChange={(e) => onChange(parseInt(e.target.value))}
-              className="w-full h-1.5 bg-[var(--color-surface-muted)] rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => onChange(Math.min(100, value + 5))}
-            disabled={value >= 100}
-            className="w-6 h-6 rounded flex items-center justify-center bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] transition-colors cursor-pointer disabled:opacity-30"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
       </div>
     </div>
   );
 }
 
-// Compact Segmented Control for Advanced Traits
-interface AdvancedTraitCardProps {
+// 5-Axis Radar Config
+interface AxisDefinition {
+  key: keyof AgentPersonality;
   label: string;
-  description: string;
   icon: React.ElementType;
-  value: number;
-  onChange: (val: number) => void;
+  description: string;
+  angle: number; // Angle in degrees, 0 = top (-90 deg standard math)
+  labelAnchor: {
+    dx: number;
+    dy: number;
+    align: "left" | "right" | "center";
+  };
 }
 
-function AdvancedTraitCard({
-  label,
-  description,
-  icon: Icon,
-  value,
+const FIVE_AXES: AxisDefinition[] = [
+  {
+    key: "patience",
+    label: "Patience",
+    icon: Clock,
+    description: "Tolerant and willing to re-explain without rushing",
+    angle: 0, // Top
+    labelAnchor: { dx: 0, dy: -38, align: "center" }
+  },
+  {
+    key: "energy",
+    label: "Energy",
+    icon: Zap,
+    description: "Conversational vitality and upbeat enthusiasm",
+    angle: 72, // Top-Right
+    labelAnchor: { dx: 42, dy: -12, align: "left" }
+  },
+  {
+    key: "humor",
+    label: "Humor",
+    icon: Sparkles,
+    description: "Lighthearted charm and polite witty warmth",
+    angle: 144, // Bottom-Right
+    labelAnchor: { dx: 36, dy: 30, align: "left" }
+  },
+  {
+    key: "assertiveness",
+    label: "Assertiveness",
+    icon: ShieldCheck,
+    description: "Directness and steering calls toward key goals",
+    angle: 216, // Bottom-Left
+    labelAnchor: { dx: -36, dy: 30, align: "right" }
+  },
+  {
+    key: "curiosity",
+    label: "Curiosity",
+    icon: Search,
+    description: "Asking proactive questions to uncover caller needs",
+    angle: 288, // Top-Left
+    labelAnchor: { dx: -42, dy: -12, align: "right" }
+  }
+];
+
+// Interactive 5-Axis Radar Chart Component
+interface InteractivePersonalityRadarProps {
+  personality: AgentPersonality;
+  onChange: (key: keyof AgentPersonality, val: number) => void;
+}
+
+function InteractivePersonalityRadar({
+  personality,
   onChange
-}: AdvancedTraitCardProps) {
-  const intensity = getIntensityLabel(value);
-  const segments = [20, 40, 60, 80, 100];
+}: InteractivePersonalityRadarProps) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [activeDraggingAxis, setActiveDraggingAxis] = useState<keyof AgentPersonality | null>(null);
+  const [hoveredAxis, setHoveredAxis] = useState<keyof AgentPersonality | null>(null);
+
+  const cx = 250;
+  const cy = 230;
+  const maxRadius = 145;
+  const minRadius = 25; // 10%
+
+  // Calculate coordinates for an angle and radius
+  const getCoordinates = useCallback((angleDeg: number, radius: number) => {
+    // 0 deg is at top (12 o'clock), converting to radians: -90 deg offset
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+    return {
+      x: cx + radius * Math.cos(angleRad),
+      y: cy + radius * Math.sin(angleRad)
+    };
+  }, [cx, cy]);
+
+  // Radius for a given value (0 to 100)
+  const getRadiusForValue = useCallback((val: number) => {
+    const clamped = Math.max(10, Math.min(100, val));
+    return minRadius + (clamped / 100) * (maxRadius - minRadius);
+  }, [minRadius, maxRadius]);
+
+  // Value from distance on axis
+  const calculateValueFromPoint = useCallback((clientX: number, clientY: number, axisAngle: number) => {
+    if (!svgRef.current) return 50;
+    const rect = svgRef.current.getBoundingClientRect();
+    
+    // SVG viewBox coordinates
+    const scaleX = 500 / rect.width;
+    const scaleY = 460 / rect.height;
+    
+    const mouseSvgX = (clientX - rect.left) * scaleX;
+    const mouseSvgY = (clientY - rect.top) * scaleY;
+
+    // Vector from center to mouse
+    const dx = mouseSvgX - cx;
+    const dy = mouseSvgY - cy;
+
+    // Axis unit vector
+    const angleRad = ((axisAngle - 90) * Math.PI) / 180;
+    const ux = Math.cos(angleRad);
+    const uy = Math.sin(angleRad);
+
+    // Project mouse onto axis line (dot product)
+    const projectedDistance = dx * ux + dy * uy;
+
+    // Clamp between minRadius and maxRadius
+    const clampedDist = Math.max(minRadius, Math.min(maxRadius, projectedDistance));
+    const normalizedVal = ((clampedDist - minRadius) / (maxRadius - minRadius)) * 100;
+    return Math.round(normalizedVal / 5) * 5; // Snap to multiples of 5
+  }, [cx, cy, minRadius, maxRadius]);
+
+  // Drag handlers
+  const handlePointerDown = (key: keyof AgentPersonality, e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as Element).setPointerCapture(e.pointerId);
+    setActiveDraggingAxis(key);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!activeDraggingAxis) return;
+    e.preventDefault();
+    const axisDef = FIVE_AXES.find((a) => a.key === activeDraggingAxis);
+    if (!axisDef) return;
+
+    const newVal = calculateValueFromPoint(e.clientX, e.clientY, axisDef.angle);
+    onChange(activeDraggingAxis, newVal);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (activeDraggingAxis) {
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      setActiveDraggingAxis(null);
+    }
+  };
+
+  // Polygon points path
+  const polygonPoints = useMemo(() => {
+    return FIVE_AXES.map((axis) => {
+      const val = personality[axis.key] ?? 50;
+      const r = getRadiusForValue(val);
+      const { x, y } = getCoordinates(axis.angle, r);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+  }, [personality, getRadiusForValue, getCoordinates]);
+
+  // Concentric Rings (20%, 40%, 60%, 80%, 100%)
+  const gridRings = [20, 40, 60, 80, 100];
 
   return (
-    <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs flex flex-col justify-between gap-2 hover:border-[var(--color-border-strong,var(--color-border))] transition-all select-none">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-[var(--radius-main,0.25rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-primary)] flex items-center justify-center shrink-0">
-            <Icon className="w-3 h-3" />
-          </div>
-          <div>
-            <h5 className="text-xs font-bold text-[var(--color-heading)] leading-none">
-              {label}
-            </h5>
-            <span className="text-[10px] text-[var(--color-muted)]">{description}</span>
-          </div>
-        </div>
-        <div className="text-right">
-          <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
-            {value}%
-          </span>
-          <span className="text-[9px] text-[var(--color-muted)] block leading-none">
-            {intensity}
-          </span>
-        </div>
-      </div>
+    <div className="relative w-full flex flex-col items-center select-none">
+      <div className="relative w-full max-w-[540px] aspect-[500/460] mx-auto">
+        <svg
+          ref={svgRef}
+          viewBox="0 0 500 460"
+          className="w-full h-full overflow-visible touch-none"
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <defs>
+            {/* Ambient Radial Glow */}
+            <radialGradient id="radarCenterGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.25" />
+              <stop offset="60%" stopColor="var(--color-primary)" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0" />
+            </radialGradient>
 
-      {/* Interactive Segment Bar */}
-      <div className="flex items-center gap-1.5 pt-1">
-        <span className="text-[9px] text-[var(--color-muted)] font-medium">Low</span>
-        <div className="flex-1 grid grid-cols-5 gap-1 bg-[var(--color-surface-muted)] p-1 rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)]">
-          {segments.map((segVal) => {
-            const isActive = value >= segVal - 10;
+            {/* Polygon Shape Fill Gradient */}
+            <radialGradient id="polygonGradient" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.55" />
+              <stop offset="85%" stopColor="var(--color-primary)" stopOpacity="0.28" />
+              <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.15" />
+            </radialGradient>
+
+            {/* Control Point Glow Filter */}
+            <filter id="pointGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor="var(--color-primary)" floodOpacity="0.6" />
+            </filter>
+
+            <filter id="activePointGlow" x="-100%" y="-100%" width="300%" height="300%">
+              <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="var(--color-primary)" floodOpacity="0.9" />
+            </filter>
+          </defs>
+
+          {/* Background Ambient Glow */}
+          <circle cx={cx} cy={cy} r={maxRadius} fill="url(#radarCenterGlow)" />
+
+          {/* Alternating Pentagon Band Fills for 3D Radar Depth */}
+          {gridRings.map((percent, idx) => {
+            const r = getRadiusForValue(percent);
+            const ringPoints = FIVE_AXES.map((axis) => {
+              const { x, y } = getCoordinates(axis.angle, r);
+              return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(" ");
+
+            const isOuter = percent === 100;
+            const isMid = percent === 60;
+
             return (
-              <button
-                key={segVal}
-                type="button"
-                onClick={() => onChange(segVal)}
-                className={`h-2.5 rounded-xs transition-all cursor-pointer ${
-                  isActive
-                    ? "bg-[var(--color-primary)] shadow-2xs"
-                    : "bg-[var(--color-border)] hover:bg-[var(--color-border-strong,var(--color-border))]"
-                }`}
-                title={`${segVal}%`}
+              <g key={percent}>
+                {/* Crisp Web Grid Polygonal Lines with alternating shaded facets */}
+                <polygon
+                  points={ringPoints}
+                  fill={idx % 2 === 0 ? "var(--color-surface-muted)" : "var(--color-surface)"}
+                  fillOpacity={isOuter ? "0.4" : "0.2"}
+                  stroke="var(--color-border-strong, var(--color-border))"
+                  strokeWidth={isOuter ? "2" : isMid ? "1.5" : "1.2"}
+                  className="transition-all"
+                />
+
+                {/* Level Percentage Badges on Vertical Top Spoke */}
+                <g>
+                  <rect
+                    x={cx - 13}
+                    y={cy - r - 7}
+                    width="26"
+                    height="13"
+                    rx="3"
+                    fill="var(--color-surface)"
+                    stroke="var(--color-border)"
+                    strokeWidth="1"
+                    className="opacity-95 shadow-2xs"
+                  />
+                  <text
+                    x={cx}
+                    y={cy - r}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="text-[9px] font-mono font-bold fill-[var(--color-heading)] select-none opacity-80"
+                  >
+                    {percent}%
+                  </text>
+                </g>
+              </g>
+            );
+          })}
+
+          {/* 5 Prominent Radial Axis Spoke Lines from Center to Outer Rim */}
+          {FIVE_AXES.map((axis) => {
+            const outerCoord = getCoordinates(axis.angle, maxRadius);
+            const isHovered = hoveredAxis === axis.key || activeDraggingAxis === axis.key;
+
+            return (
+              <g key={axis.key}>
+                <line
+                  x1={cx}
+                  y1={cy}
+                  x2={outerCoord.x}
+                  y2={outerCoord.y}
+                  stroke={isHovered ? "var(--color-primary)" : "var(--color-border-strong, var(--color-border))"}
+                  strokeWidth={isHovered ? "2.5" : "1.5"}
+                  strokeDasharray={isHovered ? "none" : "4 3"}
+                  className="transition-colors duration-200"
+                />
+                {/* Outer Axis End Cap Marker */}
+                <circle
+                  cx={outerCoord.x}
+                  cy={outerCoord.y}
+                  r={isHovered ? "4" : "3"}
+                  fill={isHovered ? "var(--color-primary)" : "var(--color-border-strong, var(--color-border))"}
+                  className="transition-all duration-150"
+                />
+              </g>
+            );
+          })}
+
+          {/* Active Connective Rays from Center to Draggable Control Points */}
+          {FIVE_AXES.map((axis) => {
+            const val = personality[axis.key] ?? 50;
+            const r = getRadiusForValue(val);
+            const { x, y } = getCoordinates(axis.angle, r);
+            const isDragging = activeDraggingAxis === axis.key;
+            const isHovered = hoveredAxis === axis.key;
+
+            return (
+              <line
+                key={`ray-${axis.key}`}
+                x1={cx}
+                y1={cy}
+                x2={x}
+                y2={y}
+                stroke="var(--color-primary)"
+                strokeWidth={isDragging ? "2.5" : isHovered ? "2" : "1.2"}
+                strokeOpacity={isDragging ? "1" : isHovered ? "0.8" : "0.5"}
+                className="transition-all"
               />
             );
           })}
-        </div>
-        <span className="text-[9px] text-[var(--color-muted)] font-medium">High</span>
 
-        {/* Increment / Decrement */}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onChange(Math.max(10, value - 10))}
-            disabled={value <= 10}
-            className="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] text-[var(--color-muted)] cursor-pointer disabled:opacity-30"
-          >
-            <Minus className="w-2.5 h-2.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange(Math.min(100, value + 10))}
-            disabled={value >= 100}
-            className="w-5 h-5 rounded flex items-center justify-center bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] text-[var(--color-muted)] cursor-pointer disabled:opacity-30"
-          >
-            <Plus className="w-2.5 h-2.5" />
-          </button>
+          {/* Active Personality Polygon Shape */}
+          <polygon
+            points={polygonPoints}
+            fill="url(#polygonGradient)"
+            stroke="var(--color-primary)"
+            strokeWidth="3"
+            strokeLinejoin="round"
+            className="transition-all duration-75 filter drop-shadow-md"
+          />
+
+          {/* Interactive Control Points on Each Axis */}
+          {FIVE_AXES.map((axis) => {
+            const val = personality[axis.key] ?? 50;
+            const r = getRadiusForValue(val);
+            const { x, y } = getCoordinates(axis.angle, r);
+            const isDragging = activeDraggingAxis === axis.key;
+            const isHovered = hoveredAxis === axis.key;
+
+            return (
+              <g
+                key={axis.key}
+                className="cursor-grab active:cursor-grabbing transition-transform"
+                onPointerDown={(e) => handlePointerDown(axis.key, e)}
+                onMouseEnter={() => setHoveredAxis(axis.key)}
+                onMouseLeave={() => setHoveredAxis(null)}
+              >
+                {/* Generous Touch / Hit Area */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={26}
+                  fill="transparent"
+                />
+
+                {/* Outer Ripple / Pulse Ring */}
+                {(isDragging || isHovered) && (
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isDragging ? 18 : 14}
+                    fill="none"
+                    stroke="var(--color-primary)"
+                    strokeWidth="2"
+                    strokeOpacity={isDragging ? "0.9" : "0.6"}
+                    className="animate-ping [animation-duration:2s]"
+                  />
+                )}
+
+                {/* Outer High-Contrast Point Ring */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={isDragging ? 12 : isHovered ? 10.5 : 9}
+                  fill="var(--color-primary)"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                  filter={isDragging ? "url(#activePointGlow)" : isHovered ? "url(#pointGlow)" : "none"}
+                  className="transition-all duration-150 shadow-md"
+                />
+
+                {/* Inner Core Bullet */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={isDragging ? 4.5 : isHovered ? 4 : 3}
+                  fill="#ffffff"
+                  className="transition-all duration-150"
+                />
+
+                {/* Live Value Tag on Point while Hovering or Dragging */}
+                {(isDragging || isHovered) && (
+                  <g transform={`translate(${x}, ${y - 20})`}>
+                    <rect
+                      x="-20"
+                      y="-12"
+                      width="40"
+                      height="17"
+                      rx="4"
+                      fill="var(--color-heading)"
+                      stroke="var(--color-border)"
+                      strokeWidth="1"
+                      className="shadow-lg"
+                    />
+                    <text
+                      x="0"
+                      y="-1"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="var(--color-surface)"
+                      className="text-[10px] font-bold font-mono"
+                    >
+                      {val}%
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Central Anchor Bullet */}
+          <circle cx={cx} cy={cy} r={4.5} fill="var(--color-primary)" stroke="#ffffff" strokeWidth="1.5" />
+        </svg>
+
+        {/* Dynamic HTML Integrated Parameter Badges Around Radar Chart */}
+        {FIVE_AXES.map((axis) => {
+          const val = personality[axis.key] ?? 50;
+          const intensity = getIntensityLabel(val);
+          const IconComp = axis.icon;
+          const isSelected = hoveredAxis === axis.key || activeDraggingAxis === axis.key;
+
+          // Geometric positioning styles
+          let posClass = "";
+          if (axis.angle === 0) {
+            // Top (Patience)
+            posClass = "top-0 left-1/2 -translate-x-1/2 -translate-y-2";
+          } else if (axis.angle === 72) {
+            // Top Right (Energy)
+            posClass = "top-[18%] right-0 translate-x-1";
+          } else if (axis.angle === 144) {
+            // Bottom Right (Humor)
+            posClass = "bottom-[14%] right-1 translate-x-1";
+          } else if (axis.angle === 216) {
+            // Bottom Left (Assertiveness)
+            posClass = "bottom-[14%] left-1 -translate-x-1";
+          } else {
+            // Top Left (Curiosity)
+            posClass = "top-[18%] left-0 -translate-x-1";
+          }
+
+          return (
+            <div
+              key={axis.key}
+              onMouseEnter={() => setHoveredAxis(axis.key)}
+              onMouseLeave={() => setHoveredAxis(null)}
+              className={`absolute ${posClass} transition-all duration-200 pointer-events-auto max-w-[150px]`}
+            >
+              <div
+                className={`p-2 rounded-[var(--radius-main,0.375rem)] border text-left transition-all ${
+                  isSelected
+                    ? "bg-[var(--color-surface)] border-[var(--color-primary)] shadow-md ring-1 ring-[var(--color-primary)]/40 scale-105 z-20"
+                    : "bg-[var(--color-surface)]/90 backdrop-blur-xs border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] shadow-2xs z-10"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1.5 pb-0.5">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <div
+                      className={`w-5 h-5 rounded-[var(--radius-main,0.25rem)] flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? "bg-[var(--color-primary)] text-white"
+                          : "bg-[var(--color-surface-muted)] text-[var(--color-primary)]"
+                      }`}
+                    >
+                      <IconComp className="w-3 h-3" />
+                    </div>
+                    <span className="text-xs font-bold text-[var(--color-heading)] truncate">
+                      {axis.label}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
+                    {val}%
+                  </span>
+                  <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                    · {intensity}
+                  </span>
+                </div>
+
+                <p className="text-[9px] text-[var(--color-muted)] leading-tight mt-1 line-clamp-2">
+                  {axis.description}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Interaction Guidance Footer */}
+      <div className="w-full mt-2 pt-2 border-t border-[var(--color-border)]/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-[var(--color-muted)]">
+        <div className="flex items-center gap-1.5">
+          <Move className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0 animate-pulse" />
+          <span>
+            <strong>Interactive Studio:</strong> Drag any point inward/outward to shape personality dimensions.
+          </span>
+        </div>
+
+        {/* Low to High Scale Indicator */}
+        <div className="flex items-center gap-2 bg-[var(--color-surface-muted)]/80 px-2.5 py-1 rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] shrink-0 font-medium">
+          <span className="text-[10px] text-[var(--color-muted)]">Center (10% Low)</span>
+          <div className="w-12 h-1.5 bg-gradient-to-r from-amber-400 via-[var(--color-primary)] to-emerald-500 rounded-full" />
+          <span className="text-[10px] text-[var(--color-heading)] font-semibold">Outer (100% High)</span>
         </div>
       </div>
     </div>
@@ -431,7 +802,7 @@ export function Step4PersonalityCommunication({
 
   const personality = agentData.personality || getInitialAgentData().personality;
 
-  // Cleanup all audio and speech synthesis on mount and unmount
+  // Cleanup all audio on unmount
   useEffect(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -480,92 +851,160 @@ export function Step4PersonalityCommunication({
       ...prev,
       communication_style: "Professional + Friendly",
       response_length: "short",
-      personality: { ...defaults }
+      personality: defaults
     }));
+    toast.success("Personality settings reset to recommended defaults.");
   };
 
-  // Generate dynamic persona tags that react to all active parameters
-  const getDominantTags = () => {
-    const tags: string[] = [];
-    if (primaryStyle) tags.push(primaryStyle);
-    if (secondaryStyle && secondaryStyle !== "None") tags.push(secondaryStyle);
+  // Structured human-readable traits breakdown for right panel
+  const getHumanReadableTraits = () => {
+    const p = personality;
+    const traitsList: Array<{
+      title: string;
+      desc: string;
+      icon: React.ElementType;
+      badge: string;
+    }> = [];
 
-    if (personality.professionalism >= 80) tags.push("Business-Focused");
-    else if (personality.professionalism <= 35) tags.push("Casual & Relaxed");
-
-    if (personality.friendliness >= 85) tags.push("Warm & Welcoming");
-    if (personality.empathy >= 80) tags.push("High Empathy");
-    if (personality.confidence >= 85) tags.push("Authoritative");
-    if (personality.assertiveness >= 75) tags.push("Goal-Driven");
-    if (personality.energy >= 80) tags.push("High Energy");
-    if (personality.patience >= 85) tags.push("Patient & Calm");
-    if (personality.curiosity >= 75) tags.push("Proactive Inquirer");
-    if (personality.humor >= 60) tags.push("Witty & Light");
-
-    // Add length indicator
-    if (agentData.response_length === "short") tags.push("Fast Paced");
-    else if (agentData.response_length === "detailed") tags.push("Comprehensive");
-
-    return Array.from(new Set(tags)).slice(0, 5);
-  };
-
-  // Generate dynamic summary text reacting to all dimensions
-  const getDynamicSummary = () => {
-    const traits = [];
-
-    // Demeanor & Professionalism
-    if (personality.professionalism >= 85) {
-      traits.push("maintains a formal, executive, and highly polished demeanor");
-    } else if (personality.professionalism <= 40 || primaryStyle === "Casual") {
-      traits.push("speaks in a relaxed, approachable, and conversational style");
+    // Patience
+    if (p.patience >= 80) {
+      traitsList.push({
+        title: "Very Patient & Unrushed",
+        desc: "Calmly handles pauses and repeats information willingly.",
+        icon: Clock,
+        badge: "High Patience"
+      });
+    } else if (p.patience <= 40) {
+      traitsList.push({
+        title: "Fast-Paced & Direct",
+        desc: "Values quick conversational turnover without extra pauses.",
+        icon: Clock,
+        badge: "Fast Pace"
+      });
     } else {
-      traits.push("communicates in a balanced, professional manner");
+      traitsList.push({
+        title: "Balanced Patience",
+        desc: "Maintains steady conversational pacing.",
+        icon: Clock,
+        badge: "Balanced"
+      });
     }
 
-    // Friendliness & Empathy
-    if (personality.empathy >= 80 && personality.friendliness >= 80) {
-      traits.push("delivers deeply empathetic, warm, and supportive responses");
-    } else if (personality.empathy >= 75) {
-      traits.push("actively listens with compassionate understanding");
-    } else if (personality.friendliness >= 75) {
-      traits.push("greets callers with an upbeat, welcoming presence");
+    // Energy
+    if (p.energy >= 80) {
+      traitsList.push({
+        title: "Naturally Energetic",
+        desc: "Radiates upbeat vitality and lively enthusiasm.",
+        icon: Zap,
+        badge: "High Energy"
+      });
+    } else if (p.energy <= 40) {
+      traitsList.push({
+        title: "Calm & Grounded",
+        desc: "Delivers steady, composed, and tranquil cadence.",
+        icon: Zap,
+        badge: "Composed"
+      });
+    }
+
+    // Assertiveness
+    if (p.assertiveness >= 75) {
+      traitsList.push({
+        title: "Decisive & Goal-Driven",
+        desc: "Directly steers dialogue toward confirmed outcomes.",
+        icon: ShieldCheck,
+        badge: "Assertive"
+      });
+    } else if (p.assertiveness <= 40) {
+      traitsList.push({
+        title: "Gentle & Receptive",
+        desc: "Allows the caller to lead conversation topics entirely.",
+        icon: ShieldCheck,
+        badge: "Receptive"
+      });
     } else {
-      traits.push("focuses directly on concise, objective facts");
+      traitsList.push({
+        title: "Balanced Assertiveness",
+        desc: "Guides callers politely while addressing their inquiries.",
+        icon: ShieldCheck,
+        badge: "Balanced"
+      });
     }
 
-    // Confidence & Assertiveness
-    if (personality.confidence >= 85 && personality.assertiveness >= 75) {
-      traits.push("leads conversations with decisive, goal-driven authority");
-    } else if (personality.confidence >= 80) {
-      traits.push("speaks with steady assurance and conviction");
+    // Curiosity
+    if (p.curiosity >= 75) {
+      traitsList.push({
+        title: "Highly Curious & Proactive",
+        desc: "Asks engaging diagnostic questions to clarify caller intent.",
+        icon: Search,
+        badge: "Inquisitive"
+      });
+    } else if (p.curiosity <= 40) {
+      traitsList.push({
+        title: "Direct Answerer",
+        desc: "Answers immediate questions without excess probing.",
+        icon: Search,
+        badge: "Direct"
+      });
     }
 
-    // Energy & Humor & Curiosity
-    if (personality.energy >= 80) {
-      traits.push("radiates high energy and enthusiastic pacing");
-    }
-    if (personality.humor >= 60) {
-      traits.push("infuses subtle wit and lighthearted charm");
-    }
-    if (personality.curiosity >= 75) {
-      traits.push("proactively asks engaging diagnostic questions");
-    }
-    if (personality.patience >= 85) {
-      traits.push("maintains an unhurried, reassuring patience");
-    }
-
-    // Length closing
-    let lengthSummary = "keeping voice turns concise and reactive.";
-    if (agentData.response_length === "balanced") {
-      lengthSummary = "providing natural, balanced conversational explanations.";
-    } else if (agentData.response_length === "detailed") {
-      lengthSummary = "delivering in-depth, thorough step-by-step guidance.";
+    // Humor
+    if (p.humor >= 60) {
+      traitsList.push({
+        title: "Witty & Lighthearted",
+        desc: "Infuses subtle charm and warm interpersonal wit.",
+        icon: Sparkles,
+        badge: "Witty"
+      });
+    } else {
+      traitsList.push({
+        title: "Serious & Business-First",
+        desc: "Maintains strictly factual and focused demeanor.",
+        icon: Briefcase,
+        badge: "Focused"
+      });
     }
 
-    return `Your agent ${traits.slice(0, 3).join(", ")}, while ${lengthSummary}`;
+    return traitsList.slice(0, 4);
   };
 
-  // Generate dynamic dialogue preview accurately reflecting all chosen parameters
+  // Generate dynamic live personality summary sentence
+  const getDynamicPersonalitySummary = () => {
+    const p = personality;
+    const parts: string[] = [];
+
+    // Patience & Curiosity
+    if (p.patience >= 75 && p.curiosity >= 70) {
+      parts.push("patient and curious");
+    } else if (p.patience >= 75) {
+      parts.push("exceptionally patient and reassuring");
+    } else if (p.curiosity >= 70) {
+      parts.push("proactive and inquisitive");
+    } else {
+      parts.push("composed and direct");
+    }
+
+    // Energy & Tone
+    if (p.energy >= 75) {
+      parts.push("communicates with natural energy and vitality");
+    } else if (p.energy <= 40) {
+      parts.push("speaks with calm, grounded clarity");
+    } else {
+      parts.push("maintains a balanced conversational rhythm");
+    }
+
+    // Assertiveness & Humor
+    let closing = "while maintaining a professional yet approachable conversation style.";
+    if (p.assertiveness >= 75) {
+      closing = "and decisively guides callers toward confirmed next steps.";
+    } else if (p.humor >= 60) {
+      closing = "infusing subtle charm and welcoming conversational warmth.";
+    }
+
+    return `Your agent is ${parts.join(", ")}, ${closing}`;
+  };
+
+  // Dynamic dialogue generation for interactive preview
   const getDialoguePreview = () => {
     const len = agentData.response_length || "short";
     const prof = personality.professionalism ?? 85;
@@ -578,12 +1017,11 @@ export function Step4PersonalityCommunication({
     const curiosity = personality.curiosity ?? 75;
     const humor = personality.humor ?? 10;
 
-    // 1. Dynamic Greeting
     let greeting = "Hello! Thank you for calling us today.";
     if (primaryStyle === "Casual" || prof <= 40) {
       greeting = energy >= 75 ? "Hey there! Great to connect with you today!" : "Hey there! Thanks for calling in today.";
     } else if (primaryStyle === "Formal" || prof >= 88) {
-      greeting = conf >= 85 
+      greeting = conf >= 85
         ? "Good day. Thank you for contacting our office; it is my pleasure to assist you."
         : "Good day. Thank you for reaching out to our team today.";
     } else if (primaryStyle === "Energetic" || primaryStyle === "Enthusiastic" || energy >= 80) {
@@ -596,7 +1034,6 @@ export function Step4PersonalityCommunication({
       greeting = "Hi there! Thank you so much for reaching out to us.";
     }
 
-    // 2. Core Body
     let body = "";
     if (len === "short") {
       if (emp >= 80) {
@@ -627,7 +1064,6 @@ export function Step4PersonalityCommunication({
         body = "I'm here to assist you with our services, verify your details, and guide you through the process. Let me quickly check the records for you.";
       }
     } else {
-      // detailed
       if (emp >= 80) {
         body = "I completely understand how important this is to you, and I am right here to take care of each detail. I will personally guide you through every option step-by-step, review the requirements together, and ensure everything is clear and stress-free.";
       } else if (assert >= 75 || conf >= 85) {
@@ -641,7 +1077,6 @@ export function Step4PersonalityCommunication({
       }
     }
 
-    // 3. Dynamic Closing Question / CTA
     let closing = "";
     if (curiosity >= 75) {
       closing = "To make sure I get you the exact right fit, could you share a bit more about your main priority today?";
@@ -658,7 +1093,6 @@ export function Step4PersonalityCommunication({
     return `“${greeting} ${body} ${closing}”`;
   };
 
-  // Play Sample Speech Preview using strictly the selected voice persona
   const handlePlaySampleVoice = async () => {
     if (isPlayingAudio || isLoadingAudio) {
       stopAudio();
@@ -690,7 +1124,6 @@ export function Step4PersonalityCommunication({
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
 
-      // Apply Speaking Speed directly from agent config
       const speed = agentData.voice?.speed || 1.0;
       audio.playbackRate = Math.max(0.5, Math.min(2.0, speed));
 
@@ -959,116 +1392,110 @@ export function Step4PersonalityCommunication({
         </div>
       </div>
 
-      {/* Row 3: Advanced Personality Controls (Left) + Live Persona Preview (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pt-1">
-        {/* Left Column: Advanced Personality Controls (7 cols) */}
+      {/* Row 3: Redesigned Interactive 5-Axis AI Personality Studio (Left) + Persona Summary & Preview (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1 items-stretch">
+        {/* Left Column: Interactive 5-Axis AI Personality Radar Chart (7 cols) */}
         <div className="lg:col-span-7 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3 flex flex-col justify-between">
-          <div className="border-b border-[var(--color-border)] pb-2.5">
+          <div className="border-b border-[var(--color-border)] pb-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
                 <Compass className="w-4 h-4" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                  <span>Advanced Personality Controls</span>
+                  <span>Advanced Personality Radar Studio</span>
                   <InfoTooltip
-                    content="Fine-tune secondary traits like patience during interruptions, conversational energy, humor, and curiosity."
+                    content="Drag points along any of the 5 axes to dynamically shape your AI voice agent's tone, energy, patience, curiosity, and assertiveness in real time."
                     position="top"
                   />
                 </h4>
               </div>
             </div>
+
+            <Badge variant="primary" size="sm" className="text-[10px]">
+              5-Axis Direct Drag
+            </Badge>
           </div>
 
-          <div className="space-y-2">
-            <AdvancedTraitCard
-              label="Patience"
-              description="Tolerant & willing to re-explain without rushing"
-              icon={Clock}
-              value={personality.patience ?? 90}
-              onChange={(val) => updatePersonality("patience", val)}
-            />
-
-            <AdvancedTraitCard
-              label="Energy"
-              description="Conversational vitality & upbeat enthusiasm"
-              icon={Zap}
-              value={personality.energy ?? 70}
-              onChange={(val) => updatePersonality("energy", val)}
-            />
-
-            <AdvancedTraitCard
-              label="Humor"
-              description="Lighthearted charm & polite witty warmth"
-              icon={Sparkles}
-              value={personality.humor ?? 10}
-              onChange={(val) => updatePersonality("humor", val)}
-            />
-
-            <AdvancedTraitCard
-              label="Assertiveness"
-              description="Directness & steering calls toward key goals"
-              icon={ShieldCheck}
-              value={personality.assertiveness ?? 50}
-              onChange={(val) => updatePersonality("assertiveness", val)}
-            />
-
-            <AdvancedTraitCard
-              label="Curiosity"
-              description="Asking proactive questions to uncover caller needs"
-              icon={Search}
-              value={personality.curiosity ?? 75}
-              onChange={(val) => updatePersonality("curiosity", val)}
+          {/* Central Radar Visualization */}
+          <div className="py-2 flex-1 flex items-center justify-center">
+            <InteractivePersonalityRadar
+              personality={personality}
+              onChange={updatePersonality}
             />
           </div>
         </div>
 
-        {/* Right Column: Dynamic Personality Profile & Live Persona Preview (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Dynamic Personality Profile Card */}
+        {/* Right Column: Your Agent Personality Panel & Live Persona Preview (5 cols) */}
+        <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+          {/* Card 1: Your Agent Personality Breakdown */}
           <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
               <div className="flex items-center gap-1.5">
                 <Bot className="w-4 h-4 text-[var(--color-primary)]" />
                 <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                  <span>Your Agent Personality Profile</span>
+                  <span>Your Agent Personality</span>
                   <InfoTooltip
-                    content="Real-time AI analysis of the agent's personality traits, conversational posture, and demeanor."
+                    content="Real-time breakdown of human-readable personality characteristics derived directly from your 5-axis settings."
                     position="top"
                   />
                 </h4>
               </div>
-              <Badge variant="primary" size="sm" className="text-[10px]">
-                Dynamic Persona
+              <Badge variant="neutral" size="sm" className="text-[10px] font-mono">
+                Live State
               </Badge>
             </div>
 
-            {/* Dominant Tags */}
-            <div className="flex flex-wrap gap-1.5">
-              {getDominantTags().map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-[10px] font-semibold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 rounded-[var(--radius-main,0.25rem)]"
-                >
-                  {tag}
-                </span>
-              ))}
+            {/* Dynamic Human-Readable Traits List */}
+            <div className="space-y-2">
+              {getHumanReadableTraits().map((item, idx) => {
+                const IconComp = item.icon;
+                return (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] flex items-start gap-2.5 transition-all hover:bg-[var(--color-surface-muted)]"
+                  >
+                    <div className="w-6 h-6 rounded-[var(--radius-main,0.25rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0 mt-0.5">
+                      <IconComp className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold text-[var(--color-heading)] truncate">
+                          {item.title}
+                        </span>
+                        <span className="text-[9px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded shrink-0">
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
+                        {item.desc}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Dynamic AI Summary */}
-            <p className="text-[11px] text-[var(--color-muted)] leading-relaxed italic bg-[var(--color-surface-muted)]/60 p-2.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)]/60">
-              “{getDynamicSummary()}”
-            </p>
+            {/* AI Personality Synthesis Preview */}
+            <div className="p-3 bg-[var(--color-primary)]/[0.04] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/20 space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
+                <Sparkles className="w-3 h-3" />
+                <span>Conversational Persona Summary</span>
+              </div>
+              <p className="text-[11px] text-[var(--color-heading)] font-medium leading-relaxed italic">
+                “{getDynamicPersonalitySummary()}”
+              </p>
+            </div>
           </div>
 
-          {/* Live Persona Preview Box */}
+          {/* Card 2: Live Persona Preview Box & Speech Synthesis */}
           <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
                 <MessageSquareQuote className="w-4 h-4 text-[var(--color-primary)]" />
                 <span>Live Persona Preview</span>
                 <InfoTooltip
-                  content="Simulates how your agent introduces itself, explains value, and prompts the caller based on current settings."
+                  content="Simulates how your agent introduces itself and interacts with the caller using the active voice and personality parameters."
                   position="top"
                 />
               </h4>
@@ -1078,7 +1505,7 @@ export function Step4PersonalityCommunication({
             </div>
 
             {/* Dialogue Bubble */}
-            <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2.5">
+            <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
               <div className="flex items-center justify-between gap-1 text-[10px] font-semibold text-[var(--color-muted)]">
                 <div className="flex items-center gap-1.5 uppercase tracking-wider">
                   <Bot className="w-3.5 h-3.5 text-[var(--color-primary)]" />
@@ -1132,4 +1559,3 @@ export function Step4PersonalityCommunication({
     </div>
   );
 }
-
