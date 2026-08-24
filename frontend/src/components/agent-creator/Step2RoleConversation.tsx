@@ -11,7 +11,16 @@ import {
   Briefcase,
   CheckCircle2,
   Tag,
-  DollarSign
+  DollarSign,
+  Building2,
+  UserCheck,
+  Calendar,
+  ShieldAlert,
+  PhoneForwarded,
+  FileText,
+  Send,
+  Info,
+  PackageCheck
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
@@ -25,6 +34,32 @@ interface Step2RoleConversationProps {
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
   selectedPurposeId: string;
 }
+
+const CAPABILITY_ICONS: Record<string, React.ElementType> = {
+  "Answer FAQs": HelpCircle,
+  "Collect customer information": UserCheck,
+  "Qualify leads": Sparkles,
+  "Book appointments": Calendar,
+  "Confirm appointments": CheckCircle2,
+  "Handle objections": ShieldAlert,
+  "Provide product information": Layers,
+  "Transfer to a human": PhoneForwarded,
+  "Create a support request": FileText,
+  "Send SMS follow-up": Send
+};
+
+const CAPABILITY_DESCRIPTIONS: Record<string, string> = {
+  "Answer FAQs": "Respond to common customer questions and FAQs.",
+  "Collect customer information": "Gather caller details during the conversation.",
+  "Qualify leads": "Screen prospects against key qualifying criteria.",
+  "Book appointments": "Schedule meetings, visits, or service bookings.",
+  "Confirm appointments": "Verify upcoming appointment dates and attendance.",
+  "Handle objections": "Address hesitations with concise, value-focused points.",
+  "Provide product information": "Explain product features, packages, and pricing.",
+  "Transfer to a human": "Escalate the call to a live team member when needed.",
+  "Create a support request": "Log helpdesk tickets or CRM follow-ups.",
+  "Send SMS follow-up": "Dispatch summary text messages or links after calls."
+};
 
 export function Step2RoleConversation({
   agentData,
@@ -125,8 +160,8 @@ export function Step2RoleConversation({
       const existingServices = kbProfile?.services || [];
       const updatedServices = [...existingServices, newServiceItem];
 
-      // Update globally in profile
-      await fetchApi("/business-profile", {
+      // Update backend
+      const updatedProfile = await fetchApi<CompanyBusinessProfile>("/business-profile", {
         method: "PUT",
         body: JSON.stringify({
           ...kbProfile,
@@ -134,33 +169,32 @@ export function Step2RoleConversation({
         })
       });
 
-      // Update local KB state
-      if (kbProfile) {
-        setKbProfile({ ...kbProfile, services: updatedServices });
+      if (updatedProfile) {
+        setKbProfile(updatedProfile);
+        toast.success(`Service "${newServiceName}" added to Organization Knowledge.`);
+
+        // Also add and enable for current agent
+        const currentAgentServices = agentData.services || [];
+        setAgentData((prev) => ({
+          ...prev,
+          services: [
+            ...currentAgentServices,
+            {
+              name: newServiceItem.name,
+              description: newServiceItem.description || "",
+              enabled: true,
+              priority: currentAgentServices.length + 1
+            }
+          ]
+        }));
+
+        setNewServiceName("");
+        setNewServiceDesc("");
+        setNewServicePricing("");
+        setIsAddingService(false);
       }
-
-      // Also enable for this agent
-      const currentAgentServices = agentData.services || [];
-      setAgentData((prev) => ({
-        ...prev,
-        services: [
-          ...currentAgentServices,
-          {
-            name: newServiceItem.name,
-            description: newServiceItem.description || "",
-            enabled: true,
-            priority: currentAgentServices.length + 1
-          }
-        ]
-      }));
-
-      toast.success(`"${newServiceItem.name}" added to Knowledge Base and enabled for this agent!`);
-      setIsAddingService(false);
-      setNewServiceName("");
-      setNewServiceDesc("");
-      setNewServicePricing("");
     } catch (err: any) {
-      toast.error(err.message || "Failed to add new service to Knowledge Base.");
+      toast.error(err?.message || "Failed to add service.");
     } finally {
       setSavingService(false);
     }
@@ -171,90 +205,142 @@ export function Step2RoleConversation({
 
   return (
     <div className="space-y-6 text-left">
-      <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Role & Business Knowledge</h2>
-        <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Define the primary objective of your calls, opening greeting, capabilities, and business knowledge facts.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <label className="block text-xs font-semibold text-[var(--color-heading)]">
-              Primary Agent Objective <span className="text-[var(--color-danger)]">*</span>
-            </label>
-            <InfoTooltip content="In 1–2 sentences, define the single most important goal and outcome of every phone call." position="top" />
+      {/* 1. Page Section Header */}
+      <div className="border-b border-[var(--color-border)] pb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+            <Brain className="w-4 h-4" />
           </div>
-          <input
-            type="text"
-            value={agentData.objective || ""}
-            onChange={(e) => setAgentData({ ...agentData, objective: e.target.value })}
-            placeholder="e.g., Qualify inbound real-estate buyer leads and schedule tours"
-            className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+          <h2 className="text-sm sm:text-base font-bold text-[var(--color-heading)] tracking-tight">
+            Role &amp; Business Knowledge
+          </h2>
+          <InfoTooltip
+            content="Define what this agent is responsible for, what actions it can take, and what company knowledge it can access during calls."
+            position="top"
           />
         </div>
       </div>
 
-      <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
-        <div>
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Conversational Capabilities & Skills
-          </label>
-          <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-            Select the pre-trained workflows and skills to enable for this agent.
-          </p>
+      {/* 2. Primary Agent Objective Form Block */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs font-semibold text-[var(--color-heading)]">
+              Primary Agent Objective <span className="text-[var(--color-danger)]">*</span>
+            </label>
+            <InfoTooltip
+              content="In 1–2 sentences, define the single most important goal and outcome of every phone call."
+              position="top"
+            />
+          </div>
+          <span className="text-[10px] text-[var(--color-muted)] font-medium">
+            {(agentData.objective || "").length} characters
+          </span>
+        </div>
+
+        <textarea
+          rows={3}
+          value={agentData.objective || ""}
+          onChange={(e) => setAgentData({ ...agentData, objective: e.target.value })}
+          placeholder="e.g. Qualify inbound buyer leads, answer company FAQs, and schedule consultation calls with our sales team."
+          className="w-full p-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all resize-none leading-relaxed"
+        />
+        <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1">
+          <Info className="w-3 h-3 shrink-0 text-[var(--color-muted)]" />
+          <span>Keep this concise and clear. This directly steers the agent's conversational focus during calls.</span>
+        </p>
+      </div>
+
+      {/* 3. Conversational Capabilities & Skills */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider flex items-center gap-1.5">
+              <span>Conversational Capabilities &amp; Skills</span>
+              <InfoTooltip
+                content="Enable or disable specific conversational capabilities such as lead qualification, appointment booking, or human escalation."
+                position="top"
+              />
+            </h3>
+          </div>
+          <Badge variant="neutral" size="sm" className="text-[10px] font-semibold">
+            {currentCaps.length} of {AVAILABLE_CAPABILITIES.length} Active
+          </Badge>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {AVAILABLE_CAPABILITIES.map((cap) => {
             const isEnabled = currentCaps.includes(cap.id);
+            const IconComp = CAPABILITY_ICONS[cap.id] || Sparkles;
+            const description = CAPABILITY_DESCRIPTIONS[cap.id] || cap.description;
+
             return (
               <div
                 key={cap.id}
                 onClick={() => toggleCapability(cap.id)}
-                className={`p-2.5 px-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between gap-2.5 select-none ${
+                className={`p-3 rounded-[var(--radius-main,0.5rem)] border transition-all cursor-pointer flex flex-col justify-between gap-2.5 select-none text-left relative ${
                   isEnabled
-                    ? "bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-heading)] shadow-2xs font-semibold"
-                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] text-[var(--color-heading)]"
+                    ? "bg-[var(--color-primary)]/[0.04] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/30"
+                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]/40"
                 }`}
               >
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={`w-7 h-7 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center shrink-0 transition-colors ${
+                        isEnabled
+                          ? "bg-[var(--color-primary)] text-white shadow-2xs"
+                          : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]"
+                      }`}
+                    >
+                      <IconComp className="w-3.5 h-3.5" />
+                    </div>
+                    <h4 className="text-xs font-semibold text-[var(--color-heading)] leading-snug truncate">
+                      {cap.label}
+                    </h4>
+                  </div>
+
                   <div
-                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors mt-0.5 ${
                       isEnabled
                         ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                        : "border-[var(--color-border)] bg-[var(--color-surface)]"
+                        : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface)]"
                     }`}
                   >
-                    {isEnabled && <Check className="w-3 h-3 stroke-[2.5]" />}
+                    {isEnabled && <Check className="w-3 h-3 stroke-[3]" />}
                   </div>
-                  <h4 className="text-xs font-semibold text-[var(--color-heading)] leading-snug truncate">
-                    {cap.label}
-                  </h4>
                 </div>
-                {cap.description && (
-                  <InfoTooltip content={cap.description} position="top" />
-                )}
+
+                <p className="text-[11px] text-[var(--color-muted)] leading-relaxed line-clamp-2">
+                  {description}
+                </p>
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
-        <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                <Brain className="w-4 h-4 text-[var(--color-primary)]" />
-                Organization Business Knowledge Base
-              </span>
-              {/* <Badge variant="primary" className="text-[10px] py-0 px-1.5 font-semibold">
-                Auto-Integrated
-              </Badge> */}
+      {/* 4. Organization Business Knowledge Base */}
+      <div className="pt-2">
+        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-4">
+          {/* Section Header with Include in Calls toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[var(--color-border)]">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <span>Organization Business Knowledge</span>
+                  <InfoTooltip
+                    content="Connect your company's global profile, operating hours, address, and service catalog directly to the agent's knowledge base."
+                    position="top"
+                  />
+                </h3>
+              </div>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
+
+            <label className="flex items-center gap-2 cursor-pointer select-none bg-[var(--color-surface-muted)] px-3 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] shrink-0 self-start sm:self-auto">
               <input
                 type="checkbox"
                 checked={agentData.include_business_knowledge ?? true}
@@ -271,34 +357,37 @@ export function Step2RoleConversation({
               </span>
             </label>
           </div>
+
           <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
-            When enabled, this agent automatically knows your company services, head office address, operating hours, email, phone, and standard FAQs configured in <strong>Company Knowledge</strong>.
+            When enabled, the agent automatically inherits your company profile, business operating hours, office address, and contact details from the organization knowledge base.
           </p>
 
-          {/* Knowledge Base Services & Skills Management */}
+          {/* Available Knowledge / Services */}
           {(agentData.include_business_knowledge ?? true) && (
-            <div className="p-3 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)]/80 rounded-[var(--radius-main,0.375rem)] space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="p-3.5 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Briefcase className="w-4 h-4 text-[var(--color-primary)]" />
                   <div>
-                    <h3 className="text-xs font-bold text-[var(--color-heading)]">
-                      Knowledge Base Services & Skills
-                    </h3>
-                    <p className="text-[11px] text-[var(--color-muted)]">
-                      Select or deselect which services this agent offers, or add new services directly to your Knowledge Base.
-                    </p>
+                    <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                      <span>Available Knowledge &amp; Services</span>
+                      <InfoTooltip
+                        content="Select which specific products, pricing plans, or service offerings the agent is permitted to discuss."
+                        position="top"
+                      />
+                    </h4>
                   </div>
                 </div>
+
                 <div className="flex items-center gap-2">
                   <Badge variant="neutral" size="sm" className="text-[10px]">
-                    {selectedCount} / {allKbServices.length} Selected
+                    {selectedCount} of {allKbServices.length} Selected
                   </Badge>
                   {!isAddingService && (
                     <button
                       type="button"
                       onClick={() => setIsAddingService(true)}
-                      className="px-2.5 py-1 text-[11px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                      className="px-2.5 py-1 text-[11px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded-[var(--radius-main,0.25rem)] flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
                     >
                       <Plus className="w-3 h-3 stroke-[2.5]" />
                       <span>Add Service</span>
@@ -311,19 +400,19 @@ export function Step2RoleConversation({
               {isAddingService && (
                 <form
                   onSubmit={handleAddNewService}
-                  className="p-3 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.375rem)] space-y-2.5 animate-fade-in"
+                  className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.375rem)] space-y-3 animate-fade-in"
                 >
-                  <div className="flex items-center justify-between pb-1 border-b border-[var(--color-border)]">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-[var(--color-border)]">
                     <span className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                      Add Service to Knowledge Base
+                      Add Service to Organization Knowledge Base
                     </span>
                     <span className="text-[10px] text-[var(--color-muted)]">
-                      Will be saved globally & assigned to this agent
+                      Saved globally &amp; enabled for this agent
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                     <div className="space-y-1">
                       <label className="block text-[11px] font-semibold text-[var(--color-heading)]">
                         Service Name <span className="text-[var(--color-danger)]">*</span>
@@ -333,8 +422,8 @@ export function Step2RoleConversation({
                         required
                         value={newServiceName}
                         onChange={(e) => setNewServiceName(e.target.value)}
-                        placeholder="e.g. VIP Consultation, Express Loan Verification"
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        placeholder="e.g. AI Voice Receptionist, SharePoint Migration"
+                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
 
@@ -346,8 +435,8 @@ export function Step2RoleConversation({
                         type="text"
                         value={newServicePricing}
                         onChange={(e) => setNewServicePricing(e.target.value)}
-                        placeholder="e.g. Free initial session, $99/mo"
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        placeholder="e.g. Starting at $99/mo, Free Consultation"
+                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
 
@@ -359,8 +448,8 @@ export function Step2RoleConversation({
                         type="text"
                         value={newServiceDesc}
                         onChange={(e) => setNewServiceDesc(e.target.value)}
-                        placeholder="e.g. Conducts 1-on-1 discovery, reviews qualifications, and schedules follow-up."
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        placeholder="e.g. Automated phone call handling, inquiry screening, and instant calendar routing."
+                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                   </div>
@@ -368,52 +457,31 @@ export function Step2RoleConversation({
                   <div className="flex items-center justify-end gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsAddingService(false);
-                        setNewServiceName("");
-                        setNewServiceDesc("");
-                        setNewServicePricing("");
-                      }}
-                      className="px-2.5 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] cursor-pointer"
+                      onClick={() => setIsAddingService(false)}
+                      className="px-2.5 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] rounded cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={savingService || !newServiceName.trim()}
-                      className="px-3 py-1 text-xs font-semibold bg-[var(--color-primary)] text-white rounded hover:opacity-90 transition-opacity flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1 text-xs font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded cursor-pointer disabled:opacity-50 flex items-center gap-1"
                     >
-                      {savingService ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>Saving to KB...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-3 h-3 stroke-[2.5]" />
-                          <span>Save & Enable for Agent</span>
-                        </>
-                      )}
+                      {savingService ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 stroke-[2.5]" />}
+                      <span>Save &amp; Add</span>
                     </button>
                   </div>
                 </form>
               )}
 
-              {/* Service Cards Grid */}
               {loadingKb ? (
-                <div className="py-4 flex items-center justify-center gap-2 text-xs text-[var(--color-muted)]">
-                  <Loader2 className="w-4 h-4 animate-spin text-[var(--color-primary)]" />
-                  <span>Loading services from Knowledge Base...</span>
+                <div className="py-4 flex items-center justify-center text-xs text-[var(--color-muted)] gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-primary)]" />
+                  <span>Loading organization services...</span>
                 </div>
               ) : allKbServices.length === 0 ? (
-                <div className="p-4 text-center bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]">
-                  <Briefcase className="w-6 h-6 text-[var(--color-muted)] mx-auto mb-1.5 opacity-60" />
-                  <p className="text-xs font-semibold text-[var(--color-heading)]">
-                    No services in Knowledge Base yet
-                  </p>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                    Click "Add Service" above to create your first company service.
-                  </p>
+                <div className="p-3 text-center text-xs text-[var(--color-muted)] bg-[var(--color-surface)] rounded border border-dashed border-[var(--color-border)]">
+                  No services configured in your business knowledge base yet. Click "+ Add Service" to create one.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -434,7 +502,7 @@ export function Step2RoleConversation({
                             className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                               isSelected
                                 ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                                : "border-[var(--color-border)] bg-[var(--color-surface-muted)]"
+                                : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface-muted)]"
                             }`}
                           >
                             {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
@@ -461,28 +529,47 @@ export function Step2RoleConversation({
               )}
             </div>
           )}
+        </div>
+      </div>
 
-          {/* Custom Knowledge Section */}
-          <div className="pt-2 border-t border-[var(--color-border)]/60 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-semibold text-[var(--color-heading)]">
-                Additional Custom Knowledge & Specific Facts (Optional)
-              </label>
-              <span className="text-[10px] text-[var(--color-muted)]">
-                Agent-specific context
-              </span>
+      {/* 5. Additional Instructions & Custom Knowledge */}
+      <div className="pt-2">
+        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] flex items-center justify-center shrink-0">
+                <BookOpen className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <span>Additional Instructions &amp; Custom Knowledge</span>
+                  <InfoTooltip
+                    content="Provide specific domain rules, FAQs, guidelines, or custom context unique to this voice agent."
+                    position="top"
+                  />
+                </h3>
+              </div>
             </div>
+            <Badge variant="neutral" size="sm" className="text-[10px]">
+              Optional
+            </Badge>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
             <textarea
-              rows={2}
+              rows={3}
               value={agentData.custom_knowledge || ""}
               onChange={(e) => setAgentData({ ...agentData, custom_knowledge: e.target.value })}
-              placeholder="e.g. Special promotion: 20% discount on first-time consultations this month. In-person meetings require 24 hours prior notice."
-              className="w-full p-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] leading-relaxed"
+              placeholder="Example: First-time customers receive a 20% consultation discount. In-person appointments require 24 hours notice."
+              className="w-full p-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] leading-relaxed transition-all resize-none"
             />
+            <div className="flex items-center justify-between text-[10px] text-[var(--color-muted)]">
+              <span>This knowledge is exclusively injected for this specific agent.</span>
+              <span>{(agentData.custom_knowledge || "").length} characters</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

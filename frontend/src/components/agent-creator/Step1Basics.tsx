@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Sparkles, Check, Info } from "lucide-react";
+import { Sparkles, Check, Info, Bot, Compass, HelpCircle } from "lucide-react";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
 import { AgentConfig } from "../../types";
@@ -45,11 +45,21 @@ export function Step1Basics({
     <div className="space-y-6 text-left">
       {/* Section 1: Basic Identity */}
       <div className="space-y-4">
-        <div className="border-b border-[var(--color-border)] pb-2.5">
-          <h2 className="text-sm font-bold text-[var(--color-heading)]">Agent Information</h2>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            Provide the basic identity and description for this voice agent.
-          </p>
+        <div className="border-b border-[var(--color-border)] pb-2.5 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <Bot className="w-4 h-4" />
+              </div>
+              <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                Agent Information
+              </h2>
+              <InfoTooltip
+                content="Set the essential identity, name, operational status, and purpose for your AI voice agent."
+                position="top"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -58,7 +68,10 @@ export function Step1Basics({
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
                 Agent Name <span className="text-[var(--color-danger)]">*</span>
               </label>
-              <InfoTooltip content="Give your agent a clear, recognizable name used across call logs and analytics." position="top" />
+              <InfoTooltip
+                content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics."
+                position="top"
+              />
             </div>
             <input
               type="text"
@@ -74,7 +87,10 @@ export function Step1Basics({
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
                 Initial Status
               </label>
-              <InfoTooltip content="Control whether this agent is ready to take live organizational calls or active only in testing mode." position="top" />
+              <InfoTooltip
+                content="Control whether this agent is ready to take live organizational calls or active only in testing mode."
+                position="top"
+              />
             </div>
             <select
               value={agentData.status}
@@ -93,7 +109,10 @@ export function Step1Basics({
             <label className="block text-xs font-semibold text-[var(--color-heading)]">
               Description
             </label>
-            <InfoTooltip content="Explain what this agent does. This helps colleagues and helps our AI generator produce optimal prompts." position="top" />
+            <InfoTooltip
+              content="Explain what this agent does. This helps colleagues and helps our AI generator produce optimal prompts."
+              position="top"
+            />
           </div>
           <textarea
             rows={2}
@@ -108,13 +127,19 @@ export function Step1Basics({
       {/* Section 2: Purpose Selection */}
       <div className="space-y-3 pt-2">
         <div className="border-b border-[var(--color-border)] pb-2.5">
-          <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-            <span>What is this agent mainly used for?</span>
-            <span className="text-[11px] font-normal text-[var(--color-muted)]">(Select purpose)</span>
-          </h2>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            Choose a purpose to automatically calibrate conversational style, voice pacing, greeting, and suggested capabilities.
-          </p>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <Compass className="w-4 h-4" />
+            </div>
+            <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+              <span>What is this agent mainly used for?</span>
+              <span className="text-[11px] font-normal text-[var(--color-muted)]">(Select purpose)</span>
+            </h2>
+            <InfoTooltip
+              content="Choose a purpose preset to automatically configure conversational pacing, greeting templates, and suggested skills."
+              position="top"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5">
@@ -169,13 +194,20 @@ export function Step1Basics({
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
             <h3 className="text-xs font-bold text-[var(--color-heading)]">Custom Role Details</h3>
+            <InfoTooltip
+              content="Define custom operational boundaries and specific business goals for non-standard workflows."
+              position="top"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Role Name
-              </label>
+              <div className="flex items-center gap-1">
+                <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                  Role Name
+                </label>
+                <InfoTooltip content="The specific title given to this custom agent role." position="top" />
+              </div>
               <input
                 type="text"
                 value={customRoleName}
@@ -189,9 +221,12 @@ export function Step1Basics({
             </div>
 
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                What should this agent help customers with?
-              </label>
+              <div className="flex items-center gap-1">
+                <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                  What should this agent help customers with?
+                </label>
+                <InfoTooltip content="Outline the key scenarios, questions, and tasks this custom agent handles." position="top" />
+              </div>
               <input
                 type="text"
                 value={customHelpScope}
@@ -202,9 +237,12 @@ export function Step1Basics({
             </div>
 
             <div className="md:col-span-2 space-y-1">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Success Criteria
-              </label>
+              <div className="flex items-center gap-1">
+                <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                  Success Criteria
+                </label>
+                <InfoTooltip content="Define what constitutes a successful call resolution." position="top" />
+              </div>
               <input
                 type="text"
                 value={customSuccessCriteria}

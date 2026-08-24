@@ -18,6 +18,7 @@ import {
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { Modal } from "../ui/Modal";
+import { InfoTooltip } from "../ui/Tooltip";
 import { AgentConfig } from "../../types";
 
 interface Step7ReviewActivateProps {
@@ -53,10 +54,15 @@ export function Step7ReviewActivate({
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-bold text-[var(--color-heading)]">Review & Activate</h2>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            Verify all parameters, spoken prompt instructions, and guardrails before launching your AI voice agent.
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+              <span>Review &amp; Activate</span>
+              <InfoTooltip
+                content="Verify all parameters, spoken prompt instructions, and guardrails before launching your AI voice agent."
+                position="top"
+              />
+            </h2>
+          </div>
         </div>
       </div>
 
@@ -65,9 +71,10 @@ export function Step7ReviewActivate({
         {/* Card 1: Identity & Basics */}
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <Bot className="w-4 h-4 text-[var(--color-primary)]" />
               <span>1. Agent Identity</span>
+              <InfoTooltip content="Basic name, operational status, and role metadata." position="top" />
             </div>
             <button
               type="button"
@@ -98,9 +105,10 @@ export function Step7ReviewActivate({
         {/* Card 2: Role & Objective */}
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>2. Role & Knowledge Base</span>
+              <span>2. Role &amp; Knowledge Base</span>
+              <InfoTooltip content="Primary conversational objective and connected business knowledge modules." position="top" />
             </div>
             <button
               type="button"
@@ -151,9 +159,10 @@ export function Step7ReviewActivate({
         {/* Card 3: Voice & Language */}
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <Volume2 className="w-4 h-4 text-[var(--color-primary)]" />
-              <span>3. Voice & Engine</span>
+              <span>3. Voice &amp; Engine</span>
+              <InfoTooltip content="Deepgram Aura voice, playback speed, spoken language, and LLM reasoning model." position="top" />
             </div>
             <button
               type="button"
@@ -188,9 +197,10 @@ export function Step7ReviewActivate({
         {/* Card 4: Personality & Communication */}
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <Sliders className="w-4 h-4 text-[var(--color-primary)]" />
-              <span>4. Personality & Style</span>
+              <span>4. Personality &amp; Style</span>
+              <InfoTooltip content="Tone, response length, demeanor, and spoken greeting." position="top" />
             </div>
             <button
               type="button"
@@ -225,9 +235,10 @@ export function Step7ReviewActivate({
         {/* Card 5: Behavior & Safety Guardrails */}
         <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              <span>5. Behavior & Safety Guardrails</span>
+              <span>5. Behavior &amp; Safety Guardrails</span>
+              <InfoTooltip content="Max call duration, interruption settings, restricted boundaries, and escalation triggers." position="top" />
             </div>
             <button
               type="button"
@@ -286,9 +297,10 @@ export function Step7ReviewActivate({
         {/* Card 6: AI Spoken Prompt & Instructions */}
         <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-            <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+            <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <FileCode className="w-4 h-4 text-[var(--color-primary)]" />
-              <span>6. AI Spoken Prompt & Instructions</span>
+              <span>6. AI Spoken Prompt &amp; Instructions</span>
+              <InfoTooltip content="Synthesized system prompt instructions guiding the AI voice agent." position="top" />
             </div>
             <button
               type="button"

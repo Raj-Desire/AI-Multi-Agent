@@ -23,7 +23,6 @@ import {
   Palette,
   Users,
   ShieldAlert,
-  Wifi,
   Building2
 } from "lucide-react";
 
@@ -185,12 +184,6 @@ function MainContent() {
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
               <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "Desire AI"}</strong></span>
-            </div>
-
-            {/* Live WebRTC indicator */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-              <Wifi className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">WebRTC Live</span>
             </div>
           </div>
         </header>

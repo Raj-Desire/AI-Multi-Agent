@@ -4,17 +4,21 @@ import {
   Play,
   Square,
   Sparkles,
-  ChevronDown,
-  ChevronUp,
-  Cpu,
   Globe,
   Sliders,
+  Cpu,
+  ChevronDown,
+  ChevronUp,
   Check
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
-import { AURA_VOICES, DEEPGRAM_SUPPORTED_LANGUAGES, LLM_MODELS } from "./constants";
+import {
+  AURA_VOICES,
+  DEEPGRAM_SUPPORTED_LANGUAGES,
+  LLM_MODELS
+} from "./constants";
 import { AgentConfig } from "../../types";
 
 interface Step3VoiceLanguageProps {
@@ -26,48 +30,51 @@ export function Step3VoiceLanguage({
   agentData,
   setAgentData
 }: Step3VoiceLanguageProps) {
-  // Sample speech playback state
-  const [sampleText, setSampleText] = useState("Hello, thank you for calling. How can I help you today?");
-  const [isPlayingSample, setIsPlayingSample] = useState(false);
+  // Voice Preview State
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
-  // Advanced accordion
+  // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
 
+  // Selected Voice
   const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const isPlayingSample = playingVoiceId === selectedVoiceId;
 
-  // Clean up audio on unmount
+  // Cleanup audio on unmount
   useEffect(() => {
     return () => {
-      if (currentAudio) {
-        currentAudio.onended = null;
-        currentAudio.onerror = null;
-        currentAudio.pause();
-        currentAudio.src = "";
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = "";
       }
     };
-  }, [currentAudio]);
+  }, [audioElement]);
 
-  async function playVoiceSample(voiceId: string) {
-    if (currentAudio) {
-      currentAudio.onended = null;
-      currentAudio.onerror = null;
-      currentAudio.pause();
-      currentAudio.src = "";
-      setCurrentAudio(null);
+  const stopCurrentAudio = () => {
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.src = "";
+      setAudioElement(null);
     }
+    setPlayingVoiceId(null);
+  };
 
+  const playVoiceSample = async (voiceId: string) => {
     if (playingVoiceId === voiceId) {
-      setPlayingVoiceId(null);
-      setIsPlayingSample(false);
+      stopCurrentAudio();
       return;
     }
 
+    stopCurrentAudio();
     setPlayingVoiceId(voiceId);
-    setIsPlayingSample(true);
     setAudioError(null);
+
+    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+    const sampleText =
+      (voiceObj as any)?.sampleText ||
+      `Hello! I am your AI voice agent powered by Deepgram Aura. How can I help you today?`;
 
     try {
       const token = localStorage.getItem("desire_token");
@@ -78,7 +85,7 @@ export function Step3VoiceLanguage({
         method: "POST",
         headers,
         body: JSON.stringify({
-          text: sampleText.trim() || "Hello, thank you for calling. How can I help you today?",
+          text: sampleText,
           voice: voiceId
         })
       });
@@ -91,52 +98,51 @@ export function Step3VoiceLanguage({
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
 
-      // Apply Speaking Speed directly to audio playback rate
-      const speed = agentData.voice?.speed || 1.0;
-      audio.playbackRate = Math.max(0.5, Math.min(2.0, speed));
+      const currentSpeed = agentData.voice?.speed || 1.0;
+      audio.playbackRate = Math.max(0.5, Math.min(2.0, currentSpeed));
 
       audio.onended = () => {
         setPlayingVoiceId(null);
-        setIsPlayingSample(false);
-        setCurrentAudio(null);
+        setAudioElement(null);
       };
 
       audio.onerror = () => {
         setPlayingVoiceId(null);
-        setIsPlayingSample(false);
-        setCurrentAudio(null);
-        setAudioError("Sample audio not currently available for preview.");
+        setAudioElement(null);
+        setAudioError("Audio playback failed. Please check your audio output device.");
       };
 
-      setCurrentAudio(audio);
+      setAudioElement(audio);
       await audio.play();
-    } catch (e: any) {
-      setPlayingVoiceId(null);
-      setIsPlayingSample(false);
-      setAudioError(e?.message || "Failed to play voice sample.");
+    } catch (err: any) {
+      console.warn("Deepgram TTS error:", err);
+      stopCurrentAudio();
+      setAudioError(err?.message || "Failed to generate speech preview.");
     }
-  }
+  };
 
-  async function handlePlaySample() {
-    await playVoiceSample(selectedVoiceId);
-  }
+  const handlePlaySample = () => {
+    playVoiceSample(selectedVoiceId);
+  };
 
   const handleVoiceChange = (voiceId: string) => {
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.src = "";
-      setCurrentAudio(null);
-      setIsPlayingSample(false);
-      setPlayingVoiceId(null);
-    }
-
-    const vObj = AURA_VOICES.find((v) => v.id === voiceId);
-    const lang = vObj?.language || "en";
+    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
     setAgentData((prev) => ({
       ...prev,
       voice: {
         ...prev.voice,
+        provider: "deepgram",
         voice: voiceId,
+        language: voiceObj?.language || prev.voice?.language || "en"
+      }
+    }));
+  };
+
+  const handleLanguageChange = (lang: string) => {
+    setAgentData((prev) => ({
+      ...prev,
+      voice: {
+        ...prev.voice,
         language: lang
       },
       listen: {
@@ -170,23 +176,36 @@ export function Step3VoiceLanguage({
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
-      <div className="border-b border-[var(--color-border)] pb-2.5">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Voice, Speed & Language</h2>
-        <p className="text-xs text-[var(--color-muted)] mt-0.5">
-          Select Deepgram Aura ultra-low latency lifelike telephony voice, conversational speed, and AI intelligence model.
-        </p>
+      <div className="border-b border-[var(--color-border)] pb-2.5 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <Volume2 className="w-4 h-4" />
+            </div>
+            <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+              Voice, Speed &amp; Language
+            </h2>
+            <InfoTooltip
+              content="Select Deepgram Aura ultra-low latency lifelike telephony voice, conversational speed, and AI intelligence model."
+              position="top"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Section 1: Deepgram Voice Picker */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div>
-            <label className="block text-xs font-semibold text-[var(--color-heading)]">
-              Voice Model (Deepgram Aura-2 Lifelike)
-            </label>
-            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-              Optimized for real-time natural conversational rhythm and zero robotic hesitation.
-            </p>
+            <div className="flex items-center gap-1.5">
+              <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                Voice Model (Deepgram Aura-2 Lifelike)
+              </label>
+              <InfoTooltip
+                content="Deepgram Aura voices provide human-like tone, natural breathing, and ~200ms ultra-low latency for seamless telephone conversations."
+                position="top"
+              />
+            </div>
           </div>
           <Badge variant="neutral" className="text-[10px] py-0.5 self-start sm:self-auto">
             ⚡ Ultra-Low Latency (~200ms)
@@ -346,9 +365,15 @@ export function Step3VoiceLanguage({
         {/* Speaking Speed */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-[var(--color-heading)]">
-              Speaking Speed
-            </label>
+            <div className="flex items-center gap-1">
+              <label className="text-xs font-semibold text-[var(--color-heading)]">
+                Speaking Speed
+              </label>
+              <InfoTooltip
+                content="Calibrate speech playback rate. 1.0x is standard natural conversation speed."
+                position="top"
+              />
+            </div>
             <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
               {agentData.voice?.speed || 1.0}x
             </span>
@@ -374,15 +399,18 @@ export function Step3VoiceLanguage({
 
         {/* Primary Language */}
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-2">
-          <label className="block text-xs font-semibold text-[var(--color-heading)]">
-            Spoken Language & Accent
-          </label>
+          <div className="flex items-center gap-1">
+            <label className="block text-xs font-semibold text-[var(--color-heading)]">
+              Spoken Language &amp; Accent
+            </label>
+            <InfoTooltip
+              content="The primary language spoken by the text-to-speech engine and transcribed by speech recognition."
+              position="top"
+            />
+          </div>
           <select
             value={agentData.voice?.language || "en"}
-            onChange={(e) => setAgentData({
-              ...agentData,
-              voice: { ...agentData.voice, language: e.target.value }
-            })}
+            onChange={(e) => handleLanguageChange(e.target.value)}
             className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
           >
             {DEEPGRAM_SUPPORTED_LANGUAGES.map((lang) => (
@@ -391,9 +419,6 @@ export function Step3VoiceLanguage({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-[var(--color-muted)]">
-            Deepgram Aura-2 & Nova-3 native telephony speech language.
-          </p>
         </div>
       </div>
 
@@ -407,6 +432,10 @@ export function Step3VoiceLanguage({
           <div className="flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span>Advanced AI Model Settings (Optional)</span>
+            <InfoTooltip
+              content="Configure underlying LLM model, temperature variability, and token response limits."
+              position="top"
+            />
           </div>
           {showAdvancedAI ? <ChevronUp className="w-3.5 h-3.5 text-[var(--color-muted)]" /> : <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" />}
         </button>
@@ -415,9 +444,15 @@ export function Step3VoiceLanguage({
           <div className="p-4 space-y-4 border-t border-[var(--color-border)] animate-fade-in text-xs">
             {/* AI Model Cards */}
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Conversational LLM Model
-              </label>
+              <div className="flex items-center gap-1">
+                <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                  Conversational LLM Model
+                </label>
+                <InfoTooltip
+                  content="The reasoning model that interprets user intent and generates conversation replies."
+                  position="top"
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                 {LLM_MODELS.map((model) => {
                   const isSelected = (agentData.llm?.model || "gpt-4o-mini") === model.id;
@@ -466,10 +501,16 @@ export function Step3VoiceLanguage({
             {/* Temperature and Max Tokens */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div className="space-y-1.5">
-                <div className="flex justify-between">
-                  <label className="text-xs font-semibold text-[var(--color-heading)]">
-                    Temperature (Predictability)
-                  </label>
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1">
+                    <label className="text-xs font-semibold text-[var(--color-heading)]">
+                      Temperature (Predictability)
+                    </label>
+                    <InfoTooltip
+                      content="Lower temperature produces more predictable, factual answers; higher values allow more natural phrasing variance."
+                      position="top"
+                    />
+                  </div>
                   <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
                     {agentData.llm?.temperature ?? 0.4}
                   </span>
@@ -486,15 +527,18 @@ export function Step3VoiceLanguage({
                   })}
                   className="w-full accent-[var(--color-primary)] cursor-pointer"
                 />
-                <p className="text-[11px] text-[var(--color-muted)]">
-                  Controls how creative or precise the AI responses are. 0.4 is optimal for voice accuracy.
-                </p>
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                  Maximum Tokens Per Spoken Turn
-                </label>
+                <div className="flex items-center gap-1">
+                  <label className="block text-xs font-semibold text-[var(--color-heading)]">
+                    Maximum Tokens Per Spoken Turn
+                  </label>
+                  <InfoTooltip
+                    content="Limits the length of a single spoken reply to keep telephony turns snappy and interactive."
+                    position="top"
+                  />
+                </div>
                 <input
                   type="number"
                   min="50"
@@ -507,9 +551,6 @@ export function Step3VoiceLanguage({
                   })}
                   className="w-full h-8 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
                 />
-                <p className="text-[11px] text-[var(--color-muted)]">
-                  Limits response length per turn to keep voice calls fast and conversational.
-                </p>
               </div>
             </div>
           </div>

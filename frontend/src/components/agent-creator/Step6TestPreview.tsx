@@ -10,6 +10,7 @@ import {
   Play
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
+import { InfoTooltip } from "../ui/Tooltip";
 import { AgentLivePreview } from "../AgentLivePreview";
 import { AgentConfig } from "../../types";
 
@@ -26,10 +27,15 @@ export function Step6TestPreview({ agentData, onTestCall }: Step6TestPreviewProp
       {/* Header */}
       <div className="border-b border-[var(--color-border)] pb-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-bold text-[var(--color-heading)]">Test Your Agent</h2>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5">
-            Try a real-time conversation simulator before saving or activating your voice agent.
-          </p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+              <span>Test Your Agent</span>
+              <InfoTooltip
+                content="Test your voice agent in real-time with simulated speech and live latency telemetry before saving or deploying."
+                position="top"
+              />
+            </h2>
+          </div>
         </div>
         <Badge variant="neutral" className="text-[10px] py-1 px-2.5 font-medium shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
@@ -42,9 +48,15 @@ export function Step6TestPreview({ agentData, onTestCall }: Step6TestPreviewProp
         {/* Left Column: Configuration Snapshot (4 cols) */}
         <div className="lg:col-span-4 space-y-3">
           <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5 text-xs">
-            <div className="flex items-center gap-2 pb-2 border-b border-[var(--color-border)]">
-              <Bot className="w-4 h-4 text-[var(--color-primary)]" />
-              <h3 className="font-bold text-[var(--color-heading)]">Configuration Active in Test</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
+              <div className="flex items-center gap-2 font-bold text-[var(--color-heading)]">
+                <Bot className="w-4 h-4 text-[var(--color-primary)]" />
+                <span>Configuration Active in Test</span>
+              </div>
+              <InfoTooltip
+                content="Snapshot of all active parameters being evaluated in this test session."
+                position="top"
+              />
             </div>
 
             <div className="space-y-2">
