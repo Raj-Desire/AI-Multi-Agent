@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
 export interface TooltipProps {
@@ -14,15 +15,80 @@ export const Tooltip: React.FC<TooltipProps> = ({
   children,
   position = "top",
   className = "",
-  delayMs = 150,
+  delayMs = 80,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number; arrowLeft: number }>({
+    top: 0,
+    left: 0,
+    arrowLeft: 0,
+  });
+
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  const calculatePosition = () => {
+    if (!triggerRef.current) return;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const tooltipWidth = 260; // Estimated standard tooltip width
+    const tooltipHeight = 60;
+    const padding = 16;
+    const scrollY = window.scrollY;
+    const scrollX = window.scrollX;
+
+    let targetTop = 0;
+    let targetLeft = 0;
+
+    // Calculate vertical position (top preferred)
+    if (position === "top" || position === "bottom") {
+      if (position === "top") {
+        targetTop = triggerRect.top + scrollY - 8; // positioned above
+      } else {
+        targetTop = triggerRect.bottom + scrollY + 8; // positioned below
+      }
+
+      // Horizontal alignment centered on icon, bounded by screen edges
+      const triggerCenter = triggerRect.left + scrollX + triggerRect.width / 2;
+      let left = triggerCenter - tooltipWidth / 2;
+
+      // Prevent clipping on left or right edge
+      if (left < padding) {
+        left = padding;
+      } else if (left + tooltipWidth > window.innerWidth - padding) {
+        left = window.innerWidth - padding - tooltipWidth;
+      }
+
+      targetLeft = left;
+      const arrowLeft = Math.max(12, Math.min(tooltipWidth - 12, triggerCenter - left));
+
+      setCoords({
+        top: targetTop,
+        left: targetLeft,
+        arrowLeft,
+      });
+    } else {
+      // Fallback for left/right
+      targetTop = triggerRect.top + scrollY;
+      targetLeft = position === "left" ? triggerRect.left + scrollX - tooltipWidth - 8 : triggerRect.right + scrollX + 8;
+      setCoords({
+        top: targetTop,
+        left: targetLeft,
+        arrowLeft: tooltipWidth / 2,
+      });
+    }
+  };
 
   const show = (e?: React.SyntheticEvent) => {
     if (e) e.stopPropagation();
+    if (timerRef.current) clearTimeout(timerRef.current);
+    calculatePosition();
     timerRef.current = setTimeout(() => {
-      setIsVisible(true);
+      setIsMounted(true);
+      requestAnimationFrame(() => {
+        setIsVisible(true);
+      });
     }, delayMs);
   };
 
@@ -30,6 +96,9 @@ export const Tooltip: React.FC<TooltipProps> = ({
     if (e) e.stopPropagation();
     if (timerRef.current) clearTimeout(timerRef.current);
     setIsVisible(false);
+    timerRef.current = setTimeout(() => {
+      setIsMounted(false);
+    }, 150);
   };
 
   useEffect(() => {
@@ -40,40 +109,55 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   if (!content) return <>{children}</>;
 
-  const positionClasses = {
-    top: "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
-    bottom: "top-full left-1/2 -translate-x-1/2 mt-1.5",
-    left: "right-full top-1/2 -translate-y-1/2 mr-1.5",
-    right: "left-full top-1/2 -translate-y-1/2 ml-1.5",
-  };
-
-  const arrowClasses = {
-    top: "top-full left-1/2 -translate-x-1/2 border-t-slate-900 dark:border-t-slate-800 border-x-transparent border-b-transparent border-t-4 border-x-4 border-b-0",
-    bottom: "bottom-full left-1/2 -translate-x-1/2 border-b-slate-900 dark:border-b-slate-800 border-x-transparent border-t-transparent border-b-4 border-x-4 border-t-0",
-    left: "left-full top-1/2 -translate-y-1/2 border-l-slate-900 dark:border-l-slate-800 border-y-transparent border-r-transparent border-l-4 border-y-4 border-r-0",
-    right: "right-full top-1/2 -translate-y-1/2 border-r-slate-900 dark:border-r-slate-800 border-y-transparent border-l-transparent border-r-4 border-y-4 border-l-0",
-  };
-
   return (
-    <div
-      className={`relative inline-flex items-center ${className}`}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {children}
-      {isVisible && (
-        <div
-          role="tooltip"
-          className={`absolute z-50 pointer-events-none whitespace-normal max-w-xs w-max min-w-[140px] px-2.5 py-1.5 text-[11px] leading-snug font-normal text-slate-100 bg-slate-900 dark:bg-slate-800 dark:text-slate-200 border border-slate-700/80 rounded-md shadow-xl animate-fade-in ${positionClasses[position]}`}
-        >
-          {content}
-          <span className={`absolute w-0 h-0 pointer-events-none ${arrowClasses[position]}`} />
-        </div>
-      )}
-    </div>
+    <>
+      <div
+        ref={triggerRef}
+        className={`relative inline-flex items-center ${className}`}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+
+      {isMounted &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            role="tooltip"
+            style={{
+              position: "absolute",
+              top: position === "top" ? `${coords.top}px` : `${coords.top}px`,
+              left: `${coords.left}px`,
+              width: "max-content",
+              maxWidth: "280px",
+              transform: position === "top" ? "translateY(-100%)" : "none",
+            }}
+            className={`z-[9999] pointer-events-none px-3 py-2 text-[11px] leading-relaxed font-normal text-slate-100 bg-slate-900 dark:bg-slate-900 dark:text-slate-100 border border-slate-700/90 rounded-md shadow-2xl transition-all duration-150 ease-out ${
+              isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+            }`}
+          >
+            {content}
+            {position === "top" && (
+              <span
+                style={{ left: `${coords.arrowLeft}px` }}
+                className="absolute top-full -translate-x-1/2 w-0 h-0 border-t-slate-900 border-x-transparent border-b-transparent border-t-4 border-x-4 border-b-0"
+              />
+            )}
+            {position === "bottom" && (
+              <span
+                style={{ left: `${coords.arrowLeft}px` }}
+                className="absolute bottom-full -translate-x-1/2 w-0 h-0 border-b-slate-900 border-x-transparent border-t-transparent border-b-4 border-x-4 border-t-0"
+              />
+            )}
+          </div>,
+          document.body
+        )}
+    </>
   );
 };
 

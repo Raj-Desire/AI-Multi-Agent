@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
-import { COMMUNICATION_STYLES, getInitialAgentData, AURA_VOICES } from "./constants";
+import { COMMUNICATION_STYLES, getInitialAgentData, AURA_VOICES, AGENT_PURPOSES } from "./constants";
 import { AgentConfig, AgentPersonality } from "../../types";
 import { toast } from "sonner";
 
@@ -173,6 +173,7 @@ interface SemiCircleGaugeProps {
   label: string;
   description: string;
   icon: React.ElementType;
+  recommendedValue?: number;
   onChange: (val: number) => void;
 }
 
@@ -181,6 +182,7 @@ function SemiCircleGaugeCard({
   label,
   description,
   icon: Icon,
+  recommendedValue,
   onChange
 }: SemiCircleGaugeProps) {
   const intensity = getIntensityLabel(value);
@@ -214,13 +216,20 @@ function SemiCircleGaugeCard({
             </span>
           </div>
         </div>
-        <Badge
-          variant={value >= 80 ? "primary" : value >= 50 ? "neutral" : "warning"}
-          size="sm"
-          className="text-[10px] font-semibold"
-        >
-          {intensity}
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge
+            variant={value >= 80 ? "primary" : value >= 50 ? "neutral" : "warning"}
+            size="sm"
+            className="text-[10px] font-semibold"
+          >
+            {intensity}
+          </Badge>
+          {recommendedValue !== undefined && (
+            <span className="text-[9px] text-[var(--color-muted)] font-medium">
+              Rec: <strong className="text-[var(--color-primary)]">{recommendedValue}%</strong>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Center Gauge Visualization */}
@@ -802,6 +811,30 @@ export function Step4PersonalityCommunication({
 
   const personality = agentData.personality || getInitialAgentData().personality;
 
+  // Find matching purpose or default fallback
+  const matchedPurpose = useMemo(() => {
+    return (
+      AGENT_PURPOSES.find(
+        (p) =>
+          p.defaultRole.toLowerCase() === (agentData.role || "").toLowerCase() ||
+          p.title.toLowerCase() === (agentData.role || "").toLowerCase() ||
+          agentData.name?.toLowerCase().includes(p.id.replace(/_/g, " "))
+      ) ||
+      AGENT_PURPOSES.find((p) => p.id === "custom") ||
+      AGENT_PURPOSES[0]
+    );
+  }, [agentData.role, agentData.name]);
+
+  const recommendedStyles = useMemo(() => {
+    const parts = (matchedPurpose.defaultCommunicationStyle || "Professional + Friendly")
+      .split("+")
+      .map((s) => s.trim());
+    return {
+      primary: parts[0] || "Professional",
+      secondary: parts[1] || "None"
+    };
+  }, [matchedPurpose]);
+
   // Cleanup all audio on unmount
   useEffect(() => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -846,14 +879,23 @@ export function Step4PersonalityCommunication({
   };
 
   const resetToRecommended = () => {
-    const defaults = getInitialAgentData().personality;
+    const targetDefaults = matchedPurpose.defaultPersonality || getInitialAgentData().personality;
     setAgentData((prev) => ({
       ...prev,
-      communication_style: "Professional + Friendly",
-      response_length: "short",
-      personality: defaults
+      communication_style: matchedPurpose.defaultCommunicationStyle || "Professional + Friendly",
+      response_length: matchedPurpose.defaultResponseLength || "short",
+      personality: { ...prev.personality, ...targetDefaults },
+      voice: {
+        ...prev.voice,
+        speed: matchedPurpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0,
+        voice: matchedPurpose.recommendedVoiceId || prev.voice?.voice || "aura-orion-en"
+      },
+      llm: {
+        ...prev.llm,
+        temperature: matchedPurpose.recommendedTemperature ?? prev.llm?.temperature ?? 0.4
+      }
     }));
-    toast.success("Personality settings reset to recommended defaults.");
+    toast.success(`Reset to recommended settings for ${matchedPurpose.title}`);
   };
 
   // Structured human-readable traits breakdown for right panel
@@ -1155,7 +1197,7 @@ export function Step4PersonalityCommunication({
       {/* 1. Header with Visual Waveform Accent & Reset Button */}
       <div className="border-b border-[var(--color-border)] pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-sm sm:text-base font-bold text-[var(--color-heading)] tracking-tight flex items-center gap-1.5">
               <span>Personality &amp; Communication Style</span>
               <InfoTooltip
@@ -1166,7 +1208,19 @@ export function Step4PersonalityCommunication({
             <Badge variant="primary" size="sm" className="text-[10px]">
               AI Studio
             </Badge>
+            {matchedPurpose && (
+              <Badge variant="neutral" size="sm" className="text-[10px] flex items-center gap-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20 font-medium">
+                <Sparkles className="w-2.5 h-2.5" />
+                <span>Profile: {matchedPurpose.title}</span>
+              </Badge>
+            )}
           </div>
+          {matchedPurpose?.recommendationRationale && (
+            <p className="text-[11px] text-[var(--color-muted)] mt-1 flex items-center gap-1">
+              <span className="font-semibold text-[var(--color-primary)]">✨ Recommendation Insight:</span>
+              <span>{matchedPurpose.recommendationRationale}</span>
+            </p>
+          )}
         </div>
 
         {/* Abstract AI Waveform Visualization & Reset */}
@@ -1189,10 +1243,10 @@ export function Step4PersonalityCommunication({
             type="button"
             onClick={resetToRecommended}
             className="px-2.5 py-1.5 text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-heading)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] rounded-[var(--radius-main,0.375rem)] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-            title="Reset personality to recommended defaults"
+            title={`Reset personality to recommended defaults for ${matchedPurpose.title}`}
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Reset Recommended</span>
+            <span>Reset to Recommended</span>
           </button>
         </div>
       </div>
@@ -1201,7 +1255,7 @@ export function Step4PersonalityCommunication({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Card 1: Communication Tone & Demeanor */}
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5 flex flex-col justify-between">
-          <div>
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
                 <Smile className="w-4 h-4" />
@@ -1216,14 +1270,26 @@ export function Step4PersonalityCommunication({
                 </h3>
               </div>
             </div>
+            {matchedPurpose && (
+              <span className="text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-2 py-0.5 rounded-[var(--radius-main,0.25rem)]">
+                Rec: {matchedPurpose.defaultCommunicationStyle}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Primary Tone */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-semibold text-[var(--color-heading)] flex items-center gap-1">
-                Primary Tone <span className="text-[var(--color-danger)]">*</span>
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-[var(--color-heading)] flex items-center gap-1">
+                  Primary Tone <span className="text-[var(--color-danger)]">*</span>
+                </span>
+                {recommendedStyles.primary && (
+                  <span className="text-[9px] text-[var(--color-muted)]">
+                    Rec: <strong className="text-[var(--color-primary)]">{recommendedStyles.primary}</strong>
+                  </span>
+                )}
+              </div>
               <CustomToneSelect
                 value={primaryStyle}
                 onChange={(val) => handleStyleChange(val, secondaryStyle)}
@@ -1233,9 +1299,16 @@ export function Step4PersonalityCommunication({
 
             {/* Secondary Tone */}
             <div className="space-y-1.5">
-              <span className="text-[11px] font-semibold text-[var(--color-heading)]">
-                Secondary Tone (Optional)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-[var(--color-heading)]">
+                  Secondary Tone (Optional)
+                </span>
+                {recommendedStyles.secondary && (
+                  <span className="text-[9px] text-[var(--color-muted)]">
+                    Rec: <strong className="text-[var(--color-primary)]">{recommendedStyles.secondary}</strong>
+                  </span>
+                )}
+              </div>
               <CustomToneSelect
                 value={secondaryStyle}
                 onChange={(val) => handleStyleChange(primaryStyle, val)}
@@ -1271,7 +1344,7 @@ export function Step4PersonalityCommunication({
               </div>
             </div>
             <Badge variant="success" size="sm" className="text-[10px] font-semibold">
-              Voice Recommended
+              Voice Recommended: {matchedPurpose.defaultResponseLength || "short"}
             </Badge>
           </div>
 
@@ -1363,6 +1436,7 @@ export function Step4PersonalityCommunication({
             description="Formal, respectful & business-focused"
             icon={Briefcase}
             value={personality.professionalism ?? 85}
+            recommendedValue={matchedPurpose.defaultPersonality?.professionalism}
             onChange={(val) => updatePersonality("professionalism", val)}
           />
 
@@ -1371,6 +1445,7 @@ export function Step4PersonalityCommunication({
             description="Warm, approachable & conversational"
             icon={Smile}
             value={personality.friendliness ?? 90}
+            recommendedValue={matchedPurpose.defaultPersonality?.friendliness}
             onChange={(val) => updatePersonality("friendliness", val)}
           />
 
@@ -1379,6 +1454,7 @@ export function Step4PersonalityCommunication({
             description="Active listening & emotional awareness"
             icon={Heart}
             value={personality.empathy ?? 80}
+            recommendedValue={matchedPurpose.defaultPersonality?.empathy}
             onChange={(val) => updatePersonality("empathy", val)}
           />
 
@@ -1387,6 +1463,7 @@ export function Step4PersonalityCommunication({
             description="Decisive, authoritative & assured"
             icon={ShieldCheck}
             value={personality.confidence ?? 85}
+            recommendedValue={matchedPurpose.defaultPersonality?.confidence}
             onChange={(val) => updatePersonality("confidence", val)}
           />
         </div>
@@ -1476,16 +1553,6 @@ export function Step4PersonalityCommunication({
               })}
             </div>
 
-            {/* AI Personality Synthesis Preview */}
-            <div className="p-3 bg-[var(--color-primary)]/[0.04] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/20 space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
-                <Sparkles className="w-3 h-3" />
-                <span>Conversational Persona Summary</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-heading)] font-medium leading-relaxed italic">
-                “{getDynamicPersonalitySummary()}”
-              </p>
-            </div>
           </div>
 
           {/* Card 2: Live Persona Preview Box & Speech Synthesis */}

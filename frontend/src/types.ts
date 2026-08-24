@@ -245,6 +245,7 @@ export interface AgentRuntimeSettings {
 export interface AgentGuardrails {
   allowed_actions: string[];
   restricted_actions: string[];
+  disabled_restrictions?: string[];
   escalation_rules: string[];
 }
 

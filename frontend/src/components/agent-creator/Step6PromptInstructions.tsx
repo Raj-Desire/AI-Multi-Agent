@@ -531,7 +531,10 @@ export function Step6PromptInstructions({
             <div className="min-w-0">
               <span className="text-[9px] text-[var(--color-muted)] block uppercase font-bold">Guardrails</span>
               <span className="text-xs font-semibold text-[var(--color-heading)] truncate block">
-                {agentData.guardrails?.restricted_actions?.length || 0} Active
+                {(agentData.guardrails?.restricted_actions || []).filter(
+                  (r) => !(agentData.guardrails?.disabled_restrictions || []).includes(r)
+                ).length}{" "}
+                Active
               </span>
             </div>
           </div>

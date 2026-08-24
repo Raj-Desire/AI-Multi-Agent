@@ -36,7 +36,16 @@ export function Step1Basics({
         communication_style: purpose.defaultCommunicationStyle,
         response_length: purpose.defaultResponseLength,
         skills: purpose.defaultCapabilities,
-        personality: { ...prev.personality, ...purpose.defaultPersonality }
+        personality: { ...prev.personality, ...purpose.defaultPersonality },
+        voice: {
+          ...prev.voice,
+          voice: purpose.recommendedVoiceId || prev.voice?.voice || "aura-orion-en",
+          speed: purpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0
+        },
+        llm: {
+          ...prev.llm,
+          temperature: purpose.recommendedTemperature ?? prev.llm?.temperature ?? 0.4
+        }
       }));
     }
   };

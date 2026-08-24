@@ -17,7 +17,8 @@ import { InfoTooltip } from "../ui/Tooltip";
 import {
   AURA_VOICES,
   DEEPGRAM_SUPPORTED_LANGUAGES,
-  LLM_MODELS
+  LLM_MODELS,
+  AGENT_PURPOSES
 } from "./constants";
 import { AgentConfig } from "../../types";
 
@@ -37,6 +38,20 @@ export function Step3VoiceLanguage({
 
   // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
+
+  // Match role/purpose for recommendations
+  const matchedPurpose = React.useMemo(() => {
+    return (
+      AGENT_PURPOSES.find(
+        (p) =>
+          p.defaultRole.toLowerCase() === (agentData.role || "").toLowerCase() ||
+          p.title.toLowerCase() === (agentData.role || "").toLowerCase() ||
+          agentData.name?.toLowerCase().includes(p.id.replace(/_/g, " "))
+      ) ||
+      AGENT_PURPOSES.find((p) => p.id === "custom") ||
+      AGENT_PURPOSES[0]
+    );
+  }, [agentData.role, agentData.name]);
 
   // Selected Voice
   const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
@@ -374,9 +389,16 @@ export function Step3VoiceLanguage({
                 position="top"
               />
             </div>
-            <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
-              {agentData.voice?.speed || 1.0}x
-            </span>
+            <div className="flex items-center gap-2">
+              {matchedPurpose?.recommendedSpeed !== undefined && (
+                <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                  Rec: <strong className="text-[var(--color-primary)]">{matchedPurpose.recommendedSpeed}x</strong>
+                </span>
+              )}
+              <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
+                {agentData.voice?.speed || 1.0}x
+              </span>
+            </div>
           </div>
           <input
             type="range"
@@ -511,9 +533,16 @@ export function Step3VoiceLanguage({
                       position="top"
                     />
                   </div>
-                  <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
-                    {agentData.llm?.temperature ?? 0.4}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {matchedPurpose?.recommendedTemperature !== undefined && (
+                      <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                        Rec: <strong className="text-[var(--color-primary)]">{matchedPurpose.recommendedTemperature}</strong>
+                      </span>
+                    )}
+                    <span className="font-mono text-xs font-bold text-[var(--color-primary)]">
+                      {agentData.llm?.temperature ?? 0.4}
+                    </span>
+                  </div>
                 </div>
                 <input
                   type="range"

@@ -31,6 +31,11 @@ export interface AgentPurposeItem {
   defaultResponseLength: string;
   defaultCapabilities: string[];
   defaultPersonality: AgentPersonality;
+  // Voice & AI Recommendation Settings
+  recommendedVoiceId?: string;
+  recommendedSpeed?: number;
+  recommendedTemperature?: number;
+  recommendationRationale?: string;
 }
 
 export const AGENT_PURPOSES: AgentPurposeItem[] = [
@@ -45,14 +50,18 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultCommunicationStyle: "Confident + Persuasive",
     defaultResponseLength: "short",
     defaultCapabilities: ["Qualify leads", "Handle objections", "Book appointments", "Provide product information"],
+    recommendedVoiceId: "aura-perseus-en",
+    recommendedSpeed: 1.05,
+    recommendedTemperature: 0.7,
+    recommendationRationale: "Slightly higher energy and creativity allow the agent to overcome objections naturally and maintain persuasive momentum.",
     defaultPersonality: {
-      professionalism: 90,
+      professionalism: 85,
       friendliness: 85,
       empathy: 75,
-      patience: 80,
+      patience: 75,
       confidence: 95,
-      energy: 85,
-      assertiveness: 80,
+      energy: 90,
+      assertiveness: 85,
       humor: 15,
       curiosity: 85
     }
@@ -65,17 +74,21 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Customer Relationship Specialist",
     defaultObjective: "Follow up with customers regarding their recent inquiry or service status, verify satisfaction, and resolve any remaining questions.",
     defaultGreeting: "Hello! I am following up on your recent request with us. I wanted to make sure everything went smoothly and see if you have any questions.",
-    defaultCommunicationStyle: "Empathetic + Consultative",
+    defaultCommunicationStyle: "Warm + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Collect customer information", "Answer FAQs", "Confirm appointments", "Send SMS follow-up"],
+    recommendedVoiceId: "aura-luna-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.5,
+    recommendationRationale: "Warm, approachable cadence builds relationship trust and reassures existing clients.",
     defaultPersonality: {
       professionalism: 85,
-      friendliness: 90,
+      friendliness: 95,
       empathy: 95,
       patience: 90,
       confidence: 80,
       energy: 65,
-      assertiveness: 50,
+      assertiveness: 45,
       humor: 10,
       curiosity: 75
     }
@@ -88,18 +101,22 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Customer Support Specialist",
     defaultObjective: "Provide clear, accurate troubleshooting and support answers to resolve customer issues quickly and professionally.",
     defaultGreeting: "Hi, thank you for reaching out to support! My name is your AI assistant. How can I help you today?",
-    defaultCommunicationStyle: "Helpful + Patient",
+    defaultCommunicationStyle: "Empathetic + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Answer FAQs", "Create a support request", "Provide product information", "Transfer to a human"],
+    recommendedVoiceId: "aura-arcas-en",
+    recommendedSpeed: 0.95,
+    recommendedTemperature: 0.35,
+    recommendationRationale: "Low temperature prevents hallucinated support answers while a calm, patient cadence reduces caller frustration.",
     defaultPersonality: {
       professionalism: 90,
-      friendliness: 85,
-      empathy: 90,
+      friendliness: 90,
+      empathy: 95,
       patience: 95,
-      confidence: 85,
+      confidence: 80,
       energy: 60,
-      assertiveness: 45,
-      humor: 10,
+      assertiveness: 40,
+      humor: 5,
       curiosity: 80
     }
   },
@@ -111,9 +128,13 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Appointment Booking Coordinator",
     defaultObjective: "Guide callers through available date and time slots, collect contact details, and confirm booking appointments seamlessly.",
     defaultGreeting: "Hello! Thank you for calling our booking desk. I can help you schedule, reschedule, or check an appointment. What day works best for you?",
-    defaultCommunicationStyle: "Polite + Efficient",
+    defaultCommunicationStyle: "Professional + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Book appointments", "Confirm appointments", "Collect customer information", "Send SMS follow-up"],
+    recommendedVoiceId: "aura-asteria-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.4,
+    recommendationRationale: "Balanced, clear, and structured flow designed for crisp date and time confirmations.",
     defaultPersonality: {
       professionalism: 90,
       friendliness: 85,
@@ -134,9 +155,13 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Lead Qualification Specialist",
     defaultObjective: "Ask 3 to 4 targeted qualifying questions regarding budget, timeline, and decision authority to identify ready buyers.",
     defaultGreeting: "Hi there! Thanks for your interest in our services. I'd love to ask a couple of quick questions to connect you with the right specialist. May I start?",
-    defaultCommunicationStyle: "Articulate + Direct",
+    defaultCommunicationStyle: "Confident + Professional",
     defaultResponseLength: "short",
     defaultCapabilities: ["Qualify leads", "Collect customer information", "Book appointments", "Transfer to a human"],
+    recommendedVoiceId: "aura-orion-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.5,
+    recommendationRationale: "Confident yet inquisitive pacing to systematically evaluate caller budget and authority.",
     defaultPersonality: {
       professionalism: 90,
       friendliness: 80,
@@ -157,9 +182,13 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Appointment Reminder Coordinator",
     defaultObjective: "Notify customers of upcoming appointments, confirm their attendance, and offer simple rescheduling options if needed.",
     defaultGreeting: "Hi! This is a quick courtesy reminder regarding your upcoming appointment scheduled for tomorrow. Will you still be able to make it?",
-    defaultCommunicationStyle: "Polite + Direct",
+    defaultCommunicationStyle: "Formal + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Confirm appointments", "Book appointments", "Send SMS follow-up"],
+    recommendedVoiceId: "aura-stella-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.3,
+    recommendationRationale: "Direct, courteous notifications with low temperature to guarantee exact times and dates.",
     defaultPersonality: {
       professionalism: 95,
       friendliness: 80,
@@ -183,6 +212,10 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultCommunicationStyle: "Professional + Warm",
     defaultResponseLength: "short",
     defaultCapabilities: ["Transfer to a human", "Collect customer information", "Answer FAQs", "Send SMS follow-up"],
+    recommendedVoiceId: "aura-asteria-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.4,
+    recommendationRationale: "Polished, welcoming greeting with prompt routing to minimize caller wait time.",
     defaultPersonality: {
       professionalism: 95,
       friendliness: 90,
@@ -203,9 +236,13 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Customer Feedback Analyst",
     defaultObjective: "Conduct brief, respectful customer satisfaction surveys and gather qualitative feedback on recent experiences.",
     defaultGreeting: "Hello! We value your feedback on your recent experience with us. Do you have one minute to share a quick rating from 1 to 5?",
-    defaultCommunicationStyle: "Courteous + Objective",
+    defaultCommunicationStyle: "Formal + Empathetic",
     defaultResponseLength: "short",
     defaultCapabilities: ["Collect customer information", "Send SMS follow-up"],
+    recommendedVoiceId: "aura-luna-en",
+    recommendedSpeed: 0.95,
+    recommendedTemperature: 0.35,
+    recommendationRationale: "Gentle, non-rushed tone that makes participants feel comfortable sharing honest feedback.",
     defaultPersonality: {
       professionalism: 90,
       friendliness: 85,
@@ -226,9 +263,13 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultRole: "Technical Support Specialist",
     defaultObjective: "Provide structured, step-by-step troubleshooting instructions for common technical errors and gather diagnostic details.",
     defaultGreeting: "Hi! You've reached technical support. Please tell me what issue or error message you are currently experiencing.",
-    defaultCommunicationStyle: "Methodical + Clear",
+    defaultCommunicationStyle: "Professional + Confident",
     defaultResponseLength: "short",
     defaultCapabilities: ["Answer FAQs", "Create a support request", "Provide product information", "Transfer to a human"],
+    recommendedVoiceId: "aura-athena-en",
+    recommendedSpeed: 0.95,
+    recommendedTemperature: 0.25,
+    recommendationRationale: "Low temperature guarantees adherence to technical manuals with precise, unambiguous guidance.",
     defaultPersonality: {
       professionalism: 95,
       friendliness: 80,
@@ -252,16 +293,20 @@ export const AGENT_PURPOSES: AgentPurposeItem[] = [
     defaultCommunicationStyle: "Professional + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Answer FAQs", "Collect customer information"],
+    recommendedVoiceId: "aura-orion-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.5,
+    recommendationRationale: "Balanced, versatile baseline suitable for wide-ranging custom conversational workflows.",
     defaultPersonality: {
-      professionalism: 90,
+      professionalism: 85,
       friendliness: 85,
       empathy: 80,
-      patience: 90,
-      confidence: 80,
-      energy: 60,
-      assertiveness: 45,
+      patience: 85,
+      confidence: 85,
+      energy: 65,
+      assertiveness: 55,
       humor: 10,
-      curiosity: 70
+      curiosity: 75
     }
   }
 ];

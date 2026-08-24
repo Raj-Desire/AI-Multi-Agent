@@ -59,6 +59,7 @@ export function Step5BehaviorSafety({
   const [showAddRuleModal, setShowAddRuleModal] = useState(false);
   const [newEscalation, setNewEscalation] = useState("");
   const [showAddEscalation, setShowAddEscalation] = useState(false);
+  const [isEscalationOpen, setIsEscalationOpen] = useState(false);
   const [disabledRules, setDisabledRules] = useState<Record<string, boolean>>({});
 
   // Audio preview state for goodbye message
@@ -95,10 +96,13 @@ export function Step5BehaviorSafety({
   const conclusionMessage =
     agentData.runtime?.conclusion_message ?? "Thank you for your time. Have a great day!";
 
-  // Ensure default rules exist if empty
+  // Active rules & persisted disabled status from agentData
   const configuredRestrictions = agentData.guardrails?.restricted_actions || [];
   const activeRestrictions =
     configuredRestrictions.length > 0 ? configuredRestrictions : DEFAULT_STANDARD_RULES;
+
+  const disabledRestrictionsList = agentData.guardrails?.disabled_restrictions || [];
+  const activeRulesCount = activeRestrictions.filter((r) => !disabledRestrictionsList.includes(r)).length;
 
   const escalationRules = agentData.guardrails?.escalation_rules || [
     "Caller explicitly requests a human manager or supervisor twice",
@@ -115,6 +119,7 @@ export function Step5BehaviorSafety({
         ...prev.guardrails!,
         allowed_actions: prev.guardrails?.allowed_actions || [],
         restricted_actions: updated,
+        disabled_restrictions: prev.guardrails?.disabled_restrictions || [],
         escalation_rules: prev.guardrails?.escalation_rules || []
       }
     }));
@@ -124,13 +129,16 @@ export function Step5BehaviorSafety({
   };
 
   const handleRemoveRestriction = (index: number) => {
+    const targetRule = activeRestrictions[index];
     const updated = activeRestrictions.filter((_, i) => i !== index);
+    const updatedDisabled = disabledRestrictionsList.filter((r) => r !== targetRule);
     setAgentData((prev) => ({
       ...prev,
       guardrails: {
         ...prev.guardrails!,
         allowed_actions: prev.guardrails?.allowed_actions || [],
         restricted_actions: updated,
+        disabled_restrictions: updatedDisabled,
         escalation_rules: prev.guardrails?.escalation_rules || []
       }
     }));
@@ -138,9 +146,20 @@ export function Step5BehaviorSafety({
   };
 
   const toggleRuleEnabled = (rule: string) => {
-    setDisabledRules((prev) => ({
+    const isCurrentlyDisabled = disabledRestrictionsList.includes(rule);
+    const updatedDisabled = isCurrentlyDisabled
+      ? disabledRestrictionsList.filter((r) => r !== rule)
+      : [...disabledRestrictionsList, rule];
+
+    setAgentData((prev) => ({
       ...prev,
-      [rule]: !prev[rule]
+      guardrails: {
+        ...prev.guardrails!,
+        allowed_actions: prev.guardrails?.allowed_actions || [],
+        restricted_actions: activeRestrictions,
+        disabled_restrictions: updatedDisabled,
+        escalation_rules: prev.guardrails?.escalation_rules || []
+      }
     }));
   };
 
@@ -252,8 +271,6 @@ export function Step5BehaviorSafety({
     }));
     toast.success("Silence message reset to default.");
   };
-
-  const activeRulesCount = activeRestrictions.filter((r) => !disabledRules[r]).length;
 
   return (
     <div className="space-y-6 text-left">
@@ -765,7 +782,7 @@ export function Step5BehaviorSafety({
         {/* Safety Rules Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           {activeRestrictions.map((rule, idx) => {
-            const isDisabled = disabledRules[rule] ?? false;
+            const isDisabled = disabledRestrictionsList.includes(rule);
 
             return (
               <div
@@ -823,75 +840,117 @@ export function Step5BehaviorSafety({
           })}
         </div>
 
-        {/* Escalation Rules (When Should the Agent Get Help?) */}
+        {/* Escalation Rules (When Should the Agent Get Help?) - Collapsible Accordion */}
         <div className="pt-3 border-t border-[var(--color-border)] space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                <UserCheck className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                <span>When Should the Agent Get Help? (Escalation Triggers)</span>
-                <InfoTooltip
-                  content="Specific caller triggers or conditions under which the agent transfers to a human team member."
-                  position="top"
-                />
-              </h4>
+          <div
+            onClick={() => setIsEscalationOpen(!isEscalationOpen)}
+            className="flex items-center justify-between cursor-pointer group select-none p-1.5 -mx-1.5 rounded-[var(--radius-main,0.375rem)] hover:bg-[var(--color-surface-muted)] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-[var(--radius-main,0.25rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <UserCheck className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <span>When Should the Agent Get Help? (Escalation Triggers)</span>
+                  <InfoTooltip
+                    content="Specific caller triggers or conditions under which the agent transfers to a human team member."
+                    position="top"
+                  />
+                </h4>
+              </div>
+              <Badge variant="neutral" size="sm" className="text-[10px] font-mono font-semibold ml-1">
+                {escalationRules.length} Triggers
+              </Badge>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowAddEscalation(!showAddEscalation)}
-              className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add Escalation Trigger</span>
-            </button>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEscalationOpen(true);
+                  setShowAddEscalation(!showAddEscalation);
+                }}
+                className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" />
+                <span>+ Add Escalation Trigger</span>
+              </button>
+
+              <div
+                className={`p-1 rounded text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-transform duration-200 ${
+                  isEscalationOpen ? "rotate-180" : "rotate-0"
+                }`}
+              >
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
           </div>
 
-          {showAddEscalation && (
-            <div className="p-3 bg-[var(--color-surface-muted)]/80 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex gap-2 animate-fade-in">
-              <input
-                type="text"
-                value={newEscalation}
-                onChange={(e) => setNewEscalation(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddEscalation();
-                }}
-                placeholder="e.g. Caller asks to speak to an accountant or supervisor..."
-                className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                autoFocus
-              />
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                disabled={!newEscalation.trim()}
-                onClick={handleAddEscalation}
-                className="text-xs h-8 px-3"
-              >
-                Add
-              </Button>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            {escalationRules.map((rule, idx) => (
-              <div
-                key={idx}
-                className="p-2.5 bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-2 min-w-0 pr-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                  <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
+          {/* Smooth Collapsible Content Container */}
+          <div
+            className={`grid transition-all duration-300 ease-in-out overflow-hidden ${
+              isEscalationOpen
+                ? "grid-rows-[1fr] opacity-100 mt-2"
+                : "grid-rows-[0fr] opacity-0 pointer-events-none"
+            }`}
+          >
+            <div className="overflow-hidden space-y-2.5">
+              {showAddEscalation && (
+                <div className="p-3 bg-[var(--color-surface-muted)]/80 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex gap-2 animate-fade-in shadow-2xs">
+                  <input
+                    type="text"
+                    value={newEscalation}
+                    onChange={(e) => setNewEscalation(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddEscalation();
+                    }}
+                    placeholder="e.g. Caller asks to speak to an accountant or supervisor..."
+                    className="flex-1 h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={!newEscalation.trim()}
+                    onClick={handleAddEscalation}
+                    className="text-xs h-8 px-3"
+                  >
+                    Add
+                  </Button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveEscalation(idx)}
-                  className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
-                  title="Remove escalation trigger"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              )}
+
+              <div className="space-y-1.5">
+                {escalationRules.length === 0 ? (
+                  <p className="text-xs text-[var(--color-muted)] italic py-2">
+                    No escalation triggers configured. Click "+ Add Escalation Trigger" above.
+                  </p>
+                ) : (
+                  escalationRules.map((rule, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-xs transition-all"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <span className="text-[var(--color-heading)] font-medium truncate">{rule}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEscalation(idx)}
+                        className="text-[var(--color-muted)] hover:text-red-500 transition-colors p-1 cursor-pointer"
+                        title="Remove escalation trigger"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>
