@@ -50,8 +50,9 @@ class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
+    endpointing: int = 500  # End-of-turn timeout in ms (prevents cutting off user during natural breath pauses)
     eot_threshold: Optional[float] = None
-    eager_eot: bool = True
+    eager_eot: bool = False
     keyterms: List[str] = Field(default_factory=list)
 
 

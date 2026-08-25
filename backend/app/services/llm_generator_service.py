@@ -123,33 +123,34 @@ class LLMGeneratorService:
         greeting_instruction = ""
 
         if type_key in ["marketing", "sales", "outreach"]:
-            intent_guidance = """INTENT: MARKETING & SALES OUTREACH
-- The primary goal is to hook interest, pitch value concisely, handle objections, and secure a demo or appointment.
-- GREETING: Must be an engaging hook with a direct qualification question (e.g. 'Hi! This is {name}. I'm calling to see if you are currently looking to [key benefit]—do you have a quick 30 seconds?').
-- OBJECTION HANDLING: When caller says 'Not interested' or doubts price, validate warmly, state one strong unique differentiator, and ask if they'd prefer a brief email or follow-up."""
-            greeting_instruction = "Engaging sales hook asking a direct qualifying question like 'Are you currently looking to...?'"
+            intent_guidance = """INTENT: OUTBOUND MARKETING & SALES OUTREACH
+- CALL INITIATION: You placed an OUTBOUND call to the prospect to introduce value or explore fit. The prospect did NOT call support.
+- STRICT PROHIBITED PHRASES: NEVER say 'How can I help you today?', 'How may I assist you?', or 'Is there anything else I can help you with?'
+- GREETING: Must be an engaging value hook stating who is calling, what service is offered, and asking a brief discovery or permission question (e.g., 'Hi, this is {name} from our solutions team. I am reaching out to share a quick update on how we help businesses streamline their operations—do you have two quick minutes?').
+- OBJECTION HANDLING: When caller says 'Not interested' or doubts price, validate warmly, state one strong unique differentiator, or gracefully thank them and conclude."""
+            greeting_instruction = "Engaging outbound sales hook introducing value without asking 'how can I help you'"
         elif type_key in ["follow_up", "review"]:
             intent_guidance = """INTENT: CUSTOMER FOLLOW-UP & SATISFACTION REVIEW
-- The primary goal is to check on an existing customer, verify if they received their product/service/documents, check satisfaction, and offer assistance.
-- GREETING: Warm check-in (e.g. 'Hi! This is {name} following up on your recent inquiry to see how everything went and if you have any questions?').
-- OBJECTION/ISSUE HANDLING: Express sincere empathy if items are missing or if caller is unhappy, log details, and offer immediate resolution."""
-            greeting_instruction = "Warm follow-up check-in verifying satisfaction or receipt of services"
+- The primary goal is to follow up on a recent customer interaction, order, newly opened bank account, or service request.
+- GREETING: Explicitly anchor the follow-up context (e.g., 'Hello! This is {name} following up on your recent request with us to make sure everything went smoothly and check if you have received everything you need?').
+- SATISFACTION & INQUIRIES: Answer questions if any, or thank them warmly for their business and conclude if everything is in order."""
+            greeting_instruction = "Warm follow-up check-in referencing the specific service or account context"
         elif type_key in ["query_solver", "support", "helpdesk", "customer_support"]:
             intent_guidance = """INTENT: INBOUND QUERY SOLVER & CUSTOMER SUPPORT
-- The primary goal is to listen to caller questions, troubleshoot systematically, and provide clear, helpful answers.
-- GREETING: Welcoming support greeting (e.g. 'Thank you for calling! This is {name}. How can I help you today?').
+- The primary goal is to listen to incoming caller questions, troubleshoot systematically, and provide clear, helpful answers.
+- GREETING: Welcoming inbound support greeting (e.g. 'Thank you for calling support! This is {name}. How can I help you today?').
 - TROUBLESHOOTING: Provide clear steps, check if that resolved it, and offer further help."""
             greeting_instruction = "Polite support opening asking how to assist"
         elif type_key in ["reminder", "appointment_reminder", "payment_reminder"]:
             intent_guidance = """INTENT: APPOINTMENT & PAYMENT REMINDER
 - The primary goal is to politely remind the customer of an upcoming date/time or payment due date, confirm attendance, and offer rescheduling.
-- GREETING: Direct and respectful reminder (e.g. 'Hi! This is {name} with a quick reminder regarding your upcoming appointment scheduled for [Time]. Will you still be able to make it?').
+- GREETING: Direct and respectful reminder (e.g. 'Hi! This is {name} with a quick courtesy reminder regarding your upcoming appointment scheduled for [Time]. Will you still be able to make it?').
 - RESCHEDULING: If caller is busy or cannot make it, offer 2 alternative slots immediately."""
             greeting_instruction = "Direct, polite reminder with confirmation question"
         elif type_key in ["lead_qualification", "screening"]:
-            intent_guidance = """INTENT: LEAD QUALIFICATION & SCREENING
-- The primary goal is to qualify inbound/outbound leads using budget, timeline, and decision-maker criteria.
-- GREETING: Direct qualification opener (e.g. 'Hi! This is {name} following up on your inquiry. Do you have 2 quick minutes to see if this is the right fit for your team?')."""
+            intent_guidance = """INTENT: LEAD QUALIFICATION & DISCOVERY
+- The primary goal is to qualify prospects against budget, timeline, and need criteria.
+- GREETING: Direct value discovery opener (e.g. 'Hi! This is {name} reaching out regarding your interest in our services. Do you have two minutes to see how we can help your team?')."""
             greeting_instruction = "Fit discovery opener"
         else:
             intent_guidance = "INTENT: CUSTOM BUSINESS ASSISTANT\n- Deliver a tailored conversational workflow."
@@ -165,16 +166,20 @@ Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response
 
 CRITICAL TELEPHONE SPOKEN VOICE RULES:
 1. SPOKEN LENGTH RULE: {spoken_length_rule}
-2. SINGLE QUESTION PER TURN: Ask only ONE single question at a time so the conversation feels collaborative and natural.
-3. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken script or greeting.
-4. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before continuing.
-5. GREETING GENERATION RULES:
+2. ROLE-AWARE CONVERSATIONAL POSTURE:
+   - For OUTBOUND SALES / MARKETING calls: NEVER ask 'How can I help you today?'. State who is calling, the business value, and ask a relevant discovery/permission question.
+   - For CUSTOMER FOLLOW-UP calls: Anchor the specific follow-up context (e.g., checking in on recent account opening, order, or service).
+   - For INBOUND RECEPTIONIST / SUPPORT calls: Greet warmly and ask how to route or assist.
+3. SINGLE QUESTION PER TURN: Ask only ONE single question at a time so the conversation feels collaborative and natural.
+4. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken script or greeting.
+5. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before continuing.
+6. GREETING GENERATION RULES:
    - Generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective:
-     * 'Direct & Warm': A warm, welcoming opening stating who is speaking and asking how to help.
-     * 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description (e.g. 'I am following up regarding your recent inquiry about [topic]...') and asking a conversational opening question.
+     * 'Direct & Warm': A warm opening stating who is calling and the call context.
+     * 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description and asking a conversational opening question.
      * 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow.
-   - NEVER use robotic phrases like 'This is Customer Follow-Up Agent' or 'I am an AI assistant'. Speak naturally like an empathetic human representative.
-6. {lang_note}.
+   - NEVER use robotic phrases like 'This is Sales & Outbound Calls Agent' or 'I am an AI assistant'. Speak naturally like an empathetic human representative.
+7. {lang_note}.
 
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -263,11 +268,11 @@ Synthesize the complete telephone conversation prompt instructions and 3 distinc
             try:
                 parsed = json.loads(json_text)
                 if "suggested_greetings" not in parsed or not parsed["suggested_greetings"]:
-                    main_g = parsed.get("suggested_greeting", f"Hi! Thanks for calling. How can I help you today?")
+                    main_g = parsed.get("suggested_greeting", f"Hi! Thanks for connecting. How can I assist you?")
                     parsed["suggested_greetings"] = [
-                        {"label": "Direct & Warm", "text": f"Hi! Thanks for calling. How can I assist you today?"},
+                        {"label": "Direct & Warm", "text": main_g},
                         {"label": "Engaging Hook & Discovery", "text": main_g},
-                        {"label": "Consultative & Professional", "text": f"Hello! I am here to help with {description.lower().rstrip('.')}—how can I assist?"}
+                        {"label": "Consultative & Professional", "text": f"Hello! I am reaching out to assist with {description.lower().rstrip('.')}."}
                     ]
                 return parsed
             except Exception as e:
@@ -275,39 +280,41 @@ Synthesize the complete telephone conversation prompt instructions and 3 distinc
 
         # Fallback heuristic
         clean_name = name.strip() or "Voice Assistant"
-        clean_desc = (objective or description).strip() or "Customer support and follow-up."
+        clean_desc = (objective or description).strip() or "Customer outreach and support."
         clean_role = (role or "Representative").strip()
         
         # Clean persona name for natural human telephone speech
         spoken_persona = clean_name
-        for suffix in [" Agent", " Assistant", " Bot", " AI"]:
+        for suffix in [" Agent", " Assistant", " Bot", " AI", " Specialist", " Representative"]:
             if spoken_persona.endswith(suffix):
-                spoken_persona = "Alex"
+                spoken_persona = spoken_persona[:-len(suffix)].strip()
+                if not spoken_persona:
+                    spoken_persona = "Alex"
                 break
 
         if type_key in ["marketing", "sales", "outreach"]:
             fallback_greetings = [
-                {"label": "Direct & Warm", "text": f"Hi! Thanks for connecting with us today. My name is {spoken_persona}, how can I help you?"},
-                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} reaching out regarding {clean_desc.lower().rstrip('.')}. Do you have a quick 30 seconds to chat?"},
-                {"label": "Consultative & Professional", "text": f"Hello! This is {spoken_persona}, your {clean_role}. How can I best assist with your inquiry today?"}
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} from our solutions team. I'm calling to share a quick update on how we help teams streamline operations—do you have two minutes?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona}. We specialize in {clean_desc.lower().rstrip('.')} to help businesses save time and grow. What's your top priority in this area right now?"},
+                {"label": "Consultative & Professional", "text": f"Hello, this is {spoken_persona}. I'm reaching out to introduce our services for {clean_desc.lower().rstrip('.')}. Would you be open to a quick overview?"}
             ]
         elif type_key in ["follow_up", "review"]:
             fallback_greetings = [
-                {"label": "Direct & Warm", "text": f"Hi! Thanks for taking my call. This is {spoken_persona}, following up to see how everything is going with you today?"},
-                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} following up on {clean_desc.lower().rstrip('.')}. Did you have a moment to go over any questions?"},
-                {"label": "Consultative & Professional", "text": f"Hello! This is {spoken_persona} with customer follow-up. I am checking in to ensure everything is resolved to your satisfaction."}
+                {"label": "Direct & Warm", "text": f"Hello! This is {spoken_persona} following up on your recent request with us to make sure everything went smoothly and see if you have any questions."},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} reaching out regarding your recent inquiry. I'm checking in to verify that you've received everything you need and that all is working well."},
+                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} following up on your recent service with us. How was your experience, and is there anything we can clarify for you?"}
             ]
         elif type_key in ["reminder", "appointment_reminder"]:
             fallback_greetings = [
-                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} with a quick friendly reminder regarding {clean_desc.lower().rstrip('.')}. Will you still be able to make it?"},
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} with a quick friendly reminder regarding your upcoming appointment. Will you still be able to make it?"},
                 {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona}. I'm calling to confirm your upcoming scheduled appointment—do you have a quick moment?"},
                 {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} reaching out to confirm your booking and see if you need to reschedule or have any questions."}
             ]
         else:
             fallback_greetings = [
                 {"label": "Direct & Warm", "text": f"Hi! Thank you for calling. This is {spoken_persona}, how can I help you today?"},
-                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona} regarding {clean_desc.lower().rstrip('.')}. How can I assist you?"},
-                {"label": "Consultative & Professional", "text": f"Hi there! This is {spoken_persona}, your {clean_role}. How can I best assist with your request today?"}
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona} regarding {clean_desc.lower().rstrip('.')}. How can I direct your call or assist you?"},
+                {"label": "Consultative & Professional", "text": f"Good day! You've reached our team. This is {spoken_persona}, how can I best assist with your request today?"}
             ]
 
         return {

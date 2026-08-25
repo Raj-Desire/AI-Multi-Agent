@@ -61,11 +61,13 @@ class AgentRuntimeBuilder:
             configured_lang = config.voice.language.lower().strip()
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
+        listen_endpointing = getattr(config.listen, "endpointing", 500) if config.listen else 500
         listen_provider = DeepgramListenProvider(
             type="deepgram",
             model=listen_model,
             language=configured_lang,
             smart_format=True,
+            endpointing=listen_endpointing or 500,
             keyterms=config.listen.keyterms if config.listen and config.listen.keyterms else None
         )
         listen_config = DeepgramListenConfig(

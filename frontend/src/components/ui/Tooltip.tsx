@@ -180,18 +180,24 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({
 
   return (
     <Tooltip content={content} position={position} className={className}>
-      <button
-        type="button"
+      <span
+        role="button"
         tabIndex={0}
         aria-label="More information"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
         }}
-        className={`inline-flex items-center justify-center p-0.5 rounded-full transition-colors cursor-help shrink-0 opacity-70 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] ${iconClassName}`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        className={`inline-flex items-center justify-center p-0.5 rounded-full transition-colors cursor-help shrink-0 opacity-70 hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] select-none ${iconClassName}`}
       >
         <Info style={{ width: size, height: size }} />
-      </button>
+      </span>
     </Tooltip>
   );
 };

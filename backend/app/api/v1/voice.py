@@ -201,10 +201,11 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 "leave a message after",
                 "thank you for your time. have a great day",
                 "we will follow up at a convenient time. goodbye",
-                "goodbye",
-                "good bye",
                 "have a great day, goodbye",
-                "have a great day! goodbye"
+                "have a great day! goodbye",
+                "goodbye and have a wonderful day",
+                "thanks for your time today, goodbye",
+                "goodbye, take care"
             ]
             if any(t in lower_content for t in conclusion_triggers):
                 logger.info(f"[VoicePreview] Assistant conclusion phrase detected: '{content[:50]}...'. Ending session.")
@@ -223,9 +224,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_user_speaking():
-        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence, is_concluding_call
         is_user_speaking = True
         is_agent_speaking = False
+        is_concluding_call = False  # Reset conclusion state when user speaks
         last_user_speech_time = time.time()
         has_reprompted_silence = False
         try:
@@ -267,9 +269,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     continue
 
                 runtime = agent_config.runtime or AgentRuntimeSettings()
-                silence_timeout = max(3, runtime.silence_timeout)
-                hangup_delay = max(2, runtime.silence_hangup_delay or 5)
-                max_duration = max(10, runtime.maximum_call_duration or 1800)
+                # In interactive browser preview playground, allow generous silence window
+                silence_timeout = max(15, runtime.silence_timeout if runtime.silence_timeout > 5 else 20)
+                hangup_delay = max(10, runtime.silence_hangup_delay if runtime.silence_hangup_delay > 5 else 15)
+                max_duration = max(30, runtime.maximum_call_duration or 1800)
                 conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
                 reprompt_msg = (runtime.silence_reprompt_message or "Are you still there? I'm here if you have any questions.").strip()
 

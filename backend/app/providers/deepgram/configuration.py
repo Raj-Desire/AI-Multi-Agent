@@ -29,6 +29,7 @@ class DeepgramListenProvider(BaseModel):
     language: Optional[str] = "en"
     smart_format: Optional[bool] = True
     keyterms: Optional[List[str]] = None
+    endpointing: Optional[int] = 500  # 500ms natural breath pause buffer to prevent cutting user off mid-sentence
 
 
 class DeepgramListenConfig(BaseModel):

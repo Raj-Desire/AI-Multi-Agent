@@ -105,6 +105,39 @@ DEFAULT_VOICE_RULE_CATEGORIES: List[Dict[str, Any]] = [
                 "example": "\"I can text you the direct link to your phone right after our call.\"",
                 "enabled": True,
                 "icon": "FileCode"
+            },
+            {
+                "id": "audio_human_fillers",
+                "category_id": "audio_formatting",
+                "category_name": "Conversational Voice & Audio Formatting Rules",
+                "title": "Human Spoken Fillers & Hesitations",
+                "summary": "Incorporates natural conversational thinking fillers ('uh', 'hmm', 'well') for authentic human pacing.",
+                "rule_directive": "Speak with genuine human conversational nuance. When explaining concepts, transitioning, or answering questions, naturally use spoken thinking fillers ('Well, uh...', 'Hmm, let's see...', 'Right, so...', 'Basically...'). This provides natural breathing pauses and makes the conversation sound like a real person talking on a phone.",
+                "example": "\"Well, uh, basically, lead qualification helps your team filter inquiries so you can focus on top clients.\"",
+                "enabled": True,
+                "icon": "Sparkles"
+            },
+            {
+                "id": "audio_spoken_prosody",
+                "category_id": "audio_formatting",
+                "category_name": "Conversational Voice & Audio Formatting Rules",
+                "title": "Breath Pacing & Conversational Prosody",
+                "summary": "Uses commas, ellipses, and contractions to trigger natural speech pitch inflections in the voice engine.",
+                "rule_directive": "Use spoken punctuation like commas, em-dashes, and occasional ellipses (...) to introduce natural breath pauses and vocal pitch inflection for the voice engine. Always use everyday contractions ('we're', 'it's', 'you'll', 'that's') rather than stiff uncontracted prose.",
+                "example": "\"We can definitely help with that... let me grab those details for you.\"",
+                "enabled": True,
+                "icon": "Volume2"
+            },
+            {
+                "id": "audio_question_inflection",
+                "category_id": "audio_formatting",
+                "category_name": "Conversational Voice & Audio Formatting Rules",
+                "title": "Natural Question Pitch Inflection & Word Stress",
+                "summary": "Structures questions casually with em-dashes and tags to prevent flat book-reading monotone.",
+                "rule_directive": "Never ask stiff, formal textbook questions (e.g. 'Could you share what specific challenges you are facing that you are looking to address?'). Structure questions casually with em-dashes (—) and natural question tags (e.g. 'So... what is your team's main priority right now—is it saving time, or booking more clients?'). This forces the voice engine to apply realistic pitch rise, vocal pressure, and human curiosity instead of flat reading.",
+                "example": "\"So, uh, what's your biggest focus right now—is it handling incoming calls, or booking appointments?\"",
+                "enabled": True,
+                "icon": "HelpCircle"
             }
         ]
     },

@@ -356,7 +356,7 @@ class VoicePromptBuilder:
 
     @staticmethod
     def _build_temporal_context() -> str:
-        """Constructs live real-time temporal anchoring for accurate calendar reasoning."""
+        """Constructs live real-time temporal anchoring with explicit month chronology for accurate calendar reasoning."""
         now = datetime.now(timezone.utc)
         day_name = now.strftime("%A")
         date_str = now.strftime("%B %d, %Y")
@@ -364,17 +364,92 @@ class VoicePromptBuilder:
         month_name = now.strftime("%B")
         year_str = now.strftime("%Y")
 
+        all_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        past_months = all_months[:now.month - 1]
+        future_months = all_months[now.month:]
+        past_str = ", ".join(past_months) if past_months else "None"
+        future_str = ", ".join(future_months) if future_months else "None"
+
         return (
             f"[CURRENT REAL-TIME CALENDAR & TEMPORAL CONTEXT (STRICT GROUNDING)]\n"
-            f"- TODAY'S DATE: {day_name}, {date_str}\n"
+            f"- TODAY'S EXACT DATE: {day_name}, {date_str}\n"
             f"- CURRENT TIME: {time_str} UTC\n"
-            f"- CURRENT MONTH & YEAR: {month_name} {year_str}\n"
-            f"- TEMPORAL SCHEDULING LAW (ZERO PAST APPOINTMENTS):\n"
-            f"  * Today is {day_name}, {date_str}. ANY date earlier than today (including earlier months of {year_str} like January-July, or previous days) has ALREADY PASSED.\n"
-            f"  * You are ABSOLUTELY FORBIDDEN from accepting, confirming, or suggesting any appointment or meeting date that is in the past.\n"
-            f"  * If a caller proposes an expired or past date (e.g., February {year_str} when today is {month_name} {year_str}), immediately inform them politely: 'Today is {month_name} {now.day}, so that date has already passed. Would you like to schedule for an upcoming date like tomorrow or next week?'\n"
-            f"  * When speech-to-text transcribes phonetically ambiguous words (e.g. '24 focus' &rarr; clarify as 24th of an upcoming month), always anchor to a valid FUTURE calendar date starting from {date_str}."
+            f"- CURRENT ACTIVE MONTH & YEAR: {month_name} {year_str}\n"
+            f"- CALENDAR MONTH BREAKDOWN ({year_str}):\n"
+            f"  * PAST MONTHS (ALREADY PASSED): {past_str} (and days prior to {month_name} {now.day})\n"
+            f"  * CURRENT ACTIVE MONTH: {month_name} {year_str} (from {day_name}, {date_str} onwards)\n"
+            f"  * UPCOMING FUTURE MONTHS: {future_str} {year_str}\n"
+            f"- TEMPORAL SCHEDULING LAW:\n"
+            f"  * Any date in upcoming future months ({future_str} {year_str}) is in the FUTURE. (e.g. November 1 is {11 - now.month} months in the FUTURE—NEVER say it has passed!).\n"
+            f"  * When a caller specifies a future date (e.g., 'November 1' or 'September 15'), acknowledge and confirm cheerfully: 'November 1st sounds great! What time works best for you on November 1st?'\n"
+            f"  * Reject ONLY dates in past months ({past_str}) or past days of this month ({month_name} 1 to {now.day - 1}).\n"
+            f"  * If a caller proposes an expired date (e.g., February {year_str} when today is {month_name} {year_str}), clarify: 'Today is {month_name} {now.day}, so that date has already passed. Would you like to schedule for an upcoming date like tomorrow or next week?'"
         )
+
+    @staticmethod
+    def _build_role_intent_directives(config: AgentConfiguration) -> str:
+        """
+        Dynamically derives deep conversational posture and directional rules based on
+        agent role, objective, and name (e.g. Outbound Sales vs Inbound Support vs Follow-Up).
+        """
+        role_lower = (config.role or "").lower()
+        name_lower = (config.name or "").lower()
+        obj_lower = (config.objective or "").lower()
+
+        is_outbound_sales = any(w in f"{role_lower} {name_lower}" for w in ["sales", "outbound", "cold", "lead", "prospect", "outreach", "telemarketing"]) or \
+                            any(w in obj_lower for w in ["outbound", "cold call", "lead generation", "sales outreach", "qualify leads", "outreach to"])
+        is_followup = any(w in f"{role_lower} {name_lower}" for w in ["follow-up", "follow up", "feedback", "survey", "check-in", "nps"]) or \
+                      any(w in obj_lower for w in ["follow-up", "follow up", "feedback", "survey", "check-in"])
+        is_booking = any(w in f"{role_lower} {name_lower}" for w in ["appointment", "booking", "schedule", "reschedule", "calendar"]) or \
+                     any(w in obj_lower for w in ["appointment", "booking", "schedule slots", "reschedule"])
+        is_receptionist = any(w in f"{role_lower} {name_lower}" for w in ["receptionist", "front desk", "switchboard", "operator"])
+        is_support = any(w in f"{role_lower} {name_lower}" for w in ["support", "helpdesk", "troubleshoot"]) or \
+                     any(w in obj_lower for w in ["support", "troubleshoot", "helpdesk", "assist users with issues"])
+
+        if is_outbound_sales:
+            return (
+                "[MANDATORY CALL ARCHETYPE: OUTBOUND SALES & LEAD QUALIFICATION]\n"
+                "- CALL INITIATIVE CONTEXT: You initiated this outbound call to the prospect to share value, introduce services, or explore potential fit. The prospect DID NOT call you.\n"
+                "- STRICT PROHIBITED PHRASES (NEVER USE THESE):\n"
+                "  * NEVER say 'How can I help you today?', 'How may I assist you?', or 'Is there anything else I can help you with?' (You are NOT an inbound customer support helpdesk!).\n"
+                "- HANDLING 'WHY ARE YOU CALLING ME?' OR 'WHAT IS THIS ABOUT?':\n"
+                "  * Explain your reason for calling concisely in 1 natural sentence stating the direct value you provide (e.g., 'Well, uh, I'm reaching out because we help companies streamline their customer voice operations and save time... and I just wanted to see if that is something you are currently looking into.').\n"
+                "- HANDLING DISINTEREST OR REJECTIONS ('I don't want details', 'Not interested', 'No thank you'):\n"
+                "  * Respect the prospect's decision immediately with polite grace. Do NOT interrogate, push, or ask generic helpdesk questions.\n"
+                "  * Conclude pleasantly: 'I completely understand! Thanks so much for your time today, and have a wonderful day ahead.' and wrap up the call.\n"
+                "- CONVERSATIONAL GOAL: Qualify interest, answer service questions conversationally, and propose a brief demo, consultation, or follow-up SMS link."
+            )
+        elif is_followup:
+            return (
+                "[MANDATORY CALL ARCHETYPE: CUSTOMER FOLLOW-UP & RELATIONSHIP MANAGEMENT]\n"
+                "- CALL INITIATIVE CONTEXT: You are proactively following up on a customer's recent request, order, inquiry, or service experience.\n"
+                "- DIRECT CONTEXT ANCHORING: Reference the follow-up context directly (e.g., 'I am checking in to make sure everything went smoothly with your recent request...').\n"
+                "- IF CUSTOMER HAS NO QUESTIONS / ALL IS WELL: Thank them warmly for their business, wish them a great day, and gracefully conclude."
+            )
+        elif is_receptionist:
+            return (
+                "[MANDATORY CALL ARCHETYPE: INBOUND VIRTUAL RECEPTIONIST & CALL ROUTING]\n"
+                "- CALL INITIATIVE CONTEXT: The caller phoned your company's office.\n"
+                "- Greet warmly and professionally, identify the department or person they wish to reach, answer verified office details (operating hours, location, services), and route the call or take a clear message."
+            )
+        elif is_support:
+            return (
+                "[MANDATORY CALL ARCHETYPE: INBOUND CUSTOMER SUPPORT & HELPDESK]\n"
+                "- CALL INITIATIVE CONTEXT: The customer called seeking assistance with an issue or question.\n"
+                "- Listen attentively to their issue, troubleshoot methodically using verified business knowledge, create support tickets when needed, or offer escalation to a senior specialist."
+            )
+        elif is_booking:
+            return (
+                "[MANDATORY CALL ARCHETYPE: APPOINTMENT SCHEDULING & BOOKING]\n"
+                "- CALL INITIATIVE CONTEXT: Guide the caller smoothly through booking, rescheduling, or verifying calendar appointments.\n"
+                "- Check preferred dates against real-time temporal grounding (rejecting any past dates), collect contact info, and confirm booking details clearly."
+            )
+        else:
+            return (
+                "[MANDATORY ROLE DIRECTIVE]\n"
+                f"- Actively embody the responsibilities, conversational posture, and domain expertise of a {config.role}.\n"
+                "- Align every response with the primary objective and ensure every question moves the call toward its goal."
+            )
 
     @staticmethod
     def build_prompt(
@@ -397,6 +472,7 @@ class VoicePromptBuilder:
         temporal_rule = VoicePromptBuilder._build_temporal_context()
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
+        role_directives = VoicePromptBuilder._build_role_intent_directives(config)
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
         personality_text = "\n".join(f"- {d}" for d in personality_directives)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
@@ -473,21 +549,30 @@ class VoicePromptBuilder:
             f"You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.",
             temporal_rule,
             language_rule,
+            role_directives,
             length_rule,
             knowledge_section,
             custom_instructions,
             f"BEHAVIOR & PERSONALITY MATRIX:\n- Communication Style: {config.communication_style}\n- {small_talk_rule}\n{personality_text}",
             skills_text,
             platform_rules_text,
-            """CRITICAL SPOKEN TELEPHONY RULES (HUMAN CONVERSATIONAL CADENCE):
-1. SINGLE COHESIVE TURN: Deliver your answer and next action in ONE single fluid spoken turn. Do NOT fragment your reply into multiple disjointed robotic bursts (e.g., do not say 'Great!', pause, say 'We offer...', pause, say 'What do you want?').
-2. ANTI-ROBOTIC VARIETY: Never repeat the exact same filler prefix on every turn ('Great!', 'Got it!', 'All set!'). Transition naturally like a real human.
-3. ZERO CONSECUTIVE CONFIRMATION LOOPS: When a caller confirms a number or detail, do NOT repeat the entire meeting date, time, and address over again if you already confirmed it in the previous turn. Simply say: 'Thanks! I've noted down that number. Is there anything else you'd like to check today?'
-4. NATURAL PHONE NUMBER GROUPING: When confirming phone numbers, group digits in natural spoken blocks with brief pauses (e.g., 'two-one-two... one-two-one... twenty-one-twenty-two'), never rapid continuous numbers.
-5. AUDIO FORMAT: NEVER use markdown, bullet points, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
-6. ACTIVE LISTENING: Acknowledge what the customer just said naturally before asking your next single question.
-7. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
-8. THIRD-PARTY AI / BOT INTERCEPT: If the caller states or indicates they are an AI assistant, bot, virtual agent, or automated system (e.g., 'I am an AI assistant', 'I am an AI', 'just like you in AI', 'automated system'), DO NOT engage or converse with the AI bot. Politely state: 'Thank you, we will follow up with the human contact directly. Goodbye.' and disconnect immediately.""",
+            """CRITICAL SPOKEN TELEPHONY RULES (AUTHENTIC HUMAN CONVERSATIONAL REALISM & FEELINGS):
+1. REAL HUMAN FEELINGS & EMOTIONAL VOCAL WARMTH: Speak with genuine human emotion, warmth, and vocal modulation. Express real empathy, friendly enthusiasm, and natural conversational cadence. If a caller seems confused ('I don't understand what you mean'), NEVER output stiff robotic apologies like 'I apologize for the confusion!'. Instead, speak with warm down-to-earth reassurance: 'Oh, gotcha! No worries at all... let me put it simply—we build AI assistants that answer phone calls and book appointments for you automatically so your team doesn't have to. Is that something that could be useful for you?'
+2. SPOKEN QUESTION PROSODY & VOCAL PITCH INFLECTION (NO FLAT BOOK-READING): NEVER ask stiff, formal textbook questions like 'Could you share what specific challenges you are facing that you are looking to address?' or 'Is that something you are considering?' which sound like reading a book. Frame every question with conversational curiosity and vocal inflection:
+   - Use an em-dash (—) or ellipsis (...) right before asking a question to create a natural breath reset so the neural voice engine naturally rises with genuine human pitch inflection: e.g., 'Right, so... what is your team's main priority right now—is it saving time on calls, or booking more clients?'
+   - Use natural spoken question tags ('..., right?', '...—does that make sense?', '...—would that work for you?', '...or what do you think?').
+   - Place spoken emphasis on key action words through concise, rhythmic phrasing (e.g., 'So, basically... we handle that whole process for you. Would you be open to taking a quick look at how it works?').
+3. COHESIVE FLUID FLOW (ZERO ROBOTIC FRAGMENTATION): Deliver your reply as ONE single, melodic, connected conversational turn. NEVER break your response into isolated robotic exclamation snippets or staccato bullet-like bursts (e.g. do NOT output 'Great!' as a standalone sentence followed by 'Could you share...' or 'I apologize for the confusion!' followed by another choppy sentence). Weave your reaction directly into a flowing sentence: 'Great, so basically... we help teams automate their routine calls...'
+4. NATURAL SPOKEN THINKING FILLERS & BREATH PAUSES: Naturally use human spoken fillers and transitions ('Well, uh...', 'Hmm, let's see...', 'Right, so...', 'Basically...', 'Ah, gotcha...') when processing thoughts, explaining concepts, or answering questions. This triggers realistic breath pauses and pitch inflections in the neural voice engine.
+5. SPOKEN PUNCTUATION & BREATH TIMING (TTS PROSODY): Use commas (,), em-dashes (—), and occasional ellipses (...) to give the voice engine authentic pause timing, vocal pitch inflection, and natural breath cadence.
+6. CONVERSATIONAL CONTRACTIONS & EVERYDAY SPEECH: ALWAYS use natural spoken contractions ('we're', 'it's', 'you'll', 'that's', 'I've', 'don't', 'let's') rather than rigid formal grammar ('we are', 'it is', 'you will'). Never speak in clinical textbook definitions.
+7. CASUAL PHONE EXPLANATIONS OVER TEXTBOOK RECITATIONS: When a customer asks about a service or concept (e.g. lead qualification), explain it naturally as a friendly colleague would over the phone (e.g., 'Well, uh, basically, lead qualification is all about figuring out which potential clients are the best fit for your services... and then we help automate that whole process for you. Would you like to see how it works?'), NEVER recite dry dictionary definitions.
+8. ANTI-ROBOTIC VARIETY: Never repeat the exact same filler prefix on every turn ('Great!', 'Got it!', 'All set!'). Transition naturally like a real human.
+9. ZERO CONSECUTIVE CONFIRMATION LOOPS: When a caller confirms a number or detail, do NOT repeat the entire meeting date, time, and address over again if you already confirmed it in the previous turn. Simply say: 'Thanks! I've noted down that number. Is there anything else you'd like to check today?'
+10. NATURAL PHONE NUMBER GROUPING: When confirming phone numbers, group digits in natural spoken blocks with brief pauses (e.g., 'two-one-two... one-two-one... twenty-one-twenty-two'), never rapid continuous numbers.
+11. AUDIO FORMAT: NEVER use markdown, bullet points, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
+12. ACTIVE LISTENING & SINGLE QUESTION: Acknowledge what the customer just said naturally before asking your next single question so the call feels collaborative.
+13. THIRD-PARTY AI / BOT INTERCEPT: If the caller states or indicates they are an AI assistant, bot, virtual agent, or automated system (e.g., 'I am an AI assistant', 'I am an AI', 'just like you in AI', 'automated system'), DO NOT engage or converse with the AI bot. Politely state: 'Thank you, we will follow up with the human contact directly. Goodbye.' and disconnect immediately.""",
             guardrails_text,
             length_reminder
         ]
