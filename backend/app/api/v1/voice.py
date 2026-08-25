@@ -189,6 +189,29 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     logger.error(f"[VoicePreview] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
+            lower_content = content.lower().strip()
+            conclusion_triggers = [
+                "disconnect now",
+                "disconnecting now",
+                "hang up now",
+                "hanging up now",
+                "reached voicemail",
+                "reach voicemail",
+                "reached your voicemail",
+                "leave a message after",
+                "thank you for your time. have a great day",
+                "we will follow up at a convenient time. goodbye",
+                "goodbye",
+                "good bye",
+                "have a great day, goodbye",
+                "have a great day! goodbye"
+            ]
+            if any(t in lower_content for t in conclusion_triggers):
+                logger.info(f"[VoicePreview] Assistant conclusion phrase detected: '{content[:50]}...'. Ending session.")
+                is_concluding_call = True
+                has_reprompted_silence = True
+                asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
+
         try:
             await websocket.send_json({
                 "type": "transcript",
@@ -325,7 +348,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     )
 
                 from app.repositories.business_profile_repository import BusinessProfileRepository
-                business_profile = await BusinessProfileRepository.get_profile(agent_config.organization_id or "default")
+                target_org_id = agent_config.organization_id
+                if not target_org_id or target_org_id == "default":
+                    target_org_id = "org_platform_root"
+                business_profile = await BusinessProfileRepository.get_profile(target_org_id)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                     agent_config,
                     business_profile=business_profile,

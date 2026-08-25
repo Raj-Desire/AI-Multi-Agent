@@ -27,6 +27,7 @@ async def get_business_profile(
 
 
 @router.post("", response_model=ApiResponse[Dict[str, Any]])
+@router.put("", response_model=ApiResponse[Dict[str, Any]])
 async def update_business_profile(
     payload: CompanyBusinessProfile,
     ctx: TenantContext = Depends(get_tenant_context)

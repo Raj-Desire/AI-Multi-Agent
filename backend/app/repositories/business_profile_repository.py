@@ -57,20 +57,31 @@ class BusinessProfileRepository:
             params = [{"name": "@org_id", "value": org_key}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                if items:
+                if items and items[0].get("company_name"):
                     _PROFILE_CACHE[org_key] = (items[0], time.time())
                     return items[0]
             except Exception as e:
                 print(f"[BusinessProfileRepository Error] get_profile query: {e}")
 
-            # 2. Fallback lookup: If org_key is 'default' or not found, check for ANY existing profile in container
+            # 2. If org_key is 'default' or not found, check for 'org_platform_root'
+            try:
+                root_query = "SELECT * FROM c WHERE c.organization_id = 'org_platform_root'"
+                root_items = list(container.query_items(query=root_query, enable_cross_partition_query=True))
+                if root_items and root_items[0].get("company_name"):
+                    _PROFILE_CACHE[org_key] = (root_items[0], time.time())
+                    return root_items[0]
+            except Exception as e:
+                print(f"[BusinessProfileRepository Error] root profile query: {e}")
+
+            # 3. Fallback lookup: return the most recently updated populated profile
             try:
                 fallback_query = "SELECT * FROM c WHERE IS_DEFINED(c.company_name) AND c.company_name != ''"
                 fallback_items = list(container.query_items(query=fallback_query, enable_cross_partition_query=True))
                 if fallback_items:
-                    # Return the first or most recently updated populated profile
-                    _PROFILE_CACHE[org_key] = (fallback_items[0], time.time())
-                    return fallback_items[0]
+                    # Sort in python by updated_at to ensure latest
+                    sorted_items = sorted(fallback_items, key=lambda x: x.get("updated_at", ""), reverse=True)
+                    _PROFILE_CACHE[org_key] = (sorted_items[0], time.time())
+                    return sorted_items[0]
             except Exception as e:
                 print(f"[BusinessProfileRepository Error] fallback profile query: {e}")
 

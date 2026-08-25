@@ -101,9 +101,13 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       wsRef.current = ws;
 
       // Ensure active organization_id is embedded in the agentConfig payload
+      const effectiveOrgId = (agentConfig.organization_id && agentConfig.organization_id !== "default")
+        ? agentConfig.organization_id
+        : (user?.organization_id || "org_platform_root");
+
       const fullAgentConfig = {
         ...agentConfig,
-        organization_id: agentConfig.organization_id || user?.organization_id || "default"
+        organization_id: effectiveOrgId
       };
 
       ws.onopen = () => {

@@ -4,6 +4,7 @@ import { Button } from "./ui/Button";
 import { Alert } from "./ui/Alert";
 import { AgentConfig } from "../types";
 import { CREATOR_STEPS, getInitialAgentData } from "./agent-creator/constants";
+import { useAuth } from "../context/AuthContext";
 import { AgentStepHeader } from "./agent-creator/AgentStepHeader";
 import { AgentStepper } from "./agent-creator/AgentStepper";
 import { Step1Basics } from "./agent-creator/Step1Basics";
@@ -30,17 +31,27 @@ export function AgentEditorModal({
   onSave,
   onTestCall
 }: AgentEditorModalProps) {
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedPurposeId, setSelectedPurposeId] = useState<string>("follow_up");
 
   // Agent State
-  const [agentData, setAgentData] = useState<AgentConfig>(() => getInitialAgentData());
+  const [agentData, setAgentData] = useState<AgentConfig>(() => {
+    const init = getInitialAgentData();
+    return {
+      ...init,
+      organization_id: user?.organization_id || "org_platform_root"
+    };
+  });
 
   useEffect(() => {
     if (initialAgent) {
       const cloned = JSON.parse(JSON.stringify(initialAgent));
+      if (!cloned.organization_id || cloned.organization_id === "default") {
+        cloned.organization_id = user?.organization_id || "org_platform_root";
+      }
       if (!cloned.runtime) {
         cloned.runtime = {};
       }
@@ -74,11 +85,15 @@ export function AgentEditorModal({
       }
       setAgentData(cloned);
     } else {
-      setAgentData(getInitialAgentData());
+      const init = getInitialAgentData();
+      setAgentData({
+        ...init,
+        organization_id: user?.organization_id || "org_platform_root"
+      });
     }
     setCurrentStep(1);
     setErrorMsg(null);
-  }, [initialAgent, isOpen]);
+  }, [initialAgent, isOpen, user]);
 
   if (!isOpen) return null;
 

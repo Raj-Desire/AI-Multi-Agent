@@ -206,6 +206,28 @@ async def voice_stream_websocket(websocket: WebSocket):
                 content,
                 turn_latency_ms=turn_latency
             )
+            lower_content = content.lower().strip()
+            conclusion_triggers = [
+                "disconnect now",
+                "disconnecting now",
+                "hang up now",
+                "hanging up now",
+                "reached voicemail",
+                "reach voicemail",
+                "reached your voicemail",
+                "leave a message after",
+                "thank you for your time. have a great day",
+                "we will follow up at a convenient time. goodbye",
+                "goodbye",
+                "good bye",
+                "have a great day, goodbye",
+                "have a great day! goodbye"
+            ]
+            if any(t in lower_content for t in conclusion_triggers):
+                logger.info(f"[VoiceGateway] Assistant conclusion phrase detected: '{content[:50]}...'. Concluding call.")
+                is_concluding_call = True
+                has_reprompted_silence = True
+                asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
 
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""

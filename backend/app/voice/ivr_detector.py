@@ -59,7 +59,9 @@ class SmartIVRDetector:
         r"\b(?:subscriber|party)\s+(?:is\s+not\s+available|cannot\s+be\s+reached)\b",
         r"\bplease\s+leave\s+your\s+name\s+and\s+number\b",
         r"\byou\s+have\s+reached\s+the\s+voicemail\s+of\b",
-        r"\bcall\s+has\s+been\s+forwarded\s+to\s+(?:an?\s+)?automated\s+voice\s+messaging\b",
+        r"\bcall\s+(?:has\s+been|is)\s+forwarded\s+to\s+(?:an?\s+)?(?:automated\s+voice\s+messaging|voice\s*mail|voicemail)\b",
+        r"\b(?:forwarded|transferred|directed)\s+to\s+(?:voice\s*mail|voicemail)\b",
+        r"\b(?:voice\s*mail|voicemail)\b",
         r"\bbeep\s+ke\s+baad\b",  # Hindi voicemail: after beep
         r"\b(?:apna\s+)?(?:sandesh|message)\s+(?:record|chhoden|chhode)\b",  # Hindi record message
         r"\bdeje\s+su\s+mensaje\s+despues\s+del\s+tono\b",     # Spanish voicemail
@@ -80,17 +82,21 @@ class SmartIVRDetector:
 
     # 4. Telecom Carrier Intercepts & Network Announcements
     CARRIER_INTERCEPT_PATTERNS = [
-        r"\bnumber\s+you\s+(?:have\s+)?(?:dialed|called)\s+is\s+(?:currently\s+)?(?:switched\s+off|busy|unreachable|out\s+of\s+service)\b",
-        r"\bnumber\s+is\s+out\s+of\s+coverage\s+area\b",
+        r"\b(?:the\s+)?number\s+(?:you\s+(?:have\s+)?)?(?:dialed|called)?\s*is\s+(?:currently\s+)?(?:switched\s+off|busy|unreachable|out\s+of\s+(?:service|reach)|temporarily\s+unavailable)\b",
+        r"\b(?:number\s+is\s+)?out\s+of\s+coverage\s+area\b",
         r"\bcall\s+cannot\s+be\s+completed\s+as\s+dialed\b",
         r"\bcheck\s+the\s+number\s+and\s+dial\s+again\b",
+        r"\b(?:switched\s+off|not\s+reachable|temporarily\s+out\s+of\s+service)\b",
         r"\baapke\s+dwara\s+dial\s+kiya\s+gaya\s+number\b",  # Hindi carrier announcement
         r"\btamara\s+dwara\s+dial\s+karelo\s+number\b",     # Gujarati carrier announcement
     ]
 
-    # 5. Third-Party AI / Virtual Assistant Greeter
+    # 5. Third-Party AI / Virtual Assistant Greeter & Self-Identification
     AI_ASSISTANT_PATTERNS = [
-        r"\bi\s+am\s+(?:an?\s+)?(?:automated|virtual|ai)\s+(?:assistant|agent|receptionist)\b",
+        r"\b(?:i\s+am|i'm|this\s+is)\s+(?:an?|in|also|just)?\s*(?:an?|in|like\s+you\s+(?:in|an?))?\s*(?:automated|virtual|ai|bot)\s*(?:assistant|agent|receptionist|bot|system)?\b",
+        r"\b(?:just\s+like\s+you\s+(?:in|an?)?\s*ai|also\s+(?:an?|in)?\s*ai|another\s+ai)\b",
+        r"\b(?:i\s+am|i'm)\s+(?:an?|in)?\s*ai\b",
+        r"\b(?:automated|virtual|ai)\s+(?:assistant|agent|receptionist|bot)\b",
         r"\bhow\s+may\s+i\s+direct\s+your\s+call\b",
         r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\b",
         r"\btell\s+me\s+briefly\s+what\s+you\s+are\s+calling\s+about\b",

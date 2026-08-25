@@ -161,38 +161,53 @@ export function Step2RoleConversation({
       const updatedServices = [...existingServices, newServiceItem];
 
       // Update backend
-      const updatedProfile = await fetchApi<CompanyBusinessProfile>("/business-profile", {
-        method: "PUT",
-        body: JSON.stringify({
-          ...kbProfile,
-          services: updatedServices
-        })
-      });
+      let updatedProfile: CompanyBusinessProfile | null = null;
+      try {
+        updatedProfile = await fetchApi<CompanyBusinessProfile>("/business-profile", {
+          method: "POST",
+          body: JSON.stringify({
+            ...(kbProfile || {}),
+            organization_id: kbProfile?.organization_id || "default",
+            company_name: kbProfile?.company_name || "My Company",
+            services: updatedServices
+          })
+        });
+      } catch (saveErr: any) {
+        console.warn("Could not save service to organization profile:", saveErr);
+      }
 
       if (updatedProfile) {
         setKbProfile(updatedProfile);
-        toast.success(`Service "${newServiceName}" added to Organization Knowledge.`);
-
-        // Also add and enable for current agent
-        const currentAgentServices = agentData.services || [];
-        setAgentData((prev) => ({
-          ...prev,
-          services: [
-            ...currentAgentServices,
-            {
-              name: newServiceItem.name,
-              description: newServiceItem.description || "",
-              enabled: true,
-              priority: currentAgentServices.length + 1
-            }
-          ]
-        }));
-
-        setNewServiceName("");
-        setNewServiceDesc("");
-        setNewServicePricing("");
-        setIsAddingService(false);
+        toast.success(`Service "${newServiceName.trim()}" added to Organization Knowledge.`);
+      } else {
+        // Fallback local update if org-level update is read-only
+        setKbProfile((prev) => prev ? { ...prev, services: updatedServices } : {
+          organization_id: "default",
+          company_name: "My Company",
+          services: updatedServices
+        } as any);
+        toast.success(`Service "${newServiceName.trim()}" added to this agent.`);
       }
+
+      // Also add and enable for current agent
+      const currentAgentServices = agentData.services || [];
+      setAgentData((prev) => ({
+        ...prev,
+        services: [
+          ...currentAgentServices,
+          {
+            name: newServiceItem.name,
+            description: newServiceItem.description || "",
+            enabled: true,
+            priority: currentAgentServices.length + 1
+          }
+        ]
+      }));
+
+      setNewServiceName("");
+      setNewServiceDesc("");
+      setNewServicePricing("");
+      setIsAddingService(false);
     } catch (err: any) {
       toast.error(err?.message || "Failed to add service.");
     } finally {

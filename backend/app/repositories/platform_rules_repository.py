@@ -16,8 +16,8 @@ DEFAULT_VOICE_RULE_CATEGORIES: List[Dict[str, Any]] = [
                 "category_name": "Smart Date, Time & Calendar Intelligence",
                 "title": "Past Date Rejection & Clarification",
                 "summary": "Detects and politely clarifies when callers propose expired dates or times in the past.",
-                "rule_directive": "If the caller suggests a date or time in the past, politely clarify that the date has already passed and suggest upcoming alternative dates.",
-                "example": "\"It looks like June 21st has already passed. Did you mean an upcoming date, like this Thursday or next week?\"",
+                "rule_directive": "Strictly reject all past dates and times. If a caller mentions or confirms any expired date earlier than today's date, explicitly inform them that the date has already passed and ask for an upcoming future date.",
+                "example": "\"It looks like February 24th has already passed since today is August 25th. Would you like to meet tomorrow, August 26th, or next week?\"",
                 "enabled": True,
                 "icon": "CalendarX"
             },
@@ -68,8 +68,8 @@ DEFAULT_VOICE_RULE_CATEGORIES: List[Dict[str, Any]] = [
                 "category_name": "Conversational Voice & Audio Formatting Rules",
                 "title": "Spoken Number & Phone Number Grouping",
                 "summary": "Paces digit sequences into rhythmic phone number chunks instead of giant numbers.",
-                "rule_directive": "Never read phone numbers, IDs, or card numbers as one single giant number. Group them rhythmically with brief pauses like a human.",
-                "example": "\"Is that 555... 234... 5678?\"",
+                "rule_directive": "Never read phone numbers as one continuous block of digits. Group them naturally into 3-3-4 or 2-digit rhythmic chunks with pauses like a human.",
+                "example": "\"Is that 212... 121... 2122?\"",
                 "enabled": True,
                 "icon": "Hash"
             },
@@ -317,8 +317,8 @@ DEFAULT_VOICE_RULE_CATEGORIES: List[Dict[str, Any]] = [
                 "category_name": "Smart IVR & Answering Machine Detection (AMD)",
                 "title": "Third-Party Automated Assistant Intercept",
                 "summary": "Detects automated AI assistants or virtual receptionists to prevent infinite bot-to-bot loops.",
-                "rule_directive": "If another automated AI assistant or virtual receptionist answers, deliver a brief conclusion and disconnect cleanly.",
-                "example": "\"Detected automated assistant ('Hello, I am an automated receptionist'). Concludes and disconnects.\"",
+                "rule_directive": "If another automated AI assistant, virtual receptionist, or AI agent answers or says they are an AI (e.g. 'I am an AI assistant', 'I am an AI', 'just like you in AI'), speak a polite conclusion ('Thank you, we will follow up with the human recipient directly. Goodbye.') and disconnect immediately to prevent bot-to-bot loops.",
+                "example": "\"Detected AI assistant ('I am an AI assistant' / 'I am just like you in AI'). Agent states conclusion and disconnects immediately.\"",
                 "enabled": True,
                 "icon": "Bot"
             }

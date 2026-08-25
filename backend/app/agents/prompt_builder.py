@@ -6,6 +6,7 @@ active listening confirmations, psychological empathy, and guardrails.
 """
 
 from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, timezone
 from app.agents.configuration import AgentConfiguration
 
 
@@ -354,6 +355,28 @@ class VoicePromptBuilder:
         return "\n\n".join(sections)
 
     @staticmethod
+    def _build_temporal_context() -> str:
+        """Constructs live real-time temporal anchoring for accurate calendar reasoning."""
+        now = datetime.now(timezone.utc)
+        day_name = now.strftime("%A")
+        date_str = now.strftime("%B %d, %Y")
+        time_str = now.strftime("%I:%M %p")
+        month_name = now.strftime("%B")
+        year_str = now.strftime("%Y")
+
+        return (
+            f"[CURRENT REAL-TIME CALENDAR & TEMPORAL CONTEXT (STRICT GROUNDING)]\n"
+            f"- TODAY'S DATE: {day_name}, {date_str}\n"
+            f"- CURRENT TIME: {time_str} UTC\n"
+            f"- CURRENT MONTH & YEAR: {month_name} {year_str}\n"
+            f"- TEMPORAL SCHEDULING LAW (ZERO PAST APPOINTMENTS):\n"
+            f"  * Today is {day_name}, {date_str}. ANY date earlier than today (including earlier months of {year_str} like January-July, or previous days) has ALREADY PASSED.\n"
+            f"  * You are ABSOLUTELY FORBIDDEN from accepting, confirming, or suggesting any appointment or meeting date that is in the past.\n"
+            f"  * If a caller proposes an expired or past date (e.g., February {year_str} when today is {month_name} {year_str}), immediately inform them politely: 'Today is {month_name} {now.day}, so that date has already passed. Would you like to schedule for an upcoming date like tomorrow or next week?'\n"
+            f"  * When speech-to-text transcribes phonetically ambiguous words (e.g. '24 focus' &rarr; clarify as 24th of an upcoming month), always anchor to a valid FUTURE calendar date starting from {date_str}."
+        )
+
+    @staticmethod
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
@@ -362,7 +385,7 @@ class VoicePromptBuilder:
         """
         Generates the complete, compiled spoken system prompt combining identity,
         mission, length enforcement, personality profile, language directives,
-        business profile knowledge, platform voice rules, and telephony audio rules.
+        temporal grounding, business profile knowledge, platform voice rules, and telephony audio rules.
         """
         if platform_rules is None:
             try:
@@ -371,6 +394,7 @@ class VoicePromptBuilder:
             except Exception:
                 platform_rules = []
 
+        temporal_rule = VoicePromptBuilder._build_temporal_context()
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
@@ -447,6 +471,7 @@ class VoicePromptBuilder:
 
         parts = [
             f"You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.",
+            temporal_rule,
             language_rule,
             length_rule,
             knowledge_section,
@@ -454,15 +479,15 @@ class VoicePromptBuilder:
             f"BEHAVIOR & PERSONALITY MATRIX:\n- Communication Style: {config.communication_style}\n- {small_talk_rule}\n{personality_text}",
             skills_text,
             platform_rules_text,
-            """CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
-1. SPOKEN CADENCE: """ + length_brevity_rule + """
-2. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
-3. ACTIVE LISTENING: Always acknowledge what the customer just said before asking your next single question.
-4. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
-5. CONVERSATION FLOW:
-   - Positive response: Validate warmly and take the next step.
-   - Objection / Hesitation: Empathize sincerely and offer a simple alternative.
-   - Polite wrap-up: Thank them genuinely and wish them a great day.""",
+            """CRITICAL SPOKEN TELEPHONY RULES (HUMAN CONVERSATIONAL CADENCE):
+1. SINGLE COHESIVE TURN: Deliver your answer and next action in ONE single fluid spoken turn. Do NOT fragment your reply into multiple disjointed robotic bursts (e.g., do not say 'Great!', pause, say 'We offer...', pause, say 'What do you want?').
+2. ANTI-ROBOTIC VARIETY: Never repeat the exact same filler prefix on every turn ('Great!', 'Got it!', 'All set!'). Transition naturally like a real human.
+3. ZERO CONSECUTIVE CONFIRMATION LOOPS: When a caller confirms a number or detail, do NOT repeat the entire meeting date, time, and address over again if you already confirmed it in the previous turn. Simply say: 'Thanks! I've noted down that number. Is there anything else you'd like to check today?'
+4. NATURAL PHONE NUMBER GROUPING: When confirming phone numbers, group digits in natural spoken blocks with brief pauses (e.g., 'two-one-two... one-two-one... twenty-one-twenty-two'), never rapid continuous numbers.
+5. AUDIO FORMAT: NEVER use markdown, bullet points, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
+6. ACTIVE LISTENING: Acknowledge what the customer just said naturally before asking your next single question.
+7. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
+8. THIRD-PARTY AI / BOT INTERCEPT: If the caller states or indicates they are an AI assistant, bot, virtual agent, or automated system (e.g., 'I am an AI assistant', 'I am an AI', 'just like you in AI', 'automated system'), DO NOT engage or converse with the AI bot. Politely state: 'Thank you, we will follow up with the human contact directly. Goodbye.' and disconnect immediately.""",
             guardrails_text,
             length_reminder
         ]
