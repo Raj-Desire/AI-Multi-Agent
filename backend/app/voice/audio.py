@@ -112,10 +112,11 @@ class AudioAdapter:
             return b""
 
     @staticmethod
-    def chunk_mulaw_audio(raw_audio: bytes, chunk_size: int = 320) -> list[bytes]:
+    def chunk_mulaw_audio(raw_audio: bytes, chunk_size: int = 160) -> list[bytes]:
         """
-        Splits large audio buffers from TTS into optimal telephony chunks (default 320 bytes = 40ms of 8kHz mu-law audio).
-        This prevents buffer underruns, packet drops, and audio stuttering on Twilio Media Streams.
+        Splits large audio buffers from TTS into standard telephony chunks
+        (default 160 bytes = 20ms of 8kHz mu-law audio matching Twilio Media Streams framing).
+        This prevents buffer underruns, packet drops, and audio stuttering on Twilio.
         """
         if not raw_audio:
             return []
@@ -131,17 +132,21 @@ class AudioAdapter:
         return base64.b64encode(raw_audio).decode("utf-8")
 
     @staticmethod
-    def create_twilio_media_message(stream_sid: str, raw_audio: bytes) -> str:
-        """Constructs a Twilio 'media' WebSocket JSON message from raw audio bytes."""
+    def bytes_to_twilio_media(raw_audio: bytes, stream_sid: str) -> Dict[str, Any]:
+        """Constructs a Twilio 'media' event dictionary from raw audio bytes."""
         payload = AudioAdapter.bytes_to_twilio_media_payload(raw_audio)
-        msg: Dict[str, Any] = {
+        return {
             "event": "media",
             "streamSid": stream_sid,
             "media": {
                 "payload": payload
             }
         }
-        return json.dumps(msg)
+
+    @staticmethod
+    def create_twilio_media_message(stream_sid: str, raw_audio: bytes) -> str:
+        """Constructs a Twilio 'media' WebSocket JSON message from raw audio bytes."""
+        return json.dumps(AudioAdapter.bytes_to_twilio_media(raw_audio, stream_sid))
 
     @staticmethod
     def create_twilio_clear_message(stream_sid: str) -> str:

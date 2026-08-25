@@ -2,7 +2,7 @@ from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.core.dependencies import TenantContext, get_tenant_context
-from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
+from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, AutoSetupTwilioRequest, AutoSetupResponse, TwilioBalanceResponse
 from app.schemas.common import ApiResponse
 from app.services.twilio_service import TwilioService
 from app.services.call_service import CallService
@@ -122,6 +122,68 @@ async def fetch_purchased_numbers(
         return ApiResponse.ok(numbers)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/auto-setup", response_model=ApiResponse[AutoSetupResponse])
+async def auto_setup_twilio(
+    payload: AutoSetupTwilioRequest,
+    organization_id: Optional[str] = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: TwilioService = Depends(get_twilio_service)
+):
+    if ctx.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Only Organization Administrators or Superadmins can auto-configure Twilio settings."
+        )
+
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
+    try:
+        res = await service.auto_setup(
+            ctx=effective_ctx,
+            account_sid=payload.account_sid,
+            auth_token=payload.auth_token,
+            friendly_name=payload.friendly_name or "Desire AI Calling Platform"
+        )
+        return ApiResponse.ok(res)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/balance", response_model=ApiResponse[TwilioBalanceResponse])
+async def get_twilio_balance(
+    organization_id: Optional[str] = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: TwilioService = Depends(get_twilio_service)
+):
+    if ctx.role not in ["admin", "superadmin"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Only Organization Administrators or Superadmins can view Twilio account balance."
+        )
+
+    target_org_id = ctx.organization_id
+    if organization_id and ctx.role == "superadmin":
+        target_org_id = organization_id
+
+    effective_ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=ctx.user_id,
+        email=ctx.email,
+        role=ctx.role,
+        org_name=ctx.org_name
+    )
+    res = await service.get_balance(effective_ctx)
+    return ApiResponse.ok(res)
+
 
 
 @router.api_route("/voice/twiml", methods=["GET", "POST"])

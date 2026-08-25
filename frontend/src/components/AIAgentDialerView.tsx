@@ -462,7 +462,7 @@ export function AIAgentDialerView({
                 value={selectedAgentId}
                 onChange={(e) => setSelectedAgentId(e.target.value)}
                 disabled={calling}
-                className="w-full h-10 text-xs px-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                className="w-full h-10 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
               >
                 {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                   <optgroup label="My Organization Agents">
@@ -474,7 +474,7 @@ export function AIAgentDialerView({
                   </optgroup>
                 )}
                 {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
-                  <optgroup label="Desire AI Platform Defaults">
+                  <optgroup label="Platform Default Agents">
                     {availableAgents.default_agents
                       .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
                       .map((a) => (
@@ -750,7 +750,7 @@ export function AIAgentDialerView({
                 <div className="flex justify-between">
                   <span className="text-[var(--color-muted)]">Agent Name:</span>
                   <span className="font-medium text-[var(--color-heading)]">
-                    {selectedCall.agent_name || "Desire AI Receptionist"}
+                    {selectedCall.agent_name || "AI Receptionist"}
                   </span>
                 </div>
                 <div className="flex justify-between">

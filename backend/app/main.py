@@ -16,6 +16,7 @@ from app.api.v1.superadmin import router as superadmin_router
 from app.api.v1.theme import router as theme_router
 from app.api.v1.agents import router as agents_router
 from app.api.v1.voice import router as voice_router
+from app.api.v1.business_profile import router as business_profile_router
 from app.voice.gateway import router as gateway_router
 from app.core.cosmos import init_cosmos_db
 
@@ -29,15 +30,15 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Desire AI API",
+    title="AI Voice Platform API",
     version="0.3.0",
-    description="Desire AI Calling Agent Platform API with Deepgram Real-Time Voice Agent",
+    description="AI Voice Calling Agent Platform API with Real-Time Spoken Voice Engine",
     lifespan=lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -49,6 +50,7 @@ app.include_router(superadmin_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
 app.include_router(calls_router, prefix="/api/v1")
 app.include_router(theme_router, prefix="/api/v1")
+app.include_router(business_profile_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(voice_router, prefix="/api/v1")
 app.include_router(gateway_router, prefix="/api/v1")

@@ -4,7 +4,7 @@ Allows tenant users, admins, and platform superadmins to view, create, update, d
 activate, deactivate, archive, and manage their AI Voice Agent configurations.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.core.dependencies import TenantContext, get_tenant_context
@@ -12,26 +12,56 @@ from app.schemas.common import ApiResponse
 from app.agents.configuration import AgentConfiguration
 from app.services.agent_service import AgentService
 from app.repositories.agent_repository import AgentRepository
-from app.agents.prompt_builder import VoicePromptBuilder
+from app.repositories.platform_rules_repository import PlatformRulesRepository
+from app.services.llm_generator_service import LLMGeneratorService
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
 
 agent_repo = AgentRepository()
 agent_service = AgentService(agent_repo)
+llm_service = LLMGeneratorService()
 
 
 class GeneratePromptRequest(BaseModel):
-    name: Optional[str] = "Voice Agent"
-    role: Optional[str] = "Professional Assistant"
-    objective: str
+    name: Optional[str] = "Voice Assistant"
+    description: Optional[str] = ""
+    agent_type: Optional[str] = "marketing"  # "marketing" | "follow_up" | "query_solver" | "reminder" | "lead_qualification" | "custom"
+    role: Optional[str] = "Representative"
+    objective: Optional[str] = ""
     communication_style: Optional[str] = "Professional + Friendly"
+    response_length: Optional[str] = "short"  # "short" | "balanced" | "detailed"
+    language: Optional[str] = "en"
+    skills: Optional[List[str]] = None
+    services: Optional[List[Any]] = None
+    custom_knowledge: Optional[str] = None
+    guardrails: Optional[Dict[str, Any]] = None
+    personality: Optional[Dict[str, Any]] = None
+    include_business_knowledge: Optional[bool] = True
 
 
 class GeneratedPromptResponse(BaseModel):
     system_prompt: str
     suggested_greeting: str
-    positive_flow: str
-    negative_flow: str
+    suggested_greetings: Optional[List[Dict[str, str]]] = Field(default_factory=list)
+    suggested_objective: Optional[str] = None
+    communication_style: Optional[str] = None
+    recommended_voice: Optional[str] = None
+    positive_flow: Optional[str] = ""
+    negative_flow: Optional[str] = ""
+
+
+class RefinePromptRequest(BaseModel):
+    current_prompt: str
+    instruction: str
+    name: Optional[str] = "Voice Assistant"
+    description: Optional[str] = ""
+    response_length: Optional[str] = "short"
+
+
+class RefinePromptResponse(BaseModel):
+    system_prompt: str
+    suggested_greeting: Optional[str] = None
+    summary_of_changes: Optional[str] = None
 
 
 @router.post("/generate-prompt", response_model=ApiResponse[GeneratedPromptResponse])
@@ -40,62 +70,82 @@ async def generate_prompt(
     ctx: TenantContext = Depends(get_tenant_context)
 ):
     """
-    Synthesizes a structured telephone call script and prompt instructions based on the primary objective.
-    Maps call handling branches: positive responses, negative/objection responses, clarification, and polite closure.
+    Synthesizes a structured telephone call script and prompt instructions using Azure OpenAI GPT-4o
+    based on all agent parameters: name, role, description, archetype, communication style, response length, language,
+    guardrails, personality sliders, skills, and custom knowledge.
     """
-    if not payload.objective or not payload.objective.strip():
-        raise HTTPException(status_code=400, detail="Primary objective is required to generate prompt.")
+    desc = (payload.description or payload.objective or "").strip()
+    if not desc:
+        raise HTTPException(status_code=400, detail="Agent description or objective is required to generate prompt.")
 
-    obj = payload.objective.strip()
-    role = payload.role or "Representative"
-    name = payload.name or "Desire AI Voice Assistant"
+    name = (payload.name or "Voice Assistant").strip()
     style = payload.communication_style or "Professional + Friendly"
+    agent_type = payload.agent_type or "marketing"
 
-    # Produce structured voice prompt with realistic human conversation psychology
-    system_prompt = f"""You are {name}, a genuine, warm, and highly capable {role} speaking with a customer on a real-time telephone call.
+    try:
+        active_rules = await PlatformRulesRepository.get_active_rule_directives()
+        gen = await llm_service.generate_agent_prompt(
+            name=name,
+            description=desc,
+            agent_type=agent_type,
+            tone=style,
+            response_length=payload.response_length or "short",
+            role=payload.role or "Representative",
+            objective=payload.objective or desc,
+            language=payload.language or "en",
+            skills=payload.skills,
+            services=payload.services,
+            custom_knowledge=payload.custom_knowledge,
+            guardrails=payload.guardrails,
+            personality=payload.personality,
+            include_business_knowledge=payload.include_business_knowledge,
+            platform_rules=active_rules
+        )
+        return ApiResponse.ok(GeneratedPromptResponse(
+            system_prompt=gen.get("system_prompt", ""),
+            suggested_greeting=gen.get("suggested_greeting", f"Hi! This is {name}. How can I help you today?"),
+            suggested_greetings=gen.get("suggested_greetings", []),
+            suggested_objective=gen.get("suggested_objective", desc),
+            communication_style=gen.get("communication_style", style),
+            recommended_voice=gen.get("recommended_voice", "aura-orion-en"),
+            positive_flow=gen.get("positive_flow", ""),
+            negative_flow=gen.get("negative_flow", "")
+        ))
+    except Exception as e:
+        print(f"[Generate Prompt Error] {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate prompt: {str(e)}")
 
-PRIMARY GOAL:
-{obj}
 
-CONVERSATIONAL CADENCE & STYLE:
-- Communication Style: {style}
-- Spoken Length: STRICTLY 1 to 2 short, crisp, natural conversational sentences per turn. Never give long speeches or monologues.
-- Telephone Audio Rules: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.
-- Pacing: Speak naturally at a calm, relaxed pace with comfortable pauses. Sound like a real person, not an AI reading a script.
+@router.post("/refine-prompt", response_model=ApiResponse[RefinePromptResponse])
+async def refine_prompt(
+    payload: RefinePromptRequest,
+    ctx: TenantContext = Depends(get_tenant_context)
+):
+    """
+    Takes an existing system prompt and incorporates a user instruction (e.g. 'add refund policy rule')
+    using Azure OpenAI GPT-4o to seamlessly update and format the telephone conversation script.
+    """
+    if not payload.instruction or not payload.instruction.strip():
+        raise HTTPException(status_code=400, detail="Instruction is required to refine prompt.")
+    if not payload.current_prompt or not payload.current_prompt.strip():
+        raise HTTPException(status_code=400, detail="Current system prompt is required.")
 
-HUMAN ACTIVE LISTENING & CALL FLOW:
-1. WARM HUMAN GREETING:
-   - Greet the customer warmly, state who you are, and mention the purpose of the call naturally in one sentence.
-   - Example: "Hi! This is {name}. I'm just calling to check in on your recent account and see how everything is going with you today?"
-
-2. ATTENTIVE LISTENING & ACKNOWLEDGEMENT:
-   - Always acknowledge what the customer just said before jumping into questions (e.g. "Got it,", "I understand,", "That makes total sense,").
-   - Ask only ONE clear question at a time so the conversation feels collaborative, not like an interrogation.
-
-3. IF THE CUSTOMER RESPONDS POSITIVELY (e.g. Yes, confirmed, received everything, all good):
-   - Acknowledge with genuine warmth and relief (e.g. "That's wonderful to hear!").
-   - Move to the next quick verification item or ask if they need help setting anything up.
-
-4. IF THE CUSTOMER HAS AN ISSUE / NEGATIVE RESPONSE (e.g. No, haven't received items, delayed, frustrated):
-   - Respond with immediate, sincere empathy first (e.g. "Oh, I'm really sorry to hear that. Let's make sure we track that down for you right away.").
-   - Offer the direct next step: log the missing item, confirm the delivery address, or arrange a callback with support.
-   - Never argue, dismiss, or repeat yourself.
-
-5. IF THE CUSTOMER IS BUSY OR CANNOT TALK:
-   - Respect their time immediately: "No problem at all! When would be a better time for us to give you a quick callback?"
-
-6. NATURAL POLITE CLOSING:
-   - Confirm everything is covered, thank them genuinely for their time, and wish them a wonderful day."""
-
-    # Default greeting derived from objective
-    suggested_greeting = f"Hi there! This is {name}. I'm just calling to follow up on your account and make sure everything is working smoothly. How are you doing today?"
-
-    return ApiResponse.ok(GeneratedPromptResponse(
-        system_prompt=system_prompt,
-        suggested_greeting=suggested_greeting,
-        positive_flow="Acknowledges, verifies receipt/details, and offers next steps or assistance.",
-        negative_flow="Empathizes, captures missing items or concerns, and offers resolution or callback."
-    ))
+    try:
+        res = await llm_service.refine_agent_prompt(
+            current_prompt=payload.current_prompt,
+            user_instruction=payload.instruction.strip(),
+            agent_name=payload.name or "Voice Assistant",
+            description=payload.description or "",
+            response_length=payload.response_length or "short"
+        )
+        return ApiResponse.ok(RefinePromptResponse(
+            system_prompt=res.get("system_prompt", payload.current_prompt),
+            suggested_greeting=res.get("suggested_greeting"),
+            summary_of_changes=res.get("summary_of_changes")
+        ))
+    except Exception as e:
+        print(f"[Refine Prompt Error] {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refine prompt: {str(e)}")
 
 
 def get_agent_service() -> AgentService:
@@ -228,3 +278,19 @@ async def get_agent_versions(
         "status": agent.status,
         "updated_at": agent.updated_at
     })
+
+
+@router.delete("/{agent_id}", response_model=ApiResponse[Dict[str, Any]])
+async def delete_agent(
+    agent_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: AgentService = Depends(get_agent_service)
+):
+    """Permanently deletes a custom agent from the caller's organization."""
+    success = await service.delete_agent(ctx, agent_id)
+    return ApiResponse.ok({
+        "deleted": success,
+        "agent_id": agent_id,
+        "message": "Agent deleted successfully."
+    })
+

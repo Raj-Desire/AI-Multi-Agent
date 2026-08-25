@@ -30,7 +30,7 @@ class CallSessionService:
         phone_number: str = "",
         destination_number: str = "",
         direction: str = "outbound",
-        agent_name: str = "Desire AI Receptionist",
+        agent_name: str = "AI Receptionist",
         agent_role: str = "Professional AI Voice Assistant",
         voice: str = "aura-asteria-en",
         model: str = "gpt-4o-mini",

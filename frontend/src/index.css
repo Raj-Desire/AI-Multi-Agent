@@ -5,6 +5,7 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
   /* Dynamic Semantic Color Tokens */
   --color-primary: #4f46e5;
   --color-primary-rgb: 79, 70, 229;
@@ -58,6 +59,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --color-background: #090d16;
   --color-surface: #111827;
   --color-surface-muted: #182234;
@@ -75,6 +77,23 @@
   --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.25), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
   --shadow-card-hover: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
   --shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+
+/* Global Form Elements Theme Consistency */
+select, input, textarea {
+  color-scheme: inherit;
+}
+
+select option, select optgroup {
+  background-color: var(--color-surface);
+  color: var(--color-heading);
+}
+
+.dark select, 
+.dark select option, 
+.dark select optgroup {
+  background-color: var(--color-surface);
+  color: var(--color-heading);
 }
 
 body {
@@ -352,4 +371,86 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-border-strong);
+}
+
+/* =========================================================
+   AGENT CREATOR ANIMATION KEYFRAMES
+   ========================================================= */
+@keyframes agentModalEntrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(var(--color-primary-rgb, 79, 70, 229), 0.15);
+    border-color: rgba(var(--color-primary-rgb, 79, 70, 229), 0.3);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(var(--color-primary-rgb, 79, 70, 229), 0.35);
+    border-color: rgba(var(--color-primary-rgb, 79, 70, 229), 0.6);
+  }
+}
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-agent-entrance {
+  animation: agentModalEntrance 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite ease-in-out;
+}
+
+.animate-spin-slow {
+  animation: spinSlow 8s linear infinite;
+}
+
+@keyframes progress {
+  0% {
+    width: 0%;
+  }
+  30% {
+    width: 45%;
+  }
+  70% {
+    width: 85%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-progress {
+  animation: progress 2.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Accordion Smooth Expand/Collapse */
+.accordion-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.24s ease;
+  opacity: 0;
+}
+
+.accordion-content.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-inner {
+  overflow: hidden;
 }

@@ -30,7 +30,7 @@ class ThemeTypography(BaseModel):
     font_scale: str = "md"  # sm, md, lg
 
 class ThemeIdentity(BaseModel):
-    org_name: str = "Desire AI"
+    org_name: str = "AI Voice Platform"
     logo_url: Optional[str] = None
     logo_dark_url: Optional[str] = None
     favicon_url: Optional[str] = None

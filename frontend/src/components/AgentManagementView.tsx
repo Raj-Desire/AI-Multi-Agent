@@ -27,7 +27,8 @@ import {
   Activity,
   Zap,
   Radio,
-  ArrowUpRight
+  ArrowUpRight,
+  Trash2
 } from "lucide-react";
 import { PageHeader } from "./ui/PageHeader";
 import { Button } from "./ui/Button";
@@ -35,9 +36,11 @@ import { Badge } from "./ui/Badge";
 import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { Drawer } from "./ui/Drawer";
+import { Modal } from "./ui/Modal";
 import { DataTable, Column } from "./ui/DataTable";
 import { AgentEditorModal } from "./AgentEditorModal";
 import { AgentLivePreview } from "./AgentLivePreview";
+import { toast } from "sonner";
 
 export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer?: (agentId: string) => void }) {
   const { user, isAdmin, isSuperAdmin } = useAuth();
@@ -55,8 +58,24 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
   // Modals & Drawers
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<AgentConfig | null>(null);
+  const [isOpeningStudio, setIsOpeningStudio] = useState(false);
+  const [openingActionLabel, setOpeningActionLabel] = useState("Initializing Voice Studio...");
+
+  const openStudioWithTransition = (agent: AgentConfig | null, actionLabel?: string) => {
+    setOpeningActionLabel(actionLabel || (agent ? `Loading ${agent.name}...` : "Initializing AI Voice Studio..."));
+    setIsOpeningStudio(true);
+    setTimeout(() => {
+      setEditingAgent(agent);
+      setIsOpeningStudio(false);
+      setEditorOpen(true);
+    }, 2200);
+  };
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
+  const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [agentToDelete, setAgentToDelete] = useState<AgentConfig | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Test Call states
   const [testModalOpen, setTestModalOpen] = useState(false);
@@ -160,19 +179,43 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
     }
   }
 
-  async function handleArchive(agent: AgentConfig) {
-    if (!confirm(`Are you sure you want to archive "${agent.name}"? Historical calls will retain this agent configuration.`)) {
-      return;
-    }
+  async function confirmArchiveAgent() {
+    if (!agentToArchive) return;
     try {
+      setIsArchiving(true);
       setStatusMessage(null);
-      await fetchApi<AgentConfig>(`/agents/${agent.agent_id}/archive`, {
+      await fetchApi<AgentConfig>(`/agents/${agentToArchive.agent_id}/archive`, {
         method: "POST"
       });
-      setStatusMessage({ type: "success", text: `Agent "${agent.name}" archived.` });
+      setStatusMessage({ type: "success", text: `Agent "${agentToArchive.name}" archived successfully.` });
+      toast.success(`Agent "${agentToArchive.name}" archived successfully.`);
+      setAgentToArchive(null);
       await loadData();
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message });
+      toast.error(err.message || "Failed to archive agent.");
+    } finally {
+      setIsArchiving(false);
+    }
+  }
+
+  async function confirmDeleteAgent() {
+    if (!agentToDelete) return;
+    try {
+      setIsDeleting(true);
+      setStatusMessage(null);
+      await fetchApi(`/agents/${agentToDelete.agent_id}`, {
+        method: "DELETE"
+      });
+      setStatusMessage({ type: "success", text: `Agent "${agentToDelete.name}" permanently deleted.` });
+      toast.success(`Agent "${agentToDelete.name}" deleted permanently.`);
+      setAgentToDelete(null);
+      await loadData();
+    } catch (err: any) {
+      setStatusMessage({ type: "error", text: err.message });
+      toast.error(err.message || "Failed to delete agent.");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -270,7 +313,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         } else if (event.event_type === "CallEnded") {
           setCalling(false);
         }
-      } catch (err) {}
+      } catch (err) { }
     };
 
     telemetryWsRef.current = ws;
@@ -389,10 +432,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  setEditingAgent(a);
-                  setEditorOpen(true);
-                }}
+                onClick={() => openStudioWithTransition(a, `Opening ${a.name}...`)}
                 leftIcon={<Edit className="w-3.5 h-3.5" />}
                 className="h-7 px-2 text-xs"
               >
@@ -402,21 +442,28 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
                 variant="ghost"
                 size="sm"
                 onClick={() => handleToggleStatus(a)}
-                className={`h-7 px-2 text-xs ${
-                  a.status.toUpperCase() === "ACTIVE"
-                    ? "text-[var(--color-muted)] hover:text-amber-500"
-                    : "text-[var(--color-success)]"
-                }`}
+                className={`h-7 px-2 text-xs ${a.status.toUpperCase() === "ACTIVE"
+                  ? "text-[var(--color-muted)] hover:text-amber-500"
+                  : "text-[var(--color-success)]"
+                  }`}
               >
                 {a.status.toUpperCase() === "ACTIVE" ? "Deactivate" : "Activate"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleArchive(a)}
-                leftIcon={<Archive className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
-                className="h-7 px-2 text-xs text-[var(--color-danger)]"
+                onClick={() => setAgentToArchive(a)}
+                leftIcon={<Archive className="w-3.5 h-3.5 text-amber-500" />}
+                className="h-7 px-2 text-xs text-amber-500 hover:bg-amber-500/10"
                 title="Archive agent"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAgentToDelete(a)}
+                leftIcon={<Trash2 className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
+                className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+                title="Delete agent permanently"
               />
             </>
           )}
@@ -494,6 +541,129 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
     }
   ];
 
+  if (isOpeningStudio) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center space-y-5 animate-fade-in text-center max-w-md mx-auto">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30 flex items-center justify-center animate-pulse-glow shadow-md">
+            <Bot className="w-8 h-8 text-[var(--color-primary)] animate-bounce" />
+          </div>
+          <div className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[var(--color-primary)] flex items-center justify-center animate-spin-slow shadow-xs">
+            <Sparkles className="w-3 h-3 text-white" />
+          </div>
+        </div>
+        
+        <div className="space-y-1.5 w-full">
+          <h3 className="text-sm font-bold text-[var(--color-heading)] tracking-tight">
+            {openingActionLabel}
+          </h3>
+          <p className="text-xs text-[var(--color-muted)]">
+            Synthesizing conversational canvas & telephony speech models...
+          </p>
+
+          {/* Smooth 2-second Progress Bar */}
+          <div className="w-52 h-1.5 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-full overflow-hidden mx-auto mt-3">
+            <div className="h-full bg-[var(--color-primary)] rounded-full animate-progress" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (editorOpen) {
+    return (
+      <div className="space-y-6">
+        <AgentEditorModal
+          isOpen={true}
+          onClose={() => {
+            setEditorOpen(false);
+            setEditingAgent(null);
+          }}
+          initialAgent={editingAgent}
+          onSave={async (agent, activate) => {
+            await handleSaveAgent(agent, activate);
+            setEditorOpen(false);
+            setEditingAgent(null);
+          }}
+          onTestCall={(ag) => openTestModal(ag)}
+        />
+
+        {/* Live Test Call Drawer */}
+        <Drawer
+          isOpen={testModalOpen}
+          onClose={() => {
+            if (calling) hangupTestCall();
+            setTestModalOpen(false);
+          }}
+          title={`Live Test Call: ${testAgent?.name || "Agent"}`}
+          description="Verify spoken greeting, STT/LLM turns, voice synthesis, and latency live."
+          size="md"
+        >
+          {testAgent && (
+            <div className="space-y-4 text-left text-xs">
+              <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-muted)]">Voice:</span>
+                  <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-muted)]">Model:</span>
+                  <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.llm?.model}</span>
+                </div>
+              </div>
+
+              {!calling ? (
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
+                      Your Phone Number (To receive call) <span className="text-[var(--color-danger)]">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={testPhoneNumber}
+                      onChange={(e) => setTestPhoneNumber(e.target.value)}
+                      placeholder="+1234567890"
+                      className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
+                    />
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={startTestCall}
+                    disabled={!testPhoneNumber.trim()}
+                    leftIcon={<PhoneCall className="w-4 h-4" />}
+                    className="w-full cursor-pointer"
+                  >
+                    Start Real Telephone Test Call
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2">
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-[var(--radius-main,0.375rem)] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Live Call Active</span>
+                    </div>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={hangupTestCall}
+                      disabled={hangingUp}
+                      leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
+                    >
+                      {hangingUp ? "Hanging up..." : "Hang Up"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </Drawer>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -519,11 +689,9 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => {
-                  setEditingAgent(null);
-                  setEditorOpen(true);
-                }}
+                onClick={() => openStudioWithTransition(null, "Initializing AI Voice Studio...")}
                 leftIcon={<Plus className="w-3.5 h-3.5" />}
+                className="cursor-pointer font-semibold shadow-xs"
               >
                 Create Agent
               </Button>
@@ -585,7 +753,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           isLoading={loading}
           loadingMessage="Loading organization voice agents..."
           emptyTitle="No organization agents created yet"
-          emptyDescription="Create a tailored AI voice agent or duplicate one of the Desire AI Platform default agents."
+          emptyDescription="Create a tailored AI voice agent or duplicate one of the Platform default agents."
           pagination={true}
           pageSize={10}
         />
@@ -596,7 +764,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Platform Default Agents (Desire AI Library)</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Platform Default Agents (Voice Library)</h2>
           </div>
           <span className="text-xs text-[var(--color-muted)]">Ready-to-use voice agents</span>
         </div>
@@ -611,18 +779,6 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           pagination={false}
         />
       </div>
-
-      {/* Multi-Step Editor Modal */}
-      <AgentEditorModal
-        isOpen={editorOpen}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditingAgent(null);
-        }}
-        initialAgent={editingAgent}
-        onSave={handleSaveAgent}
-        onTestCall={(ag) => openTestModal(ag)}
-      />
 
       {/* Detail Inspection Drawer */}
       <Drawer
@@ -830,11 +986,10 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
                         {msg.role === "user" ? "Customer" : testAgent.name}
                       </div>
                       <div
-                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${
-                          msg.role === "user"
-                            ? "bg-[var(--color-primary)] text-white"
-                            : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                        }`}
+                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${msg.role === "user"
+                          ? "bg-[var(--color-primary)] text-white"
+                          : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
+                          }`}
                       >
                         {msg.content}
                       </div>
@@ -873,7 +1028,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         onClose={() => setPreviewDrawerAgent(null)}
         title={`Live Preview Playground: ${previewDrawerAgent?.name || "Agent"}`}
         description="Speak with your microphone or type messages to test conversational turns, voice, and prompts directly in your browser."
-        size="lg"
+        size="xl"
       >
         {previewDrawerAgent && (
           <div className="space-y-4 text-left">
@@ -881,6 +1036,108 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           </div>
         )}
       </Drawer>
+
+      {/* Archive Agent Confirmation Modal */}
+      <Modal
+        isOpen={!!agentToArchive}
+        onClose={() => setAgentToArchive(null)}
+        title="Archive AI Voice Agent"
+        description="Are you sure you want to archive this voice agent configuration?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAgentToArchive(null)}
+              disabled={isArchiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isArchiving}
+              leftIcon={<Archive className="w-3.5 h-3.5" />}
+              onClick={confirmArchiveAgent}
+            >
+              Archive Agent
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {agentToArchive?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToArchive?.version || 1}</span>
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
+                {agentToArchive?.role} • Voice: <span className="font-mono">{agentToArchive?.voice?.voice || "aura"}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Archiving this agent will remove it from active dialing campaigns. Existing call logs and metrics will retain their historical records.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Delete Agent Confirmation Modal */}
+      <Modal
+        isOpen={!!agentToDelete}
+        onClose={() => !isDeleting && setAgentToDelete(null)}
+        title="Delete AI Voice Agent Permanently"
+        description="This action cannot be undone. Are you sure you want to permanently delete this agent?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAgentToDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isDeleting}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteAgent}
+            >
+              Delete Permanently
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs text-left">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/20">
+            <div className="w-8 h-8 rounded-full bg-[var(--color-danger)]/20 text-[var(--color-danger)] flex items-center justify-center shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {agentToDelete?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToDelete?.version || 1}</span>
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
+                {agentToDelete?.role} • {agentToDelete?.scope || "ORGANIZATION"}
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Permanently deleting this agent will remove its voice configuration and prompt instructions from your organization.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

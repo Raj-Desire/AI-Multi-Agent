@@ -309,11 +309,11 @@ export function VoiceAgentView() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="AI Voice Agent Studio"
-        description="Configure, test, and monitor real-time spoken AI phone conversations powered by Deepgram Voice Agent API."
+        description="Configure, test, and monitor real-time spoken AI phone conversations with ultra-low latency voice models."
         badge={
           <Badge variant="primary">
             <Radio className="w-3 h-3 mr-1 text-emerald-400 animate-pulse" />
-            Deepgram Runtime Active
+            Voice Engine Active
           </Badge>
         }
       />
@@ -524,7 +524,7 @@ export function VoiceAgentView() {
                     <Volume2 className="w-4 h-4 text-emerald-400" />
                     <CardTitle>Voice & LLM Model Settings</CardTitle>
                   </div>
-                  <CardDescription>Deepgram Aura TTS voice and LLM inference configuration.</CardDescription>
+                  <CardDescription>Aura TTS voice and LLM inference configuration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -760,11 +760,10 @@ export function VoiceAgentView() {
               {/* Speaking State Indicators */}
               <div className="grid grid-cols-2 gap-3">
                 <div
-                  className={`p-3 rounded-lg border flex items-center gap-3 transition-colors ${
-                    isUserSpeaking
+                  className={`p-3 rounded-lg border flex items-center gap-3 transition-colors ${isUserSpeaking
                       ? "bg-amber-500/10 border-amber-500 text-amber-400"
                       : "bg-[var(--color-surface-muted)]/40 border-[var(--color-border)] text-[var(--color-muted)]"
-                  }`}
+                    }`}
                 >
                   <Mic className={`w-4 h-4 ${isUserSpeaking ? "animate-bounce text-amber-400" : ""}`} />
                   <div>
@@ -774,11 +773,10 @@ export function VoiceAgentView() {
                 </div>
 
                 <div
-                  className={`p-3 rounded-lg border flex items-center gap-3 transition-colors ${
-                    isAgentSpeaking
+                  className={`p-3 rounded-lg border flex items-center gap-3 transition-colors ${isAgentSpeaking
                       ? "bg-emerald-500/10 border-emerald-500 text-emerald-400"
                       : "bg-[var(--color-surface-muted)]/40 border-[var(--color-border)] text-[var(--color-muted)]"
-                  }`}
+                    }`}
                 >
                   <Volume2 className={`w-4 h-4 ${isAgentSpeaking ? "animate-pulse text-emerald-400" : ""}`} />
                   <div>
@@ -826,22 +824,20 @@ export function VoiceAgentView() {
                     transcriptMessages.map((m, idx) => (
                       <div
                         key={idx}
-                        className={`flex flex-col text-xs ${
-                          m.role === "user" ? "items-start" : "items-end"
-                        }`}
+                        className={`flex flex-col text-xs ${m.role === "user" ? "items-start" : "items-end"
+                          }`}
                       >
                         <div className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-muted)] mb-0.5">
-                          {m.role === "user" ? "CUSTOMER" : "DESIRE AI"}
+                          {m.role === "user" ? "CUSTOMER" : "AI AGENT"}
                           {m.turn_latency_ms && (
                             <span className="text-emerald-400 font-mono">({m.turn_latency_ms}ms)</span>
                           )}
                         </div>
                         <div
-                          className={`p-2.5 rounded-lg max-w-[85%] ${
-                            m.role === "user"
+                          className={`p-2.5 rounded-lg max-w-[85%] ${m.role === "user"
                               ? "bg-amber-500/10 border border-amber-500/20 text-[var(--color-text)]"
                               : "bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20 text-[var(--color-heading)]"
-                          }`}
+                            }`}
                         >
                           {m.content}
                         </div>
@@ -861,13 +857,12 @@ export function VoiceAgentView() {
                     telemetryEvents.map((evt, idx) => (
                       <div key={idx} className="flex items-center justify-between text-[var(--color-text)]">
                         <span
-                          className={`font-semibold ${
-                            evt.event_type.includes("BargeIn")
+                          className={`font-semibold ${evt.event_type.includes("BargeIn")
                               ? "text-rose-400"
                               : evt.event_type.includes("Speaking")
-                              ? "text-emerald-400"
-                              : "text-sky-400"
-                          }`}
+                                ? "text-emerald-400"
+                                : "text-sky-400"
+                            }`}
                         >
                           {evt.event_type}
                         </span>

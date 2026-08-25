@@ -14,6 +14,7 @@ import {
   User,
   Shield,
   Layers,
+  Sparkles
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -24,6 +25,7 @@ import { PageHeader } from "./ui/PageHeader";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
 import { Tabs } from "./ui/Tabs";
+import { SuperAdminVoiceRulesTab } from "./SuperAdminVoiceRulesTab";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -171,19 +173,26 @@ export const SuperAdminPanel: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async (user: UserSummary) => {
-    if (!window.confirm(`Delete user '${user.email}' from ${user.org_name || user.organization_id}?`)) {
-      return;
-    }
+  // SuperAdmin user deletion confirmation modal state
+  const [userToDelete, setUserToDelete] = useState<UserSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+
     setError(null);
     setSuccessMsg(null);
+    setIsDeleting(true);
 
     try {
-      await fetchApi(`/superadmin/users/${user.id}`, { method: "DELETE" });
-      setSuccessMsg(`User '${user.email}' deleted.`);
+      await fetchApi(`/superadmin/users/${userToDelete.id}`, { method: "DELETE" });
+      setSuccessMsg(`User account '${userToDelete.email}' permanently deleted.`);
+      setUserToDelete(null);
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to delete user.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -321,7 +330,7 @@ export const SuperAdminPanel: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleDeleteUser(u)}
+              onClick={() => setUserToDelete(u)}
               className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
               title="Delete Account"
             >
@@ -337,7 +346,7 @@ export const SuperAdminPanel: React.FC = () => {
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Master Console"
+        title="Admin Control"
         description="Multi-tenant tenant governance, root organization provisioning, and global accounts."
         badge={<Badge variant="warning" size="sm">SuperAdmin Root</Badge>}
         actions={
@@ -399,6 +408,7 @@ export const SuperAdminPanel: React.FC = () => {
         tabs={[
           { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
           { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
+          { id: "voice_rules", label: "AI Voice Rules & Intelligence", icon: <Sparkles className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -472,6 +482,11 @@ export const SuperAdminPanel: React.FC = () => {
             pageSize={10}
           />
         </div>
+      )}
+
+      {/* TAB 3: AI Voice Rules & Intelligence */}
+      {activeTab === "voice_rules" && (
+        <SuperAdminVoiceRulesTab />
       )}
 
       {/* Provision Organization Modal */}
@@ -631,6 +646,65 @@ export const SuperAdminPanel: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Delete User Account Confirmation Modal */}
+      <Modal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        title="Delete User Account"
+        description="Are you sure you want to permanently delete this user account across the platform?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setUserToDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              isLoading={isDeleting}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteUser}
+            >
+              Delete Account
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {userToDelete?.username}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate">
+                {userToDelete?.email}
+              </p>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]">
+                  {userToDelete?.org_name || userToDelete?.organization_id}
+                </span>
+                <span className="capitalize text-[10px] text-[var(--color-muted)] font-medium">
+                  {userToDelete?.role}
+                </span>
+              </div>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            This operation will permanently purge the account credentials and all access tokens for this user.
+          </p>
+        </div>
       </Modal>
     </div>
   );

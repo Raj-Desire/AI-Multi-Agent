@@ -1,7 +1,9 @@
 import React from "react";
+import { InfoTooltip } from "./Tooltip";
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  tooltip?: string;
   error?: string | null;
   helperText?: string;
   leftIcon?: React.ReactNode;
@@ -9,18 +11,21 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helperText, leftIcon, rightIcon, className = "", id, ...props }, ref) => {
+  ({ label, tooltip, error, helperText, leftIcon, rightIcon, className = "", id, ...props }, ref) => {
     const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
 
     return (
       <div className="w-full space-y-1.5 text-left">
         {label && (
-          <label
-            htmlFor={inputId}
-            className="block text-xs font-medium text-[var(--color-heading)]"
-          >
-            {label}
-          </label>
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor={inputId}
+              className="block text-xs font-medium text-[var(--color-heading)]"
+            >
+              {label}
+            </label>
+            {tooltip && <InfoTooltip content={tooltip} position="top" />}
+          </div>
         )}
         <div className="relative flex items-center">
           {leftIcon && (

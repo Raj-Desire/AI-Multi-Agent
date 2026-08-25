@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -15,9 +15,14 @@ import {
   Sun,
   Moon,
   Laptop,
+  AlertTriangle,
+  Building2,
+  BookOpen
 } from "lucide-react";
+import { Modal } from "./ui/Modal";
+import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -45,6 +50,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { user, isAdmin, isSuperAdmin, logout } = useAuth();
   const { draftTheme, userPreferences, setUserPreferences } = useTheme();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const toggleColorMode = () => {
     const modes: ("system" | "light" | "dark")[] = ["light", "dark", "system"];
@@ -83,6 +89,13 @@ export function Sidebar({
       title: "Configuration",
       items: [
         {
+          id: "business_profile",
+          label: "Company Knowledge",
+          icon: Building2,
+          visible: true,
+          badge: "Brain",
+        },
+        {
           id: "twilio",
           label: "Phone & Voice",
           icon: Sliders,
@@ -112,7 +125,7 @@ export function Sidebar({
       items: [
         {
           id: "superadmin",
-          label: "Master Console",
+          label: "Admin Control",
           icon: ShieldAlert,
           visible: isSuperAdmin,
           badge: "Root",
@@ -163,7 +176,7 @@ export function Sidebar({
             {!collapsed && showNavTitle && (
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-sm tracking-tight truncate text-[var(--color-heading)] leading-none">
-                  {draftTheme.identity.org_name || (user?.org_name || "Desire AI")}
+                  {draftTheme.identity.org_name || (user?.org_name || "AI Voice Platform")}
                 </div>
                 <div className="text-[10px] text-[var(--color-muted)] truncate mt-1">
                   Voice Calling SaaS
@@ -317,7 +330,7 @@ export function Sidebar({
 
           <button
             type="button"
-            onClick={logout}
+            onClick={() => setShowLogoutModal(true)}
             title="Sign out"
             className="p-1 text-[var(--color-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10 rounded transition-colors cursor-pointer"
           >
@@ -325,6 +338,58 @@ export function Sidebar({
           </button>
         </div>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        title="Sign Out Confirmation"
+        description="Are you sure you want to log out of your account?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLogoutModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              leftIcon={<LogOut className="w-3.5 h-3.5" />}
+              onClick={() => {
+                setShowLogoutModal(false);
+                logout();
+              }}
+            >
+              Log Out
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+              <LogOut className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-[var(--color-heading)]">
+                {user?.username || "Active User"}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                {user?.email} • <span className="capitalize">{user?.role}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            You will be signed out of this workspace. Any unsaved live calls or unsaved changes in progress will end.
+          </p>
+        </div>
+      </Modal>
     </aside>
   );
 }

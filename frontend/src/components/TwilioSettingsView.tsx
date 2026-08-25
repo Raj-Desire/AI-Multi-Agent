@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../api-client";
-import { TwilioConfig, OrganizationSummary, AvailableAgentsResponse, AgentConfig } from "../types";
+import { TwilioConfig, OrganizationSummary, AvailableAgentsResponse, AgentConfig, AutoSetupTwilioResponse, TwilioBalance } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
   Key,
@@ -19,6 +19,16 @@ import {
   Radio,
   Bot,
   Sparkles,
+  HelpCircle,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  CheckCircle2,
+  Layers,
+  Wallet,
+  CreditCard,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -29,6 +39,7 @@ import { StatusIndicator } from "./ui/StatusIndicator";
 import { FormSection } from "./ui/FormSection";
 import { Tabs } from "./ui/Tabs";
 import { LoadingState } from "./ui/LoadingState";
+import { Modal } from "./ui/Modal";
 
 export function TwilioSettingsView() {
   const { user, isSuperAdmin } = useAuth();
@@ -37,6 +48,8 @@ export function TwilioSettingsView() {
   const [activeTab, setActiveTab] = useState<string>("credentials");
 
   const [config, setConfig] = useState<TwilioConfig | null>(null);
+  const [balanceInfo, setBalanceInfo] = useState<TwilioBalance | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [twimlAppSid, setTwimlAppSid] = useState("");
@@ -61,11 +74,14 @@ export function TwilioSettingsView() {
   const [newNumberInput, setNewNumberInput] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [numberToDelete, setNumberToDelete] = useState<{ index: number; number: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [autoSettingUp, setAutoSettingUp] = useState(false);
   const [fetchingNumbers, setFetchingNumbers] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -108,6 +124,21 @@ export function TwilioSettingsView() {
     }
   }
 
+  async function loadBalance(targetOrgId?: string) {
+    try {
+      setLoadingBalance(true);
+      const url = targetOrgId && isSuperAdmin
+        ? `/twilio/balance?organization_id=${targetOrgId}`
+        : "/twilio/balance";
+      const data = await fetchApi<TwilioBalance>(url);
+      setBalanceInfo(data);
+    } catch (e) {
+      console.warn("Could not load Twilio balance:", e);
+    } finally {
+      setLoadingBalance(false);
+    }
+  }
+
   async function loadConfig(targetOrgId?: string) {
     try {
       setLoading(true);
@@ -134,8 +165,13 @@ export function TwilioSettingsView() {
           .map((n) => n.trim())
           .filter(Boolean);
         setPhoneNumbers(parsed);
+
+        if (data.status === "CONNECTED") {
+          loadBalance(targetOrgId);
+        }
       } else {
         setConfig(null);
+        setBalanceInfo(null);
         setAccountSid("");
         setAuthToken("");
         setTwimlAppSid("");
@@ -155,6 +191,47 @@ export function TwilioSettingsView() {
       setLoading(false);
     }
   }
+
+  const handleAutoSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountSid.trim() || !authToken.trim()) {
+      setMessage({ text: "Please enter your Account SID and Auth Token to run 1-Click Auto Setup.", type: "error" });
+      return;
+    }
+
+    try {
+      setAutoSettingUp(true);
+      setMessage(null);
+      const setupUrl = isSuperAdmin && selectedOrgId
+        ? `/twilio/auto-setup?organization_id=${selectedOrgId}`
+        : "/twilio/auto-setup";
+
+      const res = await fetchApi<AutoSetupTwilioResponse>(setupUrl, {
+        method: "POST",
+        body: JSON.stringify({
+          account_sid: accountSid.trim(),
+          auth_token: authToken.trim(),
+          friendly_name: "AI Calling Platform"
+        }),
+      });
+
+      setTwimlAppSid(res.twiml_app_sid);
+      setApiKeySid(res.api_key_sid);
+      setPhoneNumbers(res.phone_numbers || []);
+      
+      // Reload config to reflect latest masked secrets & status
+      await loadConfig(selectedOrgId || undefined);
+      
+      setMessage({
+        text: `Auto-Setup complete! Discovered ${res.phone_numbers_found} phone numbers, configured TwiML App, and generated WebRTC voice keys.`,
+        type: "success"
+      });
+    } catch (err: any) {
+      setMessage({ text: err.message || "Auto-Setup failed. Please verify your Account SID and Auth Token.", type: "error" });
+    } finally {
+      setAutoSettingUp(false);
+    }
+  };
 
   const handleAutoFetchNumbers = async () => {
     if (!accountSid.trim() || !authToken.trim()) {
@@ -226,8 +303,9 @@ export function TwilioSettingsView() {
     setEditingValue("");
   };
 
-  const handleDeleteNumber = (index: number) => {
-    const numToDelete = phoneNumbers[index];
+  const confirmDeleteNumber = () => {
+    if (!numberToDelete) return;
+    const { index, number: numToDelete } = numberToDelete;
     const updated = phoneNumbers.filter((_, i) => i !== index);
     setPhoneNumbers(updated);
 
@@ -242,6 +320,7 @@ export function TwilioSettingsView() {
       delete newAgentMapping[numToDelete];
       setInboundAgentMapping(newAgentMapping);
     }
+    setNumberToDelete(null);
   };
 
   const handlePerNumberForwardChange = (twilioNum: string, targetNum: string) => {
@@ -340,25 +419,40 @@ export function TwilioSettingsView() {
 
   const isConnected = config?.status === "CONNECTED";
 
-  const allAgentOptions = [
-    ...(availableAgents.my_agents || []).map((a) => ({ id: a.agent_id, label: `${a.name} (Org Private)`, group: "My Agents" })),
-    ...(availableAgents.default_agents || []).map((a) => ({ id: a.agent_id, label: `${a.name} (Platform)`, group: "Platform Defaults" }))
-  ];
-
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="Phone & Voice"
+        title="Phone & Voice Setup"
         description="Connect your Twilio account, manage active caller IDs, and configure inbound AI agent routing."
         badge={
           <StatusIndicator
             status={isConnected ? "connected" : "idle"}
-            label={isConnected ? "Connected" : "Not configured"}
+            label={isConnected ? "Connected & Ready" : "Not configured"}
           />
         }
         actions={
           <div className="flex items-center gap-2">
+            {config && balanceInfo?.balance && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs shadow-2xs">
+                <Wallet className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                <span className="font-semibold text-[var(--color-heading)] font-mono">
+                  {parseFloat(balanceInfo.balance).toLocaleString("en-US", { style: "currency", currency: balanceInfo.currency || "USD" })}
+                </span>
+                <span className="text-[10px] text-[var(--color-muted)] font-medium uppercase">
+                  {balanceInfo.currency || "USD"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => loadBalance(selectedOrgId || undefined)}
+                  disabled={loadingBalance}
+                  title="Refresh Balance"
+                  className="ml-1 p-0.5 text-[var(--color-muted)] hover:text-[var(--color-heading)] transition-colors cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingBalance ? "animate-spin text-[var(--color-primary)]" : ""}`} />
+                </button>
+              </div>
+            )}
             {config && (
               <Button
                 variant="outline"
@@ -407,6 +501,91 @@ export function TwilioSettingsView() {
         </div>
       )}
 
+      {/* Interactive Helper / Step-by-Step Guide Accordion */}
+      <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] bg-[var(--color-surface)] overflow-hidden shadow-xs">
+        <button
+          type="button"
+          onClick={() => setShowGuide(!showGuide)}
+          className="w-full px-4 py-3 bg-[var(--color-primary)]/5 hover:bg-[var(--color-primary)]/10 flex items-center justify-between transition-colors text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] flex items-center justify-center">
+              <HelpCircle className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <span className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                How to find your Twilio Account SID & Auth Token
+                <span className="text-[10px] bg-[var(--color-primary)] text-white px-1.5 py-0.2 rounded-full font-medium">Quick Guide</span>
+              </span>
+              <p className="text-[11px] text-[var(--color-muted)]">Step-by-step instructions with direct links to your Twilio Console.</p>
+            </div>
+          </div>
+          <div className="text-[var(--color-muted)]">
+            {showGuide ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {showGuide && (
+          <div className="p-4 border-t border-[var(--color-border)] bg-[var(--color-background)] space-y-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Step 1 */}
+              <div className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col justify-between space-y-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-[var(--color-primary)] font-semibold">
+                    <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center">1</span>
+                    <span>Open Twilio Console</span>
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    Log in to your Twilio account dashboard. If you don't have one, you can sign up for a free trial.
+                  </p>
+                </div>
+                <a
+                  href="https://console.twilio.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-primary)] hover:underline pt-1"
+                >
+                  <span>Go to Twilio Console</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col justify-between space-y-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-[var(--color-primary)] font-semibold">
+                    <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center">2</span>
+                    <span>Find Account Info Section</span>
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    Scroll down on the main Dashboard to the <strong>Account Info</strong> card.
+                  </p>
+                </div>
+                <div className="text-[10px] text-[var(--color-muted)] bg-[var(--color-background)] p-1.5 rounded font-mono">
+                  Account SID: Starts with "AC..."
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col justify-between space-y-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-[var(--color-primary)] font-semibold">
+                    <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center">3</span>
+                    <span>Copy SID & Auth Token</span>
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    Click <strong>Copy</strong> on your Account SID and click <strong>Show</strong> to copy your Auth Token.
+                  </p>
+                </div>
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                  ✓ Paste both below & click 1-Click Auto Setup
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {message && (
         <Alert
           type={message.type === "success" ? "success" : "danger"}
@@ -416,12 +595,72 @@ export function TwilioSettingsView() {
         </Alert>
       )}
 
+      {/* 1-Click Auto Provisioning Card */}
+      <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] bg-[var(--color-surface)] overflow-hidden shadow-xs">
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]/30">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-[var(--color-primary)] text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-[var(--color-heading)]">
+                  1-Click Auto-Provisioning
+                </h3>
+                <span className="text-[10px] uppercase tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">
+                  Recommended
+                </span>
+              </div>
+              <p className="text-xs text-[var(--color-muted)] mt-1">
+                Enter your <strong>Account SID</strong> and <strong>Auth Token</strong>. We will discover your phone numbers, create a TwiML App, and configure voice webhooks automatically.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            onClick={handleAutoSetup}
+            isLoading={autoSettingUp}
+            leftIcon={<Sparkles className="w-4 h-4" />}
+            className="shrink-0 shadow-xs"
+          >
+            Connect & Auto-Configure
+          </Button>
+        </div>
+
+        <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--color-surface)]">
+          <Input
+            label="Twilio Account SID"
+            type="text"
+            required
+            value={accountSid}
+            onChange={(e) => setAccountSid(e.target.value)}
+            placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            className="font-mono text-xs"
+            leftIcon={<Key className="w-3.5 h-3.5" />}
+            helperText="Located on your Twilio Console dashboard (starts with AC)."
+          />
+          <Input
+            label="Twilio Auth Token"
+            type="password"
+            required
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            placeholder="••••••••••••••••••••••••••••••••"
+            className="font-mono text-xs"
+            leftIcon={<ShieldCheck className="w-3.5 h-3.5" />}
+            helperText="Stored securely and encrypted at rest."
+          />
+        </div>
+      </div>
+
       {/* Sub-Navigation Tabs */}
       <Tabs
         tabs={[
-          { id: "credentials", label: "Connection & Numbers", icon: <Key className="w-3.5 h-3.5" /> },
+          { id: "credentials", label: "Phone Numbers & Manual Keys", icon: <Phone className="w-3.5 h-3.5" /> },
           { id: "routing", label: "Inbound Call Routing & AI Agents", icon: <PhoneForwarded className="w-3.5 h-3.5" /> },
-          { id: "developer", label: "Developer & WebRTC", icon: <Code2 className="w-3.5 h-3.5" /> },
+          { id: "developer", label: "Advanced WebRTC Softphone", icon: <Code2 className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -432,34 +671,100 @@ export function TwilioSettingsView() {
         {/* TAB 1: Credentials & Numbers */}
         {activeTab === "credentials" && (
           <div className="divide-y divide-[var(--color-border)]">
-            {/* Account Credentials */}
-            <FormSection
-              title="Twilio Account Credentials"
-              description="Enter your core Twilio Account SID and Auth Token to authenticate voice requests."
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Account SID"
-                  type="text"
-                  required
-                  value={accountSid}
-                  onChange={(e) => setAccountSid(e.target.value)}
-                  placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                  className="font-mono text-xs"
-                  helperText="Starts with 'AC', located on your Twilio Console."
-                />
-                <Input
-                  label="Auth Token"
-                  type="password"
-                  required
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  placeholder="••••••••••••••••••••••••••••••••"
-                  className="font-mono text-xs"
-                  helperText="Encrypted securely at rest."
-                />
-              </div>
-            </FormSection>
+            {/* Account Balance Overview Card */}
+            {config && (
+              <FormSection
+                title="Twilio Account Balance & Billing"
+                description="Live balance on your connected Twilio account. Keep a positive balance for uninterrupted outbound and inbound AI calls."
+                actions={
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => loadBalance(selectedOrgId || undefined)}
+                      isLoading={loadingBalance}
+                      leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                    >
+                      Refresh Balance
+                    </Button>
+                    <a
+                      href="https://console.twilio.com/us1/billing/manage-billing"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-main,0.375rem)] text-xs font-medium bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] transition-colors shadow-2xs"
+                    >
+                      <CreditCard className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      <span>Top Up / Manage Billing</span>
+                      <ExternalLink className="w-3 h-3 text-[var(--color-muted)]" />
+                    </a>
+                  </div>
+                }
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Balance Metric Card */}
+                  <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[var(--color-muted)] font-medium">Available Balance</span>
+                      <Wallet className="w-4 h-4 text-[var(--color-primary)]" />
+                    </div>
+                    <div className="text-xl font-bold font-mono text-[var(--color-heading)]">
+                      {balanceInfo?.balance
+                        ? parseFloat(balanceInfo.balance).toLocaleString("en-US", { style: "currency", currency: balanceInfo.currency || "USD" })
+                        : loadingBalance
+                        ? "Loading..."
+                        : balanceInfo?.error
+                        ? "Unavailable"
+                        : "$0.00 USD"}
+                    </div>
+                    <div className="text-[10px] text-[var(--color-muted)] flex items-center gap-1">
+                      <span>Currency:</span>
+                      <strong className="font-mono text-[var(--color-heading)] uppercase">{balanceInfo?.currency || "USD"}</strong>
+                    </div>
+                  </div>
+
+                  {/* Status Indicator Card */}
+                  <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[var(--color-muted)] font-medium">Balance Health</span>
+                      {balanceInfo?.balance && parseFloat(balanceInfo.balance) < 5 ? (
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      )}
+                    </div>
+                    <div className="text-sm font-semibold text-[var(--color-heading)] pt-0.5">
+                      {!balanceInfo?.balance
+                        ? "Checking status..."
+                        : parseFloat(balanceInfo.balance) <= 0
+                        ? "Depleted (Calls will fail)"
+                        : parseFloat(balanceInfo.balance) < 5
+                        ? "Low Balance Warning"
+                        : "Healthy Balance"}
+                    </div>
+                    <p className="text-[10px] text-[var(--color-muted)]">
+                      {!balanceInfo?.balance || parseFloat(balanceInfo.balance) >= 5
+                        ? "Sufficient funds for outbound & inbound AI voice calls."
+                        : "Please add funds in Twilio to prevent call disruption."}
+                    </p>
+                  </div>
+
+                  {/* Connected Account Info Card */}
+                  <div className="p-3.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[var(--color-muted)] font-medium">Twilio Account SID</span>
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <div className="text-xs font-mono font-medium text-[var(--color-heading)] truncate pt-1">
+                      {config.account_sid}
+                    </div>
+                    <p className="text-[10px] text-[var(--color-muted)]">
+                      Credentials validated & connected to Azure Cosmos DB.
+                    </p>
+                  </div>
+                </div>
+              </FormSection>
+            )}
 
             {/* Phone Numbers Management */}
             <FormSection
@@ -478,87 +783,95 @@ export function TwilioSettingsView() {
                 </Button>
               }
             >
-              {/* Add Manual Number */}
-              <div className="flex gap-2">
-                <Input
-                  value={newNumberInput}
-                  onChange={(e) => setNewNumberInput(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
-                  className="font-mono text-xs"
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  onClick={handleAddNumber}
-                  leftIcon={<Plus className="w-3.5 h-3.5" />}
-                >
-                  Add
-                </Button>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="+1 (555) 000-0000"
+                    value={newNumberInput}
+                    onChange={(e) => setNewNumberInput(e.target.value)}
+                    className="font-mono text-xs max-w-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddNumber();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleAddNumber}
+                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    Add Number
+                  </Button>
+                </div>
+
+                {phoneNumbers.length === 0 ? (
+                  <div className="p-4 border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-center text-xs text-[var(--color-muted)]">
+                    No phone numbers added yet. Click <strong>Sync from Twilio</strong> or type one above.
+                  </div>
+                ) : (
+                  <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] divide-y divide-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
+                    {phoneNumbers.map((num, idx) => (
+                      <div key={idx} className="p-2.5 flex items-center justify-between text-xs">
+                        {editingIndex === idx ? (
+                          <div className="flex items-center gap-2 flex-1 max-w-sm">
+                            <Input
+                              value={editingValue}
+                              onChange={(e) => setEditingValue(e.target.value)}
+                              className="font-mono text-xs h-7"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleSaveEdit(idx);
+                                }
+                              }}
+                            />
+                            <Button size="sm" type="button" onClick={() => handleSaveEdit(idx)} className="h-7 px-2 text-xs">
+                              <Check className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-medium text-[var(--color-heading)]">{num}</span>
+                            {idx === 0 && (
+                              <Badge variant="primary" size="sm">Primary Caller ID</Badge>
+                            )}
+                          </div>
+                        )}
+                        {editingIndex !== idx && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingIndex(idx);
+                                setEditingValue(num);
+                              }}
+                              className="h-7 px-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setNumberToDelete({ index: idx, number: num })}
+                              className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {/* Number List */}
-              {phoneNumbers.length === 0 ? (
-                <div className="p-4 border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-xs text-[var(--color-muted)] text-center">
-                  No phone numbers configured. Click "Sync from Twilio" or enter a number above.
-                </div>
-              ) : (
-                <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] divide-y divide-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
-                  {phoneNumbers.map((num, idx) => (
-                    <div key={idx} className="p-2.5 flex items-center justify-between text-xs">
-                      {editingIndex === idx ? (
-                        <div className="flex items-center gap-2 flex-1 mr-2">
-                          <Input
-                            value={editingValue}
-                            onChange={(e) => setEditingValue(e.target.value)}
-                            className="font-mono text-xs h-7"
-                          />
-                          <Button size="sm" variant="primary" type="button" onClick={() => handleSaveEdit(idx)} className="h-7 px-2 text-xs">
-                            Save
-                          </Button>
-                          <Button size="sm" variant="ghost" type="button" onClick={() => setEditingIndex(null)} className="h-7 px-2 text-xs">
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-[var(--color-muted)]" />
-                          <span className="font-mono font-medium text-[var(--color-heading)]">{num}</span>
-                          {idx === 0 && (
-                            <Badge variant="primary" size="sm">Default</Badge>
-                          )}
-                        </div>
-                      )}
-
-                      {editingIndex !== idx && (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEditingIndex(idx);
-                              setEditingValue(num);
-                            }}
-                            className="h-7 px-2 text-xs"
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteNumber(idx)}
-                            className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
             </FormSection>
           </div>
         )}
@@ -591,7 +904,7 @@ export function TwilioSettingsView() {
                     </optgroup>
                   )}
                   {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
-                    <optgroup label="Desire AI Platform Defaults">
+                    <optgroup label="Platform Default Agents">
                       {availableAgents.default_agents
                         .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
                         .map((a) => (
@@ -628,7 +941,7 @@ export function TwilioSettingsView() {
                           <select
                             value={currentAssigned}
                             onChange={(e) => handlePerNumberAgentChange(num, e.target.value)}
-                            className="h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                            className="h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                           >
                             {availableAgents.my_agents && availableAgents.my_agents.length > 0 && (
                               <optgroup label="My Organization Agents">
@@ -774,6 +1087,55 @@ export function TwilioSettingsView() {
           </div>
         )}
       </form>
+
+      {/* Delete Phone Number Confirmation Modal */}
+      <Modal
+        isOpen={!!numberToDelete}
+        onClose={() => setNumberToDelete(null)}
+        title="Remove Phone Number"
+        description="Are you sure you want to remove this phone number from your organization?"
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setNumberToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={confirmDeleteNumber}
+            >
+              Remove Number
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+              <Phone className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold font-mono text-[var(--color-heading)] text-sm">
+                {numberToDelete?.number}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                Active Organization Caller ID
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            Removing this number will unbind any custom inbound call forwarding or dedicated AI agent mappings configured for it.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

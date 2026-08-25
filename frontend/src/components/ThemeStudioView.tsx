@@ -571,7 +571,7 @@ export const ThemeStudioView: React.FC = () => {
                     identity: { ...prev.identity, org_name: e.target.value },
                   }))
                 }
-                placeholder="e.g. Desire AI"
+                placeholder="e.g. Acme Corp"
               />
 
               {/* Logo Upload */}

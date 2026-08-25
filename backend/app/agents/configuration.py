@@ -50,17 +50,21 @@ class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
+    endpointing: int = 500  # End-of-turn timeout in ms (prevents cutting off user during natural breath pauses)
     eot_threshold: Optional[float] = None
-    eager_eot: bool = True
+    eager_eot: bool = False
     keyterms: List[str] = Field(default_factory=list)
 
 
 class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
-    silence_timeout: int = 10
+    silence_timeout: int = 5  # Seconds of silence before asking reprompt message
+    silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
+    silence_hangup_delay: int = 5  # Seconds after reprompt before concluding and hanging up
+    maximum_call_duration: int = 300  # Max total call duration in seconds
+    conclusion_message: Optional[str] = "Thank you for your time. Have a great day!"
     customer_response_timeout: int = 15
-    maximum_call_duration: int = 1800
     retry_attempts: int = 2
     auto_hangup_on_completion: bool = True
 
@@ -106,7 +110,7 @@ class AgentConfiguration(BaseModel):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
-    name: str = "Desire AI Receptionist"
+    name: str = "AI Receptionist"
     description: Optional[str] = "Default voice receptionist for inbound/outbound calls"
     scope: str = "GLOBAL"  # "GLOBAL" | "ORGANIZATION"
     status: str = "ACTIVE"  # "DRAFT" | "ACTIVE" | "INACTIVE" | "ARCHIVED"
@@ -147,10 +151,12 @@ class AgentConfiguration(BaseModel):
     runtime: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
     guardrails: AgentGuardrails = Field(default_factory=AgentGuardrails)
 
-    # Spoken Greetings & Custom Prompts
-    greeting: str = "Hi, thanks for calling. You're speaking with Desire AI. How can I help you today?"
+    # Spoken Greetings, Business Knowledge & Custom Prompts
+    greeting: str = "Hi, thanks for calling. How can I help you today?"
     closing_message: Optional[str] = "Thank you for speaking with us today. Have a great day!"
     system_prompt: Optional[str] = None
+    include_business_knowledge: bool = True
+    custom_knowledge: Optional[str] = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -162,7 +168,7 @@ def get_default_platform_agents() -> List[AgentConfiguration]:
         AgentConfiguration(
             agent_id="agt_receptionist_default",
             organization_id="global",
-            name="Desire AI Receptionist",
+            name="AI Receptionist",
             description="Primary platform receptionist for answering questions, identifying caller needs, and routing calls.",
             scope="GLOBAL",
             status="ACTIVE",
@@ -176,7 +182,7 @@ def get_default_platform_agents() -> List[AgentConfiguration]:
             ],
             skills=["FAQ Handling", "Call Transfer", "Information Gathering", "Appointment Booking"],
             communication_style="Professional + Friendly",
-            greeting="Hi, thanks for calling. You're speaking with Desire AI. How can I help you today?",
+            greeting="Hi, thanks for calling. How can I help you today?",
             personality=AgentPersonality(professionalism=90, friendliness=85, empathy=80, patience=90, confidence=80, energy=60, assertiveness=45, humor=10, curiosity=70),
             voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.4)
@@ -314,11 +320,11 @@ def get_default_platform_agents() -> List[AgentConfiguration]:
 
 
 def get_default_receptionist_agent(organization_id: str = "global") -> AgentConfiguration:
-    """Returns the default Desire AI Receptionist agent."""
+    """Returns the default AI Receptionist agent."""
     return AgentConfiguration(
         agent_id="agt_receptionist_default",
         organization_id=organization_id,
-        name="Desire AI Receptionist",
+        name="AI Receptionist",
         description="Default voice receptionist for inbound/outbound calls",
         scope="GLOBAL" if organization_id == "global" else "ORGANIZATION",
         status="ACTIVE",
@@ -326,7 +332,7 @@ def get_default_receptionist_agent(organization_id: str = "global") -> AgentConf
         role="Professional AI Voice Assistant",
         objective="Understand the customer's reason for calling and provide appropriate assistance or route the conversation toward the next useful action.",
         communication_style="Professional + Friendly",
-        greeting="Hi, thanks for calling. You're speaking with Desire AI. How can I help you today?",
+        greeting="Hi, thanks for calling. How can I help you today?",
         voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
         personality=AgentPersonality(
             professionalism=90,

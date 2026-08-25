@@ -148,3 +148,30 @@ class AgentService:
             status=status,
             updated_by=ctx.user_id
         )
+
+    async def delete_agent(self, ctx: TenantContext, agent_id: str) -> bool:
+        """Permanently deletes a custom agent with strict tenant isolation and RBAC checks."""
+        existing = await self.get_agent_by_id(ctx, agent_id)
+        if existing.scope == "GLOBAL":
+            if ctx.role != "superadmin":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Global platform default templates cannot be deleted."
+                )
+            if existing.agent_id in ["agt_receptionist_default", "agt_marketing_outbound"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Core system default templates cannot be deleted."
+                )
+
+        if existing.scope == "ORGANIZATION":
+            if ctx.role not in ["admin", "superadmin"] and existing.owner_user_id != ctx.user_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have permission to delete this agent."
+                )
+
+        return await self.agent_repo.delete(
+            organization_id=existing.organization_id or ctx.organization_id,
+            agent_id=agent_id
+        )

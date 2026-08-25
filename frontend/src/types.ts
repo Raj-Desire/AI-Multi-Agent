@@ -55,6 +55,15 @@ export interface TwilioConfig {
   status: string;
 }
 
+export interface TwilioBalance {
+  configured: boolean;
+  account_sid?: string | null;
+  balance?: string | null;
+  currency?: string | null;
+  error?: string | null;
+  message?: string | null;
+}
+
 export interface SaveTwilioPayload {
   account_sid: string;
   auth_token: string;
@@ -69,6 +78,24 @@ export interface SaveTwilioPayload {
   default_agent_id?: string;
   inbound_agent_mapping?: Record<string, string>;
 }
+
+export interface AutoSetupTwilioPayload {
+  account_sid: string;
+  auth_token: string;
+  friendly_name?: string;
+}
+
+export interface AutoSetupTwilioResponse {
+  account_sid: string;
+  phone_numbers_found: number;
+  phone_numbers: string[];
+  twiml_app_sid: string;
+  api_key_sid: string;
+  voice_webhook_url: string;
+  status: string;
+  message: string;
+}
+
 
 export type UIStyle =
   | 'default'
@@ -206,16 +233,63 @@ export interface AgentRuntimeSettings {
   barge_in_enabled: boolean;
   interruption_sensitivity: number;
   silence_timeout: number;
-  customer_response_timeout: number;
+  silence_reprompt_message?: string;
+  silence_hangup_delay?: number;
   maximum_call_duration: number;
-  retry_attempts: number;
+  conclusion_message?: string;
+  customer_response_timeout?: number;
+  retry_attempts?: number;
   auto_hangup_on_completion?: boolean;
 }
 
 export interface AgentGuardrails {
   allowed_actions: string[];
   restricted_actions: string[];
+  disabled_restrictions?: string[];
   escalation_rules: string[];
+}
+
+export interface BusinessServiceItem {
+  name: string;
+  description?: string;
+  pricing?: string;
+  enabled: boolean;
+}
+
+export interface BusinessHours {
+  days: string;
+  hours: string;
+  timezone: string;
+  closed_on: string;
+}
+
+export interface CompanyFAQItem {
+  question: string;
+  answer: string;
+  category?: string;
+  enabled: boolean;
+}
+
+export interface CompanyBusinessProfile {
+  id?: string;
+  organization_id: string;
+  company_name: string;
+  tagline?: string;
+  company_introduction: string;
+  email: string;
+  phone: string;
+  website?: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  operating_hours: BusinessHours;
+  services: BusinessServiceItem[];
+  faqs: CompanyFAQItem[];
+  allow_user_edits?: boolean;
+  additional_notes?: string;
+  updated_at?: string;
+  updated_by?: string;
 }
 
 export interface AgentConfig {
@@ -249,6 +323,8 @@ export interface AgentConfig {
   greeting: string;
   closing_message?: string;
   system_prompt?: string | null;
+  include_business_knowledge?: boolean;
+  custom_knowledge?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -302,3 +378,31 @@ export interface VoiceTelemetryEvent {
   timestamp: string;
   payload: Record<string, any>;
 }
+
+export interface VoiceRuleItem {
+  id: string;
+  category_id: string;
+  category_name: string;
+  title: string;
+  summary: string;
+  rule_directive: string;
+  example: string;
+  enabled: boolean;
+  icon?: string;
+}
+
+export interface VoiceRuleCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  rules: VoiceRuleItem[];
+}
+
+export interface VoiceRulesResponse {
+  total_rules: number;
+  enabled_rules: number;
+  categories: VoiceRuleCategory[];
+  updated_at?: string;
+}
+

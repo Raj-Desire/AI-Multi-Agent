@@ -29,7 +29,7 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
           </div>
           <span className="text-[11px] font-mono text-[var(--color-muted)] ml-2">
-            https://app.desireai.com/preview
+            https://app.voiceplatform.io/preview
           </span>
         </div>
         <StatusIndicator status="active" label="Live Theme Engine" />
@@ -57,7 +57,7 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
                 </div>
               )}
               <div className="font-semibold text-xs tracking-tight truncate text-[var(--color-heading)]">
-                {theme.identity.org_name || "Desire AI"}
+                {theme.identity.org_name || "AI Voice Platform"}
               </div>
             </div>
 
@@ -89,8 +89,8 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
           </div>
 
           <div className="pt-3 border-t border-[var(--color-border)] flex items-center gap-2 text-[11px] text-[var(--color-muted)]">
-            <User className="w-3 h-3" />
-            <span className="truncate">admin@desireai.com</span>
+            <User className="w-3.5 h-3.5" />
+            <span className="truncate">admin@example.com</span>
           </div>
         </aside>
 
@@ -103,7 +103,7 @@ export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ the
                 {activeTab === "overview" ? "Calling Console" : "Call Intelligence"}
               </h2>
               <p className="text-xs text-[var(--color-muted)]">
-                Active tenant: {theme.identity.org_name || "Desire AI"}
+                Active tenant: {theme.identity.org_name || "AI Voice Platform"}
               </p>
             </div>
             <div className="flex gap-2">

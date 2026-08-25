@@ -10,8 +10,10 @@ import { ThemeStudioView } from "./components/ThemeStudioView";
 import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
 import { AgentManagementView } from "./components/AgentManagementView";
+import { BusinessProfileView } from "./components/BusinessProfileView";
 import { Sidebar, NavTab } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
+import { Toaster } from "sonner";
 import {
   Menu,
   PhoneCall,
@@ -21,23 +23,24 @@ import {
   Palette,
   Users,
   ShieldAlert,
-  Wifi,
+  Building2
 } from "lucide-react";
 
 function MainContent() {
-  const { user, isLoading, isAdmin, isSuperAdmin } = useAuth();
-  const { draftTheme } = useTheme();
+  const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin } = useAuth();
+  const { draftTheme, isThemeReady } = useTheme();
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  if (isLoading) {
+  // When verifying auth session OR when logged in and waiting for organization custom theme to apply
+  if (isAuthLoading || (user && !isThemeReady)) {
     return (
       <LoadingState
         fullPage
         message="Loading workspace session..."
-        subMessage="Applying organization identity and credentials"
+        subMessage="Applying organization identity and theme styling"
         size="md"
       />
     );
@@ -72,8 +75,14 @@ function MainContent() {
       case "voice_agent":
         return {
           title: "AI Voice Agents",
-          sub: "Deepgram & LLM voice agent configurations, prompts & library",
+          sub: "Spoken AI & LLM voice agent configurations, prompts & library",
           icon: Bot,
+        };
+      case "business_profile":
+        return {
+          title: "Company Knowledge Base",
+          sub: "Business identity, services, office address & working hours for AI calls",
+          icon: Building2,
         };
       case "twilio":
         return {
@@ -95,7 +104,7 @@ function MainContent() {
         };
       case "superadmin":
         return {
-          title: "Master Console",
+          title: "Admin Control",
           sub: "Multi-tenant root governance and platform telemetries",
           icon: ShieldAlert,
         };
@@ -175,19 +184,13 @@ function MainContent() {
             {/* Tenant Organization */}
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "Desire AI"}</strong></span>
-            </div>
-
-            {/* Live WebRTC indicator */}
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-medium">
-              <Wifi className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">WebRTC Live</span>
+              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "AI Voice Platform"}</strong></span>
             </div>
           </div>
         </header>
 
-        {/* Dynamic Main View */}
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 transition-all text-left">
+        {/* Dynamic Main View - Full Width & Fully Responsive */}
+        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
             <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
           ) : currentTab === "ai_dialer" ? (
@@ -203,6 +206,8 @@ function MainContent() {
                 setActiveTab("ai_dialer");
               }}
             />
+          ) : currentTab === "business_profile" ? (
+            <BusinessProfileView />
           ) : currentTab === "twilio" ? (
             <TwilioSettingsView />
           ) : currentTab === "theme" ? (
@@ -217,7 +222,7 @@ function MainContent() {
         {/* Minimal Footer */}
         <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
           <div>
-            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "Desire AI")}. All rights reserved.
+            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "AI Voice Platform")}. All rights reserved.
           </div>
           <div className="flex items-center gap-2.5 text-[11px] opacity-75">
             <span>Multi-Tenant Architecture</span>
@@ -235,6 +240,15 @@ export function App() {
     <AuthProvider>
       <ThemeProvider>
         <MainContent />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+          toastOptions={{
+            duration: 4000,
+            className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
+          }}
+        />
       </ThemeProvider>
     </AuthProvider>
   );
