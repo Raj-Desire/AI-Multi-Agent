@@ -4,8 +4,10 @@ from typing import List, Dict, Any, Optional
 import uuid
 from app.repositories.user_repository import UserRepository
 from app.repositories.twilio_repository import TwilioRepository
+from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.twilio_service import TwilioService
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
+from app.schemas.platform_rules import VoiceRulesResponse, UpdateVoiceRulesPayload
 from app.core.dependencies import require_superadmin, TenantContext
 
 router = APIRouter(prefix="/superadmin", tags=["Superadmin Management"])
@@ -352,3 +354,32 @@ async def superadmin_delete_user(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete user.")
 
     return {"message": f"User {target_user['email']} deleted successfully."}
+
+
+# ---------------------------------------------------------------------------
+# Platform Voice Agent Rules Management
+# ---------------------------------------------------------------------------
+
+@router.get("/voice-rules", response_model=VoiceRulesResponse)
+async def get_platform_voice_rules(_: Dict[str, Any] = Depends(require_superadmin)):
+    """Retrieves all platform voice agent rules with their current enabled/disabled state."""
+    data = await PlatformRulesRepository.get_all_rules()
+    return VoiceRulesResponse(**data)
+
+
+@router.put("/voice-rules", response_model=VoiceRulesResponse)
+async def update_platform_voice_rules(
+    payload: UpdateVoiceRulesPayload,
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """Updates enabled/disabled states for specified voice rules."""
+    updated = await PlatformRulesRepository.update_rules_state(payload.rules)
+    return VoiceRulesResponse(**updated)
+
+
+@router.post("/voice-rules/reset", response_model=VoiceRulesResponse)
+async def reset_platform_voice_rules(_: Dict[str, Any] = Depends(require_superadmin)):
+    """Resets all platform voice rules to recommended defaults."""
+    reset_data = await PlatformRulesRepository.reset_to_defaults()
+    return VoiceRulesResponse(**reset_data)
+

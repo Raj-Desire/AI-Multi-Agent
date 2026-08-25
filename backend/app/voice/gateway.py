@@ -155,8 +155,8 @@ async def voice_stream_websocket(websocket: WebSocket):
         ))
 
     async def handle_transcript(role: str, content: str):
-        """Record transcript turns and latencies."""
-        nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
+        """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
+        nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call
         if not session:
             return
 
@@ -169,6 +169,36 @@ async def voice_stream_websocket(websocket: WebSocket):
             is_user_speaking = False
             has_reprompted_silence = False
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
+
+            # Smart IVR & Answering Machine Detection (AMD)
+            if not is_concluding_call:
+                try:
+                    from app.voice.ivr_detector import SmartIVRDetector
+                    from app.repositories.platform_rules_repository import PlatformRulesRepository
+                    
+                    active_rules_list = PlatformRulesRepository.get_active_rule_directives_sync()
+                    rules_map = {r["id"]: True for r in active_rules_list}
+                    
+                    ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=rules_map)
+                    if ivr_res.is_ivr:
+                        logger.warning(
+                            f"[VoiceGateway:IVR_DETECTED] Machine detected! "
+                            f"Type='{ivr_res.symptom_type}', Phrase='{ivr_res.matched_phrase}', "
+                            f"Action='{ivr_res.recommended_action}'"
+                        )
+                        session.outcome = f"IVR_DETECTED ({ivr_res.symptom_type})"
+                        is_concluding_call = True
+
+                        if ivr_res.recommended_action == "disconnect_immediate":
+                            asyncio.create_task(terminate_call())
+                        else:
+                            conclusion_text = "Thank you, we will follow up at a convenient time. Goodbye."
+                            if agent_config and agent_config.runtime and agent_config.runtime.conclusion_message:
+                                conclusion_text = agent_config.runtime.conclusion_message
+                            await deepgram_client.inject_agent_message(conclusion_text)
+                            asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                except Exception as ivr_err:
+                    logger.error(f"[VoiceGateway] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
             await call_session_service.record_agent_transcript(

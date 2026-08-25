@@ -29,10 +29,15 @@ class AgentRuntimeBuilder:
     def build_deepgram_settings(
         config: AgentConfiguration,
         business_profile: Optional[Dict[str, Any]] = None,
-        audio_profile: str = "telephony"
+        audio_profile: str = "telephony",
+        platform_rules: Optional[Any] = None
     ) -> DeepgramSettingsConfiguration:
-        # Build optimized spoken prompt with optional business knowledge base
-        system_prompt = VoicePromptBuilder.build_prompt(config, business_profile=business_profile)
+        # Build optimized spoken prompt with optional business knowledge base and active platform rules
+        system_prompt = VoicePromptBuilder.build_prompt(
+            config,
+            business_profile=business_profile,
+            platform_rules=platform_rules
+        )
 
         # 1. Audio formatting based on pipeline profile
         if audio_profile == "playground":

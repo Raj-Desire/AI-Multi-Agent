@@ -12,6 +12,7 @@ from app.schemas.common import ApiResponse
 from app.agents.configuration import AgentConfiguration
 from app.services.agent_service import AgentService
 from app.repositories.agent_repository import AgentRepository
+from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.llm_generator_service import LLMGeneratorService
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
@@ -82,6 +83,7 @@ async def generate_prompt(
     agent_type = payload.agent_type or "marketing"
 
     try:
+        active_rules = await PlatformRulesRepository.get_active_rule_directives()
         gen = await llm_service.generate_agent_prompt(
             name=name,
             description=desc,
@@ -96,7 +98,8 @@ async def generate_prompt(
             custom_knowledge=payload.custom_knowledge,
             guardrails=payload.guardrails,
             personality=payload.personality,
-            include_business_knowledge=payload.include_business_knowledge
+            include_business_knowledge=payload.include_business_knowledge,
+            platform_rules=active_rules
         )
         return ApiResponse.ok(GeneratedPromptResponse(
             system_prompt=gen.get("system_prompt", ""),

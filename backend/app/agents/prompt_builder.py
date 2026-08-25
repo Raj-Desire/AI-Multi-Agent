@@ -326,17 +326,57 @@ class VoicePromptBuilder:
         )
 
     @staticmethod
-    def build_prompt(config: AgentConfiguration, business_profile: Optional[Union[dict, Any]] = None) -> str:
+    def _build_platform_rules_section(platform_rules: Optional[List[Dict[str, Any]]] = None) -> str:
+        if not platform_rules:
+            return ""
+
+        grouped: Dict[str, List[str]] = {}
+        for r in platform_rules:
+            cat = r.get("category", "General Telephony Rules")
+            if cat not in grouped:
+                grouped[cat] = []
+            title = r.get("title", "")
+            directive = r.get("directive", "")
+            example = r.get("example", "")
+            
+            line = f"- {title}: {directive}"
+            if example:
+                line += f" Example: {example}"
+            grouped[cat].append(line)
+
+        if not grouped:
+            return ""
+
+        sections = ["[MANDATORY CONVERSATIONAL REASONING & AUDIO INTELLIGENCE RULES]"]
+        for cat, lines in grouped.items():
+            sections.append(f"## {cat}\n" + "\n".join(lines))
+
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def build_prompt(
+        config: AgentConfiguration,
+        business_profile: Optional[Union[dict, Any]] = None,
+        platform_rules: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
         """
         Generates the complete, compiled spoken system prompt combining identity,
         mission, length enforcement, personality profile, language directives,
-        business profile knowledge, and telephony audio rules.
+        business profile knowledge, platform voice rules, and telephony audio rules.
         """
+        if platform_rules is None:
+            try:
+                from app.repositories.platform_rules_repository import PlatformRulesRepository
+                platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
+            except Exception:
+                platform_rules = []
+
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         personality_directives = VoicePromptBuilder._build_personality_instructions(config)
         personality_text = "\n".join(f"- {d}" for d in personality_directives)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
+        platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
 
         # Spoken Length Reminder matching configured response_length
         len_key = (config.response_length or "short").lower()
@@ -405,35 +445,28 @@ class VoicePromptBuilder:
 
         guardrails_text = "\n".join(guardrail_lines) if guardrail_lines else ""
 
-        compiled_prompt = f"""You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.
-
-{language_rule}
-
-{length_rule}
-
-{knowledge_section}
-
-{custom_instructions}
-
-BEHAVIOR & PERSONALITY MATRIX:
-- Communication Style: {config.communication_style}
-- {small_talk_rule}
-{personality_text}
-
-{skills_text}
-
-CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
-1. SPOKEN CADENCE: {length_brevity_rule}
+        parts = [
+            f"You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.",
+            language_rule,
+            length_rule,
+            knowledge_section,
+            custom_instructions,
+            f"BEHAVIOR & PERSONALITY MATRIX:\n- Communication Style: {config.communication_style}\n- {small_talk_rule}\n{personality_text}",
+            skills_text,
+            platform_rules_text,
+            """CRITICAL SPOKEN TELEPHONY RULES (NEVER BREAK):
+1. SPOKEN CADENCE: """ + length_brevity_rule + """
 2. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
 3. ACTIVE LISTENING: Always acknowledge what the customer just said before asking your next single question.
 4. SINGLE QUESTION PER TURN: Ask only ONE clear question at a time so the conversation feels collaborative and natural.
 5. CONVERSATION FLOW:
    - Positive response: Validate warmly and take the next step.
    - Objection / Hesitation: Empathize sincerely and offer a simple alternative.
-   - Polite wrap-up: Thank them genuinely and wish them a great day.
+   - Polite wrap-up: Thank them genuinely and wish them a great day.""",
+            guardrails_text,
+            length_reminder
+        ]
 
-{guardrails_text}
-
-{length_reminder}"""
-
+        compiled_prompt = "\n\n".join([p.strip() for p in parts if p and p.strip()])
         return compiled_prompt.strip()
+

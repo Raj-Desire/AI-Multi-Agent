@@ -152,7 +152,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_transcript(role: str, content: str):
-        nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
+        nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
@@ -160,6 +160,33 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             last_user_speech_time = time.time()
             is_user_speaking = False
             has_reprompted_silence = False
+
+            # Smart IVR Detection in simulator
+            if not is_concluding_call:
+                try:
+                    from app.voice.ivr_detector import SmartIVRDetector
+                    from app.repositories.platform_rules_repository import PlatformRulesRepository
+
+                    active_rules_list = PlatformRulesRepository.get_active_rule_directives_sync()
+                    rules_map = {r["id"]: True for r in active_rules_list}
+
+                    ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=rules_map)
+                    if ivr_res.is_ivr:
+                        logger.warning(
+                            f"[VoicePreview:IVR_DETECTED] Machine detected! "
+                            f"Type='{ivr_res.symptom_type}', Phrase='{ivr_res.matched_phrase}'"
+                        )
+                        is_concluding_call = True
+                        if ivr_res.recommended_action == "disconnect_immediate":
+                            asyncio.create_task(terminate_preview_session())
+                        else:
+                            conclusion_text = "Thank you, we will follow up at a convenient time. Goodbye."
+                            if agent_config and agent_config.runtime and agent_config.runtime.conclusion_message:
+                                conclusion_text = agent_config.runtime.conclusion_message
+                            await deepgram_client.inject_agent_message(conclusion_text)
+                            asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
+                except Exception as ivr_err:
+                    logger.error(f"[VoicePreview] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
         try:

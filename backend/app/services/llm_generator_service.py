@@ -97,7 +97,8 @@ class LLMGeneratorService:
         custom_knowledge: Optional[str] = None,
         guardrails: Optional[dict] = None,
         personality: Optional[dict] = None,
-        include_business_knowledge: Optional[bool] = True
+        include_business_knowledge: Optional[bool] = True,
+        platform_rules: Optional[list] = None
     ) -> Dict[str, Any]:
         """
         Generates a tailored telephone voice agent prompt and spoken greeting line
@@ -228,6 +229,12 @@ Return ONLY a valid JSON object matching this schema:
 
         kb_note = "\nOrganization Knowledge Base: Connected (services, office address, operating hours, phone, email, and FAQs)" if include_business_knowledge else ""
 
+        rules_ctx = ""
+        if platform_rules and isinstance(platform_rules, list):
+            rule_items = [f"- {r.get('title')}: {r.get('directive')}" for r in platform_rules if isinstance(r, dict) and r.get('title')]
+            if rule_items:
+                rules_ctx = f"\nMandatory Active Platform Voice Rules:\n" + "\n".join(rule_items[:10])
+
         user_prompt = f"""Agent Name: {name}
 Agent Role: {role or 'Assistant'}
 Primary Objective: {objective or description}
@@ -235,7 +242,7 @@ Description / Business Workflow: {description}
 Agent Archetype: {agent_type}
 Communication Tone: {tone}{personality_ctx}
 Configured Spoken Response Length: {len_key} ({spoken_length_rule})
-Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}
+Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}{rules_ctx}
 
 Synthesize the complete telephone conversation prompt instructions and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
 

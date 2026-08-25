@@ -378,3 +378,31 @@ export interface VoiceTelemetryEvent {
   timestamp: string;
   payload: Record<string, any>;
 }
+
+export interface VoiceRuleItem {
+  id: string;
+  category_id: string;
+  category_name: string;
+  title: string;
+  summary: string;
+  rule_directive: string;
+  example: string;
+  enabled: boolean;
+  icon?: string;
+}
+
+export interface VoiceRuleCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  rules: VoiceRuleItem[];
+}
+
+export interface VoiceRulesResponse {
+  total_rules: number;
+  enabled_rules: number;
+  categories: VoiceRuleCategory[];
+  updated_at?: string;
+}
+

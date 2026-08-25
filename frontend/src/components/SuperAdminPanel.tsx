@@ -14,6 +14,7 @@ import {
   User,
   Shield,
   Layers,
+  Sparkles
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -24,6 +25,7 @@ import { PageHeader } from "./ui/PageHeader";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
 import { Tabs } from "./ui/Tabs";
+import { SuperAdminVoiceRulesTab } from "./SuperAdminVoiceRulesTab";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -406,6 +408,7 @@ export const SuperAdminPanel: React.FC = () => {
         tabs={[
           { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
           { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
+          { id: "voice_rules", label: "AI Voice Rules & Intelligence", icon: <Sparkles className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -479,6 +482,11 @@ export const SuperAdminPanel: React.FC = () => {
             pageSize={10}
           />
         </div>
+      )}
+
+      {/* TAB 3: AI Voice Rules & Intelligence */}
+      {activeTab === "voice_rules" && (
+        <SuperAdminVoiceRulesTab />
       )}
 
       {/* Provision Organization Modal */}
