@@ -30,9 +30,9 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Desire AI API",
+    title="AI Voice Platform API",
     version="0.3.0",
-    description="Desire AI Calling Agent Platform API with Deepgram Real-Time Voice Agent",
+    description="AI Voice Calling Agent Platform API with Real-Time Spoken Voice Engine",
     lifespan=lifespan
 )
 

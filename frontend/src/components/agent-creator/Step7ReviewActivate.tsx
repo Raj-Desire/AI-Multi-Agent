@@ -162,7 +162,7 @@ export function Step7ReviewActivate({
             <div className="flex items-center gap-1.5 font-bold text-[var(--color-heading)]">
               <Volume2 className="w-4 h-4 text-[var(--color-primary)]" />
               <span>3. Voice &amp; Engine</span>
-              <InfoTooltip content="Deepgram Aura voice, playback speed, spoken language, and LLM reasoning model." position="top" />
+              <InfoTooltip content="Aura voice, playback speed, spoken language, and LLM reasoning model." position="top" />
             </div>
             <button
               type="button"

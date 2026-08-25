@@ -12,7 +12,7 @@ THEME_CACHE_TTL_SECONDS = 120.0
 
 DEFAULT_THEME = {
     "identity": {
-        "org_name": "Desire AI",
+        "org_name": "AI Voice Platform",
         "logo_url": None,
         "logo_dark_url": None,
         "favicon_url": None,

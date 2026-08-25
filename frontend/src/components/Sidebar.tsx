@@ -176,7 +176,7 @@ export function Sidebar({
             {!collapsed && showNavTitle && (
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-sm tracking-tight truncate text-[var(--color-heading)] leading-none">
-                  {draftTheme.identity.org_name || (user?.org_name || "Desire AI")}
+                  {draftTheme.identity.org_name || (user?.org_name || "AI Voice Platform")}
                 </div>
                 <div className="text-[10px] text-[var(--color-muted)] truncate mt-1">
                   Voice Calling SaaS

@@ -309,11 +309,11 @@ export function VoiceAgentView() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="AI Voice Agent Studio"
-        description="Configure, test, and monitor real-time spoken AI phone conversations powered by Deepgram Voice Agent API."
+        description="Configure, test, and monitor real-time spoken AI phone conversations with ultra-low latency voice models."
         badge={
           <Badge variant="primary">
             <Radio className="w-3 h-3 mr-1 text-emerald-400 animate-pulse" />
-            Deepgram Runtime Active
+            Voice Engine Active
           </Badge>
         }
       />
@@ -524,7 +524,7 @@ export function VoiceAgentView() {
                     <Volume2 className="w-4 h-4 text-emerald-400" />
                     <CardTitle>Voice & LLM Model Settings</CardTitle>
                   </div>
-                  <CardDescription>Deepgram Aura TTS voice and LLM inference configuration.</CardDescription>
+                  <CardDescription>Aura TTS voice and LLM inference configuration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -828,7 +828,7 @@ export function VoiceAgentView() {
                           }`}
                       >
                         <div className="flex items-center gap-1 text-[10px] font-semibold text-[var(--color-muted)] mb-0.5">
-                          {m.role === "user" ? "CUSTOMER" : "DESIRE AI"}
+                          {m.role === "user" ? "CUSTOMER" : "AI AGENT"}
                           {m.turn_latency_ms && (
                             <span className="text-emerald-400 font-mono">({m.turn_latency_ms}ms)</span>
                           )}

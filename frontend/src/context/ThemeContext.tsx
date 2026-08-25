@@ -7,7 +7,7 @@ import { useAuth } from "./AuthContext";
 export const DEFAULT_ORG_THEME: OrganizationThemeConfig = {
   organization_id: "default",
   identity: {
-    org_name: "Desire AI",
+    org_name: "AI Voice Platform",
     logo_url: null,
     logo_dark_url: null,
     favicon_url: null,

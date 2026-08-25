@@ -474,7 +474,7 @@ export function AIAgentDialerView({
                   </optgroup>
                 )}
                 {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
-                  <optgroup label="Desire AI Platform Defaults">
+                  <optgroup label="Platform Default Agents">
                     {availableAgents.default_agents
                       .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
                       .map((a) => (
@@ -750,7 +750,7 @@ export function AIAgentDialerView({
                 <div className="flex justify-between">
                   <span className="text-[var(--color-muted)]">Agent Name:</span>
                   <span className="font-medium text-[var(--color-heading)]">
-                    {selectedCall.agent_name || "Desire AI Receptionist"}
+                    {selectedCall.agent_name || "AI Receptionist"}
                   </span>
                 </div>
                 <div className="flex justify-between">

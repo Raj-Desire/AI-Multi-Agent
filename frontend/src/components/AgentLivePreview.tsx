@@ -166,7 +166,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
       ws.onerror = (err) => {
         console.error("Preview WS error:", err);
-        setErrorMsg("Failed to connect to Deepgram live preview stream. Check backend logs and DEEPGRAM_API_KEY.");
+        setErrorMsg("Failed to connect to live preview stream. Please check backend status.");
         stopPreviewSession();
       };
 
@@ -498,7 +498,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           <div>
             <h4 className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
               <span>Live Playground & Voice Preview</span>
-              <Badge variant="primary" size="sm">Deepgram Real-Time</Badge>
+              <Badge variant="primary" size="sm">Real-Time Audio</Badge>
             </h4>
             <p className="text-[10px] text-[var(--color-muted)]">
               Talk directly with your mic or test parameters with 0 delay. No phone call needed.

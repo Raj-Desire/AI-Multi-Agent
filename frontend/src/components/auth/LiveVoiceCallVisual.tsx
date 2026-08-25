@@ -93,12 +93,12 @@ export const LiveVoiceCallVisual: React.FC = () => {
                 style={{ backgroundColor: "var(--color-primary, #4f46e5)" }}
                 className="w-1.5 h-1.5 rounded-full inline-block"
               />
-              Desire AI Agent
+              AI Voice Agent
             </span>
             <span className="text-[9px] text-slate-500">00:24</span>
           </div>
           <p className="text-slate-200 leading-snug">
-            &ldquo;Desire AI connects to your Twilio number, qualifies intent in sub-200ms latency, and books meetings automatically.&rdquo;
+            &ldquo;Our AI voice agent connects to your phone system, qualifies intent in sub-200ms latency, and books meetings automatically.&rdquo;
           </p>
         </div>
       </div>

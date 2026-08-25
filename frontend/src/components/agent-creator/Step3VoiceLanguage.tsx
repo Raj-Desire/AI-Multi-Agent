@@ -16,7 +16,7 @@ import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import {
   AURA_VOICES,
-  DEEPGRAM_SUPPORTED_LANGUAGES,
+  SUPPORTED_LANGUAGES,
   LLM_MODELS,
   AGENT_PURPOSES
 } from "./constants";
@@ -89,7 +89,7 @@ export function Step3VoiceLanguage({
     const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
     const sampleText =
       (voiceObj as any)?.sampleText ||
-      `Hello! I am your AI voice agent powered by Deepgram Aura. How can I help you today?`;
+      `Hello! I am your AI voice agent. How can I help you today?`;
 
     try {
       const token = localStorage.getItem("desire_token");
@@ -130,7 +130,7 @@ export function Step3VoiceLanguage({
       setAudioElement(audio);
       await audio.play();
     } catch (err: any) {
-      console.warn("Deepgram TTS error:", err);
+      console.warn("Voice TTS error:", err);
       stopCurrentAudio();
       setAudioError(err?.message || "Failed to generate speech preview.");
     }
@@ -201,23 +201,23 @@ export function Step3VoiceLanguage({
               Voice, Speed &amp; Language
             </h2>
             <InfoTooltip
-              content="Select Deepgram Aura ultra-low latency lifelike telephony voice, conversational speed, and AI intelligence model."
+              content="Select Aura ultra-low latency lifelike telephony voice, conversational speed, and AI intelligence model."
               position="top"
             />
           </div>
         </div>
       </div>
 
-      {/* Section 1: Deepgram Voice Picker */}
+      {/* Section 1: Voice Picker */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div>
             <div className="flex items-center gap-1.5">
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Voice Model (Deepgram Aura-2 Lifelike)
+                Voice Model (Aura Lifelike)
               </label>
               <InfoTooltip
-                content="Deepgram Aura voices provide human-like tone, natural breathing, and ~200ms ultra-low latency for seamless telephone conversations."
+                content="Aura voices provide human-like tone, natural breathing, and ~200ms ultra-low latency for seamless telephone conversations."
                 position="top"
               />
             </div>
@@ -252,7 +252,7 @@ export function Step3VoiceLanguage({
                   {/* Aura-1 Group */}
                   <div className="py-1">
                     <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] bg-[var(--color-surface-muted)]/60">
-                      Deepgram Aura-1 (English)
+                      Aura (English)
                     </div>
                     {AURA_VOICES.filter((v) => v.language === "en" && !v.id.startsWith("aura-2")).map((v) => {
                       const isSelected = selectedVoiceId === v.id;
@@ -306,7 +306,7 @@ export function Step3VoiceLanguage({
                   {/* Aura-2 Group */}
                   <div className="py-1">
                     <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] bg-[var(--color-surface-muted)]/60">
-                      Deepgram Aura-2 (Next-Gen Multilingual)
+                      Aura Multilingual
                     </div>
                     {AURA_VOICES.filter((v) => v.id.startsWith("aura-2")).map((v) => {
                       const isSelected = selectedVoiceId === v.id;
@@ -435,7 +435,7 @@ export function Step3VoiceLanguage({
             onChange={(e) => handleLanguageChange(e.target.value)}
             className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
           >
-            {DEEPGRAM_SUPPORTED_LANGUAGES.map((lang) => (
+            {SUPPORTED_LANGUAGES.map((lang) => (
               <option key={lang.code} value={lang.code}>
                 {lang.label}
               </option>

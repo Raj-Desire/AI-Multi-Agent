@@ -65,7 +65,7 @@ class CallSession(BaseModel):
     call_duration: int = 0          # in seconds
 
     # AI Configuration snapshot
-    agent_name: str = "Desire AI Receptionist"
+    agent_name: str = "AI Receptionist"
     agent_role: str = "Professional AI Voice Assistant"
     language: str = "en"
     voice: str = "aura-asteria-en"

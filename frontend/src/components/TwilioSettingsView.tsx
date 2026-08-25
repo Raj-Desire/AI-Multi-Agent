@@ -211,7 +211,7 @@ export function TwilioSettingsView() {
         body: JSON.stringify({
           account_sid: accountSid.trim(),
           auth_token: authToken.trim(),
-          friendly_name: "Desire AI Calling Platform"
+          friendly_name: "AI Calling Platform"
         }),
       });
 
@@ -904,7 +904,7 @@ export function TwilioSettingsView() {
                     </optgroup>
                   )}
                   {availableAgents.default_agents && availableAgents.default_agents.length > 0 && (
-                    <optgroup label="Desire AI Platform Defaults">
+                    <optgroup label="Platform Default Agents">
                       {availableAgents.default_agents
                         .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
                         .map((a) => (

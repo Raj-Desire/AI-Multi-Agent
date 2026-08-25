@@ -329,7 +329,7 @@ export function BusinessProfileView() {
                 disabled={!canEdit}
                 value={profile.company_name}
                 onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
-                placeholder="e.g. Desire AI Technologies"
+                placeholder="e.g. Acme Technologies"
                 className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium ${
                   !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
                 }`}
@@ -383,7 +383,7 @@ export function BusinessProfileView() {
                 disabled={!canEdit}
                 value={profile.email}
                 onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                placeholder="support@desireai.com"
+                placeholder="support@example.com"
                 className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] ${
                   !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
                 }`}
@@ -400,7 +400,7 @@ export function BusinessProfileView() {
                 disabled={!canEdit}
                 value={profile.phone}
                 onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                placeholder="+91 98765 43210"
+                placeholder="+1 (555) 019-2834"
                 className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] ${
                   !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
                 }`}
@@ -417,7 +417,7 @@ export function BusinessProfileView() {
                 disabled={!canEdit}
                 value={profile.website || ""}
                 onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-                placeholder="https://desireai.com"
+                placeholder="https://example.com"
                 className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] ${
                   !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
                 }`}
@@ -526,7 +526,7 @@ export function BusinessProfileView() {
               disabled={!canEdit}
               value={profile.address}
               onChange={(e) => setProfile({ ...profile, address: e.target.value })}
-              placeholder="e.g. 402, Desire Infotech Park, S.G. Highway, Ahmedabad, Gujarat 380054"
+              placeholder="e.g. 402, Innovation Tower, Tech Hub, Downtown 10001"
               className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium ${
                 !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
               }`}
@@ -686,7 +686,7 @@ export function BusinessProfileView() {
                     type="text"
                     value={newFAQAnswer}
                     onChange={(e) => setNewFAQAnswer(e.target.value)}
-                    placeholder="Spoken Answer (e.g. You can request a quote by emailing support@desireai.com)"
+                    placeholder="Spoken Answer (e.g. You can request a quote by emailing support@example.com)"
                     className="flex-1 h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                   <Button

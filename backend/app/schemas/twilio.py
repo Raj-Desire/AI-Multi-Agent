@@ -35,7 +35,7 @@ class TwilioConfigResponse(BaseModel):
 class AutoSetupTwilioRequest(BaseModel):
     account_sid: str
     auth_token: str
-    friendly_name: Optional[str] = "Desire AI Calling Platform"
+    friendly_name: Optional[str] = "AI Calling Platform"
 
 class AutoSetupResponse(BaseModel):
     account_sid: str

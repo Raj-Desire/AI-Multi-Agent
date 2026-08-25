@@ -14,7 +14,7 @@ import {
 
 export const ProductExperiencePanel: React.FC = () => {
   const { draftTheme } = useTheme();
-  const orgName = draftTheme.identity.org_name || "Desire AI";
+  const orgName = draftTheme.identity.org_name || "AI Voice Platform";
 
   const featurePillars = [
     {

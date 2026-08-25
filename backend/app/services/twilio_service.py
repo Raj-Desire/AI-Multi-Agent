@@ -247,7 +247,7 @@ class TwilioService:
         ctx: TenantContext,
         account_sid: str,
         auth_token: str,
-        friendly_name: str = "Desire AI Calling Platform"
+        friendly_name: str = "AI Calling Platform"
     ) -> AutoSetupResponse:
         """
         1-Click Automatic Twilio Provisioning:

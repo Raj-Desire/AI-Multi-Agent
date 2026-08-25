@@ -69,12 +69,12 @@ class CallService:
             agent_config = await self.agent_repo.get_by_id("global", "agt_receptionist_default")
 
         agent_snapshot = agent_config.model_dump(mode="json") if agent_config else None
-        agent_name = agent_config.name if agent_config else "Desire AI Receptionist"
+        agent_name = agent_config.name if agent_config else "AI Receptionist"
         agent_version = agent_config.version if agent_config else 1
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
         # Build dynamic speech / message
-        speech_text = prompt.strip() if prompt and prompt.strip() else (agent_config.greeting if agent_config else "Hello! Thank you for connecting with Desire AI Platform. How can I assist you today?")
+        speech_text = prompt.strip() if prompt and prompt.strip() else (agent_config.greeting if agent_config else "Hello! Thank you for connecting with our AI voice platform. How can I assist you today?")
         safe_speech = saxutils.escape(speech_text)
         twiml_body = f"<Response><Say voice='Google.en-US-Neural2-F'>{safe_speech}</Say><Pause length='5'/></Response>"
 
@@ -248,7 +248,7 @@ class CallService:
             agent_config = await self.agent_repo.get_by_id("global", "agt_receptionist_default")
 
         agent_snapshot = agent_config.model_dump(mode="json") if agent_config else None
-        agent_name = agent_config.name if agent_config else "Desire AI Receptionist"
+        agent_name = agent_config.name if agent_config else "AI Receptionist"
         agent_version = agent_config.version if agent_config else 1
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 

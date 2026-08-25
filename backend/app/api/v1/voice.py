@@ -452,21 +452,23 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     # Deepgram Aura REST TTS
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
-        raise HTTPException(status_code=400, detail="Deepgram API key is not configured.")
+        raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
 
     deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&container=wav&encoding=linear16"
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json"
     }
-    body = {"text": sample_text}
+    body = {
+        "text": payload.text
+    }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(deepgram_url, json=body, headers=headers)
             if resp.status_code != 200:
-                logger.error(f"[SampleSpeech Error] Deepgram TTS returned {resp.status_code}: {resp.text}")
-                raise HTTPException(status_code=resp.status_code, detail=f"Deepgram TTS error: {resp.text}")
+                logger.error(f"[SampleSpeech Error] Voice TTS returned {resp.status_code}: {resp.text}")
+                raise HTTPException(status_code=resp.status_code, detail=f"Voice synthesis error: {resp.text}")
 
             return Response(content=resp.content, media_type="audio/wav")
     except HTTPException:
@@ -529,7 +531,7 @@ async def initiate_ai_test_call(
     if not os.getenv("DEEPGRAM_API_KEY"):
         raise HTTPException(
             status_code=400,
-            detail="Deepgram API key is not configured. Please add DEEPGRAM_API_KEY to your backend/.env file."
+            detail="Voice engine is not configured. Please verify your backend environment settings."
         )
 
     # Determine public stream URL

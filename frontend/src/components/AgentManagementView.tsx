@@ -753,7 +753,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
           isLoading={loading}
           loadingMessage="Loading organization voice agents..."
           emptyTitle="No organization agents created yet"
-          emptyDescription="Create a tailored AI voice agent or duplicate one of the Desire AI Platform default agents."
+          emptyDescription="Create a tailored AI voice agent or duplicate one of the Platform default agents."
           pagination={true}
           pageSize={10}
         />
@@ -764,7 +764,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Platform Default Agents (Desire AI Library)</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Platform Default Agents (Voice Library)</h2>
           </div>
           <span className="text-xs text-[var(--color-muted)]">Ready-to-use voice agents</span>
         </div>

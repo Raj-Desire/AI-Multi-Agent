@@ -74,7 +74,7 @@ function MainContent() {
       case "voice_agent":
         return {
           title: "AI Voice Agents",
-          sub: "Deepgram & LLM voice agent configurations, prompts & library",
+          sub: "Spoken AI & LLM voice agent configurations, prompts & library",
           icon: Bot,
         };
       case "business_profile":
@@ -183,7 +183,7 @@ function MainContent() {
             {/* Tenant Organization */}
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "Desire AI"}</strong></span>
+              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "AI Voice Platform"}</strong></span>
             </div>
           </div>
         </header>
@@ -221,7 +221,7 @@ function MainContent() {
         {/* Minimal Footer */}
         <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
           <div>
-            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "Desire AI")}. All rights reserved.
+            &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "AI Voice Platform")}. All rights reserved.
           </div>
           <div className="flex items-center gap-2.5 text-[11px] opacity-75">
             <span>Multi-Tenant Architecture</span>

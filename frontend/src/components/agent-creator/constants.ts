@@ -334,7 +334,7 @@ export const DEFAULT_CONVERSATION_FLOWS = [
 ];
 
 export const AURA_VOICES = [
-  // Deepgram Aura Voices (English)
+  // Aura Voices (English)
   { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales." },
   { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups." },
   { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking." },
@@ -347,19 +347,19 @@ export const AURA_VOICES = [
   { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates." },
   { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice." },
 
-  // Deepgram Aura-2 Multilingual Voices
-  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Deepgram Aura-2 next-gen expressive conversational female voice." },
-  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Deepgram Aura-2 expressive conversational female voice." },
-  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Deepgram Aura-2 dynamic conversational male voice." },
-  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Deepgram Aura-2 natural Spanish female voice." },
-  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Deepgram Aura-2 natural Spanish male voice." },
-  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Deepgram Aura-2 natural German female voice." },
-  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Deepgram Aura-2 natural French female voice." },
-  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Deepgram Aura-2 natural Italian male voice." },
-  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Deepgram Aura-2 natural Japanese female voice." }
+  // Aura-2 Multilingual Voices
+  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Next-gen expressive conversational female voice." },
+  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Expressive conversational female voice." },
+  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Dynamic conversational male voice." },
+  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice." },
+  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Natural Spanish male voice." },
+  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Natural German female voice." },
+  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Natural French female voice." },
+  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice." },
+  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice." }
 ];
 
-export const DEEPGRAM_SUPPORTED_LANGUAGES = [
+export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English (US / Global Standard)", native: "English" },
   { code: "es", label: "Spanish (Español)", native: "Español" },
   { code: "fr", label: "French (Français)", native: "Français" },
@@ -451,7 +451,7 @@ export const CREATOR_STEPS = [
     label: "Voice & Speech",
     title: "Voice, Speech & AI Model",
     subtitle: "Choose spoken voice, audio speed, language, and LLM engine",
-    description: "Pick Deepgram natural voice avatars, listening language, playback speed, and select the underlying AI model (e.g., GPT-4o Mini, Gemini)."
+    description: "Pick natural voice avatars, listening language, playback speed, and select the underlying AI model (e.g., GPT-4o Mini, Gemini)."
   },
   {
     id: 4,
