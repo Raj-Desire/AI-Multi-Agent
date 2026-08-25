@@ -27,19 +27,20 @@ import {
 } from "lucide-react";
 
 function MainContent() {
-  const { user, isLoading, isAdmin, isSuperAdmin } = useAuth();
-  const { draftTheme } = useTheme();
+  const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin } = useAuth();
+  const { draftTheme, isThemeReady } = useTheme();
   const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
   const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  if (isLoading) {
+  // When verifying auth session OR when logged in and waiting for organization custom theme to apply
+  if (isAuthLoading || (user && !isThemeReady)) {
     return (
       <LoadingState
         fullPage
         message="Loading workspace session..."
-        subMessage="Applying organization identity and credentials"
+        subMessage="Applying organization identity and theme styling"
         size="md"
       />
     );

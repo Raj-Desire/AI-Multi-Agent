@@ -1028,7 +1028,7 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
         onClose={() => setPreviewDrawerAgent(null)}
         title={`Live Preview Playground: ${previewDrawerAgent?.name || "Agent"}`}
         description="Speak with your microphone or type messages to test conversational turns, voice, and prompts directly in your browser."
-        size="lg"
+        size="xl"
       >
         {previewDrawerAgent && (
           <div className="space-y-4 text-left">

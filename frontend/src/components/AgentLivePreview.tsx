@@ -18,7 +18,8 @@ import {
   AlertCircle,
   Clock,
   Zap,
-  Sliders
+  Sliders,
+  Loader2
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
@@ -494,124 +495,145 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   }
 
   return (
-    <div className={`flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-sm overflow-hidden ${className}`}>
-      {/* Top Header */}
-      <div className="px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
-          <div>
-            <h4 className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
-              <span>Live Playground & Voice Preview</span>
-              <Badge variant="primary" size="sm">Real-Time Audio</Badge>
-            </h4>
-            <p className="text-[10px] text-[var(--color-muted)]">
-              Talk directly with your mic or test parameters with 0 delay. No phone call needed.
+    <div className={`flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm overflow-hidden text-left ${className}`}>
+      {/* Top Header Banner */}
+      <div className="p-4 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start sm:items-center gap-3 min-w-0">
+          <div className="relative flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+            <div className={`w-3 h-3 rounded-full transition-colors ${isConnected ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" : "bg-slate-400"}`} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-xs font-bold text-[var(--color-heading)] leading-tight">
+                Live Playground &amp; Voice Preview
+              </h4>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 shadow-2xs shrink-0">
+                <Radio className="w-2.5 h-2.5 animate-pulse" />
+                <span>Real-Time Voice</span>
+              </span>
+            </div>
+            <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-snug">
+              Talk directly with your microphone or test conversational turns with ultra-low latency.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action Button */}
+        <div className="shrink-0 self-start sm:self-auto">
           {!isConnected ? (
-            <Button
-              variant="primary"
-              size="sm"
+            <button
+              type="button"
               disabled={isConnecting}
               onClick={startPreviewSession}
-              leftIcon={<Play className="w-3.5 h-3.5 fill-current" />}
-              className="h-8 text-xs font-semibold"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover,var(--color-primary))] text-white shadow-sm hover:shadow-md active:scale-98 transition-all cursor-pointer disabled:opacity-50 select-none whitespace-nowrap"
             >
-              {isConnecting ? "Connecting..." : "Start Live Preview"}
-            </Button>
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Connecting...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Live Preview</span>
+                </>
+              )}
+            </button>
           ) : (
-            <Button
-              variant="danger"
-              size="sm"
+            <button
+              type="button"
               onClick={stopPreviewSession}
-              leftIcon={<Square className="w-3.5 h-3.5 fill-current" />}
-              className="h-8 text-xs"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm hover:shadow-md active:scale-98 transition-all cursor-pointer select-none whitespace-nowrap"
             >
-              Stop Preview
-            </Button>
+              <Square className="w-3.5 h-3.5 fill-current" />
+              <span>Stop Preview</span>
+            </button>
           )}
         </div>
       </div>
 
       {errorMsg && (
-        <div className="px-4 py-2 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center justify-between">
+        <div className="px-4 py-2.5 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center justify-between animate-fade-in">
           <span>{errorMsg}</span>
-          <button type="button" onClick={() => setErrorMsg(null)} className="text-xs font-bold px-1">✕</button>
+          <button type="button" onClick={() => setErrorMsg(null)} className="text-xs font-bold px-1.5 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer">✕</button>
         </div>
       )}
 
-      {/* Live Status Indicators Strip */}
-      <div className="px-4 py-2 bg-[var(--color-surface-muted)]/30 border-b border-[var(--color-border)] flex flex-wrap items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-3 text-[11px]">
-          <div className="flex items-center gap-1">
-            <Volume2 className="w-3 h-3 text-[var(--color-primary)]" />
+      {/* Telemetry & Configuration Strip */}
+      <div className="px-4 py-2.5 bg-[var(--color-surface-muted)]/30 border-b border-[var(--color-border)] flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs text-[11px]">
+            <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span className="text-[var(--color-muted)]">Voice:</span>
-            <strong className="font-mono text-[var(--color-heading)]">{agentConfig.voice?.voice || "aura-orion-en"}</strong>
+            <span className="font-mono font-semibold text-[var(--color-heading)]">{agentConfig.voice?.voice || "aura-orion-en"}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Cpu className="w-3 h-3 text-[var(--color-primary)]" />
+
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs text-[11px]">
+            <Cpu className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span className="text-[var(--color-muted)]">Model:</span>
-            <strong className="font-mono text-[var(--color-heading)]">{agentConfig.llm?.model || "gpt-4o-mini"}</strong>
+            <span className="font-mono font-semibold text-[var(--color-heading)]">{agentConfig.llm?.model || "gpt-4o-mini"}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Zap className="w-3 h-3 text-amber-500" />
+
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs text-[11px]">
+            <Zap className="w-3.5 h-3.5 text-amber-500" />
             <span className="text-[var(--color-muted)]">Barge-in:</span>
-            <span className="font-medium text-emerald-600">Active</span>
+            <span className="font-semibold text-emerald-600">Active</span>
           </div>
         </div>
 
         {isConnected && (
           <div className="flex items-center gap-2">
             {isUserSpeaking && (
-              <Badge variant="primary" size="sm" className="animate-pulse flex items-center gap-1">
-                <Mic className="w-3 h-3 text-white" />
-                User Speaking...
-              </Badge>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-[var(--color-primary)] text-white shadow-xs animate-pulse">
+                <Mic className="w-3 h-3" />
+                <span>User Speaking...</span>
+              </span>
             )}
             {isAgentSpeaking && (
-              <Badge variant="success" size="sm" className="animate-pulse flex items-center gap-1">
-                <Volume2 className="w-3 h-3 text-white" />
-                Agent Answering...
-              </Badge>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-600 text-white shadow-xs animate-pulse">
+                <Volume2 className="w-3 h-3" />
+                <span>Agent Answering...</span>
+              </span>
             )}
           </div>
         )}
       </div>
 
-      {/* Spoken Turn Transcript Feed */}
+      {/* Conversational Transcript Feed */}
       <div
         ref={transcriptBoxRef}
-        className="flex-1 p-4 bg-[var(--color-surface)] min-h-[220px] max-h-[320px] overflow-y-auto space-y-2.5 text-xs select-text"
+        className="flex-1 p-4 bg-[var(--color-surface)] min-h-[240px] max-h-[360px] overflow-y-auto space-y-3 text-xs select-text"
       >
         {transcriptMessages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-[var(--color-muted)] text-center p-6 space-y-2">
-            <Bot className="w-8 h-8 opacity-25" />
-            <p className="text-xs">
+          <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-[var(--color-muted)] text-center p-6 space-y-2.5">
+            <div className="w-12 h-12 rounded-full bg-[var(--color-surface-muted)] flex items-center justify-center text-[var(--color-muted)] border border-[var(--color-border)]">
+              <Bot className="w-6 h-6 opacity-60 text-[var(--color-primary)]" />
+            </div>
+            <p className="text-xs max-w-sm leading-relaxed text-[var(--color-muted)]">
               {isConnected
-                ? "Listening... Speak into your microphone to chat with the agent live!"
-                : "Click 'Start Live Preview' to test voice synthesis, interruption barge-in, and response speed directly in your browser."}
+                ? "Microphone is connected! Speak naturally into your microphone or type below to test live speech and answers."
+                : "Click 'Start Live Preview' above to test real-time voice synthesis, interruption barge-in, and responses directly in your browser."}
             </p>
           </div>
         ) : (
           transcriptMessages.map((msg, idx) => (
             <div
               key={idx}
-              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"} animate-fade-in`}
             >
-              <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize flex items-center gap-1">
-                <span>{msg.role === "user" ? "You (Microphone)" : agentConfig.name || "AI Agent"}</span>
+              <div className="text-[10px] text-[var(--color-muted)] mb-1 capitalize flex items-center gap-1.5">
+                <span className="font-semibold text-[var(--color-heading)]">{msg.role === "user" ? "You (Microphone)" : agentConfig.name || "AI Voice Agent"}</span>
                 {msg.turn_latency_ms && (
-                  <span className="font-mono opacity-60">({msg.turn_latency_ms}ms)</span>
+                  <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-muted)]">
+                    {msg.turn_latency_ms}ms
+                  </span>
                 )}
               </div>
               <div
-                className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs leading-relaxed ${
+                className={`p-3 text-xs leading-relaxed max-w-[85%] ${
                   msg.role === "user"
-                    ? "bg-[var(--color-primary)] text-white font-medium"
-                    : "bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-heading)]"
+                    ? "bg-[var(--color-primary)] text-white font-medium rounded-2xl rounded-tr-xs shadow-xs"
+                    : "bg-[var(--color-surface-muted)]/80 border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl rounded-tl-xs shadow-2xs"
                 }`}
               >
                 {msg.content}
@@ -621,8 +643,8 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         )}
       </div>
 
-      {/* Bottom Interactive Bar (Type to Speak & Send) */}
-      <div className="p-3 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 flex items-center gap-2">
+      {/* Bottom Interactive Message Bar */}
+      <div className="p-3 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 flex items-center gap-2.5">
         <div className="relative flex-1">
           <input
             type="text"
@@ -634,24 +656,24 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             disabled={!isConnected}
             placeholder={
               isConnected
-                ? "Type a message or speak into your mic..."
-                : "Connect preview above to speak or type..."
+                ? "Type a message or speak into your microphone..."
+                : "Click 'Start Live Preview' above to speak or type..."
             }
-            className="w-full h-8.5 pl-3 pr-8 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
+            className="w-full h-9 pl-3.5 pr-10 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15 disabled:opacity-50 transition-all"
           />
           <button
             type="button"
             onClick={handleSendTypedMessage}
             disabled={!isConnected || !typedMessage.trim()}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-primary)] hover:opacity-80 disabled:opacity-30 cursor-pointer"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 disabled:opacity-30 cursor-pointer transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {isConnected && isMicActive && (
-          <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium px-2 py-1 bg-emerald-500/10 rounded border border-emerald-500/20">
-            <Mic className="w-3 h-3 animate-pulse" />
+          <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold px-2.5 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shrink-0">
+            <Mic className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
             <span>Mic Live</span>
           </div>
         )}

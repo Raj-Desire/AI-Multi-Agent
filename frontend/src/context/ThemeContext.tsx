@@ -50,6 +50,7 @@ interface ThemeContextType {
   userPreferences: UserPreferences;
   isDirty: boolean;
   isLoading: boolean;
+  isThemeReady: boolean;
   setDraftTheme: React.Dispatch<React.SetStateAction<OrganizationThemeConfig>>;
   updateDraftTheme: (updater: (prev: OrganizationThemeConfig) => OrganizationThemeConfig) => void;
   saveTheme: () => Promise<void>;
@@ -61,10 +62,12 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_CACHE_KEY = "desire_cached_org_theme";
+const THEME_CACHE_KEY_PREFIX = "desire_cached_org_theme_";
 
-function getCachedTheme(): OrganizationThemeConfig {
+function getCachedTheme(orgId?: string): OrganizationThemeConfig {
   try {
-    const saved = localStorage.getItem(THEME_CACHE_KEY);
+    const key = orgId ? `${THEME_CACHE_KEY_PREFIX}${orgId}` : "desire_cached_org_theme";
+    const saved = localStorage.getItem(key) || localStorage.getItem("desire_cached_org_theme");
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && parsed.colors && parsed.appearance) {
@@ -77,9 +80,16 @@ function getCachedTheme(): OrganizationThemeConfig {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [theme, setTheme] = useState<OrganizationThemeConfig>(getCachedTheme);
-  const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(getCachedTheme);
-  const [isLoading, setIsLoading] = useState(false);
+  const [theme, setTheme] = useState<OrganizationThemeConfig>(() => getCachedTheme(user?.organization_id));
+  const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(() => getCachedTheme(user?.organization_id));
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    // If a token exists, start in loading state until org theme is confirmed
+    return !!localStorage.getItem("desire_token");
+  });
+  const [isThemeReady, setIsThemeReady] = useState<boolean>(() => {
+    // If no session token, theme is ready immediately; if session exists, wait for org theme
+    return !localStorage.getItem("desire_token");
+  });
 
   // User personal preferences stored locally (default: light)
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(() => {
@@ -97,34 +107,60 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Load theme from API when user session changes
   useEffect(() => {
+    let isMounted = true;
+
     async function loadOrgTheme() {
       if (!user) {
         const fallback = DEFAULT_ORG_THEME;
         setTheme(fallback);
         setDraftTheme(fallback);
-        localStorage.removeItem(THEME_CACHE_KEY);
-        setIsLoading(false);
+        applyThemeToCss(fallback, userPreferences);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsThemeReady(true);
+        }
         return;
       }
 
-      try {
+      if (isMounted) {
         setIsLoading(true);
+      }
+
+      // Check if we have an instant cached theme for this organization
+      const cached = getCachedTheme(user.organization_id);
+      if (cached && cached.identity && cached.colors) {
+        setTheme(cached);
+        setDraftTheme(cached);
+        applyThemeToCss(cached, userPreferences);
+      }
+
+      try {
         const data = await fetchApi<OrganizationThemeConfig>("/organization/theme");
-        if (data && data.colors) {
+        if (data && data.colors && isMounted) {
           setTheme(data);
           setDraftTheme(data);
+          applyThemeToCss(data, userPreferences);
           try {
-            localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data));
+            const orgKey = user.organization_id ? `${THEME_CACHE_KEY_PREFIX}${user.organization_id}` : "desire_cached_org_theme";
+            localStorage.setItem(orgKey, JSON.stringify(data));
+            localStorage.setItem("desire_cached_org_theme", JSON.stringify(data));
           } catch (e) {}
         }
       } catch (err) {
-        console.warn("Could not load organization theme from API, using cached or default:", err);
+        console.warn("Could not load organization theme from API, using cached:", err);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsThemeReady(true);
+        }
       }
     }
 
     loadOrgTheme();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user?.id, user?.organization_id]);
 
   // Apply draftTheme CSS tokens to document in real time
@@ -204,6 +240,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         userPreferences,
         isDirty,
         isLoading,
+        isThemeReady,
         setDraftTheme,
         updateDraftTheme,
         saveTheme,
