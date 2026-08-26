@@ -46,6 +46,8 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const muteGainRef = useRef<GainNode | null>(null);
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
@@ -57,18 +59,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     };
   }, []);
 
-  // Update prompt dynamically if agentConfig changes while session is active
+  // Update prompt dynamically if agentConfig changes while session is active without restarting WS
   useEffect(() => {
     if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: "configure",
-          agent_config: agentConfig,
-          greeting: agentConfig.greeting,
+          type: "update_prompt",
+          prompt: agentConfig.system_prompt || agentConfig.objective,
         })
       );
     }
-  }, [JSON.stringify(agentConfig)]);
+  }, [agentConfig.system_prompt, agentConfig.objective]);
 
   useEffect(() => {
     if (transcriptBoxRef.current) {
@@ -157,9 +158,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
             setIsUserSpeaking(false);
           } else if (data.type === "call_concluded") {
-            setTimeout(() => {
-              stopPreviewSession();
-            }, 1200);
+            stopPreviewSession();
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
             stopPreviewSession();
@@ -238,13 +237,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       try {
         await audioCtx.audioWorklet.addModule(workletUrl);
         const workletNode = new AudioWorkletNode(audioCtx, "mic-processor");
+        workletNodeRef.current = workletNode;
+
+        // Keep audio graph alive in Chromium by routing workletNode through a silent gain node to destination
+        const muteGain = audioCtx.createGain();
+        muteGain.gain.value = 0.0;
+        muteGainRef.current = muteGain;
 
         workletNode.port.onmessage = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > 65536) return; // Drop frame if network buffer is backlogged
           const inputData: Float32Array = e.data;
           if (!inputData || inputData.length === 0) return;
 
-          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to Deepgram input rate (24000Hz)
+          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to 24000Hz Linear PCM
           const targetSampleRate = 24000;
           const srcSampleRate = audioCtx.sampleRate;
           let resampledData: Float32Array;
@@ -264,31 +270,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             }
           }
 
-          // Convert Float32 to Int16 PCM (16-bit linear at 24000Hz)
+          // Convert Float32 to Int16 Linear PCM (16-bit linear at 24000Hz)
           const pcm16Buffer = new Int16Array(resampledData.length);
           for (let i = 0; i < resampledData.length; i++) {
             const s = Math.max(-1, Math.min(1, resampledData[i]));
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
-          // Convert Int16Array buffer to base64
-          const uint8 = new Uint8Array(pcm16Buffer.buffer);
-          let binary = "";
-          for (let i = 0; i < uint8.length; i++) {
-            binary += String.fromCharCode(uint8[i]);
-          }
-          const b64 = btoa(binary);
-
-          ws.send(
-            JSON.stringify({
-              type: "audio",
-              payload: b64,
-              format: "pcm16",
-            })
-          );
+          // Send raw binary PCM16 buffer directly for maximum throughput and zero serialization latency
+          ws.send(pcm16Buffer.buffer);
         };
 
         source.connect(workletNode);
+        workletNode.connect(muteGain);
+        muteGain.connect(audioCtx.destination);
       } catch (workletErr) {
         console.warn("AudioWorklet fallback to ScriptProcessor:", workletErr);
         const processor = audioCtx.createScriptProcessor(2048, 1, 1);
@@ -296,6 +291,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
         processor.onaudioprocess = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > 65536) return;
           const inputData = e.inputBuffer.getChannelData(0);
 
           // Resample from browser native sample rate to 24000Hz
@@ -324,20 +320,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
-          const uint8 = new Uint8Array(pcm16Buffer.buffer);
-          let binary = "";
-          for (let i = 0; i < uint8.length; i++) {
-            binary += String.fromCharCode(uint8[i]);
-          }
-          const b64 = btoa(binary);
-
-          ws.send(
-            JSON.stringify({
-              type: "audio",
-              payload: b64,
-              format: "pcm16",
-            })
-          );
+          ws.send(pcm16Buffer.buffer);
         };
 
         source.connect(processor);
@@ -355,6 +338,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     setIsMicActive(false);
     setIsAgentSpeaking(false);
     setIsUserSpeaking(false);
+
+    if (workletNodeRef.current) {
+      try {
+        workletNodeRef.current.disconnect();
+      } catch (e) {}
+      workletNodeRef.current = null;
+    }
+
+    if (muteGainRef.current) {
+      try {
+        muteGainRef.current.disconnect();
+      } catch (e) {}
+      muteGainRef.current = null;
+    }
 
     if (processorNodeRef.current) {
       try {

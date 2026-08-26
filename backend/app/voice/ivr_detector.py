@@ -93,10 +93,9 @@ class SmartIVRDetector:
 
     # 5. Third-Party AI / Virtual Assistant Greeter & Self-Identification
     AI_ASSISTANT_PATTERNS = [
-        r"\b(?:i\s+am|i'm|this\s+is)\s+(?:an?|in|also|just)?\s*(?:an?|in|like\s+you\s+(?:in|an?))?\s*(?:automated|virtual|ai|bot)\s*(?:assistant|agent|receptionist|bot|system)?\b",
+        r"\b(?:i\s+am|i'm|this\s+is)\s+(?:an?|in|also|just)?\s*(?:an?|in|like\s+you\s+(?:in|an?))?\s*(?:automated|virtual|ai|bot)\s*(?:assistant|agent|receptionist|bot|system)\b",
         r"\b(?:just\s+like\s+you\s+(?:in|an?)?\s*ai|also\s+(?:an?|in)?\s*ai|another\s+ai)\b",
         r"\b(?:i\s+am|i'm)\s+(?:an?|in)?\s*ai\b",
-        r"\b(?:automated|virtual|ai)\s+(?:assistant|agent|receptionist|bot)\b",
         r"\bhow\s+may\s+i\s+direct\s+your\s+call\b",
         r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\b",
         r"\btell\s+me\s+briefly\s+what\s+you\s+are\s+calling\s+about\b",

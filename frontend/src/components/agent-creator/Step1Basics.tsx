@@ -33,6 +33,7 @@ export function Step1Basics({
         role: purpose.defaultRole,
         objective: purpose.defaultObjective,
         greeting: purpose.defaultGreeting,
+        system_prompt: purpose.defaultSystemPrompt ?? prev.system_prompt,
         communication_style: purpose.defaultCommunicationStyle,
         response_length: purpose.defaultResponseLength,
         skills: purpose.defaultCapabilities,
