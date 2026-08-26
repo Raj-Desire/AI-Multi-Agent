@@ -31,10 +31,11 @@ export function Step3VoiceLanguage({
   agentData,
   setAgentData
 }: Step3VoiceLanguageProps) {
-  // Voice Preview State
+  // Voice Preview State & Instant Audio Cache
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const audioBlobCacheRef = React.useRef<Map<string, string>>(new Map());
 
   // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
@@ -61,14 +62,63 @@ export function Step3VoiceLanguage({
   useEffect(() => {
     return () => {
       if (audioElement) {
+        audioElement.onerror = null;
+        audioElement.onended = null;
         audioElement.pause();
         audioElement.src = "";
       }
     };
   }, [audioElement]);
 
+  // Prefetch voice sample audio into memory for instantaneous (0ms) playback on click
+  const prefetchVoiceSample = async (voiceId: string): Promise<string | undefined> => {
+    if (audioBlobCacheRef.current.has(voiceId)) return audioBlobCacheRef.current.get(voiceId);
+
+    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+    const sampleText =
+      (voiceObj as any)?.sampleText ||
+      `Hello! I am your AI voice agent. How can I help you today?`;
+
+    try {
+      const token = localStorage.getItem("desire_token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+      const sampleUrl = apiBase.endsWith("/api/v1") ? `${apiBase}/voice/sample-speech` : `${apiBase}/api/v1/voice/sample-speech`;
+
+      const response = await fetch(sampleUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          text: sampleText,
+          voice: voiceId
+        })
+      });
+
+      if (!response.ok) return undefined;
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      audioBlobCacheRef.current.set(voiceId, audioUrl);
+      return audioUrl;
+    } catch {
+      return undefined;
+    }
+  };
+
+  // Pre-warm active voice and common voices in the background
+  useEffect(() => {
+    const popularVoices = [selectedVoiceId, "aura-2-thalia-en", "aura-orion-en", "aura-luna-en", "aura-asteria-en"];
+    popularVoices.forEach((vId) => {
+      prefetchVoiceSample(vId);
+    });
+  }, [selectedVoiceId]);
+
   const stopCurrentAudio = () => {
     if (audioElement) {
+      audioElement.onerror = null;
+      audioElement.onended = null;
       audioElement.pause();
       audioElement.src = "";
       setAudioElement(null);
@@ -86,50 +136,45 @@ export function Step3VoiceLanguage({
     setPlayingVoiceId(voiceId);
     setAudioError(null);
 
-    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
-    const sampleText =
-      (voiceObj as any)?.sampleText ||
-      `Hello! I am your AI voice agent. How can I help you today?`;
-
     try {
-      const token = localStorage.getItem("desire_token");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const response = await fetch("http://localhost:8000/api/v1/voice/sample-speech", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          text: sampleText,
-          voice: voiceId
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Voice synthesis failed (${response.status})`);
+      // 1. Check instant in-memory cache first
+      let audioUrl = audioBlobCacheRef.current.get(voiceId);
+      if (!audioUrl) {
+        audioUrl = await prefetchVoiceSample(voiceId);
       }
 
-      const blob = await response.blob();
-      const audioUrl = URL.createObjectURL(blob);
-      const audio = new Audio(audioUrl);
+      if (!audioUrl) {
+        throw new Error("Failed to load voice audio preview.");
+      }
 
+      const audio = new Audio(audioUrl);
       const currentSpeed = agentData.voice?.speed || 1.0;
       audio.playbackRate = Math.max(0.5, Math.min(2.0, currentSpeed));
 
       audio.onended = () => {
         setPlayingVoiceId(null);
         setAudioElement(null);
+        setAudioError(null);
       };
 
       audio.onerror = () => {
+        if (!audio.src || audio.src === "" || audio.src === window.location.href) return;
         setPlayingVoiceId(null);
         setAudioElement(null);
         setAudioError("Audio playback failed. Please check your audio output device.");
       };
 
       setAudioElement(audio);
-      await audio.play();
+      try {
+        await audio.play();
+        setAudioError(null);
+      } catch (playErr: any) {
+        if (playErr.name !== "AbortError") {
+          setAudioError("Audio playback failed. Please check your audio output device.");
+        }
+      }
     } catch (err: any) {
+      if (err.name === "AbortError") return;
       console.warn("Voice TTS error:", err);
       stopCurrentAudio();
       setAudioError(err?.message || "Failed to generate speech preview.");
@@ -260,6 +305,7 @@ export function Step3VoiceLanguage({
                       return (
                         <div
                           key={v.id}
+                          onMouseEnter={() => prefetchVoiceSample(v.id)}
                           onClick={() => {
                             handleVoiceChange(v.id);
                             setIsVoiceDropdownOpen(false);
@@ -283,6 +329,7 @@ export function Step3VoiceLanguage({
                             {/* Inline Voice Test Audio Button */}
                             <button
                               type="button"
+                              onMouseEnter={() => prefetchVoiceSample(v.id)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 playVoiceSample(v.id);
@@ -314,6 +361,7 @@ export function Step3VoiceLanguage({
                       return (
                         <div
                           key={v.id}
+                          onMouseEnter={() => prefetchVoiceSample(v.id)}
                           onClick={() => {
                             handleVoiceChange(v.id);
                             setIsVoiceDropdownOpen(false);
@@ -337,6 +385,7 @@ export function Step3VoiceLanguage({
                             {/* Inline Voice Test Audio Button */}
                             <button
                               type="button"
+                              onMouseEnter={() => prefetchVoiceSample(v.id)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 playVoiceSample(v.id);

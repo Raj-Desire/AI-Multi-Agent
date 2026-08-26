@@ -431,11 +431,14 @@ class SampleSpeechRequest(BaseModel):
     speed: Optional[float] = 0.95
 
 
+SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
+
+
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
     Synthesizes a sample audio snippet using Deepgram Aura Text-to-Speech.
-    Returns audio/wav for instant in-browser playback.
+    Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
     import os
     import httpx
@@ -448,18 +451,26 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     sample_text = sample_text.strip()
     voice = payload.voice or "aura-orion-en"
 
-    # Deepgram Aura REST TTS
+    cache_key = f"{voice}:{sample_text}"
+    if cache_key in SAMPLE_SPEECH_CACHE:
+        return Response(
+            content=SAMPLE_SPEECH_CACHE[cache_key],
+            media_type="audio/mp3",
+            headers={"Cache-Control": "public, max-age=86400", "X-Cache": "HIT"}
+        )
+
+    # Deepgram Aura REST TTS (Lightweight MP3 encoding for instant playback)
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
 
-    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&container=wav&encoding=linear16"
+    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&encoding=mp3"
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json"
     }
     body = {
-        "text": payload.text
+        "text": sample_text
     }
 
     try:
@@ -469,7 +480,12 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
                 logger.error(f"[SampleSpeech Error] Voice TTS returned {resp.status_code}: {resp.text}")
                 raise HTTPException(status_code=resp.status_code, detail=f"Voice synthesis error: {resp.text}")
 
-            return Response(content=resp.content, media_type="audio/wav")
+            SAMPLE_SPEECH_CACHE[cache_key] = resp.content
+            return Response(
+                content=resp.content,
+                media_type="audio/mp3",
+                headers={"Cache-Control": "public, max-age=86400", "X-Cache": "MISS"}
+            )
     except HTTPException:
         raise
     except Exception as e:

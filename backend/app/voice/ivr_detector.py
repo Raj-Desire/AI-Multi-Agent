@@ -56,12 +56,14 @@ class SmartIVRDetector:
         r"\bafter\s+the\s+(?:tone|beep|sound)\b",
         r"\bat\s+the\s+(?:tone|beep)\b",
         r"\bmailbox\s+is\s+(?:full|unavailable)\b",
-        r"\b(?:subscriber|party)\s+(?:is\s+not\s+available|cannot\s+be\s+reached)\b",
+        r"\bvoicemail\s+box\s+is\s+(?:full|unavailable)\b",
+        r"\b(?:subscriber|party)\s+(?:is\s+not\s+available|cannot\s+be\s+reached|is\s+busy)\b",
         r"\bplease\s+leave\s+your\s+name\s+and\s+number\b",
         r"\byou\s+have\s+reached\s+the\s+voicemail\s+of\b",
         r"\bcall\s+(?:has\s+been|is)\s+forwarded\s+to\s+(?:an?\s+)?(?:automated\s+voice\s+messaging|voice\s*mail|voicemail)\b",
         r"\b(?:forwarded|transferred|directed)\s+to\s+(?:voice\s*mail|voicemail)\b",
         r"\b(?:voice\s*mail|voicemail)\b",
+        r"\brecord\s+(?:your\s+)?message\s+at\s+the\s+beep\b",
         r"\bbeep\s+ke\s+baad\b",  # Hindi voicemail: after beep
         r"\b(?:apna\s+)?(?:sandesh|message)\s+(?:record|chhoden|chhode)\b",  # Hindi record message
         r"\bdeje\s+su\s+mensaje\s+despues\s+del\s+tono\b",     # Spanish voicemail
@@ -83,6 +85,8 @@ class SmartIVRDetector:
     # 4. Telecom Carrier Intercepts & Network Announcements
     CARRIER_INTERCEPT_PATTERNS = [
         r"\b(?:the\s+)?number\s+(?:you\s+(?:have\s+)?)?(?:dialed|called)?\s*is\s+(?:currently\s+)?(?:switched\s+off|busy|unreachable|out\s+of\s+(?:service|reach)|temporarily\s+unavailable)\b",
+        r"\b(?:the\s+)?party\s+you\s+are\s+trying\s+to\s+reach\b",
+        r"\ball\s+circuits\s+are\s+busy\b",
         r"\b(?:number\s+is\s+)?out\s+of\s+coverage\s+area\b",
         r"\bcall\s+cannot\s+be\s+completed\s+as\s+dialed\b",
         r"\bcheck\s+the\s+number\s+and\s+dial\s+again\b",
@@ -96,6 +100,8 @@ class SmartIVRDetector:
         r"\b(?:i\s+am|i'm|this\s+is)\s+(?:an?|in|also|just)?\s*(?:an?|in|like\s+you\s+(?:in|an?))?\s*(?:automated|virtual|ai|bot)\s*(?:assistant|agent|receptionist|bot|system)\b",
         r"\b(?:just\s+like\s+you\s+(?:in|an?)?\s*ai|also\s+(?:an?|in)?\s*ai|another\s+ai)\b",
         r"\b(?:i\s+am|i'm)\s+(?:an?|in)?\s*ai\b",
+        r"\bcall\s+assistant\s+is\s+screening\s+this\s+call\b",
+        r"\bautomated\s+screening\b",
         r"\bhow\s+may\s+i\s+direct\s+your\s+call\b",
         r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\b",
         r"\btell\s+me\s+briefly\s+what\s+you\s+are\s+calling\s+about\b",

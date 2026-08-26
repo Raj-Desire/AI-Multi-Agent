@@ -58,6 +58,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     call_start_time: float = time.time()
     last_user_speech_time: float = time.time()
     last_agent_speech_done_time: float = time.time()
+    user_spoke: bool = False
     is_agent_speaking: bool = False
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
@@ -112,9 +113,10 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_user_speaking():
         """Barge-in: Interrupt audio immediately when user starts speaking."""
-        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence
+        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence, user_spoke
         is_user_speaking = True
         is_agent_speaking = False
+        user_spoke = True
         last_user_speech_time = time.time()
         has_reprompted_silence = False  # Reset silence reprompt on user speech
 
@@ -156,7 +158,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_transcript(role: str, content: str):
         """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
-        nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call
+        nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke
         if not session:
             return
 
@@ -167,6 +169,7 @@ async def voice_stream_websocket(websocket: WebSocket):
             turn_start_time = now
             last_user_speech_time = time.time()
             is_user_speaking = False
+            user_spoke = True
             has_reprompted_silence = False
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
 
@@ -196,7 +199,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                             if agent_config and agent_config.runtime and agent_config.runtime.conclusion_message:
                                 conclusion_text = agent_config.runtime.conclusion_message
                             await deepgram_client.inject_agent_message(conclusion_text)
-                            asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                            asyncio.create_task(asyncio.sleep(1.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                 except Exception as ivr_err:
                     logger.error(f"[VoiceGateway] IVR detection error: {ivr_err}")
         else:
@@ -208,10 +211,17 @@ async def voice_stream_websocket(websocket: WebSocket):
             )
             from app.api.v1.voice import detect_conversation_conclusion
             if detect_conversation_conclusion(content):
-                logger.info(f"[VoiceGateway] Assistant conclusion phrase detected: '{content[:50]}...'. Concluding call.")
+                lower_content = content.lower()
+                is_voicemail_or_machine = (
+                    "voicemail detected" in lower_content or
+                    "automated system detected" in lower_content or
+                    "leaving a message" in lower_content
+                )
+                hangup_delay = 1.5 if is_voicemail_or_machine else 3.5
+                logger.info(f"[VoiceGateway] Assistant conclusion phrase detected: '{content[:50]}...'. Scheduling hangup in {hangup_delay}s.")
                 is_concluding_call = True
                 has_reprompted_silence = True
-                asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                asyncio.create_task(asyncio.sleep(hangup_delay)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
 
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""
@@ -232,10 +242,10 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def call_lifecycle_monitor():
         """
-        Monitors Silence Timeout (Reprompt -> Conclude & End)
-        and Maximum Call Duration (Finish current turn -> Conclude & End).
+        Monitors Silence Timeout (2-Stage Recovery: Reprompt -> Conclude & End)
+        and Dynamic Maximum Call Duration (180s active vs 60s silent).
         """
-        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking
+        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
@@ -245,9 +255,11 @@ async def voice_stream_websocket(websocket: WebSocket):
                 runtime = agent_config.runtime or AgentRuntimeSettings()
                 silence_timeout = max(3, runtime.silence_timeout)
                 hangup_delay = max(2, runtime.silence_hangup_delay or 5)
-                max_duration = max(10, runtime.maximum_call_duration or 1800)
-                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
-                reprompt_msg = (runtime.silence_reprompt_message or "Are you still there? I'm here if you have any questions.").strip()
+                max_duration = max(10, runtime.maximum_call_duration or 300)
+                active_limit = max_duration if user_spoke else min(60, max_duration)
+                
+                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. We will connect with you shortly. Goodbye!").strip()
+                reprompt_msg = (runtime.silence_reprompt_message or "Hello? Are you there? Are you available?").strip()
 
                 now = time.time()
                 elapsed_call_time = now - call_start_time
@@ -259,16 +271,16 @@ async def voice_stream_websocket(websocket: WebSocket):
                 else:
                     is_agent_speaking = False
 
-                # 1. Maximum Call Duration Check
-                if elapsed_call_time >= max_duration and not is_concluding_call:
+                # 1. Dynamic Maximum Call Duration Check
+                if elapsed_call_time >= active_limit and not is_concluding_call:
                     # If customer is speaking, allow current turn to finish
                     if is_user_speaking:
                         continue
 
-                    logger.info(f"[VoiceGateway] Maximum call duration ({max_duration}s) reached. Speaking conclusion message.")
+                    logger.info(f"[VoiceGateway] Dynamic call duration ({active_limit}s, user_spoke={user_spoke}) reached. Speaking conclusion message.")
                     is_concluding_call = True
                     await deepgram_client.inject_agent_message(conclusion_msg)
-                    asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                    asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                     break
 
                 # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
@@ -288,7 +300,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                         logger.info(f"[VoiceGateway] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion and concluding call.")
                         is_concluding_call = True
                         await deepgram_client.inject_agent_message(conclusion_msg)
-                        asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                        asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                         break
 
         except asyncio.CancelledError:
@@ -419,6 +431,14 @@ async def voice_stream_websocket(websocket: WebSocket):
                         greeting=agent_config.greeting
                     )
                     logger.info("[VoiceGateway] Deepgram Voice Agent successfully connected and ready.")
+
+                    # Calculate greeting duration to ensure silence monitor does not fire during opening statement
+                    greeting_text = (agent_config.greeting or "").strip()
+                    if greeting_text:
+                        words_count = len(greeting_text.split())
+                        estimated_intro_duration = max(3.0, (words_count / 2.0))
+                        last_agent_speech_done_time = time.time() + estimated_intro_duration
+                        logger.info(f"[VoiceGateway] Initial greeting duration estimated: {estimated_intro_duration:.1f}s ({words_count} words)")
 
                     # Start background call lifecycle monitor (silence & duration)
                     lifecycle_task = asyncio.create_task(call_lifecycle_monitor())

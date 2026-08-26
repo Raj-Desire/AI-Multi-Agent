@@ -198,6 +198,20 @@ class CallSessionService:
         ]
         latency_dict = session.latest_latency.model_dump(mode="json") if hasattr(session.latest_latency, "model_dump") else None
 
+        # Execute Post-Call Transcript Intelligence
+        analytics_data = {}
+        try:
+            from app.services.call_analytics_service import CallAnalyticsService
+            analytics_svc = CallAnalyticsService()
+            analytics_data = await analytics_svc.analyze_call_transcript(transcript_records)
+            logger.info(
+                f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
+                f"Score={analytics_data.get('lead_score')}, Interest='{analytics_data.get('interest_level')}', "
+                f"Classification='{analytics_data.get('classification')}'"
+            )
+        except Exception as analytics_err:
+            logger.error(f"[CallSessionService] Post-call analytics error: {analytics_err}")
+
         # Persist to Call model in Cosmos DB
         call_doc = Call(
             id=session.call_session_id,
@@ -216,6 +230,16 @@ class CallSessionService:
             agent_scope=agent_scope,
             agent_config_snapshot=session.agent_config_snapshot,
             transcript=transcript_records,
+            outcome=session.outcome or analytics_data.get("interest_level"),
+            summary=analytics_data.get("summary"),
+            key_insights=analytics_data.get("key_insights"),
+            intent=analytics_data.get("intent"),
+            sentiment=analytics_data.get("sentiment"),
+            lead_score=analytics_data.get("lead_score"),
+            interest_level=analytics_data.get("interest_level"),
+            classification=analytics_data.get("classification"),
+            callback_datetime=analytics_data.get("callback_datetime"),
+            analytics=analytics_data if analytics_data else None,
             latency_metrics=latency_dict,
             created_at=session.started_at,
             updated_at=session.ended_at

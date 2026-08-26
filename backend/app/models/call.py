@@ -23,9 +23,18 @@ class Call(BaseModel):
     agent_scope: Optional[str] = None
     agent_config_snapshot: Optional[Dict[str, Any]] = None
 
-    # Call Outcomes & Telemetry
+    # Call Outcomes, Telemetry & Analytics
     transcript: Optional[List[Dict[str, Any]]] = None
     outcome: Optional[str] = None
+    summary: Optional[str] = None
+    key_insights: Optional[List[str]] = None
+    intent: Optional[str] = None
+    sentiment: Optional[str] = None
+    lead_score: Optional[int] = None
+    interest_level: Optional[str] = None
+    classification: Optional[str] = None
+    callback_datetime: Optional[str] = None
+    analytics: Optional[Dict[str, Any]] = None
     latency_metrics: Optional[Dict[str, Any]] = None
     error_information: Optional[Dict[str, Any]] = None
 

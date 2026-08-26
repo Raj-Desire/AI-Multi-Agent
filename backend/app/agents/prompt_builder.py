@@ -366,15 +366,20 @@ class VoicePromptBuilder:
 
         if is_outbound_sales:
             return (
-                "[OUTBOUND CALL RULES]\n"
-                "- You initiated this call. Never ask 'How can I help you today?'.\n"
-                "- State your value proposition clearly and explore fit with natural discovery questions.\n"
-                "- If the prospect is not interested, accept politely and conclude the call warmly."
+                "[OUTBOUND 4-STEP CONVERSATION FLOW & OBJECTION HANDLING]\n"
+                "- Step 1 (Hook & Availability): You initiated this call. Never ask 'How can I help you today?'. State your brief 20-second intro and check if now is an okay time or if later is better.\n"
+                "- Step 2 (Handle Availability & Objections):\n"
+                "  * If busy / later: Respond politely: 'I completely understand. What would be a better day or time for me to call you back?'. Confirm their response and conclude.\n"
+                "  * If not interested: Acknowledge politely: 'No problem at all. Thank you for your time today. Have a great day!' and conclude.\n"
+                "  * If free / asking what this is about: Proceed to Step 3.\n"
+                "- Step 3 (Needs Discovery): Ask ONE single concise question to understand their requirements. Keep responses under 20 words.\n"
+                "- Step 4 (Call to Action): Propose a short 10-15 minute chat with a specialist next week and confirm their details."
             )
         elif is_followup:
             return (
                 "[FOLLOW-UP CALL RULES]\n"
-                "- You are following up on a recent service/request. Inquire if everything went smoothly and resolve any remaining questions."
+                "- You are following up on a recent service/request. Inquire if everything went smoothly and resolve any remaining questions.\n"
+                "- Keep responses concise and ask only one question at a time."
             )
         else:
             return f"[ROLE OBJECTIVE]\n- Embody a {config.role}: {config.objective}"
@@ -404,11 +409,14 @@ class VoicePromptBuilder:
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
         platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
 
-        # Spoken telephony compact rules
-        telephony_rules = """[SPOKEN TELEPHONY RULES]
-1. Speak naturally with human warmth in 1-2 conversational sentences per turn. Ask only 1 question at a time.
-2. Use conversational contractions ('we're', 'it's'). Never output markdown, bullet points, asterisks, or code.
-3. Active listening: When the caller explains detailed requirements or mentions tech stacks, acknowledge them directly and respond helpfully."""
+        # Spoken telephony behavioral rules
+        telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
+1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Never deliver robotic monologues or dump paragraphs.
+2. SINGLE QUESTION CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally.
+3. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
+4. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team to see if a quick chat is worth your time!") and smoothly steer back to the topic.
+5. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.
+6. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
 
         # If custom system_prompt is provided, prioritize it directly to avoid truncation
         if config.system_prompt and config.system_prompt.strip():

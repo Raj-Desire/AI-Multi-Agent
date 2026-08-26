@@ -81,6 +81,7 @@ class CallSession(BaseModel):
     # Latency Telemetry (latest turn and aggregates)
     latest_latency: LatencyTelemetry = Field(default_factory=LatencyTelemetry)
     avg_turn_latency_ms: float = 0.0
+    outcome: Optional[str] = None
 
     # Error Tracking
     last_error: Optional[str] = None
