@@ -1504,61 +1504,10 @@ export function Step4PersonalityCommunication({
           </div>
         </div>
 
-        {/* Right Column: Your Agent Personality Panel & Live Persona Preview (5 cols) */}
-        <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
-          {/* Card 1: Your Agent Personality Breakdown */}
-          <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
+        {/* Right Column: Live Persona Preview Box & Speech Synthesis (5 cols) */}
+        <div className="lg:col-span-5 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5 flex flex-col justify-between">
+          <div>
             <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-              <div className="flex items-center gap-1.5">
-                <Bot className="w-4 h-4 text-[var(--color-primary)]" />
-                <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                  <span>Your Agent Personality</span>
-                  <InfoTooltip
-                    content="Real-time breakdown of human-readable personality characteristics derived directly from your 5-axis settings."
-                    position="top"
-                  />
-                </h4>
-              </div>
-              <Badge variant="neutral" size="sm" className="text-[10px] font-mono">
-                Live State
-              </Badge>
-            </div>
-
-            {/* Dynamic Human-Readable Traits List */}
-            <div className="space-y-2">
-              {getHumanReadableTraits().map((item, idx) => {
-                const IconComp = item.icon;
-                return (
-                  <div
-                    key={idx}
-                    className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] flex items-start gap-2.5 transition-all hover:bg-[var(--color-surface-muted)]"
-                  >
-                    <div className="w-6 h-6 rounded-[var(--radius-main,0.25rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0 mt-0.5">
-                      <IconComp className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-bold text-[var(--color-heading)] truncate">
-                          {item.title}
-                        </span>
-                        <span className="text-[9px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded shrink-0">
-                          {item.badge}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
-                        {item.desc}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-          </div>
-
-          {/* Card 2: Live Persona Preview Box & Speech Synthesis */}
-          <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
                 <MessageSquareQuote className="w-4 h-4 text-[var(--color-primary)]" />
                 <span>Live Persona Preview</span>
@@ -1572,12 +1521,23 @@ export function Step4PersonalityCommunication({
               </span>
             </div>
 
+            {/* Dynamic Personality Summary Sentence */}
+            <div className="mt-3 p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/[0.04] border border-[var(--color-primary)]/20 text-xs text-[var(--color-heading)] leading-relaxed">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-primary)] mb-1 uppercase tracking-wider">
+                <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+                <span>Active Persona Profile</span>
+              </div>
+              <p className="text-[11px] text-[var(--color-heading)] font-medium">
+                {getDynamicPersonalitySummary()}
+              </p>
+            </div>
+
             {/* Dialogue Bubble */}
-            <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
+            <div className="mt-3 p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
               <div className="flex items-center justify-between gap-1 text-[10px] font-semibold text-[var(--color-muted)]">
                 <div className="flex items-center gap-1.5 uppercase tracking-wider">
                   <Bot className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                  <span>Agent Response Preview</span>
+                  <span>Agent Spoken Preview</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono text-[9px] text-[var(--color-heading)]">
@@ -1592,36 +1552,36 @@ export function Step4PersonalityCommunication({
                 {getDialoguePreview()}
               </p>
             </div>
-
-            {/* Play Sample Voice Button */}
-            <button
-              type="button"
-              onClick={handlePlaySampleVoice}
-              disabled={isLoadingAudio}
-              className={`w-full py-2 px-3 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs ${
-                isPlayingAudio
-                  ? "bg-[var(--color-danger)] text-white hover:opacity-90"
-                  : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] disabled:opacity-60"
-              }`}
-            >
-              {isLoadingAudio ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Synthesizing Voice...</span>
-                </>
-              ) : isPlayingAudio ? (
-                <>
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>Stop Voice Sample</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Play Sample Voice ({selectedVoiceObj.name})</span>
-                </>
-              )}
-            </button>
           </div>
+
+          {/* Play Sample Voice Button */}
+          <button
+            type="button"
+            onClick={handlePlaySampleVoice}
+            disabled={isLoadingAudio}
+            className={`w-full py-2 px-3 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs ${
+              isPlayingAudio
+                ? "bg-[var(--color-danger)] text-white hover:opacity-90"
+                : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] disabled:opacity-60"
+            }`}
+          >
+            {isLoadingAudio ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Synthesizing Voice...</span>
+              </>
+            ) : isPlayingAudio ? (
+              <>
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>Stop Voice Sample</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Play Sample Voice ({selectedVoiceObj.name})</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
