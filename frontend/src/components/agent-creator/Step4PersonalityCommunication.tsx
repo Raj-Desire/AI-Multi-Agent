@@ -1505,61 +1505,59 @@ export function Step4PersonalityCommunication({
         </div>
 
         {/* Right Column: Live Persona Preview Box & Speech Synthesis (5 cols) */}
-        <div className="lg:col-span-5 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-              <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                <MessageSquareQuote className="w-4 h-4 text-[var(--color-primary)]" />
-                <span>Live Persona Preview</span>
-                <InfoTooltip
-                  content="Simulates how your agent introduces itself and interacts with the caller using the active voice and personality parameters."
-                  position="top"
-                />
-              </h4>
-              <span className="text-[10px] text-[var(--color-muted)] font-medium">
-                {selectedVoiceObj.name} ({selectedVoiceObj.gender})
-              </span>
-            </div>
-
-            {/* Dynamic Personality Summary Sentence */}
-            <div className="mt-3 p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/[0.04] border border-[var(--color-primary)]/20 text-xs text-[var(--color-heading)] leading-relaxed">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-primary)] mb-1 uppercase tracking-wider">
-                <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
-                <span>Active Persona Profile</span>
-              </div>
-              <p className="text-[11px] text-[var(--color-heading)] font-medium">
-                {getDynamicPersonalitySummary()}
-              </p>
-            </div>
-
-            {/* Dialogue Bubble */}
-            <div className="mt-3 p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
-              <div className="flex items-center justify-between gap-1 text-[10px] font-semibold text-[var(--color-muted)]">
-                <div className="flex items-center gap-1.5 uppercase tracking-wider">
-                  <Bot className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                  <span>Agent Spoken Preview</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono text-[9px] text-[var(--color-heading)]">
-                    {agentData.communication_style || "Professional"}
-                  </span>
-                  <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono text-[9px] text-[var(--color-heading)] capitalize">
-                    {agentData.response_length || "short"}
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-[var(--color-heading)] font-medium leading-relaxed transition-all duration-200">
-                {getDialoguePreview()}
-              </p>
-            </div>
+        <div className="lg:col-span-5 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5 flex flex-col justify-start">
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
+            <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+              <MessageSquareQuote className="w-4 h-4 text-[var(--color-primary)]" />
+              <span>Live Persona Preview</span>
+              <InfoTooltip
+                content="Simulates how your agent introduces itself and interacts with the caller using the active voice and personality parameters."
+                position="top"
+              />
+            </h4>
+            <span className="text-[10px] text-[var(--color-muted)] font-medium">
+              {selectedVoiceObj.name} ({selectedVoiceObj.gender})
+            </span>
           </div>
 
-          {/* Play Sample Voice Button */}
+          {/* Dynamic Personality Summary Sentence */}
+          <div className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/[0.04] border border-[var(--color-primary)]/20 text-xs text-[var(--color-heading)] leading-relaxed">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--color-primary)] mb-1 uppercase tracking-wider">
+              <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+              <span>Active Persona Profile</span>
+            </div>
+            <p className="text-[11px] text-[var(--color-heading)] font-medium">
+              {getDynamicPersonalitySummary()}
+            </p>
+          </div>
+
+          {/* Dialogue Bubble */}
+          <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
+            <div className="flex items-center justify-between gap-1 text-[10px] font-semibold text-[var(--color-muted)]">
+              <div className="flex items-center gap-1.5 uppercase tracking-wider">
+                <Bot className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <span>Agent Spoken Preview</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono text-[9px] text-[var(--color-heading)]">
+                  {agentData.communication_style || "Professional"}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono text-[9px] text-[var(--color-heading)] capitalize">
+                  {agentData.response_length || "short"}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-[var(--color-heading)] font-medium leading-relaxed transition-all duration-200">
+              {getDialoguePreview()}
+            </p>
+          </div>
+
+          {/* Play Sample Voice Button - Positioned directly below the Spoken Preview */}
           <button
             type="button"
             onClick={handlePlaySampleVoice}
             disabled={isLoadingAudio}
-            className={`w-full py-2 px-3 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs ${
+            className={`w-full py-2.5 px-3 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs ${
               isPlayingAudio
                 ? "bg-[var(--color-danger)] text-white hover:opacity-90"
                 : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] disabled:opacity-60"
