@@ -94,6 +94,9 @@ export function Step6TestPreview({ agentData, onTestCall }: Step6TestPreviewProp
                 <span className="text-[var(--color-text)] block">
                   Interruption: <strong>{agentData.runtime?.barge_in_enabled ? "Allowed" : "Disabled"}</strong>
                 </span>
+                <span className="text-[var(--color-text)] block">
+                  Silence Timeout: <strong>{agentData.runtime?.silence_timeout ?? 5}s</strong> (Live calls only)
+                </span>
               </div>
 
               <div className="pt-2 border-t border-[var(--color-border)]">

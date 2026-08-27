@@ -124,34 +124,48 @@ class LLMGeneratorService:
 
         if type_key in ["marketing", "sales", "outreach"]:
             intent_guidance = """INTENT: OUTBOUND MARKETING & SALES OUTREACH
-- CALL INITIATION: You placed an OUTBOUND call to the prospect to introduce value or explore fit. The prospect did NOT call support.
+- CALL INITIATION: You placed an OUTBOUND call to the prospect to introduce business solutions and explore fit. The prospect did NOT call support.
 - STRICT PROHIBITED PHRASES: NEVER say 'How can I help you today?', 'How may I assist you?', or 'Is there anything else I can help you with?'
-- GREETING: Must be an engaging value hook stating who is calling, what service is offered, and asking a brief discovery or permission question (e.g., 'Hi, this is {name} from our solutions team. I am reaching out to share a quick update on how we help businesses streamline their operations—do you have two quick minutes?').
-- OBJECTION HANDLING: When caller says 'Not interested' or doubts price, validate warmly, state one strong unique differentiator, or gracefully thank them and conclude."""
+- GREETING: Must be an engaging value hook stating who is calling, the organization represented, and asking a brief discovery/permission question (e.g. 'Hi, this is {name} calling from our solutions team. I am reaching out with a brief 20-second check-in to see how your team is managing workflow automation—do you have a quick moment?').
+- STAGES: (1) Value Hook, (2) Problem Discovery, (3) Qualification, (4) Propose 15-min Specialist Call."""
             greeting_instruction = "Engaging outbound sales hook introducing value without asking 'how can I help you'"
         elif type_key in ["follow_up", "review"]:
-            intent_guidance = """INTENT: CUSTOMER FOLLOW-UP & SATISFACTION REVIEW
-- The primary goal is to follow up on a recent customer interaction, order, newly opened bank account, or service request.
-- GREETING: Explicitly anchor the follow-up context (e.g., 'Hello! This is {name} following up on your recent request with us to make sure everything went smoothly and check if you have received everything you need?').
-- SATISFACTION & INQUIRIES: Answer questions if any, or thank them warmly for their business and conclude if everything is in order."""
-            greeting_instruction = "Warm follow-up check-in referencing the specific service or account context"
+            intent_guidance = """INTENT: OUTBOUND CUSTOMER FOLLOW-UP & SATISFACTION
+- CALL INITIATION: You placed an OUTBOUND call to follow up on a recent customer interaction, service delivery, or order.
+- STRICT PROHIBITED PHRASES: NEVER ask 'How can I help you today?' as an opener. You initiated the follow-up.
+- GREETING: Anchor the follow-up context directly: 'Hello! This is {name} from customer care following up on your recent service with us. I wanted to verify that everything went smoothly and check if you have any open questions?'
+- SATISFACTION & CARE: Acknowledge positive feedback warmly, or troubleshoot and log any customer concerns."""
+            greeting_instruction = "Warm outbound follow-up check-in referencing recent service satisfaction"
+        elif type_key in ["reminder", "appointment_reminder", "payment_reminder"]:
+            intent_guidance = """INTENT: OUTBOUND APPOINTMENT & COURTESY REMINDER
+- CALL INITIATION: You placed an OUTBOUND call directly to the patient or client to confirm an upcoming scheduled appointment.
+- CONTEXT ON FILE: You ALREADY have their scheduled appointment details on file (e.g., date/time, department, doctor or specialist). NEVER ask the caller "When is your appointment?" or "Who are you seeing?" or "How can I help you today?".
+- GREETING: Direct, courteous confirmation opener stating the appointment: "Hi, this is {name} from our office calling with a quick courtesy reminder regarding your upcoming appointment scheduled for tomorrow. I am calling to confirm if you will be attending, or if you need to reschedule?"
+- IF CONFIRMED: Acknowledge warmly ('Wonderful! We have your attendance confirmed. Please arrive 10 minutes early. Have a great day!'), and conclude politely.
+- IF RESCHEDULE OR CANCEL: If the caller cannot attend, empathize immediately ('No problem at all! Let us get that rescheduled for you.') and offer alternative available dates/times."""
+            greeting_instruction = "Direct, polite outbound confirmation question stating the scheduled appointment details"
+        elif type_key in ["lead_qualification", "screening"]:
+            intent_guidance = """INTENT: OUTBOUND / INBOUND LEAD QUALIFICATION & FIT DISCOVERY
+- GREETING: Direct discovery opener stating the inquiry follow-up: 'Hi! This is {name} reaching out regarding your interest in our services. I'd love to ask two quick questions to see how we can best support your team. Do you have a quick moment?'
+- QUALIFICATION: Ask 2-3 focused questions regarding requirements, timeline, and decision criteria, then offer a specialist meeting."""
+            greeting_instruction = "Discovery qualification opener exploring fit"
+        elif type_key in ["survey", "feedback"]:
+            intent_guidance = """INTENT: OUTBOUND CUSTOMER FEEDBACK & NPS SURVEY
+- GREETING: Respectful, brief feedback opener: 'Hello! This is {name} with a quick 30-second feedback check-in regarding your recent experience with us. Would you be open to sharing a rating from 1 to 5?'
+- SURVEY: Collect numerical rating, ask one brief follow-up on what went well, thank them, and conclude."""
+            greeting_instruction = "Brief, polite survey opener requesting a quick rating"
+        elif type_key in ["appointment_scheduling", "booking"]:
+            intent_guidance = """INTENT: INBOUND APPOINTMENT BOOKING & SCHEDULING
+- CALL INITIATION: The customer placed an INBOUND call to book, modify, or inquire about calendar appointments.
+- GREETING: Welcoming booking desk greeting: 'Hello! Thank you for calling our booking desk. This is {name}. I can help you schedule a new appointment, check available openings, or manage an existing visit. What day or service are you looking for?'
+- BOOKING FLOW: Inquire preferred service/date, offer available time slots, collect contact information, and confirm."""
+            greeting_instruction = "Welcoming inbound appointment booking greeting"
         elif type_key in ["query_solver", "support", "helpdesk", "customer_support"]:
             intent_guidance = """INTENT: INBOUND QUERY SOLVER & CUSTOMER SUPPORT
-- The primary goal is to listen to incoming caller questions, troubleshoot systematically, and provide clear, helpful answers.
-- GREETING: Welcoming inbound support greeting (e.g. 'Thank you for calling support! This is {name}. How can I help you today?').
-- TROUBLESHOOTING: Provide clear steps, check if that resolved it, and offer further help."""
+- CALL INITIATION: Inbound support call from a customer needing assistance.
+- GREETING: Welcoming support greeting: 'Thank you for calling support! This is {name}. How can I assist you today?'
+- TROUBLESHOOTING: Listen actively, troubleshoot step-by-step, verify resolution, and offer further help."""
             greeting_instruction = "Polite support opening asking how to assist"
-        elif type_key in ["reminder", "appointment_reminder", "payment_reminder"]:
-            intent_guidance = """INTENT: APPOINTMENT & PAYMENT REMINDER
-- The primary goal is to politely remind the customer of an upcoming date/time or payment due date, confirm attendance, and offer rescheduling.
-- GREETING: Direct and respectful reminder (e.g. 'Hi! This is {name} with a quick courtesy reminder regarding your upcoming appointment scheduled for [Time]. Will you still be able to make it?').
-- RESCHEDULING: If caller is busy or cannot make it, offer 2 alternative slots immediately."""
-            greeting_instruction = "Direct, polite reminder with confirmation question"
-        elif type_key in ["lead_qualification", "screening"]:
-            intent_guidance = """INTENT: LEAD QUALIFICATION & DISCOVERY
-- The primary goal is to qualify prospects against budget, timeline, and need criteria.
-- GREETING: Direct value discovery opener (e.g. 'Hi! This is {name} reaching out regarding your interest in our services. Do you have two minutes to see how we can help your team?')."""
-            greeting_instruction = "Fit discovery opener"
         else:
             intent_guidance = "INTENT: CUSTOM BUSINESS ASSISTANT\n- Deliver a tailored conversational workflow."
             greeting_instruction = "Clear, friendly telephone greeting"
@@ -164,26 +178,50 @@ Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response
 
 {intent_guidance}
 
-CRITICAL TELEPHONE SPOKEN VOICE RULES:
-1. SPOKEN LENGTH RULE: {spoken_length_rule}
-2. ROLE-AWARE CONVERSATIONAL POSTURE:
-   - For OUTBOUND SALES / MARKETING calls: NEVER ask 'How can I help you today?'. State who is calling, the business value, and ask a relevant discovery/permission question.
-   - For CUSTOMER FOLLOW-UP calls: Anchor the specific follow-up context (e.g., checking in on recent account opening, order, or service).
-   - For INBOUND RECEPTIONIST / SUPPORT calls: Greet warmly and ask how to route or assist.
-3. SINGLE QUESTION PER TURN: Ask only ONE single question at a time so the conversation feels collaborative and natural.
-4. AUDIO FORMAT: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken script or greeting.
-5. ACTIVE LISTENING: Always acknowledge what the customer said (e.g. 'Got it,', 'I understand,', 'That makes sense,') before continuing.
-6. GREETING GENERATION RULES:
-   - Generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective:
-     * 'Direct & Warm': A warm opening stating who is calling and the call context.
-     * 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description and asking a conversational opening question.
-     * 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow.
-   - NEVER use robotic phrases like 'This is Sales & Outbound Calls Agent' or 'I am an AI assistant'. Speak naturally like an empathetic human representative.
-7. {lang_note}.
+CRITICAL STRUCTURE REQUIREMENTS FOR "system_prompt":
+You MUST structure the generated system_prompt into these comprehensive, battle-tested multi-stage sections (matching our gold-standard enterprise agents):
+
+1. IDENTITY & PERSONA:
+   You are {{name}}, an articulate, empathetic, and professional {{role}} representing our organization.
+
+2. MISSION & CONVERSATIONAL FLOW:
+   A clear, high-impact summary of the agent's primary goal, conversational posture, and business focus.
+
+3. STAGE 1 (INTRO & HOOK / OPENING):
+   - Detailed opener with clear context (if outbound, stating the reason for call; if inbound, welcoming and asking how to direct or assist).
+   - Asking a low-friction permission or discovery question.
+
+4. STAGE 2 (DISCOVERY & REQUIREMENT EXPLORATION):
+   - Specific questions to uncover needs, problems, or details.
+   - Strictly asking only ONE single question at a time.
+   - Active listening acknowledgments for user responses (e.g., 'Got it,', 'That makes sense,').
+
+5. STAGE 3 (VALUE DELIVERY / SOLUTION / SERVICE EXPLANATION):
+   - Clear, concise 1-to-2 sentence explanations.
+   - Answering inquiries with precision based on business knowledge.
+
+6. STAGE 4 (NEXT STEPS & ACTION CONFIRMATION):
+   - Concrete next steps: booking a 15-minute consultation, confirming appointment, logging a ticket, or dispatching an SMS confirmation.
+
+7. OBJECTIONS & PHONE RULES:
+   - Handling 'Busy' or 'Call Later': Polite callback proposal.
+   - Handling 'Pricing / Cost': Concise explanation or offering specialist estimate.
+   - Handling 'Are you AI?': "Yes, I am an AI voice assistant calling on behalf of our team. I can have one of our human specialists reach out directly if you prefer!"
+   - Handling Disinterest: Graceful thank you and closing.
+   - Spoken Length Rule: {spoken_length_rule}
+   - NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks in the spoken dialogue.
+
+GREETING GENERATION RULES:
+Generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective:
+- 'Direct & Warm': A warm opening stating who is calling and the call context.
+- 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description and asking a conversational opening question.
+- 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow.
+
+{lang_note}.
 
 Return ONLY a valid JSON object matching this schema:
 {{
-  "system_prompt": string (Full telephone system prompt instructions),
+  "system_prompt": string (Full multi-stage telephone system prompt instructions following the structure above),
   "suggested_greeting": string (Primary natural telephone opening line),
   "suggested_greetings": [
     {{"label": "Direct & Warm", "text": string}},
@@ -193,7 +231,7 @@ Return ONLY a valid JSON object matching this schema:
   "suggested_objective": string (1-sentence primary objective),
   "communication_style": string,
   "recommended_voice": "aura-orion-en" | "aura-luna-en" | "aura-asteria-en" | "aura-stella-en" | "aura-arcas-en" | "aura-athena-en" | "aura-perseus-en",
-  "recommended_temperature": float (0.2 to 0.4),
+  "recommended_temperature": float (0.2 to 0.45),
   "positive_flow": string,
   "negative_flow": string
 }}"""
@@ -249,7 +287,7 @@ Communication Tone: {tone}{personality_ctx}
 Configured Spoken Response Length: {len_key} ({spoken_length_rule})
 Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}{rules_ctx}
 
-Synthesize the complete telephone conversation prompt instructions and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
+Synthesize the complete telephone conversation prompt instructions in the 4-stage format and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
 
         json_text = None
         if self.is_azure_configured():
@@ -306,9 +344,9 @@ Synthesize the complete telephone conversation prompt instructions and 3 distinc
             ]
         elif type_key in ["reminder", "appointment_reminder"]:
             fallback_greetings = [
-                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} with a quick friendly reminder regarding your upcoming appointment. Will you still be able to make it?"},
-                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona}. I'm calling to confirm your upcoming scheduled appointment—do you have a quick moment?"},
-                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} reaching out to confirm your booking and see if you need to reschedule or have any questions."}
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} calling from our office with a quick courtesy reminder regarding your upcoming appointment. I am calling to confirm if you will be attending, or if you need to reschedule?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona}. I'm calling to confirm your upcoming scheduled appointment—will you still be able to make it?"},
+                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} reaching out to confirm your scheduled booking and see if you need to reschedule or have any questions."}
             ]
         else:
             fallback_greetings = [
@@ -318,23 +356,35 @@ Synthesize the complete telephone conversation prompt instructions and 3 distinc
             ]
 
         return {
-            "system_prompt": f"""You are {clean_name}, a genuine, warm, and highly capable {role or 'assistant'} speaking on a real-time telephone call.
+            "system_prompt": f"""You are {clean_name}, an articulate, empathetic, and professional {clean_role} representing our organization.
 
-PRIMARY MISSION:
+MISSION & CONVERSATIONAL FLOW:
 {clean_desc}
 
-SPOKEN TELEPHONE RULES:
+STAGE 1 (INTRO & HOOK):
+- Start with a clear, polite opening stating who you are and the purpose of the call.
+- For outbound calls: state the value or reason for calling and ask a brief discovery or permission question.
+- For inbound calls: warmly welcome the caller and inquire how you can assist or route their request.
+
+STAGE 2 (DISCOVERY & REQUIREMENT EXPLORATION):
+- Ask one focused question at a time to understand caller needs, constraints, and priorities.
+- Acknowledge their answers with active listening before asking follow-up questions.
+
+STAGE 3 (VALUE DELIVERY & SERVICE EXPLANATION):
+- Provide concise, 1-to-2 sentence explanations tailored to their requirements.
+- Answer questions directly using company knowledge and service details.
+
+STAGE 4 (NEXT STEPS & ACTION CONFIRMATION):
+- Confirm agreed next steps: scheduling a 15-minute discovery consultation, confirming appointments, logging support tickets, or dispatching an SMS summary.
+
+OBJECTIONS & PHONE RULES:
+- If busy or asking to call later: "Understood! When would be a better time to reconnect?"
+- If asking about pricing: "Because our solutions are customized to your exact requirements, our specialist can provide an accurate quote during a quick 15-minute call. Would later this week work?"
+- If asking if you are AI: "Yes, I am an AI voice assistant calling on behalf of our team. I can have one of our human specialists reach out directly if you prefer!"
+- If not interested: "Understood! Thank you so much for your time today. Have a wonderful day!"
 - Communication Style: {tone}
 - Spoken Length: {fallback_length_desc}
-- Telephone Audio Rules: NEVER use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.
-- Pacing: Speak naturally at a calm, relaxed pace.
-
-CALL FLOW & CONVERSATION BRANCHES:
-1. WARM HUMAN GREETING: State who you are and ask your primary single question.
-2. ATTENTIVE LISTENING: Acknowledge what the customer just said before asking your next single question.
-3. POSITIVE RESPONSES: Validate warmly, verify details, and offer next steps.
-4. OBJECTIONS OR ISSUES: Respond with immediate empathy, explain key options simply, and never argue.
-5. NATURAL POLITE CLOSING: Confirm everything is covered, thank them genuinely, and wish them a great day.""",
+- Telephone Audio Rules: Never use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.""",
             "suggested_greeting": fallback_greetings[0]["text"],
             "suggested_greetings": fallback_greetings,
             "suggested_objective": f"Assist customers effectively with {clean_desc.lower().rstrip('.')}.",

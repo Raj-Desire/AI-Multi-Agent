@@ -19,10 +19,14 @@ import {
   Clock,
   Zap,
   Sliders,
-  Loader2
+  Loader2,
+  Info,
+  ShieldAlert,
+  PhoneCall
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
+import { InfoTooltip } from "./ui/Tooltip";
 import { useAuth } from "../context/AuthContext";
 
 interface AgentLivePreviewProps {
@@ -52,6 +56,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const nextPlayTimeRef = useRef<number>(0);
   const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
+  const heartbeatIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
@@ -121,6 +126,14 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             greeting: agentConfig.greeting,
           })
         );
+
+        // Start heartbeat interval to keep browser WS connection permanently active
+        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 5000);
       };
 
       ws.onmessage = (event) => {
@@ -158,10 +171,10 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
             setIsUserSpeaking(false);
           } else if (data.type === "call_concluded") {
-            stopPreviewSession();
+            // In Live Playground mode, do NOT auto-stop session — keep session listening continuously until user clicks Stop
+            console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
-            stopPreviewSession();
           }
         } catch (e) {
           console.error("Preview WS parse error:", e);
@@ -338,6 +351,11 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     setIsMicActive(false);
     setIsAgentSpeaking(false);
     setIsUserSpeaking(false);
+
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
 
     if (workletNodeRef.current) {
       try {
@@ -594,6 +612,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             )}
           </div>
         )}
+      </div>
+
+      {/* Live Preview Rules & Behavior Info Banner */}
+      <div className="px-4 py-2 bg-amber-500/5 dark:bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-3 text-[11px]">
+        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 min-w-0">
+          <Info className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="leading-tight truncate">
+            <strong>Playground Mode:</strong> Silence auto-cut & reprompts are bypassed here so you can test freely.
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-muted)] shrink-0 font-medium">
+          <PhoneCall className="w-3 h-3 text-emerald-500" />
+          <span>Real calls enforce silence limits ({agentConfig.runtime?.silence_timeout ?? 5}s)</span>
+        </div>
       </div>
 
       {/* Conversational Transcript Feed */}

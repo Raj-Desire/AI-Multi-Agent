@@ -35,6 +35,7 @@ export function AgentEditorModal({
   const [currentStep, setCurrentStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [selectedPurposeId, setSelectedPurposeId] = useState<string>("follow_up");
 
   // Agent State
@@ -93,24 +94,79 @@ export function AgentEditorModal({
     }
     setCurrentStep(1);
     setErrorMsg(null);
+    setShowValidationErrors(false);
   }, [initialAgent, isOpen, user]);
 
   if (!isOpen) return null;
 
+  const validateStep = (stepNumber: number): boolean => {
+    if (stepNumber === 1) {
+      if (!agentData.name || !agentData.name.trim() || !agentData.description || !agentData.description.trim()) {
+        setShowValidationErrors(true);
+        return false;
+      }
+    } else if (stepNumber === 2) {
+      if (!agentData.objective || !agentData.objective.trim()) {
+        setShowValidationErrors(true);
+        return false;
+      }
+    } else if (stepNumber === 6) {
+      if (!agentData.greeting || !agentData.greeting.trim()) {
+        setShowValidationErrors(true);
+        return false;
+      }
+    }
+
+    setErrorMsg(null);
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (!validateStep(currentStep)) {
+      return;
+    }
+    setShowValidationErrors(false);
+    setErrorMsg(null);
+    setCurrentStep((prev) => Math.min(prev + 1, CREATOR_STEPS.length));
+  };
+
+  const handleSelectStep = (targetStep: number) => {
+    if (targetStep > currentStep) {
+      for (let s = currentStep; s < targetStep; s++) {
+        if (!validateStep(s)) {
+          setCurrentStep(s);
+          return;
+        }
+      }
+    }
+    setShowValidationErrors(false);
+    setErrorMsg(null);
+    setCurrentStep(targetStep);
+  };
+
   async function handleSaveAction(activate: boolean) {
     if (!agentData.name.trim()) {
       setErrorMsg("Please provide an agent name.");
+      setShowValidationErrors(true);
+      setCurrentStep(1);
+      return;
+    }
+    if (!agentData.description || !agentData.description.trim()) {
+      setErrorMsg("Please provide an agent description.");
+      setShowValidationErrors(true);
       setCurrentStep(1);
       return;
     }
     if (!agentData.objective.trim()) {
       setErrorMsg("Please provide a primary objective for the agent.");
+      setShowValidationErrors(true);
       setCurrentStep(2);
       return;
     }
     if (!agentData.greeting.trim()) {
       setErrorMsg("Please provide a spoken greeting message.");
-      setCurrentStep(2);
+      setShowValidationErrors(true);
+      setCurrentStep(6);
       return;
     }
 
@@ -147,7 +203,7 @@ export function AgentEditorModal({
       {/* 2. Progress Stepper Bar */}
       <AgentStepper
         currentStep={currentStep}
-        onSelectStep={(stepId) => setCurrentStep(stepId)}
+        onSelectStep={handleSelectStep}
       />
 
       {/* 3. Main Step Canvas */}
@@ -165,6 +221,7 @@ export function AgentEditorModal({
             setAgentData={setAgentData}
             selectedPurposeId={selectedPurposeId}
             setSelectedPurposeId={setSelectedPurposeId}
+            showValidationErrors={showValidationErrors}
           />
         )}
 
@@ -174,6 +231,7 @@ export function AgentEditorModal({
             agentData={agentData}
             setAgentData={setAgentData}
             selectedPurposeId={selectedPurposeId}
+            showValidationErrors={showValidationErrors}
           />
         )}
 
@@ -222,7 +280,7 @@ export function AgentEditorModal({
           <Step7ReviewActivate
             agentData={agentData}
             saving={saving}
-            onJumpToStep={(stepId) => setCurrentStep(stepId)}
+            onJumpToStep={(stepId) => handleSelectStep(stepId)}
             onSave={handleSaveAction}
           />
         )}
@@ -236,7 +294,11 @@ export function AgentEditorModal({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep((prev) => prev - 1)}
+              onClick={() => {
+                setErrorMsg(null);
+                setShowValidationErrors(false);
+                setCurrentStep((prev) => prev - 1);
+              }}
               leftIcon={<ChevronLeft className="w-3.5 h-3.5" />}
               className="cursor-pointer text-xs h-8 px-3"
             >
@@ -261,7 +323,7 @@ export function AgentEditorModal({
               type="button"
               variant="primary"
               size="sm"
-              onClick={() => setCurrentStep((prev) => prev + 1)}
+              onClick={handleNextStep}
               rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
               className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
             >

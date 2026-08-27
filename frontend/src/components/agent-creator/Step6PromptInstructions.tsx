@@ -897,7 +897,7 @@ export function Step6PromptInstructions({
             }
             className="cursor-pointer text-xs h-9 px-4 font-semibold shrink-0"
           >
-            {isRefining ? "Refining..." : "✨ Refine Prompt"}
+            {isRefining ? "Refining..." : "Refine Prompt"}
           </Button>
         </div>
 

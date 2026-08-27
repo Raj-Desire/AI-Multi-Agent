@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Check,
   Brain,
@@ -20,7 +20,11 @@ import {
   FileText,
   Send,
   Info,
-  PackageCheck
+  PackageCheck,
+  AlertCircle,
+  Lightbulb,
+  Copy,
+  X
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
@@ -33,7 +37,29 @@ interface Step2RoleConversationProps {
   agentData: AgentConfig;
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
   selectedPurposeId: string;
+  showValidationErrors?: boolean;
 }
+
+const OBJECTIVE_EXAMPLES = [
+  {
+    title: "Sales & Lead Qualification",
+    category: "Inbound / Outbound Sales",
+    description: "Ideal for screening prospects and booking appointments.",
+    text: "Qualify inbound buyer leads, answer common solution FAQs, and schedule a 15-minute discovery consultation with our sales team."
+  },
+  {
+    title: "Customer Support & Inquiry Routing",
+    category: "Support & Care",
+    description: "Ideal for order inquiries, account assistance, and helpdesk triage.",
+    text: "Assist callers with order tracking and account questions, provide step-by-step troubleshooting, and escalate complex issues to human support."
+  },
+  {
+    title: "Appointment Booking & Reminders",
+    category: "Operations & Scheduling",
+    description: "Ideal for clinics, salons, repairs, and consultation reminders.",
+    text: "Verify caller information, check available calendar slots, confirm appointment bookings or reschedules, and send SMS confirmations."
+  }
+];
 
 const CAPABILITY_ICONS: Record<string, React.ElementType> = {
   "Answer FAQs": HelpCircle,
@@ -64,9 +90,42 @@ const CAPABILITY_DESCRIPTIONS: Record<string, string> = {
 export function Step2RoleConversation({
   agentData,
   setAgentData,
-  selectedPurposeId
+  selectedPurposeId,
+  showValidationErrors = false
 }: Step2RoleConversationProps) {
   const currentCaps = agentData.skills || [];
+
+  const isObjectiveInvalid = showValidationErrors && (!agentData.objective || !agentData.objective.trim());
+
+  // Sample Objectives Popover State
+  const [showSamplePopover, setShowSamplePopover] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const samplePopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (samplePopoverRef.current && !samplePopoverRef.current.contains(event.target as Node)) {
+        setShowSamplePopover(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleCopyExample = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    toast.success("Objective copied to clipboard");
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const handleUseExample = (text: string) => {
+    setAgentData((prev) => ({ ...prev, objective: text }));
+    toast.success("Sample objective applied");
+    setShowSamplePopover(false);
+  };
 
   const [kbProfile, setKbProfile] = useState<CompanyBusinessProfile | null>(null);
   const [loadingKb, setLoadingKb] = useState(false);
@@ -237,17 +296,112 @@ export function Step2RoleConversation({
       </div>
 
       {/* 2. Primary Agent Objective Form Block */}
-      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs font-semibold text-[var(--color-heading)]">
-              Primary Agent Objective <span className="text-[var(--color-danger)]">*</span>
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2.5 relative z-20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap relative" ref={samplePopoverRef}>
+            <label className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+              <span>Primary Agent Objective</span>
+              <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
+              <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
+                Required
+              </span>
             </label>
             <InfoTooltip
               content="In 1–2 sentences, define the single most important goal and outcome of every phone call."
               position="top"
             />
+
+            {/* Sample Objectives Interactive Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowSamplePopover(!showSamplePopover)}
+              className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-light)]/20 hover:bg-[var(--color-primary-light)]/35 border border-[var(--color-primary)]/25 px-2 py-0.5 rounded-full transition-all cursor-pointer shadow-2xs select-none ml-1"
+              title="Click to view 3 actionable sample objectives and copy them"
+            >
+              <Lightbulb className="w-3 h-3 text-[var(--color-primary)]" />
+              <span>Sample Examples</span>
+            </button>
+
+            {/* Floating Sample Objectives Interactive Popover */}
+            {showSamplePopover && (
+              <div className="absolute left-0 top-full mt-2 w-[320px] sm:w-[480px] p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xl z-50 animate-fade-in text-xs space-y-3">
+                {/* Header */}
+                <div className="flex items-start justify-between pb-2 border-b border-[var(--color-border)]">
+                  <div>
+                    <h4 className="font-bold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
+                      <Lightbulb className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      <span>Sample Objectives &amp; Writing Guidance</span>
+                    </h4>
+                    <p className="text-[10px] text-[var(--color-muted)] mt-0.5">
+                      State the primary goal, actions the agent takes, and the targeted call outcome.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSamplePopover(false)}
+                    className="p-1 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 3 Interactive Cards */}
+                <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-0.5 scrollbar-thin">
+                  {OBJECTIVE_EXAMPLES.map((ex, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 bg-[var(--color-surface-muted)]/70 hover:bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] transition-all space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-[11px] text-[var(--color-heading)] flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[9px] flex items-center justify-center font-bold">
+                            {idx + 1}
+                          </span>
+                          <span>{ex.title}</span>
+                        </span>
+                        <span className="text-[9px] font-medium text-[var(--color-muted)] bg-[var(--color-surface)] px-1.5 py-0.5 rounded border border-[var(--color-border)]">
+                          {ex.category}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-[var(--color-heading)] bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]/80 leading-relaxed font-mono select-all">
+                        "{ex.text}"
+                      </p>
+
+                      <div className="flex items-center justify-end gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyExample(ex.text, idx)}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--color-muted)] hover:text-[var(--color-heading)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-2 py-1 rounded transition-colors cursor-pointer"
+                        >
+                          {copiedIndex === idx ? (
+                            <>
+                              <Check className="w-2.5 h-2.5 text-emerald-500" />
+                              <span className="text-emerald-600 dark:text-emerald-400 font-bold">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-2.5 h-2.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleUseExample(ex.text)}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-[var(--color-primary)] hover:opacity-90 px-2.5 py-1 rounded shadow-2xs transition-opacity cursor-pointer"
+                        >
+                          <span>Use Example</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
           <span className="text-[10px] text-[var(--color-muted)] font-medium">
             {(agentData.objective || "").length} characters
           </span>
@@ -258,7 +412,11 @@ export function Step2RoleConversation({
           value={agentData.objective || ""}
           onChange={(e) => setAgentData({ ...agentData, objective: e.target.value })}
           placeholder="e.g. Qualify inbound buyer leads, answer company FAQs, and schedule consultation calls with our sales team."
-          className="w-full p-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all resize-none leading-relaxed"
+          className={`w-full p-3 text-xs bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none transition-all resize-none leading-relaxed ${
+            isObjectiveInvalid
+              ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
+              : "border border-[var(--color-border)] focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)]/60"
+          }`}
         />
         <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1">
           <Info className="w-3 h-3 shrink-0 text-[var(--color-muted)]" />

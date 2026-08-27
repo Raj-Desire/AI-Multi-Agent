@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Sparkles, Check, Info, Bot, Compass, HelpCircle } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { Sparkles, Check, Info, Bot, Compass } from "lucide-react";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
 import { AgentConfig } from "../../types";
@@ -9,23 +9,82 @@ interface Step1BasicsProps {
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
   selectedPurposeId: string;
   setSelectedPurposeId: (id: string) => void;
+  showValidationErrors?: boolean;
 }
 
 export function Step1Basics({
   agentData,
   setAgentData,
   selectedPurposeId,
-  setSelectedPurposeId
+  setSelectedPurposeId,
+  showValidationErrors = false
 }: Step1BasicsProps) {
   // Custom purpose specifics
   const [customRoleName, setCustomRoleName] = useState(agentData.role || "");
   const [customHelpScope, setCustomHelpScope] = useState("");
   const [customSuccessCriteria, setCustomSuccessCriteria] = useState("");
+  const [isCustomHighlighted, setIsCustomHighlighted] = useState(false);
+  const [shakeTriggerKey, setShakeTriggerKey] = useState(0);
+
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const descInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const highlightTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // When validation errors are triggered, vibrate and auto-focus the first invalid field
+  useEffect(() => {
+    if (showValidationErrors) {
+      setShakeTriggerKey((k) => k + 1);
+      if (!agentData.name || !agentData.name.trim()) {
+        nameInputRef.current?.focus();
+      } else if (!agentData.description || !agentData.description.trim()) {
+        descInputRef.current?.focus();
+      }
+    }
+  }, [showValidationErrors]);
 
   const handlePurposeSelect = (purpose: AgentPurposeItem) => {
+    // If the purpose is already selected, do not erase or overwrite any entered data
+    if (selectedPurposeId === purpose.id) {
+      return;
+    }
+
     setSelectedPurposeId(purpose.id);
 
-    if (purpose.id !== "custom") {
+    if (purpose.id === "custom") {
+      // 1. Clear agent name, description, role, and objective automatically for custom creation
+      setAgentData((prev) => ({
+        ...prev,
+        name: "",
+        description: "",
+        role: "",
+        objective: "",
+        greeting: prev.greeting || "Hello, thank you for calling. How can I help you today?"
+      }));
+      setCustomRoleName("");
+      setCustomHelpScope("");
+      setCustomSuccessCriteria("");
+
+      // 2. Trigger refined, soft professional light highlight
+      setIsCustomHighlighted(true);
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = setTimeout(() => {
+        setIsCustomHighlighted(false);
+      }, 2200);
+
+      // 3. Auto-focus agent name input field
+      setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 80);
+    } else {
+      setIsCustomHighlighted(false);
       setAgentData((prev) => ({
         ...prev,
         name: `${purpose.title} Agent`,
@@ -51,6 +110,9 @@ export function Step1Basics({
     }
   };
 
+  const isNameInvalid = showValidationErrors && (!agentData.name || !agentData.name.trim());
+  const isDescInvalid = showValidationErrors && (!agentData.description || !agentData.description.trim());
+
   return (
     <div className="space-y-6 text-left">
       {/* Section 1: Basic Identity */}
@@ -74,21 +136,41 @@ export function Step1Basics({
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2 space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Agent Name <span className="text-[var(--color-danger)]">*</span>
-              </label>
-              <InfoTooltip
-                content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics."
-                position="top"
-              />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+                  <span>Agent Name</span>
+                  <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
+                  <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
+                    Required
+                  </span>
+                </label>
+                <InfoTooltip
+                  content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics."
+                  position="top"
+                />
+              </div>
+              {isCustomHighlighted && (
+                <span className="text-[10px] font-medium text-[var(--color-primary)] animate-pulse flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+                  <span>Custom Purpose Name</span>
+                </span>
+              )}
             </div>
             <input
+              key={`name-input-${shakeTriggerKey}`}
+              ref={nameInputRef}
               type="text"
               value={agentData.name}
               onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
-              placeholder="e.g., Customer Follow-Up Agent, VIP Sales Closer"
-              className="w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium shadow-2xs"
+              placeholder={selectedPurposeId === "custom" ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
+              className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-300 ${
+                isNameInvalid
+                  ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
+                  : isCustomHighlighted
+                  ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 bg-[var(--color-primary)]/[0.015] animate-soft-highlight"
+                  : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+              }`}
             />
           </div>
 
@@ -105,7 +187,7 @@ export function Step1Basics({
             <select
               value={agentData.status}
               onChange={(e) => setAgentData({ ...agentData, status: e.target.value as any })}
-              className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium shadow-2xs cursor-pointer"
+              className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 font-medium shadow-2xs cursor-pointer"
             >
               <option value="DRAFT">Draft (Testing only)</option>
               <option value="ACTIVE">Active (Live in Org)</option>
@@ -115,21 +197,45 @@ export function Step1Basics({
         </div>
 
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <label className="block text-xs font-semibold text-[var(--color-heading)]">
-              Description
-            </label>
-            <InfoTooltip
-              content="Explain what this agent does. This helps colleagues and helps our AI generator produce optimal prompts."
-              position="top"
-            />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+                <span>Description</span>
+                <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
+                <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
+                  Required
+                </span>
+              </label>
+              <InfoTooltip
+                content="Explain what this agent does. This helps colleagues and helps our AI generator produce optimal prompts."
+                position="top"
+              />
+            </div>
+            {isCustomHighlighted && (
+              <span className="text-[10px] font-medium text-[var(--color-primary)] animate-pulse flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+                <span>Custom Description</span>
+              </span>
+            )}
           </div>
           <textarea
+            key={`desc-input-${shakeTriggerKey}`}
+            ref={descInputRef}
             rows={2}
             value={agentData.description || ""}
             onChange={(e) => setAgentData({ ...agentData, description: e.target.value })}
-            placeholder="e.g., Follows up with existing customers about pending inquiries, orders, appointments, or satisfaction feedback."
-            className="w-full p-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] shadow-2xs resize-none"
+            placeholder={
+              selectedPurposeId === "custom"
+                ? "e.g., Handles custom customer inquiries, performs bespoke data lookups, and routes escalated requests."
+                : "e.g., Follows up with existing customers about pending inquiries, orders, appointments, or satisfaction feedback."
+            }
+            className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none shadow-2xs resize-none transition-all duration-300 ${
+              isDescInvalid
+                ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
+                : isCustomHighlighted
+                ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 bg-[var(--color-primary)]/[0.015] animate-soft-highlight"
+                : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+            }`}
           />
         </div>
       </div>
@@ -200,14 +306,27 @@ export function Step1Basics({
 
       {/* Section 3: Custom Role Fields if Custom is selected */}
       {selectedPurposeId === "custom" && (
-        <div className="p-4 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3.5 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
-            <h3 className="text-xs font-bold text-[var(--color-heading)]">Custom Role Details</h3>
-            <InfoTooltip
-              content="Define custom operational boundaries and specific business goals for non-standard workflows."
-              position="top"
-            />
+        <div
+          className={`p-4 bg-[var(--color-surface-muted)]/50 border rounded-[var(--radius-main,0.375rem)] space-y-3.5 animate-fade-in transition-all duration-300 ${
+            isCustomHighlighted
+              ? "border-[var(--color-primary)]/40 ring-1 ring-[var(--color-primary)]/15"
+              : "border-[var(--color-border)]"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+              <h3 className="text-xs font-bold text-[var(--color-heading)]">Custom Role Details</h3>
+              <InfoTooltip
+                content="Define custom operational boundaries and specific business goals for non-standard workflows."
+                position="top"
+              />
+            </div>
+            {isCustomHighlighted && (
+              <span className="text-[10px] font-medium text-[var(--color-primary)] animate-pulse">
+                Active Custom Setup
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -226,7 +345,11 @@ export function Step1Basics({
                   setAgentData({ ...agentData, role: e.target.value });
                 }}
                 placeholder="e.g., Passbook Follow-Up Specialist"
-                className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                className={`w-full h-9 px-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none transition-all ${
+                  isCustomHighlighted
+                    ? "border border-[var(--color-primary)]/40 ring-1 ring-[var(--color-primary)]/15"
+                    : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60"
+                }`}
               />
             </div>
 
@@ -240,9 +363,18 @@ export function Step1Basics({
               <input
                 type="text"
                 value={customHelpScope}
-                onChange={(e) => setCustomHelpScope(e.target.value)}
+                onChange={(e) => {
+                  setCustomHelpScope(e.target.value);
+                  if (e.target.value && (!agentData.objective || selectedPurposeId === "custom")) {
+                    setAgentData((prev) => ({ ...prev, objective: e.target.value }));
+                  }
+                }}
                 placeholder="e.g., Verify incomplete passbook applications and advise next steps"
-                className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                className={`w-full h-9 px-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none transition-all ${
+                  isCustomHighlighted
+                    ? "border border-[var(--color-primary)]/40 ring-1 ring-[var(--color-primary)]/15"
+                    : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60"
+                }`}
               />
             </div>
 
@@ -258,7 +390,11 @@ export function Step1Basics({
                 value={customSuccessCriteria}
                 onChange={(e) => setCustomSuccessCriteria(e.target.value)}
                 placeholder="e.g., Confirm customer status and record missing document reasons"
-                className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                className={`w-full h-9 px-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none transition-all ${
+                  isCustomHighlighted
+                    ? "border border-[var(--color-primary)]/40 ring-1 ring-[var(--color-primary)]/15"
+                    : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60"
+                }`}
               />
               <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1 mt-1">
                 <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />

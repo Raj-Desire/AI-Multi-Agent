@@ -226,24 +226,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         is_user_speaking = False
 
     async def handle_dg_agent_audio_done():
-        nonlocal is_agent_speaking, is_concluding_call
-        if is_concluding_call:
-            logger.info("[VoicePreview] Conclusion audio finished playing. Concluding session immediately.")
-            asyncio.create_task(terminate_preview_session())
+        nonlocal is_agent_speaking
+        is_agent_speaking = False
+        logger.debug("[VoicePreview] Agent finished speaking turn. Actively listening for user speech.")
 
     async def terminate_preview_session():
         nonlocal call_ended_event, lifecycle_task, deepgram_client
         if call_ended_event.is_set():
             return
         call_ended_event.set()
-        logger.info("[VoicePreview] Terminating preview session and notifying client.")
-        try:
-            await websocket.send_json({
-                "type": "call_concluded",
-                "reason": "completed"
-            })
-        except Exception:
-            pass
+        logger.info("[VoicePreview] Terminating preview session.")
         if lifecycle_task:
             lifecycle_task.cancel()
             lifecycle_task = None
@@ -254,26 +246,21 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 pass
 
     async def preview_lifecycle_monitor():
+        """Keeps live preview stream alive indefinitely by sending periodic KeepAlive pulses to Deepgram."""
+        keepalive_counter = 0
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(1.0)
-                if not deepgram_client or not deepgram_client.is_ready or not agent_config:
+                keepalive_counter += 1
+                if not deepgram_client or not deepgram_client.is_ready:
                     continue
 
-                runtime = agent_config.runtime or AgentRuntimeSettings()
-                max_duration = max(300, runtime.maximum_call_duration or 1800)
-                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
-
-                now = time.time()
-                elapsed_call_time = now - call_start_time
-
-                # Enforce overall maximum session duration limit (30 minutes)
-                if elapsed_call_time >= max_duration and not call_ended_event.is_set():
-                    logger.info(f"[VoicePreview] Maximum session duration ({max_duration}s) reached.")
-                    await deepgram_client.inject_agent_message(conclusion_msg)
-                    asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
-                    break
-
+                # Send periodic keep-alive every 4 seconds to guarantee WebSocket connection never drops during silence
+                if keepalive_counter % 4 == 0:
+                    try:
+                        await deepgram_client.send_keep_alive()
+                    except Exception as ke:
+                        logger.debug(f"[VoicePreview] KeepAlive pulse: {ke}")
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -401,6 +388,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     text = data.get("text")
                     if text and deepgram_client and deepgram_client.is_ready:
                         await deepgram_client.inject_agent_message(text)
+
+                # Heartbeat ping/pong
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
 
                 # Stop preview session
                 elif msg_type == "stop":
