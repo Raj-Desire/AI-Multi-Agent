@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Sparkles, Check, Info, Bot, Compass } from "lucide-react";
+import { Sparkles, Check, Info, Bot, Compass, Plus, Layers, Sliders, ArrowRight } from "lucide-react";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
 import { AgentConfig } from "../../types";
@@ -240,68 +240,141 @@ export function Step1Basics({
         </div>
       </div>
 
-      {/* Section 2: Purpose Selection */}
-      <div className="space-y-3 pt-2">
-        <div className="border-b border-[var(--color-border)] pb-2.5">
+      {/* Section 2: Purpose Selection (Pre-built Templates vs Custom Purpose) */}
+      <div className="space-y-4 pt-2">
+        <div className="border-b border-[var(--color-border)] pb-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
               <Compass className="w-4 h-4" />
             </div>
             <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
               <span>What is this agent mainly used for?</span>
-              <span className="text-[11px] font-normal text-[var(--color-muted)]">(Select purpose)</span>
             </h2>
             <InfoTooltip
-              content="Choose a purpose preset to automatically configure conversational pacing, greeting templates, and suggested skills."
+              content="Select an industry pre-built preset to automatically configure conversational pacing, greeting templates, and suggested skills, or choose Custom Purpose for bespoke workflows."
               position="top"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5">
-          {AGENT_PURPOSES.map((purpose) => {
-            const Icon = purpose.icon;
-            const isSelected = selectedPurposeId === purpose.id;
+        {/* Subsection A: Pre-built Industry Presets */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                Pre-built Industry Presets ({AGENT_PURPOSES.filter((p) => p.id !== "custom").length})
+              </span>
+              <InfoTooltip
+                content="Ready-to-use voice presets pre-configured with industry dialogue flows, voice pacing, and prompts."
+                position="top"
+              />
+            </div>
+            <span className="text-[10px] text-[var(--color-muted)]">Auto-populates best practices</span>
+          </div>
 
-            return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2.5">
+            {AGENT_PURPOSES.filter((p) => p.id !== "custom").map((purpose) => {
+              const Icon = purpose.icon;
+              const isSelected = selectedPurposeId === purpose.id;
+
+              return (
+                <div
+                  key={purpose.id}
+                  onClick={() => handlePurposeSelect(purpose)}
+                  className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between text-left relative select-none ${
+                    isSelected
+                      ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] shadow-xs ring-1 ring-[var(--color-primary)] font-semibold"
+                      : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                    <div
+                      className={`w-7 h-7 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center shrink-0 ${
+                        isSelected
+                          ? "bg-[var(--color-primary)] text-white"
+                          : "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)]"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <h3 className="text-xs font-bold text-[var(--color-heading)] leading-tight truncate">
+                        {purpose.title}
+                      </h3>
+                      {purpose.description && (
+                        <InfoTooltip content={purpose.description} position="top" />
+                      )}
+                    </div>
+                  </div>
+
+                  {isSelected && (
+                    <div className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center shadow-2xs shrink-0">
+                      <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Subsection B: Dedicated Custom Purpose Option Card */}
+        {(() => {
+          const customPurpose = AGENT_PURPOSES.find((p) => p.id === "custom");
+          const isCustomActive = selectedPurposeId === "custom";
+
+          return (
+            <div className="pt-2">
               <div
-                key={purpose.id}
-                onClick={() => handlePurposeSelect(purpose)}
-                className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between text-left relative select-none ${
-                  isSelected
-                    ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] shadow-xs ring-1 ring-[var(--color-primary)] font-semibold"
-                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]"
+                onClick={() => customPurpose && handlePurposeSelect(customPurpose)}
+                className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left relative select-none ${
+                  isCustomActive
+                    ? "bg-gradient-to-r from-[var(--color-primary)]/10 via-[var(--color-primary-light)]/15 to-transparent border-[var(--color-primary)] shadow-sm ring-1 ring-[var(--color-primary)]/30"
+                    : "bg-[var(--color-surface)] border-dashed border-[var(--color-border-strong,var(--color-border))] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-muted)]/60"
                 }`}
               >
-                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                <div className="flex items-start sm:items-center gap-3 min-w-0">
                   <div
-                    className={`w-7 h-7 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center shrink-0 ${
-                      isSelected
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
+                      isCustomActive
                         ? "bg-[var(--color-primary)] text-white"
-                        : "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)]"
+                        : "bg-[var(--color-surface-muted)] text-[var(--color-primary)] border border-[var(--color-border)]"
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5" />
+                    <Sparkles className="w-4 h-4" />
                   </div>
-                  <div className="flex items-center gap-1 min-w-0">
-                    <h3 className="text-xs font-bold text-[var(--color-heading)] leading-tight truncate">
-                      {purpose.title}
-                    </h3>
-                    {purpose.description && (
-                      <InfoTooltip content={purpose.description} position="top" />
-                    )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-bold text-[var(--color-heading)] leading-tight">
+                        Custom Purpose &amp; Bespoke Workflow
+                      </h3>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                        Blank Slate
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-snug">
+                      Design an entirely bespoke agent from scratch with custom role definitions, specific company objectives, and tailored prompt logic.
+                    </p>
                   </div>
                 </div>
 
-                {isSelected && (
-                  <div className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center shadow-2xs shrink-0">
-                    <Check className="w-2.5 h-2.5 stroke-[2.5]" />
-                  </div>
-                )}
+                <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                  {isCustomActive ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-[var(--color-primary)] text-white shadow-2xs">
+                      <Check className="w-3 h-3 stroke-[2.5]" />
+                      <span>Active</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-[var(--color-heading)] bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs hover:border-[var(--color-primary)] transition-all">
+                      <span>Create Custom</span>
+                      <ArrowRight className="w-3 h-3 text-[var(--color-primary)]" />
+                    </span>
+                  )}
+                </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Section 3: Custom Role Fields if Custom is selected */}
