@@ -95,7 +95,7 @@ function MainContent() {
       case "voice_agent":
         return {
           title: "AI Voice Agents",
-          sub: "Spoken AI & LLM voice agent configurations, prompts & library",
+          sub: "Configure, test, and manage your organization's AI voice agents.",
           icon: Bot,
         };
       case "business_profile":
@@ -178,7 +178,7 @@ function MainContent() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Bar */}
-        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-xs px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 shadow-2xs">
           <div className="flex items-center gap-3">
             {/* Mobile Sidebar Hamburger Toggle */}
             <button

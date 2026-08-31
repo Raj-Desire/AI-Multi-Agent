@@ -54,7 +54,7 @@ export const Button: React.FC<ButtonProps> = ({
       ) : leftIcon ? (
         <span className="shrink-0 flex items-center">{leftIcon}</span>
       ) : null}
-      <span>{children}</span>
+      {children ? <span>{children}</span> : null}
       {!isLoading && rightIcon && (
         <span className="shrink-0 flex items-center">{rightIcon}</span>
       )}

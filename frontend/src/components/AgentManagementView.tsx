@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { fetchApi } from "../api-client";
 import { AgentConfig, AvailableAgentsResponse, TwilioConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
 import { useAuth } from "../context/AuthContext";
@@ -29,7 +29,9 @@ import {
   Radio,
   ArrowUpRight,
   Trash2,
-  Save
+  Save,
+  Power,
+  PowerOff
 } from "lucide-react";
 import { PageHeader } from "./ui/PageHeader";
 import { Button } from "./ui/Button";
@@ -38,6 +40,7 @@ import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { Drawer } from "./ui/Drawer";
 import { Modal } from "./ui/Modal";
+import { EmptyState } from "./ui/EmptyState";
 import { DataTable, Column } from "./ui/DataTable";
 import { AgentEditorModal } from "./AgentEditorModal";
 import { AgentLivePreview } from "./AgentLivePreview";
@@ -48,18 +51,60 @@ interface AgentManagementViewProps {
   onEditorDirtyChange?: (isDirty: boolean, handleSaveDraft: () => Promise<void>, handleDiscard: () => void) => void;
 }
 
+// Map technical voice IDs to human-readable format: "Athena · English (US)"
+const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
+  "aura-orion-en": { name: "Orion", locale: "English (US)" },
+  "aura-luna-en": { name: "Luna", locale: "English (US)" },
+  "aura-asteria-en": { name: "Asteria", locale: "English (US)" },
+  "aura-stella-en": { name: "Stella", locale: "English (US)" },
+  "aura-arcas-en": { name: "Arcas", locale: "English (US)" },
+  "aura-athena-en": { name: "Athena", locale: "English (US)" },
+  "aura-hera-en": { name: "Hera", locale: "English (US)" },
+  "aura-perseus-en": { name: "Perseus", locale: "English (US)" },
+  "aura-angus-en": { name: "Angus", locale: "English (US)" },
+  "aura-helios-en": { name: "Helios", locale: "English (US)" },
+  "aura-zeus-en": { name: "Zeus", locale: "English (US)" },
+  "aura-2-thalia-en": { name: "Thalia", locale: "English (US)" },
+  "aura-2-andromeda-en": { name: "Andromeda", locale: "English (US)" },
+  "aura-2-apollo-en": { name: "Apollo", locale: "English (US)" },
+  "aura-2-agustina-es": { name: "Agustina", locale: "Spanish (ES)" },
+  "aura-2-javier-es": { name: "Javier", locale: "Spanish (ES)" },
+  "aura-2-aurelia-de": { name: "Aurelia", locale: "German (DE)" },
+  "aura-2-agathe-fr": { name: "Agathe", locale: "French (FR)" },
+  "aura-2-cesare-it": { name: "Cesare", locale: "Italian (IT)" },
+  "aura-2-ama-ja": { name: "Ama", locale: "Japanese (JA)" }
+};
+
+function formatVoiceDisplay(rawVoice?: string) {
+  if (!rawVoice) return { name: "Standard Voice", locale: "English" };
+  if (VOICE_DISPLAY_MAP[rawVoice]) return VOICE_DISPLAY_MAP[rawVoice];
+  const parts = rawVoice.replace(/^aura(-2)?-/, "").split("-");
+  const name = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : rawVoice;
+  const lang = parts[1] === "es" ? "Spanish" : parts[1] === "fr" ? "French" : parts[1] === "de" ? "German" : parts[1] === "it" ? "Italian" : parts[1] === "ja" ? "Japanese" : "English";
+  return { name, locale: lang };
+}
+
 export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }: AgentManagementViewProps) {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [availableData, setAvailableData] = useState<AvailableAgentsResponse>({ my_agents: [], default_agents: [] });
   const [twilioConfig, setTwilioConfig] = useState<TwilioConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Search and filter states
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [scopeFilter, setScopeFilter] = useState<string>("ALL");
+  // Search and filter states for My Agents
+  const [mySearchQuery, setMySearchQuery] = useState("");
+  const [myStatusFilter, setMyStatusFilter] = useState<string>("ALL");
+  const [myRoleFilter, setMyRoleFilter] = useState<string>("ALL");
+  const [myVoiceFilter, setMyVoiceFilter] = useState<string>("ALL");
+
+  // Search state for Platform Templates
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+
+  // Action Menu dropdown state (stores agent_id for open menu)
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Modals & Drawers
   const [editorOpen, setEditorOpen] = useState(false);
@@ -73,7 +118,23 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
   const [showUnsavedConfirmModal, setShowUnsavedConfirmModal] = useState(false);
   const [pendingCloseCallback, setPendingCloseCallback] = useState<(() => void) | null>(null);
 
+  // Template duplicate confirmation modal
+  const [templateToUse, setTemplateToUse] = useState<AgentConfig | null>(null);
+  const [isUsingTemplate, setIsUsingTemplate] = useState(false);
+
+  // Close more menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenuId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const openStudioWithTransition = (agent: AgentConfig | null, actionLabel?: string) => {
+    setOpenActionMenuId(null);
     setOpeningActionLabel(actionLabel || (agent ? `Loading ${agent.name}...` : "Initializing AI Voice Studio..."));
     setIsOpeningStudio(true);
     setTimeout(() => {
@@ -152,8 +213,6 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
 
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
-  const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
-  const [isArchiving, setIsArchiving] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<AgentConfig | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -188,6 +247,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
   async function loadData() {
     try {
       setLoading(true);
+      setFetchError(null);
       const [allAgents, availableRes, twilioRes] = await Promise.all([
         fetchApi<AgentConfig[]>("/agents"),
         fetchApi<AvailableAgentsResponse>("/agents/available"),
@@ -202,7 +262,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       }
     } catch (err: any) {
       console.error("Error loading agents:", err);
-      setStatusMessage({ type: "error", text: "Failed to load agent library." });
+      setFetchError("Unable to retrieve your AI voice agents right now. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -219,12 +279,14 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
           body: JSON.stringify(agent)
         });
         setStatusMessage({ type: "success", text: `Agent "${agent.name}" updated successfully (Version incremented).` });
+        toast.success(`Agent "${agent.name}" updated successfully.`);
       } else {
         await fetchApi<AgentConfig>("/agents", {
           method: "POST",
           body: JSON.stringify(agent)
         });
         setStatusMessage({ type: "success", text: `Agent "${agent.name}" created successfully!` });
+        toast.success(`Agent "${agent.name}" created successfully!`);
       }
       await loadData();
     } catch (err: any) {
@@ -235,47 +297,36 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
   async function handleDuplicate(agent: AgentConfig) {
     try {
       setStatusMessage(null);
+      setIsUsingTemplate(true);
       const duplicated = await fetchApi<AgentConfig>(`/agents/${agent.agent_id}/duplicate`, {
         method: "POST"
       });
-      setStatusMessage({ type: "success", text: `Duplicated "${agent.name}" as "${duplicated.name}" into your organization!` });
+      setStatusMessage({ type: "success", text: `Created "${duplicated.name}" into your organization!` });
+      toast.success(`Created agent "${duplicated.name}" from template.`);
+      setTemplateToUse(null);
       await loadData();
     } catch (err: any) {
-      setStatusMessage({ type: "error", text: `Duplication failed: ${err.message}` });
+      setStatusMessage({ type: "error", text: `Creation from template failed: ${err.message}` });
+      toast.error(`Template initialization failed: ${err.message}`);
+    } finally {
+      setIsUsingTemplate(false);
     }
   }
 
   async function handleToggleStatus(agent: AgentConfig) {
     try {
       setStatusMessage(null);
-      const action = agent.status === "ACTIVE" ? "deactivate" : "activate";
+      const action = agent.status.toUpperCase() === "ACTIVE" ? "deactivate" : "activate";
       await fetchApi<AgentConfig>(`/agents/${agent.agent_id}/${action}`, {
         method: "POST"
       });
-      setStatusMessage({ type: "success", text: `Agent "${agent.name}" status updated to ${action === "activate" ? "Active" : "Inactive"}.` });
+      const newStatus = action === "activate" ? "Active" : "Inactive";
+      setStatusMessage({ type: "success", text: `Agent "${agent.name}" is now ${newStatus}.` });
+      toast.success(`Agent "${agent.name}" is now ${newStatus}.`);
       await loadData();
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message });
-    }
-  }
-
-  async function confirmArchiveAgent() {
-    if (!agentToArchive) return;
-    try {
-      setIsArchiving(true);
-      setStatusMessage(null);
-      await fetchApi<AgentConfig>(`/agents/${agentToArchive.agent_id}/archive`, {
-        method: "POST"
-      });
-      setStatusMessage({ type: "success", text: `Agent "${agentToArchive.name}" archived successfully.` });
-      toast.success(`Agent "${agentToArchive.name}" archived successfully.`);
-      setAgentToArchive(null);
-      await loadData();
-    } catch (err: any) {
-      setStatusMessage({ type: "error", text: err.message });
-      toast.error(err.message || "Failed to archive agent.");
-    } finally {
-      setIsArchiving(false);
+      toast.error(err.message || "Failed to update status.");
     }
   }
 
@@ -300,18 +351,32 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
   }
 
   function openTestModal(agent: AgentConfig) {
+    setOpenActionMenuId(null);
     setTestAgent(agent);
     setTranscriptMessages([]);
     setLatestLatency({ stt: 0, llm: 0, tts: 0, turn: 0 });
     setTestModalOpen(true);
   }
 
+  function sanitizePhoneNumber(raw: string): string {
+    const trimmed = raw.trim();
+    if (!trimmed) return "";
+    const hasLeadingPlus = trimmed.startsWith("+");
+    const digitsOnly = trimmed.replace(/\D/g, "");
+    return hasLeadingPlus ? `+${digitsOnly}` : (digitsOnly ? `+${digitsOnly}` : "");
+  }
+
   async function startTestCall() {
     if (!testAgent) return;
-    if (!testPhoneNumber.trim()) {
-      setStatusMessage({ type: "error", text: "Please enter a test destination phone number." });
+    const cleanNumber = sanitizePhoneNumber(testPhoneNumber);
+    if (!cleanNumber || cleanNumber.length < 7) {
+      const err = "Please enter a valid destination phone number with country code (e.g., +15551234567 or +919876543210).";
+      setStatusMessage({ type: "error", text: err });
+      toast.error(err);
       return;
     }
+
+    const fromNum = selectedFromNumber || (twilioConfig?.phone_number ? twilioConfig.phone_number.split(",")[0].trim() : "");
 
     try {
       setCalling(true);
@@ -321,8 +386,8 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       const res = await fetchApi<{ call_session_id: string; call_sid: string }>("/voice/test-call", {
         method: "POST",
         body: JSON.stringify({
-          to_number: testPhoneNumber.trim(),
-          from_number: selectedFromNumber,
+          to_number: cleanNumber,
+          from_number: fromNum,
           agent_id: testAgent.agent_id,
           agent_config_override: testAgent
         })
@@ -330,9 +395,12 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
 
       setActiveSessionId(res.call_session_id);
       setActiveCallSid(res.call_sid);
+      toast.success("Placing test call to " + cleanNumber + "...");
       connectTelemetryStream(res.call_session_id);
     } catch (err: any) {
-      setStatusMessage({ type: "error", text: `Test Call failed: ${err.message}` });
+      const msg = err.message || "Failed to initiate test call. Check your Twilio credentials and destination number.";
+      setStatusMessage({ type: "error", text: `Test Call failed: ${msg}` });
+      toast.error(msg);
       setCalling(false);
     }
   }
@@ -399,51 +467,84 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
     telemetryWsRef.current = ws;
   }
 
+  // Extract unique Roles and Voices from organization agents for smart filtering
+  const myOrgAgents = useMemo(() => {
+    return agents.filter((a: AgentConfig) => a.scope === "ORGANIZATION" || (a.organization_id && a.organization_id !== "global" && a.scope !== "GLOBAL"));
+  }, [agents]);
+
+  const uniqueRoles = useMemo(() => {
+    const set = new Set<string>();
+    myOrgAgents.forEach((a: AgentConfig) => { if (a.role) set.add(a.role); });
+    return Array.from(set);
+  }, [myOrgAgents]);
+
+  const uniqueVoices = useMemo(() => {
+    const map = new Map<string, string>();
+    myOrgAgents.forEach((a: AgentConfig) => {
+      if (a.voice?.voice) {
+        const vInfo = formatVoiceDisplay(a.voice.voice);
+        map.set(a.voice.voice, vInfo.name);
+      }
+    });
+    return Array.from(map.entries());
+  }, [myOrgAgents]);
+
+  const isAnyMyFilterActive = mySearchQuery.trim() !== "" || myStatusFilter !== "ALL" || myRoleFilter !== "ALL" || myVoiceFilter !== "ALL";
+
+  const clearMyFilters = () => {
+    setMySearchQuery("");
+    setMyStatusFilter("ALL");
+    setMyRoleFilter("ALL");
+    setMyVoiceFilter("ALL");
+  };
+
   // Filtered collections
-  const myAgentsList = agents.filter((a) => {
-    const isOrg = a.scope === "ORGANIZATION" || (a.organization_id && a.organization_id !== "global" && a.scope !== "GLOBAL");
-    if (!isOrg) return false;
-    if (statusFilter !== "ALL" && a.status.toUpperCase() !== statusFilter) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        a.name.toLowerCase().includes(q) ||
-        a.role.toLowerCase().includes(q) ||
-        (a.voice?.voice && a.voice.voice.toLowerCase().includes(q)) ||
-        (a.llm?.model && a.llm.model.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
+  const myAgentsList = useMemo(() => {
+    return myOrgAgents.filter((a: AgentConfig) => {
+      if (myStatusFilter !== "ALL" && a.status.toUpperCase() !== myStatusFilter) return false;
+      if (myRoleFilter !== "ALL" && a.role !== myRoleFilter) return false;
+      if (myVoiceFilter !== "ALL" && a.voice?.voice !== myVoiceFilter) return false;
+      if (mySearchQuery.trim()) {
+        const q = mySearchQuery.toLowerCase();
+        return (
+          a.name.toLowerCase().includes(q) ||
+          a.role.toLowerCase().includes(q) ||
+          (a.description && a.description.toLowerCase().includes(q)) ||
+          (a.voice?.voice && a.voice.voice.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [myOrgAgents, myStatusFilter, myRoleFilter, myVoiceFilter, mySearchQuery]);
 
-  const defaultAgentsList = agents.filter((a) => {
-    const isGlobal = a.scope === "GLOBAL" || a.organization_id === "global";
-    if (!isGlobal) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        a.name.toLowerCase().includes(q) ||
-        a.role.toLowerCase().includes(q) ||
-        (a.voice?.voice && a.voice.voice.toLowerCase().includes(q)) ||
-        (a.llm?.model && a.llm.model.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
+  const defaultAgentsList = useMemo(() => {
+    const list = agents.filter((a: AgentConfig) => a.scope === "GLOBAL" || a.organization_id === "global");
+    if (!templateSearchQuery.trim()) return list;
+    const q = templateSearchQuery.toLowerCase();
+    return list.filter((a: AgentConfig) =>
+      a.name.toLowerCase().includes(q) ||
+      a.role.toLowerCase().includes(q) ||
+      (a.description && a.description.toLowerCase().includes(q)) ||
+      (a.voice?.voice && a.voice.voice.toLowerCase().includes(q))
+    );
+  }, [agents, templateSearchQuery]);
 
+  // Columns for My Organization Agents
   const myColumns: Column<AgentConfig>[] = [
     {
       key: "name",
       header: "Agent",
       sortable: true,
       render: (a) => (
-        <div>
-          <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
-            <span>{a.name}</span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">v{a.version || 1}</span>
+        <div className="min-w-0 max-w-[280px]">
+          <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5 truncate">
+            <span className="truncate whitespace-nowrap">{a.name}</span>
+            <span className="font-mono text-[10px] text-[var(--color-muted)] shrink-0 px-1 py-0.2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)]">v{a.version || 1}</span>
           </div>
           {a.description && (
-            <p className="text-[11px] text-[var(--color-muted)] truncate max-w-[220px] mt-0.5">{a.description}</p>
+            <p className="text-[11px] text-[var(--color-muted)] truncate whitespace-nowrap mt-0.5" title={a.description}>
+              {a.description}
+            </p>
           )}
         </div>
       )
@@ -452,119 +553,165 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       key: "role",
       header: "Role",
       sortable: true,
-      render: (a) => <span className="text-xs text-[var(--color-text)]">{a.role}</span>
+      render: (a) => <span className="text-xs text-[var(--color-text)] whitespace-nowrap">{a.role}</span>
     },
     {
       key: "voice",
-      header: "Voice (TTS)",
-      render: (a) => (
-        <span className="font-mono text-[11px] text-[var(--color-muted)]">{a.voice?.voice || "aura-orion-en"}</span>
-      )
+      header: "Voice",
+      sortable: true,
+      render: (a) => {
+        const v = formatVoiceDisplay(a.voice?.voice);
+        return (
+          <div className="flex flex-col text-xs" title={`Voice Model: ${a.voice?.voice || "aura"}`}>
+            <span className="font-medium text-[var(--color-heading)] flex items-center gap-1">
+              <Volume2 className="w-3 h-3 text-[var(--color-primary)] opacity-70" />
+              {v.name}
+            </span>
+            <span className="text-[10px] text-[var(--color-muted)] font-mono">{v.locale}</span>
+          </div>
+        );
+      }
     },
     {
       key: "status",
       header: "Status",
       sortable: true,
-      render: (a) => (
-        <StatusIndicator
-          status={a.status.toLowerCase()}
-          label={a.status}
-          pulse={a.status.toUpperCase() === "ACTIVE"}
-        />
-      )
+      render: (a) => {
+        const isActive = a.status.toUpperCase() === "ACTIVE";
+        return (
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-[var(--color-surface)] border-[var(--color-border)]">
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+            <span className={isActive ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-[var(--color-muted)]"}>
+              {isActive ? "Active" : "Inactive"}
+            </span>
+          </div>
+        );
+      }
     },
     {
       key: "actions",
       header: "Actions",
       className: "text-right",
-      render: (a) => (
-        <div className="flex items-center justify-end gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedAgentDetail(a)}
-            leftIcon={<FileText className="w-3.5 h-3.5" />}
-            className="h-7 px-2 text-xs"
-          >
-            Inspect
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPreviewDrawerAgent(a)}
-            leftIcon={<Radio className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
-            className="h-7 px-2.5 text-xs text-[var(--color-primary)] font-medium border-[var(--color-primary)]/40 hover:bg-[var(--color-primary-light)]"
-            title="Test in-browser with live microphone without making a phone call"
-          >
-            Live Preview
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openTestModal(a)}
-            leftIcon={<Play className="w-3.5 h-3.5 text-emerald-500" />}
-            className="h-7 px-2 text-xs"
-          >
-            Test Call
-          </Button>
-          {isAdmin && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
+      render: (a, rowIdx) => {
+        const isMenuOpen = openActionMenuId === a.agent_id;
+        const isActive = a.status.toUpperCase() === "ACTIVE";
+        // Flip menu upwards if it is near the bottom of the table list to avoid any scroll cutoff
+        const isBottomRow = (rowIdx ?? 0) >= Math.max(0, myAgentsList.length - 2);
+
+        return (
+          <div className="inline-flex items-center justify-end gap-1.5 py-0.5">
+            {/* Action 1: View Configuration */}
+            <button
+              type="button"
+              onClick={() => setSelectedAgentDetail(a)}
+              className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] transition-all cursor-pointer shadow-2xs"
+              title="Inspect Agent Configuration"
+              aria-label="Inspect Configuration"
+            >
+              <FileText className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Action 2: Live Browser Mic Preview */}
+            <button
+              type="button"
+              onClick={() => setPreviewDrawerAgent(a)}
+              className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/15 transition-all cursor-pointer shadow-2xs"
+              title="Live Browser Voice Preview (Mic & Speaker)"
+              aria-label="Live Voice Preview"
+            >
+              <Radio className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Action 3: Live Outbound Telephone Test Call */}
+            <button
+              type="button"
+              onClick={() => openTestModal(a)}
+              className="h-7 px-2.5 inline-flex items-center gap-1 text-xs font-medium rounded-[var(--radius-main,0.375rem)] border border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15 transition-all cursor-pointer shadow-2xs"
+              title="Place Outbound Telephone Test Call"
+            >
+              <Play className="w-3 h-3 fill-current" />
+              <span>Test</span>
+            </button>
+
+            {/* Action 4: Edit in Studio */}
+            {isAdmin && (
+              <button
+                type="button"
                 onClick={() => openStudioWithTransition(a, `Opening ${a.name}...`)}
-                leftIcon={<Edit className="w-3.5 h-3.5" />}
-                className="h-7 px-2 text-xs"
+                className="h-7 px-2.5 inline-flex items-center gap-1 text-xs font-medium rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:text-[var(--color-heading)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] transition-all cursor-pointer shadow-2xs"
+                title="Edit Agent Configuration in Studio"
               >
-                Edit
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
+                <Edit className="w-3 h-3" />
+                <span>Edit</span>
+              </button>
+            )}
+
+            {/* Action 5: Power Toggle */}
+            {isAdmin && (
+              <button
+                type="button"
                 onClick={() => handleToggleStatus(a)}
-                className={`h-7 px-2 text-xs ${a.status.toUpperCase() === "ACTIVE"
-                  ? "text-[var(--color-muted)] hover:text-amber-500"
-                  : "text-[var(--color-success)]"
-                  }`}
+                className={`w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer shadow-2xs ${
+                  isActive
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-amber-500/15 hover:text-amber-500 hover:border-amber-500/30"
+                    : "border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:bg-emerald-500/15 hover:text-emerald-500 hover:border-emerald-500/30"
+                }`}
+                title={isActive ? "Agent is Active (Click to Deactivate)" : "Agent is Inactive (Click to Activate)"}
+                aria-label={isActive ? "Deactivate Agent" : "Activate Agent"}
               >
-                {a.status.toUpperCase() === "ACTIVE" ? "Deactivate" : "Activate"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setAgentToArchive(a)}
-                leftIcon={<Archive className="w-3.5 h-3.5 text-amber-500" />}
-                className="h-7 px-2 text-xs text-amber-500 hover:bg-amber-500/10"
-                title="Archive agent"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
+                {isActive ? <Power className="w-3.5 h-3.5" /> : <PowerOff className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            {/* Action 6: Duplicate */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => handleDuplicate(a)}
+                className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] transition-all cursor-pointer shadow-2xs"
+                title="Duplicate Agent"
+                aria-label="Duplicate Agent"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {/* Action 7: Delete */}
+            {isAdmin && (
+              <button
+                type="button"
                 onClick={() => setAgentToDelete(a)}
-                leftIcon={<Trash2 className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
-                className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-                title="Delete agent permanently"
-              />
-            </>
-          )}
-        </div>
-      )
+                className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-danger)]/20 bg-[var(--color-danger)]/5 text-[var(--color-danger)] hover:bg-[var(--color-danger)]/15 transition-all cursor-pointer shadow-2xs"
+                title="Delete Agent Permanently"
+                aria-label="Delete Agent"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        );
+      }
     }
   ];
 
+  // Columns for Platform Agent Templates
   const defaultColumns: Column<AgentConfig>[] = [
     {
       key: "name",
-      header: "Platform Agent",
+      header: "Agent Template",
       sortable: true,
       render: (a) => (
-        <div>
-          <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
-            <span>{a.name}</span>
-            <Badge variant="primary" size="sm">Platform</Badge>
+        <div className="min-w-0 max-w-[280px]">
+          <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5 truncate">
+            <span className="truncate whitespace-nowrap">{a.name}</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] shrink-0">
+              Template
+            </span>
           </div>
           {a.description && (
-            <p className="text-[11px] text-[var(--color-muted)] truncate max-w-[240px] mt-0.5">{a.description}</p>
+            <p className="text-[11px] text-[var(--color-muted)] truncate whitespace-nowrap mt-0.5" title={a.description}>
+              {a.description}
+            </p>
           )}
         </div>
       )
@@ -573,13 +720,32 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       key: "role",
       header: "Role",
       sortable: true,
-      render: (a) => <span className="text-xs text-[var(--color-text)]">{a.role}</span>
+      render: (a) => <span className="text-xs text-[var(--color-text)] whitespace-nowrap">{a.role}</span>
     },
     {
       key: "voice",
-      header: "Voice (TTS)",
-      render: (a) => (
-        <span className="font-mono text-[11px] text-[var(--color-muted)]">{a.voice?.voice || "aura-orion-en"}</span>
+      header: "Default Voice",
+      sortable: true,
+      render: (a) => {
+        const v = formatVoiceDisplay(a.voice?.voice);
+        return (
+          <div className="flex flex-col text-xs" title={`Default Voice: ${a.voice?.voice || "aura"}`}>
+            <span className="font-medium text-[var(--color-heading)] flex items-center gap-1">
+              <Volume2 className="w-3 h-3 text-[var(--color-primary)] opacity-70" />
+              {v.name}
+            </span>
+            <span className="text-[10px] text-[var(--color-muted)] font-mono">{v.locale}</span>
+          </div>
+        );
+      }
+    },
+    {
+      key: "status",
+      header: "Type",
+      render: () => (
+        <Badge variant="neutral" size="sm" className="font-medium text-[11px]">
+          Built-in
+        </Badge>
       )
     },
     {
@@ -587,35 +753,36 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       header: "Actions",
       className: "text-right",
       render: (a) => (
-        <div className="flex items-center justify-end gap-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
+        <div className="inline-flex items-center justify-end gap-1.5 py-0.5">
+          <button
+            type="button"
             onClick={() => setSelectedAgentDetail(a)}
-            leftIcon={<FileText className="w-3.5 h-3.5" />}
-            className="h-7 px-2 text-xs"
+            className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] transition-all cursor-pointer shadow-2xs"
+            title="Inspect Template Configuration"
+            aria-label="Inspect Template"
           >
-            Inspect
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            <FileText className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
             onClick={() => setPreviewDrawerAgent(a)}
-            leftIcon={<Radio className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
-            className="h-7 px-2.5 text-xs text-[var(--color-primary)] font-medium border-[var(--color-primary)]/40 hover:bg-[var(--color-primary-light)]"
-            title="Test in-browser with live microphone without making a phone call"
+            className="w-7 h-7 inline-flex items-center justify-center rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/15 transition-all cursor-pointer shadow-2xs"
+            title="Test in Browser (Microphone Preview)"
+            aria-label="Live Preview Template"
           >
-            Live Preview
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openTestModal(a)}
-            leftIcon={<Play className="w-3.5 h-3.5 text-emerald-500" />}
-            className="h-7 px-2 text-xs"
-          >
-            Test Call
-          </Button>
+            <Radio className="w-3.5 h-3.5" />
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setTemplateToUse(a)}
+              className="h-7 px-2.5 inline-flex items-center gap-1.5 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] transition-all cursor-pointer shadow-xs"
+              title="Create Agent from Template into your Organization"
+            >
+              <Copy className="w-3 h-3" />
+              <span>Use Template</span>
+            </button>
+          )}
         </div>
       )
     }
@@ -641,9 +808,8 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
             Synthesizing conversational canvas & telephony speech models...
           </p>
 
-          {/* Smooth 2-second Progress Bar */}
           <div className="w-52 h-1.5 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-full overflow-hidden mx-auto mt-3">
-            <div className="h-full bg-[var(--color-primary)] rounded-full animate-progress" />
+            <div className="h-full bg-[var(--color-primary)] animate-pulse rounded-full w-3/4" />
           </div>
         </div>
       </div>
@@ -798,39 +964,39 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <PageHeader
-        title="AI Voice Agents"
-        description="Create, configure, and manage the AI voice agents used by your organization."
-        badge={
-          <Badge variant="neutral">
-            {myAgentsList.length} Org Agents &bull; {defaultAgentsList.length} Platform Defaults
-          </Badge>
-        }
-        actions={
-          <div className="flex items-center gap-2">
+      {/* 1. Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--color-border)] text-left">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-[var(--color-heading)]">
+            AI Voice Agents
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--color-muted)] mt-1">
+            Configure, test, and manage your organization's AI voice agents.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />}
+            title="Refresh agents list"
+          >
+            Sync
+          </Button>
+          {isAdmin && (
             <Button
-              variant="outline"
-              size="sm"
-              onClick={loadData}
-              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+              variant="primary"
+              size="md"
+              onClick={() => openStudioWithTransition(null, "Initializing AI Voice Studio...")}
+              leftIcon={<Plus className="w-4 h-4" />}
+              className="cursor-pointer font-semibold shadow-xs"
             >
-              Sync
+              Create AI Agent
             </Button>
-            {isAdmin && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => openStudioWithTransition(null, "Initializing AI Voice Studio...")}
-                leftIcon={<Plus className="w-3.5 h-3.5" />}
-                className="cursor-pointer font-semibold shadow-xs"
-              >
-                Create Agent
-              </Button>
-            )}
-          </div>
-        }
-      />
+          )}
+        </div>
+      </div>
 
       {statusMessage && (
         <Alert
@@ -841,76 +1007,250 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
         </Alert>
       )}
 
-      {/* Filter and Search Controls */}
-      <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agents by name, role, model..."
-            className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
-          />
+      {/* Global Error State */}
+      {fetchError && (
+        <div className="p-6 border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 rounded-[var(--radius-main,0.375rem)] text-center space-y-3">
+          <AlertCircle className="w-8 h-8 text-[var(--color-danger)] mx-auto" />
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--color-heading)]">Unable to load AI agents</h3>
+            <p className="text-xs text-[var(--color-muted)] mt-0.5">{fetchError}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadData} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>
+            Try Again
+          </Button>
         </div>
+      )}
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <span className="text-xs text-[var(--color-muted)]">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="DRAFT">Draft</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Section 1: MY AGENTS */}
+      {/* SECTION 1: MY AI AGENTS */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Bot className="w-4 h-4 text-[var(--color-primary)]" />
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">My Organization Agents</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-[var(--color-primary)]" />
+              <h2 className="text-sm font-bold text-[var(--color-heading)]">My AI Agents</h2>
+              <span className="text-xs text-[var(--color-muted)] font-normal">({myOrgAgents.length})</span>
+            </div>
+            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+              AI voice agents created and managed by your organization.
+            </p>
           </div>
-          <span className="text-xs text-[var(--color-muted)]">{myAgentsList.length} configured</span>
         </div>
 
-        <DataTable
-          columns={myColumns}
-          data={myAgentsList}
-          isLoading={loading}
-          loadingMessage="Loading organization voice agents..."
-          emptyTitle="No organization agents created yet"
-          emptyDescription="Create a tailored AI voice agent or duplicate one of the Platform default agents."
-          pagination={true}
-          pageSize={10}
-        />
+        {/* Search & Multifacet Filters Bar */}
+        <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="relative w-full md:w-72">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+            <input
+              type="text"
+              value={mySearchQuery}
+              onChange={(e) => setMySearchQuery(e.target.value)}
+              placeholder="Search agents..."
+              className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-start md:justify-end text-xs">
+            {/* Status Filter */}
+            <div className="flex items-center gap-1">
+              <span className="text-[var(--color-muted)] text-[11px]">Status:</span>
+              <select
+                value={myStatusFilter}
+                onChange={(e) => setMyStatusFilter(e.target.value)}
+                className="h-8 px-2 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="DRAFT">Draft</option>
+              </select>
+            </div>
+
+            {/* Role Filter (if roles exist) */}
+            {uniqueRoles.length > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[var(--color-muted)] text-[11px]">Role:</span>
+                <select
+                  value={myRoleFilter}
+                  onChange={(e) => setMyRoleFilter(e.target.value)}
+                  className="h-8 px-2 text-xs max-w-[140px] truncate bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                >
+                  <option value="ALL">All Roles</option>
+                  {uniqueRoles.map((r: string) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Voice Filter (if voices exist) */}
+            {uniqueVoices.length > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[var(--color-muted)] text-[11px]">Voice:</span>
+                <select
+                  value={myVoiceFilter}
+                  onChange={(e) => setMyVoiceFilter(e.target.value)}
+                  className="h-8 px-2 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                >
+                  <option value="ALL">All Voices</option>
+                  {uniqueVoices.map(([id, name]: [string, string]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Clear Filters button */}
+            {isAnyMyFilterActive && (
+              <button
+                type="button"
+                onClick={clearMyFilters}
+                className="text-[11px] text-[var(--color-primary)] hover:underline cursor-pointer font-medium px-1"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Data Table with Empty State & Skeleton */}
+        {myOrgAgents.length === 0 && !loading ? (
+          <EmptyState
+            icon={<Bot className="w-6 h-6 text-[var(--color-primary)]" />}
+            title="No AI agents yet"
+            description="Create your first AI voice agent from scratch or start from one of the platform templates below."
+            action={
+              <div className="flex items-center gap-2 justify-center mt-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => openStudioWithTransition(null, "Initializing AI Voice Studio...")}
+                  leftIcon={<Plus className="w-3.5 h-3.5" />}
+                >
+                  Create AI Agent
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const el = document.getElementById("platform-templates-section");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                >
+                  Browse Templates
+                </Button>
+              </div>
+            }
+          />
+        ) : (
+          <DataTable
+            columns={myColumns}
+            data={myAgentsList}
+            isLoading={loading}
+            loadingMessage="Loading organization voice agents..."
+            emptyTitle="No matching agents found"
+            emptyDescription="Try adjusting your search query or status/role filters."
+            pagination={myAgentsList.length > 10}
+            pageSize={10}
+          />
+        )}
       </div>
 
-      {/* Section 2: PLATFORM DEFAULT AGENTS */}
-      <div className="space-y-3 pt-4 border-t border-[var(--color-border)]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Platform Default Agents (Voice Library)</h2>
+      {/* SECTION 2: PLATFORM AGENT TEMPLATES */}
+      <div id="platform-templates-section" className="space-y-3 pt-6 border-t border-[var(--color-border)]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-bold text-[var(--color-heading)]">Platform Agent Templates</h2>
+              <span className="text-xs text-[var(--color-muted)] font-normal">({defaultAgentsList.length})</span>
+            </div>
+            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+              Ready-to-use AI agents provided by the platform.
+            </p>
           </div>
-          <span className="text-xs text-[var(--color-muted)]">Ready-to-use voice agents</span>
+        </div>
+
+        {/* Template Search Bar */}
+        <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs flex items-center justify-between gap-3">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+            <input
+              type="text"
+              value={templateSearchQuery}
+              onChange={(e) => setTemplateSearchQuery(e.target.value)}
+              placeholder="Search templates..."
+              className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+          {templateSearchQuery && (
+            <button
+              type="button"
+              onClick={() => setTemplateSearchQuery("")}
+              className="text-[11px] text-[var(--color-primary)] hover:underline cursor-pointer font-medium"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         <DataTable
           columns={defaultColumns}
           data={defaultAgentsList}
           isLoading={loading}
-          loadingMessage="Loading platform default agents..."
-          emptyTitle="No platform default agents found"
-          emptyDescription="Platform default agents are provisioned automatically."
+          loadingMessage="Loading platform agent templates..."
+          emptyTitle="No platform templates matching query"
+          emptyDescription="Try clearing your search keyword."
           pagination={false}
         />
       </div>
+
+      {/* Use Template Confirmation Modal */}
+      <Modal
+        isOpen={!!templateToUse}
+        onClose={() => setTemplateToUse(null)}
+        title="Create Agent from Template"
+        description="Creates a customizable copy of this platform template in your organization."
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setTemplateToUse(null)}
+              disabled={isUsingTemplate}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={isUsingTemplate}
+              leftIcon={<Copy className="w-3.5 h-3.5" />}
+              onClick={() => templateToUse && handleDuplicate(templateToUse)}
+            >
+              Create Agent
+            </Button>
+          </>
+        }
+      >
+        {templateToUse && (
+          <div className="space-y-3 text-xs text-left">
+            <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-1.5">
+              <div className="font-semibold text-xs text-[var(--color-heading)]">{templateToUse.name}</div>
+              <div className="text-[11px] text-[var(--color-muted)]">{templateToUse.role}</div>
+              <div className="text-[11px] text-[var(--color-text)] italic pt-1 border-t border-[var(--color-border)]">
+                "{templateToUse.greeting}"
+              </div>
+            </div>
+            <p className="text-[var(--color-muted)] leading-relaxed">
+              This will create a new editable agent in your <strong>My AI Agents</strong> catalog pre-configured with this template's conversational flows, voice settings, and system prompt.
+            </p>
+          </div>
+        )}
+      </Modal>
 
       {/* Detail Inspection Drawer */}
       <Drawer
@@ -927,7 +1267,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
               <div>
                 <span className="text-[var(--color-muted)] block text-[11px]">Scope & Type</span>
                 <span className="font-medium text-[var(--color-heading)] text-xs mt-0.5 block">
-                  {selectedAgentDetail.scope === "GLOBAL" ? "Platform Default" : "Organization Private"}
+                  {selectedAgentDetail.scope === "GLOBAL" ? "Platform Template" : "Organization Private"}
                 </span>
               </div>
               <div>
@@ -986,16 +1326,16 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
                 {Object.entries(selectedAgentDetail.personality || {}).map(([k, v]) => (
                   <div key={k} className="p-2 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-center">
                     <span className="text-[10px] text-[var(--color-muted)] capitalize block">{k}</span>
-                    <span className="font-mono text-xs font-semibold text-[var(--color-primary)] mt-0.5 block">{v}%</span>
+                    <span className="font-mono font-semibold text-xs text-[var(--color-heading)]">{v}%</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Enabled Skills */}
+            {/* Enabled Capabilities */}
             {selectedAgentDetail.skills && selectedAgentDetail.skills.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold text-[var(--color-heading)] mb-1.5">Enabled Skills</h4>
+                <h4 className="text-xs font-semibold text-[var(--color-heading)] mb-2">Capabilities</h4>
                 <div className="flex flex-wrap gap-1.5">
                   {selectedAgentDetail.skills.map((s) => (
                     <Badge key={s} variant="neutral" size="sm">
@@ -1005,151 +1345,6 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
                 </div>
               </div>
             )}
-          </div>
-        )}
-      </Drawer>
-
-      {/* Live Test Call Drawer */}
-      <Drawer
-        isOpen={testModalOpen}
-        onClose={() => {
-          if (calling) hangupTestCall();
-          setTestModalOpen(false);
-        }}
-        title={`Live Test Call: ${testAgent?.name || "Agent"}`}
-        description="Verify spoken greeting, STT/LLM turns, voice synthesis, and latency live."
-        size="md"
-      >
-        {testAgent && (
-          <div className="space-y-4 text-left text-xs">
-            <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted)]">Voice:</span>
-                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted)]">Model:</span>
-                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.llm?.model}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted)]">Status:</span>
-                <span className="font-semibold text-emerald-600">{testAgent.status}</span>
-              </div>
-            </div>
-
-            {/* Phone Inputs */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1">
-                  Destination Phone Number
-                </label>
-                <input
-                  type="tel"
-                  disabled={calling}
-                  value={testPhoneNumber}
-                  onChange={(e) => setTestPhoneNumber(e.target.value)}
-                  placeholder="+1 (555) 000-0000"
-                  className="w-full h-9 px-3 text-xs font-mono bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[var(--color-heading)] mb-1">
-                  Caller ID (From Number)
-                </label>
-                <input
-                  type="text"
-                  disabled
-                  value={selectedFromNumber || twilioConfig?.phone_number || "Default Twilio Number"}
-                  className="w-full h-9 px-3 text-xs font-mono bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-muted)] cursor-not-allowed"
-                />
-              </div>
-
-              {!calling ? (
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={startTestCall}
-                  leftIcon={<PhoneCall className="w-4 h-4" />}
-                  className="w-full"
-                >
-                  Place Test Call
-                </Button>
-              ) : (
-                <Button
-                  variant="danger"
-                  size="md"
-                  disabled={hangingUp}
-                  onClick={hangupTestCall}
-                  leftIcon={<PhoneOff className="w-4 h-4" />}
-                  className="w-full"
-                >
-                  {hangingUp ? "Disconnecting..." : "End Test Call"}
-                </Button>
-              )}
-            </div>
-
-            {/* Live Conversation Transcript */}
-            <div className="space-y-1.5 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-[var(--color-heading)]">Live Spoken Transcript</span>
-                {calling && (
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-500 font-medium animate-pulse">
-                    <Radio className="w-3 h-3" /> Live Stream Active
-                  </span>
-                )}
-              </div>
-
-              <div
-                ref={transcriptBoxRef}
-                className="h-44 overflow-y-auto p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2 text-xs font-sans"
-              >
-                {transcriptMessages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-[var(--color-muted)] text-[11px]">
-                    Waiting for call connection and live conversation turns...
-                  </div>
-                ) : (
-                  transcriptMessages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-                    >
-                      <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize">
-                        {msg.role === "user" ? "Customer" : testAgent.name}
-                      </div>
-                      <div
-                        className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${msg.role === "user"
-                          ? "bg-[var(--color-primary)] text-white"
-                          : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                          }`}
-                      >
-                        {msg.content}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Stage Latencies */}
-            <div className="grid grid-cols-4 gap-2 pt-1 text-center">
-              <div className="p-1.5 border border-[var(--color-border)] rounded bg-[var(--color-surface)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">STT</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.stt}ms</span>
-              </div>
-              <div className="p-1.5 border border-[var(--color-border)] rounded bg-[var(--color-surface)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">LLM</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.llm}ms</span>
-              </div>
-              <div className="p-1.5 border border-[var(--color-border)] rounded bg-[var(--color-surface)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">TTS</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.tts}ms</span>
-              </div>
-              <div className="p-1.5 border border-[var(--color-border)] rounded bg-[var(--color-surface)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">Turn</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-primary)]">{latestLatency.turn}ms</span>
-              </div>
-            </div>
           </div>
         )}
       </Drawer>
@@ -1169,63 +1364,12 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
         )}
       </Drawer>
 
-      {/* Archive Agent Confirmation Modal */}
-      <Modal
-        isOpen={!!agentToArchive}
-        onClose={() => setAgentToArchive(null)}
-        title="Archive AI Voice Agent"
-        description="Are you sure you want to archive this voice agent configuration?"
-        maxWidth="sm"
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAgentToArchive(null)}
-              disabled={isArchiving}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              isLoading={isArchiving}
-              leftIcon={<Archive className="w-3.5 h-3.5" />}
-              onClick={confirmArchiveAgent}
-            >
-              Archive Agent
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-xs">
-          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
-            <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-[var(--color-heading)] truncate">
-                {agentToArchive?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToArchive?.version || 1}</span>
-              </p>
-              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
-                {agentToArchive?.role} • Voice: <span className="font-mono">{agentToArchive?.voice?.voice || "aura"}</span>
-              </p>
-            </div>
-          </div>
-          <p className="text-[var(--color-muted)] leading-relaxed">
-            Archiving this agent will remove it from active dialing campaigns. Existing call logs and metrics will retain their historical records.
-          </p>
-        </div>
-      </Modal>
-
       {/* Delete Agent Confirmation Modal */}
       <Modal
         isOpen={!!agentToDelete}
-        onClose={() => !isDeleting && setAgentToDelete(null)}
+        onClose={() => setAgentToDelete(null)}
         title="Delete AI Voice Agent Permanently"
-        description="This action cannot be undone. Are you sure you want to permanently delete this agent?"
+        description={`Are you sure you want to delete "${agentToDelete?.name}"? This action cannot be undone.`}
         maxWidth="sm"
         footer={
           <>
@@ -1246,28 +1390,15 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
               leftIcon={<Trash2 className="w-3.5 h-3.5" />}
               onClick={confirmDeleteAgent}
             >
-              Delete Permanently
+              Delete Agent
             </Button>
           </>
         }
       >
         <div className="space-y-3 text-xs text-left">
-          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/20">
-            <div className="w-8 h-8 rounded-full bg-[var(--color-danger)]/20 text-[var(--color-danger)] flex items-center justify-center shrink-0">
-              <Trash2 className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-[var(--color-heading)] truncate">
-                {agentToDelete?.name} <span className="text-[10px] font-mono text-[var(--color-muted)] font-normal">v{agentToDelete?.version || 1}</span>
-              </p>
-              <p className="text-[11px] text-[var(--color-muted)] truncate mt-0.5">
-                {agentToDelete?.role} • {agentToDelete?.scope || "ORGANIZATION"}
-              </p>
-            </div>
+          <div className="p-3 bg-[var(--color-danger)]/5 border border-[var(--color-danger)]/20 rounded-[var(--radius-main,0.375rem)] text-[var(--color-danger)]">
+            Warning: All active configurations for <strong>{agentToDelete?.name}</strong> will be permanently removed.
           </div>
-          <p className="text-[var(--color-muted)] leading-relaxed">
-            Permanently deleting this agent will remove its voice configuration and prompt instructions from your organization.
-          </p>
         </div>
       </Modal>
     </div>

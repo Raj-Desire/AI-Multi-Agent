@@ -200,7 +200,7 @@ export function AIAgentDialerView({
           setCallState("idle");
           setCalling(false);
           stopTimer();
-          fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+          fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
         }
       } catch (err) {
         console.error("Telemetry parse error:", err);
@@ -242,7 +242,7 @@ export function AIAgentDialerView({
       setCallState("connected");
       startTimer();
       connectTelemetryStream(res.call_session_id);
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
     } catch (err: any) {
       setCalling(false);
       setCallState("idle");
@@ -269,7 +269,7 @@ export function AIAgentDialerView({
       setCallState("idle");
       stopTimer();
       if (telemetryWsRef.current) telemetryWsRef.current.close();
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
     }
   }
 
@@ -660,11 +660,10 @@ export function AIAgentDialerView({
                       {msg.role === "user" ? "Customer" : selectedAgent?.name || "AI Agent"}
                     </div>
                     <div
-                      className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${
-                        msg.role === "user"
+                      className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${msg.role === "user"
                           ? "bg-[var(--color-primary)] text-white font-medium"
                           : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       {msg.content}
                     </div>
@@ -770,11 +769,10 @@ export function AIAgentDialerView({
                   {selectedCall.transcript.map((t, idx) => (
                     <div
                       key={idx}
-                      className={`p-2 rounded text-xs ${
-                        t.role === "user"
+                      className={`p-2 rounded text-xs ${t.role === "user"
                           ? "bg-[var(--color-primary-light)] text-[var(--color-primary)] font-medium"
                           : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize">
                         {t.role === "user" ? "Customer" : selectedCall.agent_name || "AI Agent"}

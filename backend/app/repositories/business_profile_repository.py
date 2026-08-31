@@ -3,34 +3,17 @@ import time
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
-from app.core.cosmos import get_database, get_cosmos_client
+from app.core.cosmos import get_business_profiles_container
 from app.models.business_profile import CompanyBusinessProfile
 
 # In-memory profile cache with TTL for ultra-fast prompt generation (<1ms)
 _PROFILE_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
 PROFILE_CACHE_TTL_SECONDS = 60.0
 
-COSMOS_CONTAINER_PROFILES = "business_profiles"
-_profiles_container = None
-
 
 def get_profiles_container():
-    global _profiles_container
-    if _profiles_container is not None:
-        return _profiles_container
-    db = get_database()
-    if not db:
-        return None
-    try:
-        from azure.cosmos import PartitionKey
-        _profiles_container = db.create_container_if_not_exists(
-            id=COSMOS_CONTAINER_PROFILES,
-            partition_key=PartitionKey(path="/organization_id")
-        )
-        return _profiles_container
-    except Exception as e:
-        print(f"[CosmosDB Error] Failed to get profiles container: {e}")
-        return None
+    return get_business_profiles_container()
+
 
 
 class BusinessProfileRepository:
