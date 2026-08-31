@@ -201,7 +201,9 @@ You MUST structure the generated system_prompt into these comprehensive, battle-
    - Answering inquiries with precision based on business knowledge.
 
 6. STAGE 4 (NEXT STEPS & ACTION CONFIRMATION):
-   - Concrete next steps: booking a 15-minute consultation, confirming appointment, logging a ticket, or dispatching an SMS confirmation.
+   - Concrete next steps: booking a 15-minute discovery consultation, confirming appointment, logging a ticket, or dispatching an SMS confirmation.
+   - MANDATORY DATE CONFIRMATION RULE: When offering or confirming a meeting date/time, NEVER confirm with just a day name (e.g., never say just 'Monday'). Always specify the exact calendar date (e.g. 'Monday, September 7th' or clarify 'Do you mean today, Monday, or next Monday?').
+   - PAST-TIME PREVENTION: If a caller asks to schedule for today at a time that has already passed, check current time and inform them politely that the time has passed today and propose an alternative time or tomorrow.
 
 7. OBJECTIONS & PHONE RULES:
    - Handling 'Busy' or 'Call Later': Polite callback proposal.
@@ -390,9 +392,118 @@ OBJECTIONS & PHONE RULES:
             "suggested_objective": f"Assist customers effectively with {clean_desc.lower().rstrip('.')}.",
             "communication_style": tone,
             "recommended_voice": "aura-orion-en",
-            "recommended_temperature": 0.35,
             "positive_flow": "Acknowledge interest warmly, verify key details, and lock in next steps.",
             "negative_flow": "Empathize with concerns, explain alternatives simply, and offer callback."
+        }
+
+    async def generate_greetings_only(
+        self,
+        name: str,
+        description: str,
+        agent_type: Optional[str] = "marketing",
+        tone: Optional[str] = "Professional + Friendly",
+        role: Optional[str] = "Assistant",
+        objective: Optional[str] = "",
+        language: Optional[str] = "en"
+    ) -> Dict[str, Any]:
+        """
+        Lightweight generation that generates ONLY 3 distinct opening greetings based on the agent's
+        identity and role without regenerating the entire system prompt, dramatically saving tokens and time.
+        """
+        type_key = (agent_type or "marketing").lower()
+        clean_name = name.strip() or "Voice Assistant"
+        clean_desc = (objective or description).strip() or "Customer outreach and support."
+        clean_role = (role or "Representative").strip()
+        lang_note = f"Language: {language}" if language and language != "en" else "Language: English"
+
+        system_instruction = f"""You are an elite conversational AI voice architect.
+Your task is to generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective.
+
+Rules for telephone greetings:
+- Keep greetings concise, natural, and conversational (1 to 2 spoken sentences, under 30 words).
+- Never use emojis, markdown, asterisks, bullet points, or stage directions.
+- Direct & Warm: A warm opening stating who is calling and the call context.
+- Engaging Hook & Discovery: An engaging hook directly referencing the specific purpose/description and asking a conversational opening question.
+- Consultative & Professional: A consultative, polite opening offering expert assistance based on the role and business workflow.
+
+{lang_note}.
+
+Return ONLY a valid JSON object matching this schema:
+{{
+  "suggested_greeting": string (Primary natural telephone opening line),
+  "suggested_greetings": [
+    {{"label": "Direct & Warm", "text": string}},
+    {{"label": "Engaging Hook & Discovery", "text": string}},
+    {{"label": "Consultative & Professional", "text": string}}
+  ]
+}}"""
+
+        user_prompt = f"""AGENT NAME: {clean_name}
+ROLE: {clean_role}
+OBJECTIVE / DESCRIPTION: {clean_desc}
+COMMUNICATION TONE: {tone or 'Professional'}
+ARCHETYPE INTENT: {type_key}
+
+Generate 3 fresh and distinct telephone opening greeting lines."""
+
+        json_text = None
+        if self.is_azure_configured():
+            try:
+                json_text = await self._call_azure_openai(system_instruction, user_prompt)
+            except Exception as e:
+                print(f"[LLMGenerator] Azure OpenAI exception in generate_greetings_only: {e}")
+
+        if not json_text and self.is_openai_configured():
+            try:
+                json_text = await self._call_standard_openai(system_instruction, user_prompt)
+            except Exception as e:
+                print(f"[LLMGenerator] OpenAI API exception in generate_greetings_only: {e}")
+
+        if json_text:
+            try:
+                parsed = json.loads(json_text)
+                if "suggested_greetings" in parsed and parsed["suggested_greetings"]:
+                    return parsed
+            except Exception as e:
+                print(f"[LLMGenerator] JSON parse error in generate_greetings_only: {e}")
+
+        # Persona fallback
+        spoken_persona = clean_name
+        for suffix in [" Agent", " Assistant", " Bot", " AI", " Specialist", " Representative"]:
+            if spoken_persona.endswith(suffix):
+                spoken_persona = spoken_persona[:-len(suffix)].strip()
+                if not spoken_persona:
+                    spoken_persona = "Alex"
+                break
+
+        if type_key in ["marketing", "sales", "outreach"]:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} from our solutions team. I'm calling to share a quick update on how we help teams streamline operations—do you have two minutes?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona}. We specialize in {clean_desc.lower().rstrip('.')} to help businesses save time and grow. What's your top priority in this area right now?"},
+                {"label": "Consultative & Professional", "text": f"Hello, this is {spoken_persona}. I'm reaching out to introduce our services for {clean_desc.lower().rstrip('.')}. Would you be open to a quick overview?"}
+            ]
+        elif type_key in ["follow_up", "review"]:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hello! This is {spoken_persona} following up on your recent request with us to make sure everything went smoothly and see if you have any questions."},
+                {"label": "Engaging Hook & Discovery", "text": f"Hi! This is {spoken_persona} reaching out regarding your recent inquiry. I'm checking in to verify that you've received everything you need and that all is working well."},
+                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} following up on your recent service with us. How was your experience, and is there anything we can clarify for you?"}
+            ]
+        elif type_key in ["reminder", "appointment_reminder"]:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! This is {spoken_persona} calling from our office with a quick courtesy reminder regarding your upcoming appointment. I am calling to confirm if you will be attending, or if you need to reschedule?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona}. I'm calling to confirm your upcoming scheduled appointment—will you still be able to make it?"},
+                {"label": "Consultative & Professional", "text": f"Good day! This is {spoken_persona} reaching out to confirm your scheduled booking and see if you need to reschedule or have any questions."}
+            ]
+        else:
+            fallback_greetings = [
+                {"label": "Direct & Warm", "text": f"Hi! Thank you for calling. This is {spoken_persona}, how can I help you today?"},
+                {"label": "Engaging Hook & Discovery", "text": f"Hello! This is {spoken_persona} regarding {clean_desc.lower().rstrip('.')}. How can I direct your call or assist you?"},
+                {"label": "Consultative & Professional", "text": f"Good day! You've reached our team. This is {spoken_persona}, how can I best assist with your request today?"}
+            ]
+
+        return {
+            "suggested_greeting": fallback_greetings[0]["text"],
+            "suggested_greetings": fallback_greetings
         }
 
     async def refine_agent_prompt(

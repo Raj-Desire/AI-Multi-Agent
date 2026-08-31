@@ -22,6 +22,7 @@ interface AgentEditorModalProps {
   initialAgent?: AgentConfig | null;
   onSave: (agent: AgentConfig, activate: boolean) => Promise<void>;
   onTestCall?: (agent: AgentConfig) => void;
+  onDirtyChange?: (isDirty: boolean, currentAgent: AgentConfig) => void;
 }
 
 export function AgentEditorModal({
@@ -29,7 +30,8 @@ export function AgentEditorModal({
   onClose,
   initialAgent,
   onSave,
-  onTestCall
+  onTestCall,
+  onDirtyChange
 }: AgentEditorModalProps) {
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
@@ -47,7 +49,10 @@ export function AgentEditorModal({
     };
   });
 
+  const [initialSnapshot, setInitialSnapshot] = useState<string>("");
+
   useEffect(() => {
+    let baseAgent: AgentConfig;
     if (initialAgent) {
       const cloned = JSON.parse(JSON.stringify(initialAgent));
       if (!cloned.organization_id || cloned.organization_id === "default") {
@@ -84,18 +89,30 @@ export function AgentEditorModal({
       if (cloned.custom_knowledge === undefined) {
         cloned.custom_knowledge = "";
       }
-      setAgentData(cloned);
+      baseAgent = cloned;
     } else {
       const init = getInitialAgentData();
-      setAgentData({
+      baseAgent = {
         ...init,
         organization_id: user?.organization_id || "org_platform_root"
-      });
+      };
     }
+    setAgentData(baseAgent);
+    setInitialSnapshot(JSON.stringify(baseAgent));
     setCurrentStep(1);
     setErrorMsg(null);
     setShowValidationErrors(false);
   }, [initialAgent, isOpen, user]);
+
+  useEffect(() => {
+    if (!initialSnapshot) return;
+    const isDirty = JSON.stringify(agentData) !== initialSnapshot;
+    onDirtyChange?.(isDirty, agentData);
+  }, [agentData, initialSnapshot, onDirtyChange]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [currentStep]);
 
   if (!isOpen) return null;
 

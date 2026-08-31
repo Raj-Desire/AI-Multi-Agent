@@ -50,6 +50,11 @@ class GeneratedPromptResponse(BaseModel):
     negative_flow: Optional[str] = ""
 
 
+class GeneratedGreetingsResponse(BaseModel):
+    suggested_greeting: str
+    suggested_greetings: List[Dict[str, str]] = Field(default_factory=list)
+
+
 class RefinePromptRequest(BaseModel):
     current_prompt: str
     instruction: str
@@ -62,6 +67,40 @@ class RefinePromptResponse(BaseModel):
     system_prompt: str
     suggested_greeting: Optional[str] = None
     summary_of_changes: Optional[str] = None
+
+
+@router.post("/generate-greetings", response_model=ApiResponse[GeneratedGreetingsResponse])
+async def generate_greetings(
+    payload: GeneratePromptRequest,
+    ctx: TenantContext = Depends(get_tenant_context)
+):
+    """
+    Lightweight endpoint that generates ONLY 3 tailored opening greetings
+    based on agent identity and purpose without regenerating the system prompt.
+    """
+    desc = (payload.description or payload.objective or "").strip()
+    name = (payload.name or "Voice Assistant").strip()
+    style = payload.communication_style or "Professional + Friendly"
+    agent_type = payload.agent_type or "marketing"
+
+    try:
+        gen = await llm_service.generate_greetings_only(
+            name=name,
+            description=desc,
+            agent_type=agent_type,
+            tone=style,
+            role=payload.role or "Representative",
+            objective=payload.objective or desc,
+            language=payload.language or "en"
+        )
+        return ApiResponse.ok(GeneratedGreetingsResponse(
+            suggested_greeting=gen.get("suggested_greeting", f"Hi! This is {name}. How can I help you today?"),
+            suggested_greetings=gen.get("suggested_greetings", [])
+        ))
+    except Exception as e:
+        print(f"[Generate Greetings Error] {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate greetings: {str(e)}")
+
 
 
 @router.post("/generate-prompt", response_model=ApiResponse[GeneratedPromptResponse])

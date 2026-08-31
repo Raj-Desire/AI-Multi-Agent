@@ -28,7 +28,8 @@ import {
   Zap,
   Radio,
   ArrowUpRight,
-  Trash2
+  Trash2,
+  Save
 } from "lucide-react";
 import { PageHeader } from "./ui/PageHeader";
 import { Button } from "./ui/Button";
@@ -42,7 +43,12 @@ import { AgentEditorModal } from "./AgentEditorModal";
 import { AgentLivePreview } from "./AgentLivePreview";
 import { toast } from "sonner";
 
-export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer?: (agentId: string) => void }) {
+interface AgentManagementViewProps {
+  onNavigateToDialer?: (agentId: string) => void;
+  onEditorDirtyChange?: (isDirty: boolean, handleSaveDraft: () => Promise<void>, handleDiscard: () => void) => void;
+}
+
+export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }: AgentManagementViewProps) {
   const { user, isAdmin, isSuperAdmin } = useAuth();
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [availableData, setAvailableData] = useState<AvailableAgentsResponse>({ my_agents: [], default_agents: [] });
@@ -60,16 +66,91 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
   const [editingAgent, setEditingAgent] = useState<AgentConfig | null>(null);
   const [isOpeningStudio, setIsOpeningStudio] = useState(false);
   const [openingActionLabel, setOpeningActionLabel] = useState("Initializing Voice Studio...");
+  
+  // Unsaved Changes Navigation Confirmation State
+  const [isEditorDirty, setIsEditorDirty] = useState(false);
+  const [latestDraftAgent, setLatestDraftAgent] = useState<AgentConfig | null>(null);
+  const [showUnsavedConfirmModal, setShowUnsavedConfirmModal] = useState(false);
+  const [pendingCloseCallback, setPendingCloseCallback] = useState<(() => void) | null>(null);
 
   const openStudioWithTransition = (agent: AgentConfig | null, actionLabel?: string) => {
     setOpeningActionLabel(actionLabel || (agent ? `Loading ${agent.name}...` : "Initializing AI Voice Studio..."));
     setIsOpeningStudio(true);
     setTimeout(() => {
       setEditingAgent(agent);
+      setLatestDraftAgent(agent);
+      setIsEditorDirty(false);
       setIsOpeningStudio(false);
       setEditorOpen(true);
     }, 2200);
   };
+
+  const handleRequestCloseEditor = (onConfirmClose?: () => void) => {
+    if (isEditorDirty) {
+      setPendingCloseCallback(() => onConfirmClose || (() => {
+        setEditorOpen(false);
+        setEditingAgent(null);
+        setIsEditorDirty(false);
+      }));
+      setShowUnsavedConfirmModal(true);
+    } else {
+      if (onConfirmClose) {
+        onConfirmClose();
+      } else {
+        setEditorOpen(false);
+        setEditingAgent(null);
+      }
+    }
+  };
+
+  const handleSaveDraftAndLeave = async () => {
+    if (!latestDraftAgent) {
+      setShowUnsavedConfirmModal(false);
+      if (pendingCloseCallback) pendingCloseCallback();
+      return;
+    }
+    try {
+      const draftToSave: AgentConfig = {
+        ...latestDraftAgent,
+        name: latestDraftAgent.name?.trim() ? latestDraftAgent.name : "Untitled Draft Agent",
+        status: "DRAFT"
+      };
+      await handleSaveAgent(draftToSave, false);
+      toast.success("Draft saved successfully!");
+      setShowUnsavedConfirmModal(false);
+      setIsEditorDirty(false);
+      if (pendingCloseCallback) {
+        pendingCloseCallback();
+      } else {
+        setEditorOpen(false);
+        setEditingAgent(null);
+      }
+    } catch (err: any) {
+      toast.error(`Failed to save draft: ${err.message}`);
+    }
+  };
+
+  const handleDiscardAndLeave = () => {
+    setShowUnsavedConfirmModal(false);
+    setIsEditorDirty(false);
+    toast.info("Unsaved agent changes discarded.");
+    if (pendingCloseCallback) {
+      pendingCloseCallback();
+    } else {
+      setEditorOpen(false);
+      setEditingAgent(null);
+    }
+  };
+  useEffect(() => {
+    if (onEditorDirtyChange) {
+      onEditorDirtyChange(
+        editorOpen && isEditorDirty,
+        handleSaveDraftAndLeave,
+        handleDiscardAndLeave
+      );
+    }
+  }, [editorOpen, isEditorDirty, latestDraftAgent, onEditorDirtyChange]);
+
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);
   const [agentToArchive, setAgentToArchive] = useState<AgentConfig | null>(null);
@@ -575,18 +656,70 @@ export function AgentManagementView({ onNavigateToDialer }: { onNavigateToDialer
       <div className="space-y-6">
         <AgentEditorModal
           isOpen={true}
-          onClose={() => {
-            setEditorOpen(false);
-            setEditingAgent(null);
-          }}
+          onClose={() => handleRequestCloseEditor()}
           initialAgent={editingAgent}
+          onDirtyChange={(isDirty, currentAgent) => {
+            setIsEditorDirty(isDirty);
+            setLatestDraftAgent(currentAgent);
+          }}
           onSave={async (agent, activate) => {
             await handleSaveAgent(agent, activate);
+            setIsEditorDirty(false);
             setEditorOpen(false);
             setEditingAgent(null);
           }}
           onTestCall={(ag) => openTestModal(ag)}
         />
+
+        {/* Unsaved Changes Confirmation Modal */}
+        <Modal
+          isOpen={showUnsavedConfirmModal}
+          onClose={() => setShowUnsavedConfirmModal(false)}
+          title="Unsaved Agent Configuration"
+          maxWidth="sm"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-[var(--color-warning-subtle)] border border-[var(--color-warning)]/30 rounded-[var(--radius-main,0.375rem)] flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-[var(--color-heading)]">
+                  You have unsaved changes on "{latestDraftAgent?.name || "Agent"}"
+                </p>
+                <p className="text-[var(--color-muted)] leading-relaxed">
+                  Do you want to save this as a draft before leaving, or discard your current edits?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowUnsavedConfirmModal(false)}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Keep Editing
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleDiscardAndLeave}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Discard &amp; Exit
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSaveDraftAndLeave}
+                leftIcon={<Save className="w-3.5 h-3.5" />}
+                className="w-full sm:w-auto cursor-pointer font-semibold"
+              >
+                Save Draft &amp; Exit
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Live Test Call Drawer */}
         <Drawer

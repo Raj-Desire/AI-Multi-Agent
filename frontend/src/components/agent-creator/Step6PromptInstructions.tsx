@@ -61,6 +61,7 @@ export function Step6PromptInstructions({
   setAgentData
 }: Step6PromptInstructionsProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingGreetings, setIsGeneratingGreetings] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [refinementInput, setRefinementInput] = useState("");
   const [copied, setCopied] = useState(false);
@@ -99,11 +100,11 @@ export function Step6PromptInstructions({
 
   const defaultGreetings: GreetingOption[] = [
     {
-      label: "Warm & Welcoming",
+      label: "Direct & Warm",
       text: `Hello! Thank you for calling {{company_name}}. My name is ${agentData.name || "Alex"}. How can I help you today?`
     },
     {
-      label: "Direct & Action-Oriented",
+      label: "Engaging Hook & Discovery",
       text: `Hi {{caller_name}}, thanks for reaching out to {{company_name}}. I'm ready to assist you with scheduling or answering questions.`
     },
     {
@@ -114,7 +115,7 @@ export function Step6PromptInstructions({
 
   const activeGreetings = greetingOptions.length > 0 ? greetingOptions : defaultGreetings;
 
-  // Synthesize Spoken Prompt & Greetings with AI
+  // Synthesize Spoken Prompt & Greetings with AI (Full Generation)
   async function handleGenerateInstructions(silent = false) {
     const desc = agentData.description || agentData.objective || "";
     if (!desc.trim()) {
@@ -190,6 +191,50 @@ export function Step6PromptInstructions({
       }
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  // Lightweight: Generate ONLY Greetings (Token & Time Efficient)
+  async function handleGenerateGreetingsOnly() {
+    const desc = agentData.description || agentData.objective || "";
+    if (!desc.trim()) {
+      toast.error("Please provide an agent objective or description before generating greetings.");
+      return;
+    }
+
+    try {
+      setIsGeneratingGreetings(true);
+      const res = await fetchApi<{
+        suggested_greeting: string;
+        suggested_greetings: GreetingOption[];
+      }>("/agents/generate-greetings", {
+        method: "POST",
+        body: JSON.stringify({
+          name: agentData.name || "Voice Assistant",
+          role: agentData.role || "Assistant",
+          description: desc,
+          objective: agentData.objective || desc,
+          communication_style: agentData.communication_style || "Professional + Friendly",
+          response_length: agentData.response_length || "short",
+          agent_type: (agentData as any).agent_type || "customer_support",
+          language: agentData.voice?.language || "en"
+        })
+      });
+
+      if (res && res.suggested_greetings && res.suggested_greetings.length > 0) {
+        setGreetingOptions(res.suggested_greetings);
+        const topGreeting = res.suggested_greeting || res.suggested_greetings[0].text;
+        setAgentData((prev) => ({
+          ...prev,
+          greeting: topGreeting
+        }));
+        toast.success("Generated fresh opening greetings without altering your system prompt!");
+      }
+    } catch (err: any) {
+      console.error("Generate greetings error:", err);
+      toast.error(err.message || "Failed to generate greetings.");
+    } finally {
+      setIsGeneratingGreetings(false);
     }
   }
 
@@ -619,12 +664,16 @@ export function Step6PromptInstructions({
 
           <button
             type="button"
-            disabled={isGenerating}
-            onClick={() => handleGenerateInstructions(false)}
-            className="w-full py-2 px-3 text-xs font-semibold text-[var(--color-primary)] hover:text-white bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+            disabled={isGenerating || isGeneratingGreetings}
+            onClick={handleGenerateGreetingsOnly}
+            className="w-full py-2 px-3 text-xs font-semibold text-[var(--color-primary)] hover:text-white bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary)]/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Generate More Greetings</span>
+            {isGeneratingGreetings ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            <span>{isGeneratingGreetings ? "Generating Greetings..." : "Generate More Greetings"}</span>
           </button>
         </div>
 

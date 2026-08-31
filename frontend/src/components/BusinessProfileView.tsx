@@ -27,10 +27,12 @@ import { Badge } from "./ui/Badge";
 import { Modal } from "./ui/Modal";
 import { PageHeader } from "./ui/PageHeader";
 import { LoadingState } from "./ui/LoadingState";
+import { getAllWorldTimezones } from "../utils/timezones";
 import { toast } from "sonner";
 
 export function BusinessProfileView() {
   const { user, isAdmin, isSuperAdmin } = useAuth();
+  const allTimezones = React.useMemo(() => getAllWorldTimezones(), []);
   const [profile, setProfile] = useState<CompanyBusinessProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -621,23 +623,47 @@ export function BusinessProfileView() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[var(--color-heading)]">Timezone</label>
-                <input
-                  type="text"
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="block text-xs font-semibold text-[var(--color-heading)] flex items-center justify-between">
+                  <span>Organization Country &amp; Primary Timezone</span>
+                  <span className="text-[10px] text-[var(--color-primary)] font-normal">Controls AI Clock &amp; Scheduling</span>
+                </label>
+                <select
                   disabled={!canEdit}
-                  value={profile.operating_hours?.timezone || "IST (UTC+5:30)"}
+                  value={profile.operating_hours?.timezone || "Asia/Kolkata"}
                   onChange={(e) =>
                     setProfile({
                       ...profile,
                       operating_hours: { ...profile.operating_hours, timezone: e.target.value }
                     })
                   }
-                  placeholder="IST (UTC+5:30)"
-                  className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] ${
+                  className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer ${
                     !canEdit ? "opacity-75 cursor-not-allowed bg-[var(--color-surface-muted)]/60" : ""
                   }`}
-                />
+                >
+                  <optgroup label="⭐ Primary Recommended">
+                    <option value="Asia/Kolkata">India (IST, GMT+05:30) - Asia/Kolkata</option>
+                    <option value="Europe/London">United Kingdom (GMT/BST, GMT+00:00) - Europe/London</option>
+                    <option value="America/New_York">United States Eastern (New York, GMT-05:00) - America/New_York</option>
+                    <option value="America/Chicago">United States Central (Chicago, GMT-06:00) - America/Chicago</option>
+                    <option value="America/Los_Angeles">United States Pacific (Los Angeles, GMT-08:00) - America/Los_Angeles</option>
+                    <option value="Asia/Dubai">UAE / Gulf (Dubai, GMT+04:00) - Asia/Dubai</option>
+                    <option value="Asia/Singapore">Singapore / Malaysia (GMT+08:00) - Asia/Singapore</option>
+                    <option value="Australia/Sydney">Australia Eastern (Sydney, GMT+10:00) - Australia/Sydney</option>
+                  </optgroup>
+                  
+                  {Array.from(new Set(allTimezones.map((t) => t.group))).map((grp) => (
+                    <optgroup key={grp} label={`🌍 ${grp}`}>
+                      {allTimezones
+                        .filter((t) => t.group === grp)
+                        .map((tz) => (
+                          <option key={tz.value} value={tz.value}>
+                            {tz.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1.5">

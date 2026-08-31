@@ -13,7 +13,9 @@ import { AgentManagementView } from "./components/AgentManagementView";
 import { BusinessProfileView } from "./components/BusinessProfileView";
 import { Sidebar, NavTab } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
-import { Toaster } from "sonner";
+import { Modal } from "./components/ui/Modal";
+import { Button } from "./components/ui/Button";
+import { Toaster, toast } from "sonner";
 import {
   Menu,
   PhoneCall,
@@ -23,7 +25,9 @@ import {
   Palette,
   Users,
   ShieldAlert,
-  Building2
+  Building2,
+  AlertCircle,
+  Save
 } from "lucide-react";
 
 function MainContent() {
@@ -33,6 +37,22 @@ function MainContent() {
   const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Unsaved Voice Agent Changes Global Interception State
+  const [isAgentEditorDirty, setIsAgentEditorDirty] = useState(false);
+  const [saveDraftFn, setSaveDraftFn] = useState<(() => Promise<void>) | null>(null);
+  const [discardDraftFn, setDiscardDraftFn] = useState<(() => void) | null>(null);
+  const [pendingTabChange, setPendingTabChange] = useState<NavTab | null>(null);
+  const [showNavConfirmModal, setShowNavConfirmModal] = useState(false);
+
+  const handleTabSelect = (tab: NavTab) => {
+    if (activeTab === "voice_agent" && isAgentEditorDirty && tab !== "voice_agent") {
+      setPendingTabChange(tab);
+      setShowNavConfirmModal(true);
+    } else {
+      setActiveTab(tab);
+    }
+  };
 
   // When verifying auth session OR when logged in and waiting for organization custom theme to apply
   if (isAuthLoading || (user && !isThemeReady)) {
@@ -126,7 +146,7 @@ function MainContent() {
       <div className="hidden md:block">
         <Sidebar
           activeTab={currentTab}
-          onTabChange={(tab) => setActiveTab(tab)}
+          onTabChange={handleTabSelect}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
         />
@@ -145,25 +165,27 @@ function MainContent() {
             <Sidebar
               activeTab={currentTab}
               onTabChange={(tab) => {
-                setActiveTab(tab);
+                handleTabSelect(tab);
                 setMobileSidebarOpen(false);
               }}
               collapsed={false}
+              onToggleCollapse={() => setMobileSidebarOpen(false)}
             />
           </div>
         </div>
       )}
 
-      {/* Main Workspace Column */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-        {/* Minimal Sticky Top Bar */}
-        <header className="bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-border)] px-4 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-20">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header Bar */}
+        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 backdrop-blur-xs px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            {/* Mobile Hamburger */}
+            {/* Mobile Sidebar Hamburger Toggle */}
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
-              className="p-1.5 rounded border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] md:hidden cursor-pointer"
+              className="md:hidden p-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-heading)] hover:bg-[var(--color-surface)] cursor-pointer"
+              aria-label="Open navigation menu"
             >
               <Menu className="w-4 h-4" />
             </button>
@@ -192,18 +214,23 @@ function MainContent() {
         {/* Dynamic Main View - Full Width & Fully Responsive */}
         <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 transition-all text-left">
           {currentTab === "dashboard" ? (
-            <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
+            <DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />
           ) : currentTab === "ai_dialer" ? (
             <AIAgentDialerView
               initialAgentId={activeDialerAgentId}
-              onNavigateSettings={() => setActiveTab("twilio")}
-              onNavigateAgents={() => setActiveTab("voice_agent")}
+              onNavigateSettings={() => handleTabSelect("twilio")}
+              onNavigateAgents={() => handleTabSelect("voice_agent")}
             />
           ) : currentTab === "voice_agent" ? (
             <AgentManagementView
               onNavigateToDialer={(agentId) => {
                 setActiveDialerAgentId(agentId);
-                setActiveTab("ai_dialer");
+                handleTabSelect("ai_dialer");
+              }}
+              onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
+                setIsAgentEditorDirty(isDirty);
+                setSaveDraftFn(() => handleSaveDraft);
+                setDiscardDraftFn(() => handleDiscard);
               }}
             />
           ) : currentTab === "business_profile" ? (
@@ -218,6 +245,73 @@ function MainContent() {
             <AdminPanel />
           )}
         </main>
+
+        {/* Unsaved Agent Navigation Confirmation Modal */}
+        <Modal
+          isOpen={showNavConfirmModal}
+          onClose={() => setShowNavConfirmModal(false)}
+          title="Unsaved Voice Agent Changes"
+          maxWidth="sm"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-[var(--color-warning-subtle)] border border-[var(--color-warning)]/30 rounded-[var(--radius-main,0.375rem)] flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-[var(--color-heading)]">
+                  Are you sure you want to leave this page?
+                </p>
+                <p className="text-[var(--color-muted)] leading-relaxed">
+                  Your voice agent changes are not saved yet. Would you like to save this as a draft before navigating away, or discard your current edits?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNavConfirmModal(false);
+                  setPendingTabChange(null);
+                }}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Keep Editing
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (discardDraftFn) discardDraftFn();
+                  setShowNavConfirmModal(false);
+                  setIsAgentEditorDirty(false);
+                  if (pendingTabChange) setActiveTab(pendingTabChange);
+                  setPendingTabChange(null);
+                }}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Discard &amp; Leave
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  if (saveDraftFn) {
+                    await saveDraftFn();
+                  }
+                  setShowNavConfirmModal(false);
+                  setIsAgentEditorDirty(false);
+                  if (pendingTabChange) setActiveTab(pendingTabChange);
+                  setPendingTabChange(null);
+                }}
+                leftIcon={<Save className="w-3.5 h-3.5" />}
+                className="w-full sm:w-auto cursor-pointer font-semibold"
+              >
+                Save Draft &amp; Leave
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Minimal Footer */}
         <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">

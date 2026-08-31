@@ -344,13 +344,149 @@ class VoicePromptBuilder:
         return "[PLATFORM VOICE DIRECTIVES]\n" + "\n".join(directives[:4])
 
     @staticmethod
-    def _build_temporal_context() -> str:
-        """Constructs live real-time temporal anchoring for accurate calendar reasoning."""
-        now = datetime.now(timezone.utc)
+    def _build_temporal_context(business_profile: Optional[Union[dict, Any]] = None) -> str:
+        """Constructs live real-time temporal anchoring and strict date/time reasoning rules for calendar scheduling."""
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            ZoneInfo = None
+
+        tz_str_label = "Asia/Kolkata (IST, UTC+05:30)"
+        
+        # Determine local timezone from business profile if available, default to Asia/Kolkata
+        if business_profile:
+            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
+            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
+            profile_tz = hours.get("timezone", "") if isinstance(hours, dict) else getattr(hours, "timezone", "")
+            if profile_tz and str(profile_tz).strip():
+                tz_str_label = str(profile_tz).strip()
+
+        # Extract IANA timezone key dynamically
+        iana_key = "Asia/Kolkata"
+        tz_upper = tz_str_label.upper()
+
+        if ZoneInfo:
+            # 1. Direct match if tz_str_label is already a standard IANA key (e.g. "Europe/London", "America/New_York", "Asia/Kolkata")
+            try:
+                ZoneInfo(tz_str_label)
+                iana_key = tz_str_label
+            except Exception:
+                # 2. Check for IANA key inside parentheses or string (e.g. "Kolkata (GMT+05:30) - Asia/Kolkata")
+                import re
+                match = re.search(r'([A-Za-z_]+/[A-Za-z_]+)', tz_str_label)
+                if match:
+                    try:
+                        ZoneInfo(match.group(1))
+                        iana_key = match.group(1)
+                    except Exception:
+                        pass
+                
+                # 3. Explicit abbreviation & country mapping (check specific abbreviations before generic UTC)
+                if iana_key == "Asia/Kolkata":
+                    if "IST" in tz_upper or "INDIA" in tz_upper or "KOLKATA" in tz_upper or "+5:30" in tz_str_label or "+05:30" in tz_str_label:
+                        iana_key = "Asia/Kolkata"
+                    elif "LONDON" in tz_upper or "UNITED KINGDOM" in tz_upper or "BST" in tz_upper or "GMT" in tz_upper:
+                        iana_key = "Europe/London"
+                    elif "NEW_YORK" in tz_upper or "NEW YORK" in tz_upper or "EST" in tz_upper or "EDT" in tz_upper or "-05:00" in tz_str_label:
+                        iana_key = "America/New_York"
+                    elif "CHICAGO" in tz_upper or "CST" in tz_upper or "CDT" in tz_upper or "-06:00" in tz_str_label:
+                        iana_key = "America/Chicago"
+                    elif "DENVER" in tz_upper or "MST" in tz_upper or "MDT" in tz_upper or "-07:00" in tz_str_label:
+                        iana_key = "America/Denver"
+                    elif "LOS_ANGELES" in tz_upper or "LOS ANGELES" in tz_upper or "PST" in tz_upper or "PDT" in tz_upper or "-08:00" in tz_str_label:
+                        iana_key = "America/Los_Angeles"
+                    elif "DUBAI" in tz_upper or "GST" in tz_upper or "UAE" in tz_upper or "+04:00" in tz_str_label:
+                        iana_key = "Asia/Dubai"
+                    elif "SINGAPORE" in tz_upper or "SGT" in tz_upper or "MALAYSIA" in tz_upper or "+08:00" in tz_str_label:
+                        iana_key = "Asia/Singapore"
+                    elif "SYDNEY" in tz_upper or "AEST" in tz_upper or "AEDT" in tz_upper or "AUSTRALIA" in tz_upper or "+10:00" in tz_str_label:
+                        iana_key = "Australia/Sydney"
+                    elif "PARIS" in tz_upper or "CET" in tz_upper or "CEST" in tz_upper or "FRANCE" in tz_upper or "GERMANY" in tz_upper:
+                        iana_key = "Europe/Paris"
+                    elif "TOKYO" in tz_upper or "JST" in tz_upper or "JAPAN" in tz_upper or "+09:00" in tz_str_label:
+                        iana_key = "Asia/Tokyo"
+                    elif tz_upper.strip() == "UTC" or "(UTC+00:00)" in tz_str_label:
+                        iana_key = "UTC"
+
+        target_tz = None
+        if ZoneInfo:
+            try:
+                target_tz = ZoneInfo(iana_key)
+            except Exception:
+                target_tz = None
+
+        if target_tz:
+            now = datetime.now(target_tz)
+        else:
+            from datetime import timedelta, timezone as dt_tz
+            now = datetime.now(dt_tz(timedelta(hours=5, minutes=30)))
+
         day_name = now.strftime("%A")
         date_str = now.strftime("%B %d, %Y")
         time_str = now.strftime("%I:%M %p")
-        return f"[CALENDAR CONTEXT]\n- TODAY'S DATE: {day_name}, {date_str} ({time_str} UTC). All future date inquiries should be grounded relative to today."
+        
+        # Build upcoming 7 days mapping with exact Day + Date for zero-ambiguity scheduling
+        from datetime import timedelta
+        upcoming_days = []
+        for i in range(1, 8):
+            future_dt = now + timedelta(days=i)
+            upcoming_days.append(f"{future_dt.strftime('%A')}: {future_dt.strftime('%B %d')}")
+        upcoming_map_str = "; ".join(upcoming_days)
+
+        # Compute major world clock references to empower AI to seamlessly compare caller time vs company time
+        world_clocks = []
+        if ZoneInfo:
+            for city_label, z_key, tz_abbr in [
+                ("United Kingdom (UK)", "Europe/London", "GMT/BST"),
+                ("United States (US Eastern)", "America/New_York", "EST/EDT"),
+                ("United States (US Pacific)", "America/Los_Angeles", "PST/PDT"),
+                ("UAE / Gulf", "Asia/Dubai", "GST"),
+                ("India", "Asia/Kolkata", "IST")
+            ]:
+                if z_key != iana_key:
+                    try:
+                        w_dt = datetime.now(ZoneInfo(z_key))
+                        world_clocks.append(f"{city_label} ({tz_abbr}): {w_dt.strftime('%I:%M %p')}")
+                    except Exception:
+                        pass
+        world_clocks_str = "; ".join(world_clocks) if world_clocks else ""
+
+        # Extract business operating hours if available
+        working_hours_rule = ""
+        if business_profile:
+            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
+            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
+            h_days = hours.get("days", "Monday - Saturday") if isinstance(hours, dict) else getattr(hours, "days", "Monday - Saturday")
+            h_hours = hours.get("hours", "9:00 AM - 7:00 PM") if isinstance(hours, dict) else getattr(hours, "hours", "9:00 AM - 7:00 PM")
+            h_closed = hours.get("closed_on", "Sunday") if isinstance(hours, dict) else getattr(hours, "closed_on", "Sunday")
+            working_hours_rule = f"""- STRICT OPERATING HOURS BOUNDARY:
+  * Official Working Days: {h_days}
+  * Official Working Hours: {h_hours} ({iana_key} / {tz_str_label})
+  * Closed Days: {h_closed}
+  * BOUNDARY ENFORCEMENT: ONLY book appointments within {h_hours} ({h_days}). NEVER schedule or confirm an appointment before opening time or after closing time, or on {h_closed}. If a caller requests an appointment outside these operating hours (e.g. before opening, after closing, or late night), politely explain our working hours ({h_hours}) and propose available slots within those hours."""
+
+        return f"""[REAL-TIME CALENDAR, MULTI-TIMEZONE REASONING & STRICT SCHEDULING RULES]
+- ORGANIZATION TIMEZONE: {iana_key} ({tz_str_label})
+- CURRENT MOMENT AT HEADQUARTERS: Today is {day_name}, {date_str} at {time_str} ({tz_str_label}).
+{f"- LIVE WORLD REFERENCE TIMES: {world_clocks_str}." if world_clocks_str else ""}
+- UPCOMING 7 DAYS CALENDAR DATES: {upcoming_map_str}.
+{working_hours_rule}
+
+MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
+1. ACCURATE CURRENT TIME COMPARISON (FUTURE VS PAST):
+   - Current time is {time_str}.
+   - Compare requested time carefully: Any time that is LATER than {time_str} today (for example, if current time is {time_str} and caller requests a later time today like {time_str.replace('19', '30').replace('14', '30')}) is in the FUTURE and CAN be booked today if within operating hours.
+   - ONLY reject a requested time as "already passed" if that specific hour/minute is strictly BEFORE {time_str} today.
+2. OPERATING HOURS COMPLIANCE:
+   - Always verify that the requested time falls within official operating hours ({h_hours if business_profile else '9:00 AM - 7:00 PM'}).
+   - If a requested time is outside working hours (or on a closed day), politely decline and suggest options within {h_hours if business_profile else '9:00 AM - 7:00 PM'}.
+3. CROSS-TIMEZONE REASONING & CLARITY:
+   - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly.
+   - Clarify or confirm both times if relevant (e.g., "5:00 PM UK time is 10:30 PM our time (IST). Since our office closes at 7:00 PM IST, could we schedule for 1:30 PM UK time / 7:00 PM IST instead?").
+4. MANDATORY EXACT DATE CONFIRMATION:
+   - NEVER confirm an appointment with just a day name (do NOT say just "Monday").
+   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1] if upcoming_days else ''}" or "Do you mean today, {day_name} ({date_str}), or next {day_name} ({upcoming_days[-1].split(': ')[1] if upcoming_days else ''})?")."""
+
 
     @staticmethod
     def _build_role_intent_directives(config: AgentConfiguration) -> str:
@@ -503,7 +639,7 @@ class VoicePromptBuilder:
             except Exception:
                 platform_rules = []
 
-        temporal_rule = VoicePromptBuilder._build_temporal_context()
+        temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
