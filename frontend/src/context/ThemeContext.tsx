@@ -82,14 +82,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { user } = useAuth();
   const [theme, setTheme] = useState<OrganizationThemeConfig>(() => getCachedTheme(user?.organization_id));
   const [draftTheme, setDraftTheme] = useState<OrganizationThemeConfig>(() => getCachedTheme(user?.organization_id));
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    // If a token exists, start in loading state until org theme is confirmed
-    return !!localStorage.getItem("desire_token");
-  });
-  const [isThemeReady, setIsThemeReady] = useState<boolean>(() => {
-    // If no session token, theme is ready immediately; if session exists, wait for org theme
-    return !localStorage.getItem("desire_token");
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isThemeReady, setIsThemeReady] = useState<boolean>(true);
 
   // User personal preferences stored locally (default: light)
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(() => {
@@ -105,7 +99,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Calculate dirty state
   const isDirty = JSON.stringify(theme) !== JSON.stringify(draftTheme);
 
-  // Load theme from API when user session changes
+  // Load theme from API in background when user session changes
   useEffect(() => {
     let isMounted = true;
 
@@ -122,16 +116,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
-      if (isMounted) {
-        setIsLoading(true);
-      }
-
-      // Check if we have an instant cached theme for this organization
+      // Instant local theme application
       const cached = getCachedTheme(user.organization_id);
       if (cached && cached.identity && cached.colors) {
         setTheme(cached);
         setDraftTheme(cached);
         applyThemeToCss(cached, userPreferences);
+      }
+      if (isMounted) {
+        setIsThemeReady(true);
       }
 
       try {
@@ -147,7 +140,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           } catch (e) {}
         }
       } catch (err) {
-        console.warn("Could not load organization theme from API, using cached:", err);
+        console.warn("Could not load organization theme from API, using cached/default:", err);
       } finally {
         if (isMounted) {
           setIsLoading(false);

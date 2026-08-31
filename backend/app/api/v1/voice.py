@@ -215,9 +215,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_user_speaking():
-        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task, barge_in_debounce_task
-        if not is_user_speaking:
-            user_speech_start_time = time.time()
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task
+        user_speech_start_time = time.time()
         is_user_speaking = True
         if not is_concluding_call:
             last_user_speech_time = time.time()
@@ -226,41 +225,13 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
-        runtime = agent_config.runtime if agent_config else None
-        noise_filtering = getattr(runtime, "ambient_noise_filtering", True) if runtime else True
-        min_duration_ms = getattr(runtime, "barge_in_min_speech_duration_ms", 220) if runtime else 220
-
-        async def _execute_preview_clear():
-            nonlocal is_agent_speaking
-            try:
-                if noise_filtering and min_duration_ms > 0:
-                    await asyncio.sleep(min_duration_ms / 1000.0)
-                    if not is_user_speaking:
-                        logger.debug("[VoicePreview] Transient acoustic sound / tap (< 220ms) ignored; preserving preview playback.")
-                        return
-
-                is_agent_speaking = False
-                await websocket.send_json({
-                    "type": "clear"
-                })
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
-
-        if barge_in_debounce_task and not barge_in_debounce_task.done():
-            barge_in_debounce_task.cancel()
-
-        if is_agent_speaking and noise_filtering:
-            barge_in_debounce_task = asyncio.create_task(_execute_preview_clear())
-        else:
-            is_agent_speaking = False
-            try:
-                await websocket.send_json({
-                    "type": "clear"
-                })
-            except Exception:
-                pass
+        is_agent_speaking = False
+        try:
+            await websocket.send_json({
+                "type": "clear"
+            })
+        except Exception:
+            pass
 
     async def handle_dg_agent_speaking(data: dict):
         nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task
@@ -278,7 +249,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         if runtime and getattr(runtime, "conversational_fillers_enabled", True):
             async def _delayed_preview_filler():
                 try:
-                    await asyncio.sleep(0.70)
+                    await asyncio.sleep(1.20)
                     if is_user_speaking or is_agent_speaking or is_concluding_call:
                         return
                     phrases = getattr(runtime, "filler_phrases", None) or [
@@ -289,8 +260,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     import random
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
-                    logger.info(f"[VoicePreview] Agent thinking threshold reached. Emitting filler: '{norm_filler}'")
-                    if deepgram_client and deepgram_client.is_ready:
+                    if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
+                        logger.info(f"[VoicePreview] Agent thinking threshold reached. Emitting filler: '{norm_filler}'")
                         await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
                 except asyncio.CancelledError:
                     pass

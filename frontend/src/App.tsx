@@ -54,13 +54,13 @@ function MainContent() {
     }
   };
 
-  // When verifying auth session OR when logged in and waiting for organization custom theme to apply
-  if (isAuthLoading || (user && !isThemeReady)) {
+  // When verifying auth session
+  if (isAuthLoading) {
     return (
       <LoadingState
         fullPage
         message="Loading workspace session..."
-        subMessage="Applying organization identity and theme styling"
+        subMessage="Signing into your voice workspace"
         size="md"
       />
     );

@@ -143,12 +143,12 @@ class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
-    endpointing: int = 900  # End-of-turn timeout in ms (allows natural multi-clause breathing room and detailed notes without cutting off)
-    endpointing_mode: str = "adaptive"  # "rapid" (500ms) | "balanced" (850ms) | "dictation" (1400ms) | "adaptive" (1000ms)
-    dictation_endpointing: int = 1400  # Generous threshold for dictating long notes, addresses, and multi-sentence explanations
-    rapid_endpointing: int = 500
+    endpointing: int = 400  # Fast sub-second human turn-taking endpointing (ms)
+    endpointing_mode: str = "rapid"  # "rapid" (350ms) | "balanced" (450ms) | "dictation" (900ms) | "adaptive" (400ms)
+    dictation_endpointing: int = 900
+    rapid_endpointing: int = 350
     eot_threshold: Optional[float] = None
-    eager_eot: bool = False
+    eager_eot: bool = True
     keyterms: List[str] = Field(default_factory=list)
 
 

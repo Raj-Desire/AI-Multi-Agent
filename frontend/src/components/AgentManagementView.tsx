@@ -103,7 +103,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
     }
   };
 
-  const handleSaveDraftAndLeave = async () => {
+  const handleSaveDraftAndLeave = React.useCallback(async () => {
     if (!latestDraftAgent) {
       setShowUnsavedConfirmModal(false);
       if (pendingCloseCallback) pendingCloseCallback();
@@ -128,9 +128,9 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
     } catch (err: any) {
       toast.error(`Failed to save draft: ${err.message}`);
     }
-  };
+  }, [latestDraftAgent, pendingCloseCallback]);
 
-  const handleDiscardAndLeave = () => {
+  const handleDiscardAndLeave = React.useCallback(() => {
     setShowUnsavedConfirmModal(false);
     setIsEditorDirty(false);
     toast.info("Unsaved agent changes discarded.");
@@ -140,16 +140,15 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       setEditorOpen(false);
       setEditingAgent(null);
     }
-  };
+  }, [pendingCloseCallback]);
+
   useEffect(() => {
-    if (onEditorDirtyChange) {
-      onEditorDirtyChange(
-        editorOpen && isEditorDirty,
-        handleSaveDraftAndLeave,
-        handleDiscardAndLeave
-      );
-    }
-  }, [editorOpen, isEditorDirty, latestDraftAgent, onEditorDirtyChange]);
+    onEditorDirtyChange?.(
+      editorOpen && isEditorDirty,
+      handleSaveDraftAndLeave,
+      handleDiscardAndLeave
+    );
+  }, [editorOpen, isEditorDirty, onEditorDirtyChange, handleSaveDraftAndLeave, handleDiscardAndLeave]);
 
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<AgentConfig | null>(null);
   const [previewDrawerAgent, setPreviewDrawerAgent] = useState<AgentConfig | null>(null);

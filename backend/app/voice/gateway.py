@@ -66,6 +66,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
     is_concluding_call: bool = False
+    is_interrupted: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
@@ -82,10 +83,13 @@ async def voice_stream_websocket(websocket: WebSocket):
         Preserves audio order, avoids buffer flooding or artificial sleep starvation,
         and logs precise duration & byte metrics.
         """
-        nonlocal stream_sid, is_agent_speaking, last_agent_speech_done_time
+        nonlocal is_agent_speaking, last_agent_speech_done_time, is_interrupted
         nonlocal outbound_chunk_counter, total_outbound_audio_bytes, total_outbound_audio_duration_s
         if not stream_sid or not raw_audio:
             return
+        
+        # If new audio from a subsequent agent turn arrives, clear the previous interrupted state
+        is_interrupted = False
         try:
             # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio (1 byte = 0.125ms)
             audio_duration = len(raw_audio) / 8000.0
@@ -102,6 +106,8 @@ async def voice_stream_websocket(websocket: WebSocket):
             # Split into 160-byte frames (20ms @ 8kHz mu-law) matching Twilio Media Streams specification
             chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=160)
             for chunk in chunks:
+                if is_interrupted:
+                    break
                 outbound_chunk_counter += 1
                 chunk_duration_ms = (len(chunk) / 8000.0) * 1000.0
                 twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
@@ -117,66 +123,37 @@ async def voice_stream_websocket(websocket: WebSocket):
             logger.error(f"[VoiceGateway] Error streaming audio chunk to Twilio: {e}")
 
     async def handle_user_speaking():
-        """Barge-in: Interrupt audio when intentional user speech is detected with noise rejection."""
-        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, barge_in_debounce_task
-        if not is_user_speaking:
-            user_speech_start_time = time.time()
+        """Barge-in: Interrupt audio immediately when user starts speaking."""
+        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, is_interrupted, last_agent_speech_done_time
+        user_speech_start_time = time.time()
         is_user_speaking = True
         user_spoke = True
         last_user_speech_time = time.time()
         has_reprompted_silence = False  # Reset silence reprompt on user speech
+        is_interrupted = True
+        is_agent_speaking = False
+        last_agent_speech_done_time = time.time()
 
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
-        runtime = agent_config.runtime if agent_config else None
-        noise_filtering = getattr(runtime, "ambient_noise_filtering", True) if runtime else True
-        min_duration_ms = getattr(runtime, "barge_in_min_speech_duration_ms", 220) if runtime else 220
-
-        async def _execute_clear():
-            nonlocal is_agent_speaking
+        # Instantly send clear message to Twilio to flush the audio buffer on the caller's handset
+        if stream_sid:
+            clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
             try:
-                if noise_filtering and min_duration_ms > 0:
-                    await asyncio.sleep(min_duration_ms / 1000.0)
-                    if not is_user_speaking:
-                        logger.debug("[VoiceGateway] Transient acoustic noise / cough (< 220ms) filtered out; preserving agent speech.")
-                        return
-
-                is_agent_speaking = False
-                if stream_sid:
-                    clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
-                    await websocket.send_text(json.dumps(clear_msg))
-                    logger.info(f"[VoiceGateway] Intentional user speech confirmed. Barge-in clear signal sent to Twilio for stream {stream_sid}")
-
-                if session:
-                    await call_session_service.record_barge_in(session)
-            except asyncio.CancelledError:
-                pass
+                await websocket.send_text(json.dumps(clear_msg))
+                logger.info(f"[VoiceGateway] Instant barge-in clear signal sent to Twilio for stream {stream_sid}")
             except Exception as e:
-                logger.error(f"[VoiceGateway] Failed to execute barge-in clear: {e}")
+                logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
 
-        if barge_in_debounce_task and not barge_in_debounce_task.done():
-            barge_in_debounce_task.cancel()
-
-        if is_agent_speaking and noise_filtering:
-            barge_in_debounce_task = asyncio.create_task(_execute_clear())
-        else:
-            is_agent_speaking = False
-            if stream_sid:
-                clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
-                try:
-                    await websocket.send_text(json.dumps(clear_msg))
-                    logger.info(f"[VoiceGateway] Barge-in clear signal sent to Twilio for stream {stream_sid}")
-                except Exception as e:
-                    logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
-
-            if session:
-                await call_session_service.record_barge_in(session)
+        if session:
+            await call_session_service.record_barge_in(session)
 
     async def handle_agent_speaking(data: dict):
-        nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task
+        nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task, is_interrupted
         is_agent_speaking = True
         is_user_speaking = False
+        is_interrupted = False
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
@@ -189,8 +166,8 @@ async def voice_stream_websocket(websocket: WebSocket):
         if runtime and getattr(runtime, "conversational_fillers_enabled", True):
             async def _delayed_filler():
                 try:
-                    await asyncio.sleep(0.70)
-                    if is_user_speaking or is_agent_speaking or is_concluding_call:
+                    await asyncio.sleep(1.20)
+                    if is_user_speaking or is_agent_speaking or is_concluding_call or is_interrupted:
                         return
                     phrases = getattr(runtime, "filler_phrases", None) or [
                         "Got it, let me check that for you...",
@@ -200,8 +177,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                     import random
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
-                    logger.info(f"[VoiceGateway] Agent thinking threshold reached. Injecting filler: '{norm_filler}'")
-                    if deepgram_client and deepgram_client.is_ready:
+                    if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
+                        logger.info(f"[VoiceGateway] Agent thinking threshold reached. Injecting filler: '{norm_filler}'")
                         await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
                 except asyncio.CancelledError:
                     pass

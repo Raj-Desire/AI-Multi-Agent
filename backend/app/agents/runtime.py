@@ -62,19 +62,17 @@ class AgentRuntimeBuilder:
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
-        # Adaptive endpointing calculation (generous thresholds to prevent cutting off callers mid-thought)
-        mode = getattr(config.listen, "endpointing_mode", "adaptive") if config.listen else "adaptive"
+        # Adaptive endpointing calculation for sub-second human turn taking (350ms - 600ms)
+        mode = getattr(config.listen, "endpointing_mode", "rapid") if config.listen else "rapid"
         if mode == "rapid":
-            listen_endpointing = getattr(config.listen, "rapid_endpointing", 500) or 500
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 350) or 350
         elif mode == "dictation":
-            listen_endpointing = getattr(config.listen, "dictation_endpointing", 1400) or 1400
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 900) or 900
         elif mode == "balanced":
-            listen_endpointing = getattr(config.listen, "endpointing", 850) or 850
+            listen_endpointing = getattr(config.listen, "endpointing", 450) or 450
         else:
-            # Adaptive mode: default to 1000ms, extending to 1400ms for data intake and detailed explanations
-            role_str = f"{config.role or ''} {config.objective or ''} {config.name or ''}".lower()
-            is_data_intense = any(w in role_str for w in ["support", "booking", "schedule", "reception", "lead", "ticket", "qualify", "intake", "note", "medical", "legal", "diagnostic"])
-            listen_endpointing = 1400 if is_data_intense else max(getattr(config.listen, "endpointing", 1000), 900)
+            # Fast conversational default: 400ms for natural human pacing
+            listen_endpointing = min(getattr(config.listen, "endpointing", 450) or 450, 500)
 
         # Merge keyterms from listen config and pronunciation rules for recognition boosting
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
@@ -89,7 +87,7 @@ class AgentRuntimeBuilder:
             model=listen_model,
             language=configured_lang,
             smart_format=True,
-            endpointing=listen_endpointing or 500,
+            endpointing=listen_endpointing,
             keyterms=combined_keyterms if combined_keyterms else None
         )
         listen_config = DeepgramListenConfig(

@@ -95,16 +95,13 @@ class SmartIVRDetector:
         r"\btamara\s+dwara\s+dial\s+karelo\s+number\b",     # Gujarati carrier announcement
     ]
 
-    # 5. Third-Party AI / Virtual Assistant Greeter & Self-Identification
+    # 5. Third-Party AI / Virtual Assistant Greeter & Self-Identification (Strict automated machine greeting)
     AI_ASSISTANT_PATTERNS = [
-        r"\b(?:i\s+am|i'm|this\s+is)\s+(?:an?|in|also|just)?\s*(?:an?|in|like\s+you\s+(?:in|an?))?\s*(?:automated|virtual|ai|bot)\s*(?:assistant|agent|receptionist|bot|system)\b",
-        r"\b(?:just\s+like\s+you\s+(?:in|an?)?\s*ai|also\s+(?:an?|in)?\s*ai|another\s+ai)\b",
-        r"\b(?:i\s+am|i'm)\s+(?:an?|in)?\s*ai\b",
+        r"\b(?:this\s+is\s+an\s+automated\s+(?:voice|assistant|receptionist|bot|system))\b",
+        r"\b(?:this\s+call\s+is\s+being\s+screened\s+by\s+(?:an?\s+)?(?:ai|virtual|automated))\b",
         r"\bcall\s+assistant\s+is\s+screening\s+this\s+call\b",
-        r"\bautomated\s+screening\b",
-        r"\bhow\s+may\s+i\s+direct\s+your\s+call\b",
-        r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\b",
-        r"\btell\s+me\s+briefly\s+what\s+you\s+are\s+calling\s+about\b",
+        r"\bautomated\s+screening\s+system\b",
+        r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\s+to\s+be\s+connected\b",
     ]
 
     # Compile regexes for ultra-fast matching
