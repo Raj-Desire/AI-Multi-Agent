@@ -220,10 +220,20 @@ export interface AgentLLMConfig {
   reasoning_mode?: string;
 }
 
+export interface PronunciationRule {
+  word: string;
+  phonetic: string;
+  category?: 'indian_places' | 'acronyms' | 'brand' | 'custom' | string;
+}
+
 export interface AgentListenConfig {
   provider: string;
   model: string;
   language: string;
+  endpointing?: number;
+  endpointing_mode?: 'rapid' | 'balanced' | 'dictation' | 'adaptive';
+  dictation_endpointing?: number;
+  rapid_endpointing?: number;
   eot_threshold?: number;
   eager_eot?: boolean;
   keyterms?: string[];
@@ -240,6 +250,11 @@ export interface AgentRuntimeSettings {
   customer_response_timeout?: number;
   retry_attempts?: number;
   auto_hangup_on_completion?: boolean;
+  conversational_fillers_enabled?: boolean;
+  filler_phrases?: string[];
+  backchanneling_enabled?: boolean;
+  backchannel_interval_seconds?: number;
+  backchannel_phrases?: string[];
 }
 
 export interface AgentGuardrails {
@@ -325,6 +340,7 @@ export interface AgentConfig {
   system_prompt?: string | null;
   include_business_knowledge?: boolean;
   custom_knowledge?: string | null;
+  pronunciation_rules?: PronunciationRule[];
   created_at?: string;
   updated_at?: string;
 }

@@ -385,6 +385,56 @@ class VoicePromptBuilder:
             return f"[ROLE OBJECTIVE]\n- Embody a {config.role}: {config.objective}"
 
     @staticmethod
+    def _build_conversational_acoustics_section(config: AgentConfiguration) -> str:
+        """Injects instructions for natural conversational fillers and spoken human acoustics."""
+        runtime = config.runtime
+        if not runtime or not getattr(runtime, "conversational_fillers_enabled", True):
+            return ""
+
+        phrases = getattr(runtime, "filler_phrases", None)
+        phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you...", "Understood, give me one moment..."])])
+
+        return (
+            "[NATURAL CONVERSATIONAL FILLERS & SPOKEN ACOUSTICS]\n"
+            "- HUMAN THINKING CUES: When retrieving details, computing dates/times, or answering complex inquiries, seamlessly begin with natural thinking acknowledgments (e.g., "
+            f"{phrases_example}). This mimics natural human conversational cadence and avoids stiff silence.\n"
+            "- MICRO-ACKNOWLEDGMENTS: Begin conversational turns with warm, natural micro-acknowledgments ('Got it', 'Sure thing', 'Understood', 'Makes sense') before delivering the answer.\n"
+            "- NATURAL CONTRACTIONS: Use spoken contractions ('I\\'ll', 'we\\'re', 'it\\'s', 'don\\'t') instead of rigid written phrasing ('I will', 'we are', 'it is')."
+        )
+
+    @staticmethod
+    def _build_turn_taking_directives(config: AgentConfiguration) -> str:
+        """Injects turn-taking directives for alphanumeric dictation and multi-clause speech."""
+        return (
+            "[ADAPTIVE TURN-TAKING & INCOMPLETE UTTERANCE HANDLING]\n"
+            "- DICTATION & DIGIT PAUSES: When the caller spells out a phone number, email address, OTP, or postal code, they often pause between digit clusters (e.g., 'My number is 98250...' [pause] '...12345'). NEVER interrupt or prematurely finalize the answer during these natural pauses.\n"
+            "- OPEN-ENDED PAUSES: If a caller pauses mid-clause or trails off, wait or offer a supportive micro-prompt (e.g., '...and what was the last digit?', '...at what domain?'). Never talk over the caller or conclude before they finish."
+        )
+
+    @staticmethod
+    def _build_pronunciation_rules_section(config: AgentConfiguration) -> str:
+        """Injects explicit phonetic pronunciation rules so the TTS articulates Indian names, acronyms, and terms flawlessly."""
+        rules = getattr(config, "pronunciation_rules", None)
+        if not rules:
+            return ""
+
+        lines = []
+        for r in rules:
+            w = getattr(r, "word", "") if hasattr(r, "word") else r.get("word", "")
+            p = getattr(r, "phonetic", "") if hasattr(r, "phonetic") else r.get("phonetic", "")
+            if w and p:
+                lines.append(f"- {w} -> Speak phonetically as \"{p}\"")
+
+        if not lines:
+            return ""
+
+        return (
+            "[MANDATORY PHONETIC PRONUNCIATION & SPOKEN OVERRIDES]\n"
+            "When mentioning any of the following names, cities, acronyms, or specialized terminology, you MUST speak their phonetic representation so the voice synthesizer articulates them with flawless, human-grade clarity:\n"
+            + "\n".join(lines[:25])
+        )
+
+    @staticmethod
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
@@ -408,6 +458,9 @@ class VoicePromptBuilder:
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
         platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
+        acoustics_rule = VoicePromptBuilder._build_conversational_acoustics_section(config)
+        turn_taking_rule = VoicePromptBuilder._build_turn_taking_directives(config)
+        pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
 
         # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
@@ -424,6 +477,9 @@ class VoicePromptBuilder:
                 temporal_rule,
                 config.system_prompt.strip(),
                 knowledge_section,
+                acoustics_rule,
+                turn_taking_rule,
+                pronunciation_rule,
                 telephony_rules
             ]
         else:
@@ -447,6 +503,9 @@ class VoicePromptBuilder:
                 f"STYLE: {config.communication_style}\n{personality_text}",
                 skills_text,
                 length_rule,
+                acoustics_rule,
+                turn_taking_rule,
+                pronunciation_rule,
                 telephony_rules,
                 platform_rules_text
             ]

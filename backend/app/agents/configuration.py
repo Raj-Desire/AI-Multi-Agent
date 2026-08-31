@@ -46,11 +46,40 @@ class ThinkProviderConfig(BaseModel):
     reasoning_mode: Optional[str] = "low"
 
 
+class PronunciationRule(BaseModel):
+    word: str
+    phonetic: str
+    category: Optional[str] = "general"  # "indian_places" | "acronyms" | "brand" | "custom"
+
+
+def get_default_pronunciation_rules() -> List[PronunciationRule]:
+    return [
+        PronunciationRule(word="Ahmedabad", phonetic="Ahm-da-baad", category="indian_places"),
+        PronunciationRule(word="Vadodara", phonetic="Vuh-doh-duh-rah", category="indian_places"),
+        PronunciationRule(word="Gandhinagar", phonetic="Gahn-dhi-nuh-guhr", category="indian_places"),
+        PronunciationRule(word="Rajkot", phonetic="Raaj-kote", category="indian_places"),
+        PronunciationRule(word="Surat", phonetic="Soo-ruht", category="indian_places"),
+        PronunciationRule(word="Bengaluru", phonetic="Beng-guh-loo-roo", category="indian_places"),
+        PronunciationRule(word="Coimbatore", phonetic="Koym-buh-tor", category="indian_places"),
+        PronunciationRule(word="GST", phonetic="G-S-T", category="acronyms"),
+        PronunciationRule(word="OTP", phonetic="O-T-P", category="acronyms"),
+        PronunciationRule(word="KYC", phonetic="K-Y-C", category="acronyms"),
+        PronunciationRule(word="Sq Ft", phonetic="square feet", category="acronyms"),
+        PronunciationRule(word="Sq. Ft.", phonetic="square feet", category="acronyms"),
+        PronunciationRule(word="INR", phonetic="Rupees", category="acronyms"),
+        PronunciationRule(word="B2B", phonetic="B-to-B", category="acronyms"),
+        PronunciationRule(word="B2C", phonetic="B-to-C", category="acronyms"),
+    ]
+
+
 class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
     endpointing: int = 500  # End-of-turn timeout in ms (balanced natural multi-clause speech cadence)
+    endpointing_mode: str = "adaptive"  # "rapid" (400ms) | "balanced" (500ms) | "dictation" (850ms) | "adaptive"
+    dictation_endpointing: int = 850
+    rapid_endpointing: int = 400
     eot_threshold: Optional[float] = None
     eager_eot: bool = False
     keyterms: List[str] = Field(default_factory=list)
@@ -67,6 +96,25 @@ class AgentRuntimeSettings(BaseModel):
     customer_response_timeout: int = 15
     retry_attempts: int = 2
     auto_hangup_on_completion: bool = True
+
+    # Conversational Fillers & Natural Thinking Sounds
+    conversational_fillers_enabled: bool = True
+    filler_phrases: List[str] = Field(default_factory=lambda: [
+        "Got it, let me check that for you...",
+        "Understood, give me one moment...",
+        "Sure thing, looking into that right now...",
+        "Let me see..."
+    ])
+
+    # Active Backchanneling
+    backchanneling_enabled: bool = True
+    backchannel_interval_seconds: float = 4.5
+    backchannel_phrases: List[str] = Field(default_factory=lambda: [
+        "Mhm",
+        "Right",
+        "I understand",
+        "Yeah"
+    ])
 
 
 class AgentGuardrails(BaseModel):
@@ -157,6 +205,9 @@ class AgentConfiguration(BaseModel):
     system_prompt: Optional[str] = None
     include_business_knowledge: bool = True
     custom_knowledge: Optional[str] = None
+
+    # Phonetic Pronunciation Dictionaries
+    pronunciation_rules: List[PronunciationRule] = Field(default_factory=get_default_pronunciation_rules)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

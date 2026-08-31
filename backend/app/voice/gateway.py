@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.voice.audio import AudioAdapter
+from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
@@ -57,6 +58,8 @@ async def voice_stream_websocket(websocket: WebSocket):
     # Call lifecycle state
     call_start_time: float = time.time()
     last_user_speech_time: float = time.time()
+    user_speech_start_time: float = time.time()
+    last_backchannel_time: float = time.time()
     last_agent_speech_done_time: float = time.time()
     user_spoke: bool = False
     is_agent_speaking: bool = False
@@ -65,6 +68,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     is_concluding_call: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
+    thinking_filler_task: Optional[asyncio.Task] = None
 
     # Outbound audio metrics
     outbound_chunk_counter: int = 0
@@ -113,12 +117,17 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_user_speaking():
         """Barge-in: Interrupt audio immediately when user starts speaking."""
-        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence, user_spoke
+        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task
+        if not is_user_speaking:
+            user_speech_start_time = time.time()
         is_user_speaking = True
         is_agent_speaking = False
         user_spoke = True
         last_user_speech_time = time.time()
         has_reprompted_silence = False  # Reset silence reprompt on user speech
+
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
 
         if stream_sid:
             clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
@@ -132,9 +141,40 @@ async def voice_stream_websocket(websocket: WebSocket):
             await call_session_service.record_barge_in(session)
 
     async def handle_agent_speaking(data: dict):
-        nonlocal is_agent_speaking, is_user_speaking
+        nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task
         is_agent_speaking = True
         is_user_speaking = False
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
+
+    async def handle_agent_thinking(data: dict):
+        nonlocal thinking_filler_task, deepgram_client
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
+
+        runtime = agent_config.runtime if agent_config else None
+        if runtime and getattr(runtime, "conversational_fillers_enabled", True):
+            async def _delayed_filler():
+                try:
+                    await asyncio.sleep(0.70)
+                    if is_user_speaking or is_agent_speaking or is_concluding_call:
+                        return
+                    phrases = getattr(runtime, "filler_phrases", None) or [
+                        "Got it, let me check that for you...",
+                        "Understood, give me one moment...",
+                        "Sure thing, looking into that right now..."
+                    ]
+                    import random
+                    filler = random.choice(phrases)
+                    norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
+                    logger.info(f"[VoiceGateway] Agent thinking threshold reached. Injecting filler: '{norm_filler}'")
+                    if deepgram_client and deepgram_client.is_ready:
+                        await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
+                except asyncio.CancelledError:
+                    pass
+                except Exception as ex:
+                    logger.debug(f"[VoiceGateway] Filler injection notice: {ex}")
+            thinking_filler_task = asyncio.create_task(_delayed_filler())
 
     async def handle_agent_audio_done():
         nonlocal is_agent_speaking, is_concluding_call
@@ -271,15 +311,29 @@ async def voice_stream_websocket(websocket: WebSocket):
                 else:
                     is_agent_speaking = False
 
+                # Active Continuous Monologue Backchanneling
+                if is_user_speaking and not is_agent_speaking and not is_concluding_call:
+                    user_speech_duration = now - user_speech_start_time
+                    if getattr(runtime, "backchanneling_enabled", True):
+                        interval = getattr(runtime, "backchannel_interval_seconds", 4.5) or 4.5
+                        if user_speech_duration >= interval and (now - last_backchannel_time) >= interval:
+                            last_backchannel_time = now
+                            bc_phrases = getattr(runtime, "backchannel_phrases", None) or ["Mhm", "Right", "I understand", "Yeah"]
+                            import random
+                            bc_cue = random.choice(bc_phrases)
+                            logger.info(f"[VoiceGateway] User monologue duration ({user_speech_duration:.1f}s) reached backchannel threshold. Injecting cue: '{bc_cue}'")
+                            asyncio.create_task(deepgram_client.inject_agent_message(bc_cue, behavior="default"))
+
                 # 1. Dynamic Maximum Call Duration Check
                 if elapsed_call_time >= active_limit and not is_concluding_call:
                     # If customer is speaking, allow current turn to finish
                     if is_user_speaking:
                         continue
 
+                    norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
                     logger.info(f"[VoiceGateway] Dynamic call duration ({active_limit}s, user_spoke={user_spoke}) reached. Speaking conclusion message.")
                     is_concluding_call = True
-                    await deepgram_client.inject_agent_message(conclusion_msg)
+                    await deepgram_client.inject_agent_message(norm_conclusion)
                     asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                     break
 
@@ -290,16 +344,18 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                     # Phase 1: Ask reprompt message if silent for silence_timeout
                     if silence_elapsed >= silence_timeout and not has_reprompted_silence:
-                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
+                        norm_reprompt = PronunciationNormalizer.normalize(reprompt_msg, getattr(agent_config, "pronunciation_rules", None))
+                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{norm_reprompt}'")
                         has_reprompted_silence = True
                         last_agent_speech_done_time = now + 2.5
-                        await deepgram_client.inject_agent_message(reprompt_msg)
+                        await deepgram_client.inject_agent_message(norm_reprompt)
 
                     # Phase 2: If still silent after reprompt + hangup_delay, speak conclusion and hang up
                     elif has_reprompted_silence and silence_elapsed >= (silence_timeout + hangup_delay):
+                        norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
                         logger.info(f"[VoiceGateway] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion and concluding call.")
                         is_concluding_call = True
-                        await deepgram_client.inject_agent_message(conclusion_msg)
+                        await deepgram_client.inject_agent_message(norm_conclusion)
                         asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                         break
 
@@ -420,15 +476,20 @@ async def voice_stream_websocket(websocket: WebSocket):
                     on_event=handle_deepgram_event,
                     on_transcript=handle_transcript,
                     on_user_speaking=handle_user_speaking,
+                    on_agent_thinking=handle_agent_thinking,
                     on_agent_speaking=handle_agent_speaking,
                     on_agent_audio_done=handle_agent_audio_done
                 )
 
                 # Execute official handshake (Welcome -> Settings -> SettingsApplied -> Inject Greeting)
                 try:
+                    norm_greeting = PronunciationNormalizer.normalize(
+                        agent_config.greeting,
+                        getattr(agent_config, "pronunciation_rules", None)
+                    ) if agent_config.greeting else None
                     await deepgram_client.connect_and_configure(
                         settings=deepgram_settings,
-                        greeting=agent_config.greeting
+                        greeting=norm_greeting
                     )
                     logger.info("[VoiceGateway] Deepgram Voice Agent successfully connected and ready.")
 

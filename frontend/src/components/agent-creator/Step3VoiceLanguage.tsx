@@ -16,7 +16,11 @@ import {
   Smile,
   ShieldCheck,
   Headphones,
-  User
+  User,
+  BookOpen,
+  Plus,
+  Trash2,
+  RotateCcw
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -25,9 +29,10 @@ import {
   AURA_VOICES,
   SUPPORTED_LANGUAGES,
   LLM_MODELS,
-  AGENT_PURPOSES
+  AGENT_PURPOSES,
+  DEFAULT_PRONUNCIATION_RULES
 } from "./constants";
-import { AgentConfig } from "../../types";
+import { AgentConfig, PronunciationRule } from "../../types";
 
 interface Step3VoiceLanguageProps {
   agentData: AgentConfig;
@@ -80,6 +85,54 @@ export function Step3VoiceLanguage({
 
   // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
+
+  // Pronunciation Dictionary State
+  const [newWord, setNewWord] = useState("");
+  const [newPhonetic, setNewPhonetic] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("custom");
+  const [isPronunciationOpen, setIsPronunciationOpen] = useState(true);
+
+  const pronunciationRules: PronunciationRule[] = agentData.pronunciation_rules || DEFAULT_PRONUNCIATION_RULES;
+
+  const handleAddPronunciationRule = () => {
+    if (!newWord.trim() || !newPhonetic.trim()) return;
+    const updated = [
+      ...pronunciationRules,
+      { word: newWord.trim(), phonetic: newPhonetic.trim(), category: selectedCategory }
+    ];
+    setAgentData((prev) => ({
+      ...prev,
+      pronunciation_rules: updated
+    }));
+    setNewWord("");
+    setNewPhonetic("");
+  };
+
+  const handleRemovePronunciationRule = (index: number) => {
+    const updated = pronunciationRules.filter((_, i) => i !== index);
+    setAgentData((prev) => ({
+      ...prev,
+      pronunciation_rules: updated
+    }));
+  };
+
+  const handleLoadPresetPack = (category: "indian_places" | "acronyms") => {
+    const presetItems = DEFAULT_PRONUNCIATION_RULES.filter((r) => r.category === category);
+    const existingWords = new Set(pronunciationRules.map((r) => r.word.toLowerCase()));
+    const itemsToAdd = presetItems.filter((r) => !existingWords.has(r.word.toLowerCase()));
+    if (itemsToAdd.length === 0) return;
+    setAgentData((prev) => ({
+      ...prev,
+      pronunciation_rules: [...pronunciationRules, ...itemsToAdd]
+    }));
+  };
+
+  const handleResetPronunciationRules = () => {
+    setAgentData((prev) => ({
+      ...prev,
+      pronunciation_rules: DEFAULT_PRONUNCIATION_RULES
+    }));
+  };
 
   // Match role/purpose for recommendations
   const matchedPurpose = useMemo(() => {
@@ -774,6 +827,163 @@ export function Step3VoiceLanguage({
                   className="w-full h-8 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
                 />
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 4: Phonetic Pronunciation Dictionary */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <BookOpen className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                <span>Phonetic Pronunciation Dictionary &amp; Spoken Rules</span>
+                <InfoTooltip
+                  content="Define exact phonetic pronunciations for proper nouns, Indian cities, brand names, and business acronyms so the speech engine articulates them with 100% natural, human-grade clarity."
+                  position="top"
+                />
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                Eliminates awkward robotic pronunciation of local places, company terms, and abbreviations.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="primary" size="sm" className="text-[10px] font-mono font-bold">
+              {pronunciationRules.length} Active Rules
+            </Badge>
+            <button
+              type="button"
+              onClick={() => setIsPronunciationOpen(!isPronunciationOpen)}
+              className="p-1 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] transition-colors cursor-pointer"
+            >
+              {isPronunciationOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {isPronunciationOpen && (
+          <div className="space-y-4 pt-1 border-t border-[var(--color-border)]">
+            {/* Quick Preset Packs */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
+                Quick-Add Presets:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleLoadPresetPack("indian_places")}
+                className="px-2.5 py-1 text-[11px] rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:bg-[var(--color-surface)] text-[var(--color-heading)] font-medium flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+              >
+                <Plus className="w-3 h-3 text-[var(--color-primary)]" />
+                <span>Indian Cities &amp; Names (Ahmedabad, Vadodara, Surat...)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLoadPresetPack("acronyms")}
+                className="px-2.5 py-1 text-[11px] rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:bg-[var(--color-surface)] text-[var(--color-heading)] font-medium flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+              >
+                <Plus className="w-3 h-3 text-[var(--color-primary)]" />
+                <span>Telephony &amp; Business Acronyms (GST, OTP, KYC, Sq Ft...)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPronunciationRules}
+                className="px-2 py-1 text-[10px] rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] flex items-center gap-1 transition-colors ml-auto cursor-pointer"
+                title="Reset to recommended defaults"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Defaults</span>
+              </button>
+            </div>
+
+            {/* Add New Rule Row */}
+            <div className="p-3 bg-[var(--color-surface-muted)]/60 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2">
+              <span className="text-[11px] font-bold text-[var(--color-heading)]">Add Custom Word Override</span>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                <div className="sm:col-span-4">
+                  <input
+                    type="text"
+                    placeholder="Written word (e.g. Ahmedabad)"
+                    value={newWord}
+                    onChange={(e) => setNewWord(e.target.value)}
+                    className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+                <div className="sm:col-span-5">
+                  <input
+                    type="text"
+                    placeholder="Spoken phonetic (e.g. Ahm-da-baad)"
+                    value={newPhonetic}
+                    onChange={(e) => setNewPhonetic(e.target.value)}
+                    className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  />
+                </div>
+                <div className="sm:col-span-3 flex items-center gap-1.5">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full h-8 px-2 text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                  >
+                    <option value="custom">Custom</option>
+                    <option value="indian_places">Indian Place</option>
+                    <option value="acronyms">Acronym</option>
+                    <option value="brand">Brand</option>
+                  </select>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleAddPronunciationRule}
+                    disabled={!newWord.trim() || !newPhonetic.trim()}
+                    className="h-8 px-3 text-xs shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-0.5" />
+                    <span>Add</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Rules List / Table */}
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+              {pronunciationRules.length === 0 ? (
+                <div className="p-4 text-center text-xs text-[var(--color-muted)]">
+                  No pronunciation rules added yet. Click one of the quick presets above or add a custom rule.
+                </div>
+              ) : (
+                pronunciationRules.map((rule, idx) => (
+                  <div
+                    key={`${rule.word}-${idx}`}
+                    className="flex items-center justify-between px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-xs hover:border-[var(--color-primary)]/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold text-[var(--color-heading)]">{rule.word}</span>
+                      <span className="text-[var(--color-muted)] text-[11px]">&rarr;</span>
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded text-[11px]">
+                        "{rule.phonetic}"
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" size="sm" className="text-[9px] py-0 px-1.5 capitalize text-[var(--color-muted)]">
+                        {rule.category?.replace(/_/g, " ") || "general"}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePronunciationRule(idx)}
+                        className="p-1 text-[var(--color-muted)] hover:text-red-500 transition-colors cursor-pointer"
+                        title="Remove rule"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

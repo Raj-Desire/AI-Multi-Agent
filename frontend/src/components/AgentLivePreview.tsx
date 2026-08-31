@@ -526,6 +526,23 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
                 <Radio className="w-2.5 h-2.5 animate-pulse" />
                 <span>Real-Time Voice</span>
               </span>
+              {agentConfig.runtime?.conversational_fillers_enabled && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs shrink-0" title="Conversational Fillers & Natural Thinking Sounds enabled">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>Thinking Fillers</span>
+                </span>
+              )}
+              {agentConfig.runtime?.backchanneling_enabled && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-2xs shrink-0" title="Continuous Speech Backchanneling active">
+                  <Activity className="w-2.5 h-2.5" />
+                  <span>Backchanneling</span>
+                </span>
+              )}
+              {agentConfig.pronunciation_rules && agentConfig.pronunciation_rules.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shadow-2xs shrink-0" title={`${agentConfig.pronunciation_rules.length} phonetic pronunciation rules active`}>
+                  <span>Phonetics ({agentConfig.pronunciation_rules.length})</span>
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-snug">
               Talk directly with your microphone or test conversational turns with ultra-low latency.

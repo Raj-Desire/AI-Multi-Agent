@@ -687,6 +687,24 @@ export const CREATOR_STEPS = [
   }
 ];
 
+export const DEFAULT_PRONUNCIATION_RULES = [
+  { word: "Ahmedabad", phonetic: "Ahm-da-baad", category: "indian_places" },
+  { word: "Vadodara", phonetic: "Vuh-doh-duh-rah", category: "indian_places" },
+  { word: "Gandhinagar", phonetic: "Gahn-dhi-nuh-guhr", category: "indian_places" },
+  { word: "Rajkot", phonetic: "Raaj-kote", category: "indian_places" },
+  { word: "Surat", phonetic: "Soo-ruht", category: "indian_places" },
+  { word: "Bengaluru", phonetic: "Beng-guh-loo-roo", category: "indian_places" },
+  { word: "Coimbatore", phonetic: "Koym-buh-tor", category: "indian_places" },
+  { word: "GST", phonetic: "G-S-T", category: "acronyms" },
+  { word: "OTP", phonetic: "O-T-P", category: "acronyms" },
+  { word: "KYC", phonetic: "K-Y-C", category: "acronyms" },
+  { word: "Sq Ft", phonetic: "square feet", category: "acronyms" },
+  { word: "Sq. Ft.", phonetic: "square feet", category: "acronyms" },
+  { word: "INR", phonetic: "Rupees", category: "acronyms" },
+  { word: "B2B", phonetic: "B-to-B", category: "acronyms" },
+  { word: "B2C", phonetic: "B-to-C", category: "acronyms" }
+];
+
 export function getInitialAgentData(): AgentConfig {
   return {
     agent_id: "",
@@ -727,6 +745,15 @@ export function getInitialAgentData(): AgentConfig {
       speed: 1.0,
       language: "en"
     },
+    listen: {
+      provider: "deepgram",
+      model: "nova-3",
+      language: "en",
+      endpointing: 500,
+      endpointing_mode: "adaptive",
+      dictation_endpointing: 850,
+      rapid_endpointing: 400
+    },
     llm: {
       provider: "open_ai",
       model: "gpt-4o-mini",
@@ -743,7 +770,22 @@ export function getInitialAgentData(): AgentConfig {
       conclusion_message: "Thank you for your time. Have a great day!",
       customer_response_timeout: 15,
       retry_attempts: 2,
-      auto_hangup_on_completion: true
+      auto_hangup_on_completion: true,
+      conversational_fillers_enabled: true,
+      filler_phrases: [
+        "Got it, let me check that for you...",
+        "Understood, give me one moment...",
+        "Sure thing, looking into that right now...",
+        "Let me see..."
+      ],
+      backchanneling_enabled: true,
+      backchannel_interval_seconds: 4.5,
+      backchannel_phrases: [
+        "Mhm",
+        "Right",
+        "I understand",
+        "Yeah"
+      ]
     },
     guardrails: {
       allowed_actions: [
@@ -771,6 +813,7 @@ export function getInitialAgentData(): AgentConfig {
     closing_message: "Thank you for speaking with us today. Have a wonderful day!",
     system_prompt: "",
     include_business_knowledge: true,
-    custom_knowledge: ""
+    custom_knowledge: "",
+    pronunciation_rules: DEFAULT_PRONUNCIATION_RULES
   };
 }

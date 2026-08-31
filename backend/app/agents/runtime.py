@@ -61,14 +61,36 @@ class AgentRuntimeBuilder:
             configured_lang = config.voice.language.lower().strip()
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
-        listen_endpointing = getattr(config.listen, "endpointing", 500) if config.listen else 500
+        
+        # Adaptive endpointing calculation
+        mode = getattr(config.listen, "endpointing_mode", "adaptive") if config.listen else "adaptive"
+        if mode == "rapid":
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 400) or 400
+        elif mode == "dictation":
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 850) or 850
+        elif mode == "balanced":
+            listen_endpointing = 500
+        else:
+            # Adaptive mode: extend endpointing for agents with heavy data/qualification intake
+            role_str = f"{config.role or ''} {config.objective or ''} {config.name or ''}".lower()
+            is_data_intense = any(w in role_str for w in ["support", "booking", "schedule", "reception", "lead", "ticket", "qualify"])
+            listen_endpointing = 750 if is_data_intense else getattr(config.listen, "endpointing", 500)
+
+        # Merge keyterms from listen config and pronunciation rules for recognition boosting
+        combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
+        if getattr(config, "pronunciation_rules", None):
+            for rule in config.pronunciation_rules:
+                w = getattr(rule, "word", "") if hasattr(rule, "word") else (rule.get("word", "") if isinstance(rule, dict) else "")
+                if w and w.strip() and w.strip() not in combined_keyterms:
+                    combined_keyterms.append(w.strip())
+
         listen_provider = DeepgramListenProvider(
             type="deepgram",
             model=listen_model,
             language=configured_lang,
             smart_format=True,
             endpointing=listen_endpointing or 500,
-            keyterms=config.listen.keyterms if config.listen and config.listen.keyterms else None
+            keyterms=combined_keyterms if combined_keyterms else None
         )
         listen_config = DeepgramListenConfig(
             provider=listen_provider
