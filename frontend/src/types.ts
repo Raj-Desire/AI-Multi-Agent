@@ -220,6 +220,17 @@ export interface AgentLLMConfig {
   reasoning_mode?: string;
 }
 
+export interface FewShotTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface FewShotExample {
+  title: string;
+  industry: 'real_estate' | 'healthcare' | 'b2b_tech' | 'automotive' | 'legal' | 'support' | 'general' | string;
+  dialogue: FewShotTurn[];
+}
+
 export interface PronunciationRule {
   word: string;
   phonetic: string;
@@ -255,6 +266,9 @@ export interface AgentRuntimeSettings {
   backchanneling_enabled?: boolean;
   backchannel_interval_seconds?: number;
   backchannel_phrases?: string[];
+  ambient_noise_filtering?: boolean;
+  barge_in_min_speech_duration_ms?: number;
+  graceful_resumption_enabled?: boolean;
 }
 
 export interface AgentGuardrails {
@@ -341,6 +355,7 @@ export interface AgentConfig {
   include_business_knowledge?: boolean;
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
+  few_shot_examples?: FewShotExample[];
   created_at?: string;
   updated_at?: string;
 }

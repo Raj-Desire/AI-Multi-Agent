@@ -404,11 +404,13 @@ class VoicePromptBuilder:
 
     @staticmethod
     def _build_turn_taking_directives(config: AgentConfiguration) -> str:
-        """Injects turn-taking directives for alphanumeric dictation and multi-clause speech."""
+        """Injects turn-taking directives for large explanations, long notes, dictation and multi-clause speech."""
         return (
             "[ADAPTIVE TURN-TAKING & INCOMPLETE UTTERANCE HANDLING]\n"
+            "- LONG EXPLANATIONS & DETAILED NOTES: When the caller is explaining a scenario, dictating a note, giving instructions, or speaking in multi-clause sentences, they naturally pause between clauses or thoughts. NEVER cut in prematurely or answer an incomplete fragment. Wait for their complete thought.\n"
+            "- INCOMPLETE SENTENCES: If a caller's utterance ends on a conjunction, preposition, or trailing tone (e.g., 'and also...', 'because when I...', 'I was thinking that...'), they are still formulating their note. Do not answer half-sentences.\n"
             "- DICTATION & DIGIT PAUSES: When the caller spells out a phone number, email address, OTP, or postal code, they often pause between digit clusters (e.g., 'My number is 98250...' [pause] '...12345'). NEVER interrupt or prematurely finalize the answer during these natural pauses.\n"
-            "- OPEN-ENDED PAUSES: If a caller pauses mid-clause or trails off, wait or offer a supportive micro-prompt (e.g., '...and what was the last digit?', '...at what domain?'). Never talk over the caller or conclude before they finish."
+            "- PATIENT LISTENING: Always give the caller sufficient breathing room to complete their entire train of thought."
         )
 
     @staticmethod
@@ -433,6 +435,54 @@ class VoicePromptBuilder:
             "When mentioning any of the following names, cities, acronyms, or specialized terminology, you MUST speak their phonetic representation so the voice synthesizer articulates them with flawless, human-grade clarity:\n"
             + "\n".join(lines[:25])
         )
+
+    @staticmethod
+    def _build_interruption_resumption_directives(config: AgentConfiguration) -> str:
+        """Injects directives on handling brief interruptions and resuming seamlessly."""
+        runtime = getattr(config, "runtime", None)
+        if runtime and not getattr(runtime, "graceful_resumption_enabled", True):
+            return ""
+
+        return (
+            "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION]\n"
+            "- BRIEF USER INTERRUPTIONS: If the caller interrupts with brief filler words ('Wait', 'Sorry', 'Go on', 'Nevermind', 'Continue') or a short clarifying sound, NEVER restart your previous answer or greeting from the beginning.\n"
+            "- SEAMLESS RECOVERY: Acknowledge in 2-3 words (e.g., 'Right, as I was saying...', 'Sure thing — so...') and resume directly from the specific unsaid point with concise clarity."
+        )
+
+    @staticmethod
+    def _build_few_shot_examples_section(config: AgentConfiguration) -> str:
+        """Injects 2-3 golden conversation transcripts tailored to the agent's role or custom examples."""
+        examples = getattr(config, "few_shot_examples", None) or []
+        if not examples:
+            # Auto-select matching industry preset based on role or objective
+            from app.agents.configuration import get_industry_few_shot_presets
+            all_presets = get_industry_few_shot_presets()
+            role_lower = (config.role or "").lower() + " " + (config.objective or "").lower()
+            if any(k in role_lower for k in ["estate", "property", "realtor", "apartment", "villa"]):
+                examples = [p for p in all_presets if p.industry == "real_estate"]
+            elif any(k in role_lower for k in ["health", "doctor", "clinic", "hospital", "medical", "patient"]):
+                examples = [p for p in all_presets if p.industry == "healthcare"]
+            elif any(k in role_lower for k in ["tech", "software", "b2b", "automation", "solutions", "cloud"]):
+                examples = [p for p in all_presets if p.industry == "b2b_tech"]
+            elif any(k in role_lower for k in ["auto", "car", "service", "vehicle", "mechanic", "brake"]):
+                examples = [p for p in all_presets if p.industry == "automotive"]
+            else:
+                examples = [p for p in all_presets if p.industry in ["support", "real_estate"]]
+
+        if not examples:
+            return ""
+
+        lines = ["[GOLDEN CONVERSATION EXAMPLES (FEW-SHOT ROLE-PLAY)]", "Follow the concise, empathetic spoken style demonstrated below:"]
+        for i, eg in enumerate(examples[:2], 1):
+            title = getattr(eg, "title", f"Example {i}")
+            lines.append(f"\n### {title}:")
+            dialogue = getattr(eg, "dialogue", [])
+            for turn in dialogue:
+                role = "Caller" if getattr(turn, "role", "") == "user" else "Assistant"
+                content = getattr(turn, "content", "")
+                lines.append(f"{role}: \"{content}\"")
+
+        return "\n".join(lines)
 
     @staticmethod
     def build_prompt(
@@ -460,7 +510,9 @@ class VoicePromptBuilder:
         platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
         acoustics_rule = VoicePromptBuilder._build_conversational_acoustics_section(config)
         turn_taking_rule = VoicePromptBuilder._build_turn_taking_directives(config)
+        resumption_rule = VoicePromptBuilder._build_interruption_resumption_directives(config)
         pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
+        few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
         # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
@@ -479,7 +531,9 @@ class VoicePromptBuilder:
                 knowledge_section,
                 acoustics_rule,
                 turn_taking_rule,
+                resumption_rule,
                 pronunciation_rule,
+                few_shot_section,
                 telephony_rules
             ]
         else:
@@ -505,7 +559,9 @@ class VoicePromptBuilder:
                 length_rule,
                 acoustics_rule,
                 turn_taking_rule,
+                resumption_rule,
                 pronunciation_rule,
+                few_shot_section,
                 telephony_rules,
                 platform_rules_text
             ]

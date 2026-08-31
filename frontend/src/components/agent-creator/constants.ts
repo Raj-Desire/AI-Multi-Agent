@@ -17,7 +17,7 @@ import {
   CheckCircle2,
   LucideIcon
 } from "lucide-react";
-import { AgentPersonality, AgentConfig } from "../../types";
+import { AgentPersonality, AgentConfig, FewShotExample } from "../../types";
 
 export interface AgentPurposeItem {
   id: string;
@@ -705,6 +705,59 @@ export const DEFAULT_PRONUNCIATION_RULES = [
   { word: "B2C", phonetic: "B-to-C", category: "acronyms" }
 ];
 
+export const INDUSTRY_FEW_SHOT_PRESETS: FewShotExample[] = [
+  {
+    title: "Real Estate Property Inquiry & Visit Booking",
+    industry: "real_estate",
+    dialogue: [
+      { role: "user", content: "Hi, I saw your listing for the 3 BHK in Ahmedabad. What is the square footage and price?" },
+      { role: "assistant", content: "Hello! That 3 BHK is 2,100 square feet with park-facing balconies, starting at 1.45 Crore. Would you like to schedule a site visit this Saturday?" },
+      { role: "user", content: "Yes, Saturday afternoon works." },
+      { role: "assistant", content: "Perfect, I have you down for Saturday at 3:00 PM. I'll send the location pin to your number. Is there anything else you'd like to check?" }
+    ]
+  },
+  {
+    title: "Healthcare Clinic Consultation Booking",
+    industry: "healthcare",
+    dialogue: [
+      { role: "user", content: "Hi, I need to see Dr. Patel for a follow-up consultation this week." },
+      { role: "assistant", content: "Certainly! Dr. Patel is available this Wednesday at 10:30 AM or Thursday at 4 PM. Which time suits you better?" },
+      { role: "user", content: "Thursday at 4 PM please." },
+      { role: "assistant", content: "You're all set for Thursday at 4:00 PM with Dr. Patel. Please arrive 10 minutes early with your previous reports." }
+    ]
+  },
+  {
+    title: "B2B Tech Solutions & Discovery Call",
+    industry: "b2b_tech",
+    dialogue: [
+      { role: "user", content: "We spend hours manually reconciling spreadsheets every week. Can your software automate this?" },
+      { role: "assistant", content: "Absolutely. We build custom workflow automations that sync spreadsheet data directly with your CRM and accounting tools in real time. Would a brief 15-minute demo with our technical specialist be helpful?" },
+      { role: "user", content: "Sure, let's do tomorrow morning." },
+      { role: "assistant", content: "Great! I'll reserve 10:00 AM tomorrow for your discovery session and email you the calendar invite. What is the best email address for you?" }
+    ]
+  },
+  {
+    title: "Automotive Service & Brake Diagnostic",
+    industry: "automotive",
+    dialogue: [
+      { role: "user", content: "My car's brakes are making a squeaking sound. Can I bring it in for inspection?" },
+      { role: "assistant", content: "We can certainly inspect that for you right away. We have open service bays tomorrow at 9 AM or 2 PM. Which works best?" },
+      { role: "user", content: "9 AM is good." },
+      { role: "assistant", content: "Confirmed for tomorrow at 9:00 AM at our main service center. Our technician will perform a complete brake diagnostics inspection for you." }
+    ]
+  },
+  {
+    title: "Customer Support & Order Tracking",
+    industry: "support",
+    dialogue: [
+      { role: "user", content: "I placed an order two days ago and haven't received a tracking update yet." },
+      { role: "assistant", content: "I'd be glad to check that for you! May I have your order number or registered phone number?" },
+      { role: "user", content: "It's order number 84210." },
+      { role: "assistant", content: "Thanks! Order 84210 has been packed and is scheduled for courier pickup today with estimated delivery on Thursday." }
+    ]
+  }
+];
+
 export function getInitialAgentData(): AgentConfig {
   return {
     agent_id: "",
@@ -749,10 +802,10 @@ export function getInitialAgentData(): AgentConfig {
       provider: "deepgram",
       model: "nova-3",
       language: "en",
-      endpointing: 500,
+      endpointing: 900,
       endpointing_mode: "adaptive",
-      dictation_endpointing: 850,
-      rapid_endpointing: 400
+      dictation_endpointing: 1400,
+      rapid_endpointing: 500
     },
     llm: {
       provider: "open_ai",
@@ -785,7 +838,10 @@ export function getInitialAgentData(): AgentConfig {
         "Right",
         "I understand",
         "Yeah"
-      ]
+      ],
+      ambient_noise_filtering: true,
+      barge_in_min_speech_duration_ms: 220,
+      graceful_resumption_enabled: true
     },
     guardrails: {
       allowed_actions: [
@@ -814,6 +870,18 @@ export function getInitialAgentData(): AgentConfig {
     system_prompt: "",
     include_business_knowledge: true,
     custom_knowledge: "",
-    pronunciation_rules: DEFAULT_PRONUNCIATION_RULES
+    pronunciation_rules: DEFAULT_PRONUNCIATION_RULES,
+    few_shot_examples: [
+      {
+        title: "Customer Support & Order Tracking",
+        industry: "support",
+        dialogue: [
+          { role: "user", content: "I placed an order two days ago and haven't received a tracking update yet." },
+          { role: "assistant", content: "I'd be glad to check that for you! May I have your order number or registered phone number?" },
+          { role: "user", content: "It's order number 84210." },
+          { role: "assistant", content: "Thanks! Order 84210 has been packed and is scheduled for courier pickup today with estimated delivery on Thursday." }
+        ]
+      }
+    ]
   };
 }

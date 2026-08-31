@@ -52,6 +52,17 @@ class PronunciationRule(BaseModel):
     category: Optional[str] = "general"  # "indian_places" | "acronyms" | "brand" | "custom"
 
 
+class FewShotTurn(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class FewShotExample(BaseModel):
+    title: str
+    industry: str  # "real_estate" | "healthcare" | "b2b_tech" | "automotive" | "legal" | "support" | "general"
+    dialogue: List[FewShotTurn]
+
+
 def get_default_pronunciation_rules() -> List[PronunciationRule]:
     return [
         PronunciationRule(word="Ahmedabad", phonetic="Ahm-da-baad", category="indian_places"),
@@ -72,14 +83,70 @@ def get_default_pronunciation_rules() -> List[PronunciationRule]:
     ]
 
 
+def get_industry_few_shot_presets() -> List[FewShotExample]:
+    """Returns standard industry few-shot dialogue examples for role-play consistency."""
+    return [
+        FewShotExample(
+            title="Real Estate Property Inquiry & Visit Booking",
+            industry="real_estate",
+            dialogue=[
+                FewShotTurn(role="user", content="Hi, I saw your listing for the 3 BHK in Ahmedabad. What is the square footage and price?"),
+                FewShotTurn(role="assistant", content="Hello! That 3 BHK is 2,100 square feet with park-facing balconies, starting at 1.45 Crore. Would you like to schedule a site visit this Saturday?"),
+                FewShotTurn(role="user", content="Yes, Saturday afternoon works."),
+                FewShotTurn(role="assistant", content="Perfect, I have you down for Saturday at 3:00 PM. I'll send the location pin to your number. Is there anything else you'd like to check?")
+            ]
+        ),
+        FewShotExample(
+            title="Healthcare Clinic Consultation Booking",
+            industry="healthcare",
+            dialogue=[
+                FewShotTurn(role="user", content="Hi, I need to see Dr. Patel for a follow-up consultation this week."),
+                FewShotTurn(role="assistant", content="Certainly! Dr. Patel is available this Wednesday at 10:30 AM or Thursday at 4 PM. Which time suits you better?"),
+                FewShotTurn(role="user", content="Thursday at 4 PM please."),
+                FewShotTurn(role="assistant", content="You're all set for Thursday at 4:00 PM with Dr. Patel. Please arrive 10 minutes early with your previous reports.")
+            ]
+        ),
+        FewShotExample(
+            title="B2B Tech Solutions & Discovery Call",
+            industry="b2b_tech",
+            dialogue=[
+                FewShotTurn(role="user", content="We spend hours manually reconciling spreadsheets every week. Can your software automate this?"),
+                FewShotTurn(role="assistant", content="Absolutely. We build custom workflow automations that sync spreadsheet data directly with your CRM and accounting tools in real time. Would a brief 15-minute demo with our technical specialist be helpful?"),
+                FewShotTurn(role="user", content="Sure, let's do tomorrow morning."),
+                FewShotTurn(role="assistant", content="Great! I'll reserve 10:00 AM tomorrow for your discovery session and email you the calendar invite. What is the best email address for you?")
+            ]
+        ),
+        FewShotExample(
+            title="Automotive Service & Brake Diagnostic",
+            industry="automotive",
+            dialogue=[
+                FewShotTurn(role="user", content="My car's brakes are making a squeaking sound. Can I bring it in for inspection?"),
+                FewShotTurn(role="assistant", content="We can certainly inspect that for you right away. We have open service bays tomorrow at 9 AM or 2 PM. Which works best?"),
+                FewShotTurn(role="user", content="9 AM is good."),
+                FewShotTurn(role="assistant", content="Confirmed for tomorrow at 9:00 AM at our main service center. Our technician will perform a complete brake diagnostics inspection for you.")
+            ]
+        ),
+        FewShotExample(
+            title="Customer Support & Order Tracking",
+            industry="support",
+            dialogue=[
+                FewShotTurn(role="user", content="I placed an order two days ago and haven't received a tracking update yet."),
+                FewShotTurn(role="assistant", content="I'd be glad to check that for you! May I have your order number or registered phone number?"),
+                FewShotTurn(role="user", content="It's order number 84210."),
+                FewShotTurn(role="assistant", content="Thanks! Order 84210 has been packed and is scheduled for courier pickup today with estimated delivery on Thursday.")
+            ]
+        )
+    ]
+
+
 class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
-    endpointing: int = 500  # End-of-turn timeout in ms (balanced natural multi-clause speech cadence)
-    endpointing_mode: str = "adaptive"  # "rapid" (400ms) | "balanced" (500ms) | "dictation" (850ms) | "adaptive"
-    dictation_endpointing: int = 850
-    rapid_endpointing: int = 400
+    endpointing: int = 900  # End-of-turn timeout in ms (allows natural multi-clause breathing room and detailed notes without cutting off)
+    endpointing_mode: str = "adaptive"  # "rapid" (500ms) | "balanced" (850ms) | "dictation" (1400ms) | "adaptive" (1000ms)
+    dictation_endpointing: int = 1400  # Generous threshold for dictating long notes, addresses, and multi-sentence explanations
+    rapid_endpointing: int = 500
     eot_threshold: Optional[float] = None
     eager_eot: bool = False
     keyterms: List[str] = Field(default_factory=list)
@@ -115,6 +182,11 @@ class AgentRuntimeSettings(BaseModel):
         "I understand",
         "Yeah"
     ])
+
+    # Advanced Interruption & Ambient Audio Filtering
+    ambient_noise_filtering: bool = True
+    barge_in_min_speech_duration_ms: int = 220  # Minimum sustained vocalization (ms) before clearing audio
+    graceful_resumption_enabled: bool = True
 
 
 class AgentGuardrails(BaseModel):
@@ -208,6 +280,9 @@ class AgentConfiguration(BaseModel):
 
     # Phonetic Pronunciation Dictionaries
     pronunciation_rules: List[PronunciationRule] = Field(default_factory=get_default_pronunciation_rules)
+
+    # Dynamic Few-Shot Role-Play Dialogues
+    few_shot_examples: List[FewShotExample] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

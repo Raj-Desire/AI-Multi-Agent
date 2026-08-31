@@ -135,6 +135,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
+    barge_in_debounce_task: Optional[asyncio.Task] = None
 
     preview_chunk_counter: int = 0
     total_preview_bytes: int = 0
@@ -180,6 +181,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
     async def handle_dg_event(event_type: str, data: dict):
         try:
+            if event_type == "UserStoppedSpeaking":
+                nonlocal is_user_speaking
+                is_user_speaking = False
             await websocket.send_json({
                 "type": "event",
                 "event_type": event_type,
@@ -211,11 +215,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_user_speaking():
-        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task, barge_in_debounce_task
         if not is_user_speaking:
             user_speech_start_time = time.time()
         is_user_speaking = True
-        is_agent_speaking = False
         if not is_concluding_call:
             last_user_speech_time = time.time()
             has_reprompted_silence = False
@@ -223,12 +226,41 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
-        try:
-            await websocket.send_json({
-                "type": "clear"
-            })
-        except Exception:
-            pass
+        runtime = agent_config.runtime if agent_config else None
+        noise_filtering = getattr(runtime, "ambient_noise_filtering", True) if runtime else True
+        min_duration_ms = getattr(runtime, "barge_in_min_speech_duration_ms", 220) if runtime else 220
+
+        async def _execute_preview_clear():
+            nonlocal is_agent_speaking
+            try:
+                if noise_filtering and min_duration_ms > 0:
+                    await asyncio.sleep(min_duration_ms / 1000.0)
+                    if not is_user_speaking:
+                        logger.debug("[VoicePreview] Transient acoustic sound / tap (< 220ms) ignored; preserving preview playback.")
+                        return
+
+                is_agent_speaking = False
+                await websocket.send_json({
+                    "type": "clear"
+                })
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+        if barge_in_debounce_task and not barge_in_debounce_task.done():
+            barge_in_debounce_task.cancel()
+
+        if is_agent_speaking and noise_filtering:
+            barge_in_debounce_task = asyncio.create_task(_execute_preview_clear())
+        else:
+            is_agent_speaking = False
+            try:
+                await websocket.send_json({
+                    "type": "clear"
+                })
+            except Exception:
+                pass
 
     async def handle_dg_agent_speaking(data: dict):
         nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task
@@ -287,21 +319,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 if not deepgram_client or not deepgram_client.is_ready:
                     continue
 
-                # Active Continuous Monologue Backchanneling
+                # Monologue monitor (ensure keepalive without disruptive agent injection)
                 now = time.time()
-                if is_user_speaking and not is_agent_speaking and not is_concluding_call:
-                    user_speech_duration = now - user_speech_start_time
-                    runtime = agent_config.runtime if agent_config else None
-                    if runtime and getattr(runtime, "backchanneling_enabled", True):
-                        interval = getattr(runtime, "backchannel_interval_seconds", 4.5) or 4.5
-                        if user_speech_duration >= interval and (now - last_backchannel_time) >= interval:
-                            last_backchannel_time = now
-                            bc_phrases = getattr(runtime, "backchannel_phrases", None) or ["Mhm", "Right", "I understand", "Yeah"]
-                            import random
-                            bc_cue = random.choice(bc_phrases)
-                            logger.info(f"[VoicePreview] Monologue duration ({user_speech_duration:.1f}s) >= interval. Emitting cue: '{bc_cue}'")
-                            if deepgram_client and deepgram_client.is_ready:
-                                asyncio.create_task(deepgram_client.inject_agent_message(bc_cue, behavior="default"))
 
                 # Send periodic keep-alive every 4 seconds to guarantee WebSocket connection never drops during silence
                 if keepalive_counter % 4 == 0:

@@ -62,19 +62,19 @@ class AgentRuntimeBuilder:
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
-        # Adaptive endpointing calculation
+        # Adaptive endpointing calculation (generous thresholds to prevent cutting off callers mid-thought)
         mode = getattr(config.listen, "endpointing_mode", "adaptive") if config.listen else "adaptive"
         if mode == "rapid":
-            listen_endpointing = getattr(config.listen, "rapid_endpointing", 400) or 400
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 500) or 500
         elif mode == "dictation":
-            listen_endpointing = getattr(config.listen, "dictation_endpointing", 850) or 850
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 1400) or 1400
         elif mode == "balanced":
-            listen_endpointing = 500
+            listen_endpointing = getattr(config.listen, "endpointing", 850) or 850
         else:
-            # Adaptive mode: extend endpointing for agents with heavy data/qualification intake
+            # Adaptive mode: default to 1000ms, extending to 1400ms for data intake and detailed explanations
             role_str = f"{config.role or ''} {config.objective or ''} {config.name or ''}".lower()
-            is_data_intense = any(w in role_str for w in ["support", "booking", "schedule", "reception", "lead", "ticket", "qualify"])
-            listen_endpointing = 750 if is_data_intense else getattr(config.listen, "endpointing", 500)
+            is_data_intense = any(w in role_str for w in ["support", "booking", "schedule", "reception", "lead", "ticket", "qualify", "intake", "note", "medical", "legal", "diagnostic"])
+            listen_endpointing = 1400 if is_data_intense else max(getattr(config.listen, "endpointing", 1000), 900)
 
         # Merge keyterms from listen config and pronunciation rules for recognition boosting
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []

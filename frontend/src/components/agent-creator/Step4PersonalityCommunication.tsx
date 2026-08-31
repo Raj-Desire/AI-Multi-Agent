@@ -27,12 +27,18 @@ import {
   Loader2,
   Sliders,
   Move,
-  Info
+  Info,
+  Plus,
+  Trash2,
+  Building,
+  Wrench,
+  Inbox,
+  Laptop
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
-import { COMMUNICATION_STYLES, getInitialAgentData, AURA_VOICES, AGENT_PURPOSES } from "./constants";
-import { AgentConfig, AgentPersonality } from "../../types";
+import { COMMUNICATION_STYLES, getInitialAgentData, AURA_VOICES, AGENT_PURPOSES, INDUSTRY_FEW_SHOT_PRESETS } from "./constants";
+import { AgentConfig, AgentPersonality, FewShotExample } from "../../types";
 import { toast } from "sonner";
 
 interface Step4PersonalityCommunicationProps {
@@ -898,6 +904,64 @@ export function Step4PersonalityCommunication({
     toast.success(`Reset to recommended settings for ${matchedPurpose.title}`);
   };
 
+  // Few-Shot Golden Dialogues State
+  const [showAddExample, setShowAddExample] = useState(false);
+  const [newExampleTitle, setNewExampleTitle] = useState("");
+  const [newExampleIndustry, setNewExampleIndustry] = useState("general");
+  const [newCallerTurn, setNewCallerTurn] = useState("");
+  const [newAssistantTurn, setNewAssistantTurn] = useState("");
+
+  const fewShotExamples: FewShotExample[] = agentData.few_shot_examples || (
+    INDUSTRY_FEW_SHOT_PRESETS.filter(p => p.industry === "support" || p.industry === "real_estate")
+  );
+
+  const handleAddFewShotExample = () => {
+    if (!newExampleTitle.trim() || !newCallerTurn.trim() || !newAssistantTurn.trim()) {
+      toast.error("Please fill in the title, caller turn, and assistant turn.");
+      return;
+    }
+    const newEx: FewShotExample = {
+      title: newExampleTitle.trim(),
+      industry: newExampleIndustry,
+      dialogue: [
+        { role: "user", content: newCallerTurn.trim() },
+        { role: "assistant", content: newAssistantTurn.trim() }
+      ]
+    };
+    setAgentData((prev) => ({
+      ...prev,
+      few_shot_examples: [...fewShotExamples, newEx]
+    }));
+    setNewExampleTitle("");
+    setNewCallerTurn("");
+    setNewAssistantTurn("");
+    setShowAddExample(false);
+    toast.success("Golden dialogue example added!");
+  };
+
+  const handleRemoveFewShotExample = (index: number) => {
+    const updated = fewShotExamples.filter((_, i) => i !== index);
+    setAgentData((prev) => ({
+      ...prev,
+      few_shot_examples: updated
+    }));
+  };
+
+  const handleLoadIndustryPreset = (industry: string) => {
+    const preset = INDUSTRY_FEW_SHOT_PRESETS.find((p) => p.industry === industry);
+    if (!preset) return;
+    const exists = fewShotExamples.some((e) => e.title === preset.title);
+    if (exists) {
+      toast.info("This preset example is already added.");
+      return;
+    }
+    setAgentData((prev) => ({
+      ...prev,
+      few_shot_examples: [...fewShotExamples, preset]
+    }));
+    toast.success(`Loaded "${preset.title}" preset!`);
+  };
+
   // Structured human-readable traits breakdown for right panel
   const getHumanReadableTraits = () => {
     const p = personality;
@@ -1580,6 +1644,200 @@ export function Step4PersonalityCommunication({
               </>
             )}
           </button>
+        </div>
+      </div>
+
+      {/* SECTION: Golden Conversation Examples (Few-Shot Dialogues) */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-[var(--color-border)]">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <MessageSquareQuote className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider flex items-center gap-1.5">
+                <span>Golden Conversation Examples (Few-Shot Dialogues)</span>
+                <InfoTooltip
+                  content="Inject 2–3 sample phone dialogues to anchor the AI's spoken cadence, empathy, and conciseness for flawless real-world role-play."
+                  position="top"
+                />
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+                Demonstrates ideal turn-by-turn conversational cadence tailored to your industry.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <Badge variant="primary" size="sm" className="text-[10px] font-mono font-bold">
+              {fewShotExamples.length} Active Dialogues
+            </Badge>
+            <button
+              type="button"
+              onClick={() => setShowAddExample(!showAddExample)}
+              className="px-2.5 py-1 text-xs font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded-[var(--radius-main,0.375rem)] transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Custom Dialogue</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 1-Click Industry Preset Loaders */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] mr-1">
+            Quick-Add Presets:
+          </span>
+          {[
+            { key: "real_estate", label: "Real Estate", icon: Building },
+            { key: "healthcare", label: "Healthcare", icon: Heart },
+            { key: "b2b_tech", label: "B2B Tech / AI", icon: Laptop },
+            { key: "automotive", label: "Automotive Service", icon: Wrench },
+            { key: "support", label: "Customer Support", icon: Inbox }
+          ].map((preset) => {
+            const PresetIcon = preset.icon;
+            return (
+              <button
+                key={preset.key}
+                type="button"
+                onClick={() => handleLoadIndustryPreset(preset.key)}
+                className="px-2.5 py-1 text-[11px] rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:bg-[var(--color-surface)] text-[var(--color-heading)] font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+              >
+                <PresetIcon className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <span>{preset.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Add Custom Example Modal / Inline Form */}
+        {showAddExample && (
+          <div className="p-3.5 bg-[var(--color-surface-muted)]/80 border border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.375rem)] space-y-2.5 animate-fade-in shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                Add Golden Dialogue Exchange
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddExample(false)}
+                className="text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div className="sm:col-span-8">
+                <input
+                  type="text"
+                  placeholder="Dialogue Title (e.g. Property Pricing Inquiry)"
+                  value={newExampleTitle}
+                  onChange={(e) => setNewExampleTitle(e.target.value)}
+                  className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+              <div className="sm:col-span-4">
+                <select
+                  value={newExampleIndustry}
+                  onChange={(e) => setNewExampleIndustry(e.target.value)}
+                  className="w-full h-8 px-2 text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                >
+                  <option value="general">General</option>
+                  <option value="real_estate">Real Estate</option>
+                  <option value="healthcare">Healthcare</option>
+                  <option value="b2b_tech">B2B Tech</option>
+                  <option value="automotive">Automotive</option>
+                  <option value="support">Support</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">Caller Turn (Input):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Hi, how much does the 3 BHK cost?"
+                  value={newCallerTurn}
+                  onChange={(e) => setNewCallerTurn(e.target.value)}
+                  className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] mt-0.5"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">AI Assistant Response (Spoken):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. That 3 BHK starts at 1.45 Crore with 2,100 sq ft. Would you like to schedule a site visit this Saturday?"
+                  value={newAssistantTurn}
+                  onChange={(e) => setNewAssistantTurn(e.target.value)}
+                  className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] mt-0.5"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={handleAddFewShotExample}
+                disabled={!newExampleTitle.trim() || !newCallerTurn.trim() || !newAssistantTurn.trim()}
+                className="px-3 py-1.5 text-xs font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer disabled:opacity-50"
+              >
+                Add Golden Dialogue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dialogues List */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
+          {fewShotExamples.length === 0 ? (
+            <div className="col-span-2 p-6 text-center text-xs text-[var(--color-muted)] border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]">
+              No custom few-shot dialogues configured yet. Click one of the quick presets above to load proven conversation flows.
+            </div>
+          ) : (
+            fewShotExamples.map((ex, idx) => (
+              <div
+                key={idx}
+                className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2 hover:border-[var(--color-primary)]/40 transition-colors shadow-2xs"
+              >
+                <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-[var(--color-border)]/60">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-xs font-bold text-[var(--color-heading)] truncate">{ex.title}</span>
+                    <Badge variant="outline" size="sm" className="text-[9px] py-0 px-1 capitalize text-[var(--color-muted)] shrink-0">
+                      {ex.industry.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFewShotExample(idx)}
+                    className="p-1 text-[var(--color-muted)] hover:text-red-500 transition-colors cursor-pointer shrink-0"
+                    title="Remove example"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  {ex.dialogue.map((turn, tIdx) => (
+                    <div
+                      key={tIdx}
+                      className={`p-2 rounded-[var(--radius-main,0.25rem)] text-[11px] leading-relaxed ${
+                        turn.role === "user"
+                          ? "bg-[var(--color-surface-muted)] text-[var(--color-heading)] font-medium border border-[var(--color-border)]/50"
+                          : "bg-[var(--color-primary)]/5 text-[var(--color-heading)] border border-[var(--color-primary)]/15"
+                      }`}
+                    >
+                      <strong className={turn.role === "user" ? "text-[var(--color-muted)]" : "text-[var(--color-primary)]"}>
+                        {turn.role === "user" ? "Caller" : "AI"}:
+                      </strong>{" "}
+                      <span>"{turn.content}"</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

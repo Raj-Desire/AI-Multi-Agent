@@ -956,8 +956,9 @@ export function Step6PromptInstructions({
             </div>
 
             {pendingDiff.summary && (
-              <p className="text-[11px] text-[var(--color-heading)] font-semibold bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)]">
-                💡 Summary: {pendingDiff.summary}
+              <p className="text-[11px] text-[var(--color-heading)] font-semibold bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                <span>Summary: {pendingDiff.summary}</span>
               </p>
             )}
 
