@@ -19,6 +19,10 @@ COSMOS_CONTAINER_CALLS = os.getenv("COSMOS_CONTAINER_CALLS", "calls")
 COSMOS_CONTAINER_THEMES = os.getenv("COSMOS_CONTAINER_THEMES", "theme_configs")
 COSMOS_CONTAINER_AGENTS = os.getenv("COSMOS_CONTAINER_AGENTS", "agents")
 COSMOS_CONTAINER_PROFILES = os.getenv("COSMOS_CONTAINER_PROFILES", "business_profiles")
+COSMOS_CONTAINER_PROSPECTS = os.getenv("COSMOS_CONTAINER_PROSPECTS", "prospects")
+COSMOS_CONTAINER_CAMPAIGNS = os.getenv("COSMOS_CONTAINER_CAMPAIGNS", "campaigns")
+COSMOS_CONTAINER_CAMPAIGN_MEMBERS = os.getenv("COSMOS_CONTAINER_CAMPAIGN_MEMBERS", "campaign_members")
+COSMOS_CONTAINER_CAMPAIGN_EVENTS = os.getenv("COSMOS_CONTAINER_CAMPAIGN_EVENTS", "campaign_events")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@desireai.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -31,6 +35,10 @@ _calls_container = None
 _themes_container = None
 _agents_container = None
 _profiles_container = None
+_prospects_container = None
+_campaigns_container = None
+_campaign_members_container = None
+_campaign_events_container = None
 
 def get_cosmos_client() -> Optional[CosmosClient]:
     global _client
@@ -143,9 +151,65 @@ def get_business_profiles_container():
         print(f"[CosmosDB Error] Failed to get business_profiles container: {e}")
         return None
 
+def get_prospects_container():
+    global _prospects_container
+    if _prospects_container is not None:
+        return _prospects_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _prospects_container = db.get_container_client(COSMOS_CONTAINER_PROSPECTS)
+        return _prospects_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get prospects container: {e}")
+        return None
+
+def get_campaigns_container():
+    global _campaigns_container
+    if _campaigns_container is not None:
+        return _campaigns_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _campaigns_container = db.get_container_client(COSMOS_CONTAINER_CAMPAIGNS)
+        return _campaigns_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get campaigns container: {e}")
+        return None
+
+def get_campaign_members_container():
+    global _campaign_members_container
+    if _campaign_members_container is not None:
+        return _campaign_members_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _campaign_members_container = db.get_container_client(COSMOS_CONTAINER_CAMPAIGN_MEMBERS)
+        return _campaign_members_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get campaign_members container: {e}")
+        return None
+
+def get_campaign_events_container():
+    global _campaign_events_container
+    if _campaign_events_container is not None:
+        return _campaign_events_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _campaign_events_container = db.get_container_client(COSMOS_CONTAINER_CAMPAIGN_EVENTS)
+        return _campaign_events_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get campaign_events container: {e}")
+        return None
+
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
-    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _profiles_container
+    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _profiles_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container
     client = get_cosmos_client()
     if not client:
         print("[CosmosDB Warning] Cosmos client unavailable during startup.")
@@ -160,6 +224,10 @@ def init_cosmos_db():
         _themes_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_THEMES, partition_key=PartitionKey(path="/organization_id"))
         _agents_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_AGENTS, partition_key=PartitionKey(path="/organization_id"))
         _profiles_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_PROFILES, partition_key=PartitionKey(path="/organization_id"))
+        _prospects_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_PROSPECTS, partition_key=PartitionKey(path="/organization_id"))
+        _campaigns_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CAMPAIGNS, partition_key=PartitionKey(path="/organization_id"))
+        _campaign_members_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CAMPAIGN_MEMBERS, partition_key=PartitionKey(path="/organization_id"))
+        _campaign_events_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CAMPAIGN_EVENTS, partition_key=PartitionKey(path="/organization_id"))
     except Exception as e:
         print(f"[CosmosDB Error] Container verification during startup: {e}")
 

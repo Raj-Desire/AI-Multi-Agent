@@ -205,6 +205,7 @@ export function VoiceAgentView() {
           setIsAgentSpeaking(false);
           setIsUserSpeaking(false);
           setActiveCallSid(null);
+          setCalling(false);
           setStatusMessage({
             type: "success",
             text: "AI phone call ended. All streaming resources and audio channels closed."

@@ -653,7 +653,7 @@ export function BusinessProfileView() {
                   </optgroup>
                   
                   {Array.from(new Set(allTimezones.map((t) => t.group))).map((grp) => (
-                    <optgroup key={grp} label={`🌍 ${grp}`}>
+                    <optgroup key={grp} label={grp}>
                       {allTimezones
                         .filter((t) => t.group === grp)
                         .map((tz) => (

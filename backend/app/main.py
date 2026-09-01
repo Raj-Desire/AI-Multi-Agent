@@ -17,8 +17,11 @@ from app.api.v1.theme import router as theme_router
 from app.api.v1.agents import router as agents_router
 from app.api.v1.voice import router as voice_router
 from app.api.v1.business_profile import router as business_profile_router
+from app.api.v1.prospects import router as prospects_router
+from app.api.v1.campaigns import router as campaigns_router
 from app.voice.gateway import router as gateway_router
 from app.core.cosmos import init_cosmos_db
+from app.services.campaign_dialer import campaign_dialer_engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +30,20 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(init_cosmos_db)
     except Exception as e:
         print(f"[Main Startup Error] Cosmos DB init failed: {e}")
+
+    # Start automated outbound dialer engine
+    try:
+        campaign_dialer_engine.start()
+    except Exception as e:
+        print(f"[Main Startup Error] Campaign dialer start failed: {e}")
+
     yield
+
+    # Graceful shutdown of dialer worker
+    try:
+        await campaign_dialer_engine.stop()
+    except Exception as e:
+        print(f"[Main Shutdown Error] Campaign dialer stop failed: {e}")
 
 app = FastAPI(
     title="AI Voice Platform API",
@@ -53,6 +69,8 @@ app.include_router(theme_router, prefix="/api/v1")
 app.include_router(business_profile_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(voice_router, prefix="/api/v1")
+app.include_router(prospects_router, prefix="/api/v1")
+app.include_router(campaigns_router, prefix="/api/v1")
 app.include_router(gateway_router, prefix="/api/v1")
 
 

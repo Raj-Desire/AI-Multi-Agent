@@ -16,13 +16,49 @@ import {
   Moon,
   Laptop,
   AlertTriangle,
+  Megaphone,
   Building2,
-  BookOpen
+  BookOpen,
+  UserCheck,
+  Contact
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
+
+export const TAB_ROUTE_MAP: Record<NavTab, string> = {
+  dashboard: "/dashboard",
+  ai_dialer: "/dialer",
+  voice_agent: "/agents",
+  campaigns: "/campaigns",
+  prospects: "/prospects",
+  business_profile: "/knowledge",
+  twilio: "/phone-settings",
+  theme: "/theme",
+  admin: "/team",
+  superadmin: "/superadmin",
+};
+
+export const ROUTE_TAB_MAP: Record<string, NavTab> = {
+  "/": "dashboard",
+  "/dashboard": "dashboard",
+  "/dialer": "ai_dialer",
+  "/ai-dialer": "ai_dialer",
+  "/agents": "voice_agent",
+  "/voice-agents": "voice_agent",
+  "/campaigns": "campaigns",
+  "/prospects": "prospects",
+  "/contacts": "prospects",
+  "/knowledge": "business_profile",
+  "/company-profile": "business_profile",
+  "/phone-settings": "twilio",
+  "/twilio": "twilio",
+  "/theme": "theme",
+  "/team": "admin",
+  "/admin": "admin",
+  "/superadmin": "superadmin",
+};
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -82,6 +118,20 @@ export function Sidebar({
           icon: Bot,
           visible: true,
           badge: "Live",
+        },
+        {
+          id: "campaigns",
+          label: "Campaigns",
+          icon: Megaphone,
+          visible: true,
+          badge: "Auto",
+        },
+        {
+          id: "prospects",
+          label: "Contacts & Leads",
+          icon: UserCheck,
+          visible: true,
+          badge: "CRM",
         },
       ],
     },

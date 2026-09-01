@@ -96,6 +96,11 @@ select option, select optgroup {
   color: var(--color-heading);
 }
 
+html {
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+}
+
 body {
   background-color: var(--color-background);
   color: var(--color-text);

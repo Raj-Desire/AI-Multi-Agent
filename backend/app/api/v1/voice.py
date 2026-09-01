@@ -40,6 +40,7 @@ class TestAICallRequest(BaseModel):
     agent_id: Optional[str] = "agt_receptionist_default"
     custom_prompt: Optional[str] = None
     agent_config_override: Optional[Dict[str, Any]] = None
+    prospect_id: Optional[str] = None
 
 
 class HangupCallRequest(BaseModel):
@@ -550,6 +551,27 @@ async def initiate_ai_test_call(
     """
     Places an outbound phone call via Twilio and immediately connects it to the AI Voice Gateway Media Stream.
     """
+    # 1. Strict Backend DNC Enforcement
+    from app.services.prospect_service import ProspectService
+    from app.repositories.prospect_repository import ProspectRepository
+    prospect_repo = ProspectRepository()
+    prospect_svc = ProspectService(prospect_repo, call_repo)
+
+    if await prospect_svc.is_dnc_blocked(ctx.organization_id, payload.to_number):
+        raise HTTPException(
+            status_code=400,
+            detail="Call blocked: This recipient is registered on your Do Not Contact (DNC) list."
+        )
+
+    # Lookup prospect details if available
+    matched_prospect = None
+    if payload.prospect_id:
+        matched_prospect = await prospect_repo.get_by_id(ctx.organization_id, payload.prospect_id)
+    else:
+        matched_prospect = await prospect_svc.get_prospect_by_phone(ctx.organization_id, payload.to_number)
+
+    resolved_prospect_id = matched_prospect.id if matched_prospect else payload.prospect_id
+
     tw_cfg = await twilio_repo.get_by_org(ctx.organization_id)
     if not tw_cfg:
         raise HTTPException(
@@ -603,6 +625,7 @@ async def initiate_ai_test_call(
         organization_id=ctx.organization_id,
         agent_id=agent_config.agent_id,
         user_id=ctx.user_id,
+        prospect_id=resolved_prospect_id,
         phone_number=selected_from,
         destination_number=payload.to_number,
         direction="outbound",
@@ -614,7 +637,7 @@ async def initiate_ai_test_call(
         agent_config_snapshot=agent_config.model_dump(mode="json")
     )
 
-    # Build TwiML containing <Connect><Stream> with fallback
+    # Build TwiML containing <Connect><Stream> with immediate hangup on stream completion
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
@@ -628,8 +651,6 @@ async def initiate_ai_test_call(
             <Parameter name="user_id" value="{ctx.user_id}" />
         </Stream>
     </Connect>
-    <Pause length="2"/>
-    <Say voice="Google.en-US-Neural2-F">The AI Voice connection has closed. Goodbye.</Say>
     <Hangup/>
 </Response>"""
 

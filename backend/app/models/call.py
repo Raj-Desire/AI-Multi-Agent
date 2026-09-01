@@ -16,6 +16,10 @@ class Call(BaseModel):
     prompt: Optional[str] = None
     status: str = "initiated"
 
+    # Prospect & Campaign Association
+    prospect_id: Optional[str] = None
+    campaign_id: Optional[str] = None
+
     # Agent Traceability & Immutable Snapshot
     agent_id: Optional[str] = None
     agent_version: Optional[int] = 1

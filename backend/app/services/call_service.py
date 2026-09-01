@@ -44,8 +44,31 @@ class CallService:
         to_number: str,
         from_number: Optional[str] = None,
         prompt: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
+        prospect_id: Optional[str] = None,
+        campaign_id: Optional[str] = None
     ) -> Call:
+        # 1. Strict Backend DNC Enforcement
+        from app.services.prospect_service import ProspectService
+        from app.repositories.prospect_repository import ProspectRepository
+        prospect_repo = ProspectRepository()
+        prospect_svc = ProspectService(prospect_repo, self.call_repo)
+
+        if await prospect_svc.is_dnc_blocked(ctx.organization_id, to_number):
+            raise HTTPException(
+                status_code=400,
+                detail="Call blocked: This recipient is registered on your Do Not Contact (DNC) list."
+            )
+
+        # Lookup prospect if not explicitly provided
+        matched_prospect = None
+        if prospect_id:
+            matched_prospect = await prospect_repo.get_by_id(ctx.organization_id, prospect_id)
+        else:
+            matched_prospect = await prospect_svc.get_prospect_by_phone(ctx.organization_id, to_number)
+
+        resolved_prospect_id = matched_prospect.id if matched_prospect else prospect_id
+
         tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
         if not tw_cfg:
             raise HTTPException(
@@ -73,10 +96,27 @@ class CallService:
         agent_version = agent_config.version if agent_config else 1
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
-        # Build dynamic speech / message
-        speech_text = prompt.strip() if prompt and prompt.strip() else (agent_config.greeting if agent_config else "Hello! Thank you for connecting with our AI voice platform. How can I assist you today?")
-        safe_speech = saxutils.escape(speech_text)
-        twiml_body = f"<Response><Say voice='Google.en-US-Neural2-F'>{safe_speech}</Say><Pause length='5'/></Response>"
+        # Build Media Stream TwiML connecting to Real-Time Voice Agent
+        base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
+        ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
+        stream_url = f"{ws_base}/api/v1/voice/stream"
+
+        twiml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{stream_url}">
+            <Parameter name="organization_id" value="{ctx.organization_id}" />
+            <Parameter name="agent_id" value="{resolved_agent_id}" />
+            <Parameter name="direction" value="outbound" />
+            <Parameter name="from" value="{selected_from}" />
+            <Parameter name="to" value="{to_number}" />
+            <Parameter name="user_id" value="{ctx.user_id}" />
+            <Parameter name="prospect_id" value="{resolved_prospect_id or ''}" />
+            <Parameter name="campaign_id" value="{campaign_id or ''}" />
+        </Stream>
+    </Connect>
+    <Hangup/>
+</Response>"""
 
         try:
             def _sync_twilio_call():
@@ -100,6 +140,8 @@ class CallService:
             id=f"cal_{uuid.uuid4().hex[:12]}",
             organization_id=ctx.organization_id,
             user_id=ctx.user_id,
+            prospect_id=resolved_prospect_id,
+            campaign_id=campaign_id,
             twilio_configuration_id=tw_cfg.id,
             call_sid=real_call_sid,
             from_number=selected_from,
@@ -115,7 +157,23 @@ class CallService:
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
         )
-        return await self.call_repo.save(call)
+        saved_call = await self.call_repo.save(call)
+
+        # Sync Prospect stats
+        if resolved_prospect_id:
+            try:
+                await prospect_svc.record_call_outcome(
+                    organization_id=ctx.organization_id,
+                    phone_number=to_number,
+                    call_id=saved_call.id,
+                    duration=duration,
+                    outcome="connected" if duration > 0 else "initiated",
+                    is_success=True
+                )
+            except Exception as pe:
+                print(f"[CallService Warning] Failed to update prospect metrics: {pe}")
+
+        return saved_call
 
     async def generate_voice_token(self, ctx: TenantContext, req_base_url: str = "") -> Dict[str, Any]:
         tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)

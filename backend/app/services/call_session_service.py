@@ -27,6 +27,8 @@ class CallSessionService:
         organization_id: str,
         agent_id: str,
         user_id: Optional[str] = None,
+        prospect_id: Optional[str] = None,
+        campaign_id: Optional[str] = None,
         phone_number: str = "",
         destination_number: str = "",
         direction: str = "outbound",
@@ -44,6 +46,8 @@ class CallSessionService:
             organization_id=organization_id,
             agent_id=agent_id,
             user_id=user_id,
+            prospect_id=prospect_id,
+            campaign_id=campaign_id,
             phone_number=phone_number,
             destination_number=destination_number,
             direction=direction,
@@ -217,6 +221,8 @@ class CallSessionService:
             id=session.call_session_id,
             organization_id=session.organization_id,
             user_id=session.user_id or "system",
+            prospect_id=session.prospect_id,
+            campaign_id=session.campaign_id,
             twilio_configuration_id=session.agent_id,
             call_sid=session.twilio_call_sid,
             from_number=session.phone_number or "Voice Gateway",
@@ -250,6 +256,42 @@ class CallSessionService:
             logger.info(f"Persisted CallSession {session.call_session_id} to database with Agent {session.agent_name} (v{agent_version}).")
         except Exception as e:
             logger.error(f"Error saving CallSession to database: {e}")
+
+        # Update Prospect Activity & Metrics
+        try:
+            from app.services.prospect_service import ProspectService
+            from app.repositories.prospect_repository import ProspectRepository
+            prospect_svc = ProspectService(ProspectRepository(), self.call_repo)
+            await prospect_svc.record_call_outcome(
+                organization_id=session.organization_id,
+                phone_number=session.destination_number,
+                call_id=session.call_session_id,
+                duration=session.call_duration,
+                outcome=session.outcome or analytics_data.get("interest_level"),
+                is_success=(final_status == "completed" or session.call_duration > 0)
+            )
+        except Exception as p_err:
+            logger.warning(f"[CallSessionService] Could not sync prospect call outcome: {p_err}")
+
+        # Update Campaign Member Activity if this call originated from an automated campaign
+        if session.campaign_id and session.prospect_id:
+            try:
+                from app.services.campaign_service import CampaignService
+                from app.repositories.campaign_repository import CampaignMemberRepository
+                mem_repo = CampaignMemberRepository()
+                target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id)
+                if target_mem:
+                    cmp_svc = CampaignService()
+                    await cmp_svc.record_call_outcome(
+                        campaign_id=session.campaign_id,
+                        member_id=target_mem.id,
+                        call_id=session.call_session_id,
+                        duration=session.call_duration,
+                        outcome=session.outcome or analytics_data.get("interest_level"),
+                        is_success=(final_status == "completed" or session.call_duration > 0)
+                    )
+            except Exception as cmp_err:
+                logger.warning(f"[CallSessionService] Could not sync campaign member outcome: {cmp_err}")
 
         # Broadcast CallEnded event
         await telemetry_broadcaster.broadcast(VoiceEventMessage(

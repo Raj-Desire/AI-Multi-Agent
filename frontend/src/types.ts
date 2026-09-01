@@ -437,3 +437,291 @@ export interface VoiceRulesResponse {
   updated_at?: string;
 }
 
+// -------------------------------------------------------------
+// Prospect & Contact Management Types
+// -------------------------------------------------------------
+export type ProspectStatus =
+  | "New"
+  | "Contacted"
+  | "Connected"
+  | "Interested"
+  | "Not Interested"
+  | "Callback Requested"
+  | "Qualified"
+  | "Converted"
+  | "Do Not Contact"
+  | "Invalid";
+
+export type ProspectSource =
+  | "Manual"
+  | "CSV Import"
+  | "API"
+  | "Web Form"
+  | "Campaign"
+  | "Inbound Call"
+  | "Other";
+
+export interface Prospect {
+  id: string;
+  organization_id: string;
+  first_name?: string;
+  last_name?: string;
+  full_name: string;
+  phone_number: string;
+  normalized_phone: string;
+  email?: string;
+  alternate_phone?: string;
+  company?: string;
+  job_title?: string;
+  industry?: string;
+  website?: string;
+  status: ProspectStatus;
+  source: ProspectSource;
+  group_name?: string;
+  tags: string[];
+  notes?: string;
+  assigned_owner?: string;
+  custom_fields: Record<string, any>;
+  last_contacted_at?: string;
+  next_follow_up_at?: string;
+  total_calls: number;
+  successful_calls: number;
+  failed_calls: number;
+  last_call_id?: string;
+  last_call_outcome?: string;
+  is_dnc: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  updated_by?: string;
+}
+
+export interface ProspectPaginationResponse {
+  items: Prospect[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface ProspectFilterParams {
+  search?: string;
+  status?: string;
+  tag?: string;
+  source?: string;
+  group_name?: string;
+  assigned_owner?: string;
+  page?: number;
+  page_size?: number;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
+}
+
+export interface DistinctGroupsResponse {
+  groups: string[];
+}
+
+export interface CSVValidateRowDetail {
+  row_number: number;
+  is_valid: boolean;
+  errors: string[];
+  is_duplicate: boolean;
+  duplicate_type?: string;
+  data: Record<string, any>;
+}
+
+export interface CSVValidateResponse {
+  total_rows: number;
+  valid_count: number;
+  invalid_count: number;
+  duplicate_count: number;
+  sample_rows: CSVValidateRowDetail[];
+  all_errors: Array<{
+    row: number;
+    phone: string;
+    errors: string[];
+  }>;
+}
+
+export interface CSVImportSummaryResponse {
+  total_rows: number;
+  imported_count: number;
+  updated_count: number;
+  skipped_count: number;
+  invalid_count: number;
+  errors: Array<{
+    row: number;
+    phone: string;
+    reason: string;
+  }>;
+}
+
+// ------------------------------------------------------------------
+// Campaign & Automated Outbound Dialer Domain Types
+// ------------------------------------------------------------------
+
+export type CampaignStatus =
+  | "draft"
+  | "scheduled"
+  | "running"
+  | "paused"
+  | "completed"
+  | "stopped"
+  | "failed";
+
+export type CampaignMemberStatus =
+  | "queued"
+  | "calling"
+  | "completed"
+  | "retrying"
+  | "failed"
+  | "skipped_dnc"
+  | "skipped_invalid";
+
+export type CampaignEventType =
+  | "created"
+  | "updated"
+  | "started"
+  | "paused"
+  | "resumed"
+  | "stopped"
+  | "completed"
+  | "failed"
+  | "call_dispatched"
+  | "call_completed"
+  | "retry_scheduled"
+  | "members_added";
+
+export interface CampaignCallingConfig {
+  agent_id: string;
+  caller_phone_number: string;
+  max_concurrent_calls: number;
+  max_attempts_per_prospect: number;
+  retry_delay_minutes: number;
+  call_timeout_seconds: number;
+}
+
+export interface CampaignSchedule {
+  start_date?: string | null;
+  end_date?: string | null;
+  calling_days: string[];
+  calling_start_time: string;
+  calling_end_time: string;
+  timezone: string;
+}
+
+export interface CampaignStats {
+  total_prospects: number;
+  queued: number;
+  calling: number;
+  completed: number;
+  connected: number;
+  failed: number;
+  no_answer: number;
+  busy: number;
+  voicemail: number;
+  callbacks: number;
+  interested: number;
+  not_interested: number;
+  dnc: number;
+  connection_rate: number;
+  completion_rate: number;
+  avg_duration_seconds: number;
+}
+
+export interface Campaign {
+  id: string;
+  organization_id: string;
+  name: string;
+  description?: string | null;
+  status: CampaignStatus;
+  calling_config: CampaignCallingConfig;
+  schedule: CampaignSchedule;
+  stats: CampaignStats;
+  last_dispatched_at?: string | null;
+  completed_at?: string | null;
+  stopped_at?: string | null;
+  failure_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+}
+
+export interface CampaignMember {
+  id: string;
+  campaign_id: string;
+  organization_id: string;
+  prospect_id: string;
+  prospect_name: string;
+  phone_number: string;
+  normalized_phone: string;
+  status: CampaignMemberStatus;
+  attempts: number;
+  last_attempt_at?: string | null;
+  next_attempt_at?: string | null;
+  last_call_id?: string | null;
+  last_call_outcome?: string | null;
+  last_call_duration: number;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CampaignEvent {
+  id: string;
+  campaign_id: string;
+  organization_id: string;
+  event_type: CampaignEventType;
+  message: string;
+  details?: Record<string, any> | null;
+  timestamp: string;
+}
+
+export interface ProspectSelectionFilter {
+  select_all?: boolean;
+  prospect_ids?: string[];
+  tags?: string[];
+  statuses?: string[];
+  sources?: string[];
+  exclude_dnc?: boolean;
+}
+
+export interface CreateCampaignPayload {
+  name: string;
+  description?: string;
+  calling_config: CampaignCallingConfig;
+  schedule: CampaignSchedule;
+  prospect_selection: ProspectSelectionFilter;
+  start_immediately?: boolean;
+}
+
+export interface UpdateCampaignPayload {
+  name?: string;
+  description?: string;
+  calling_config?: Partial<CampaignCallingConfig>;
+  schedule?: Partial<CampaignSchedule>;
+}
+
+export interface CampaignPaginationResponse {
+  items: Campaign[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface CampaignMemberListResponse {
+  items: CampaignMember[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+
+

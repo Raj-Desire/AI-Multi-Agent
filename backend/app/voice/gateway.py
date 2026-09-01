@@ -433,6 +433,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                         organization_id=org_id,
                         agent_id=agent_config.agent_id,
                         user_id=user_id,
+                        prospect_id=custom_params.get("prospect_id"),
+                        campaign_id=custom_params.get("campaign_id"),
                         phone_number=from_num,
                         destination_number=to_num,
                         direction=direction,
@@ -547,6 +549,14 @@ async def voice_stream_websocket(websocket: WebSocket):
                 logger.error(f"[VoiceGateway] Error closing Deepgram client: {close_err}")
             finally:
                 deepgram_client = None
+
+        # Proactively terminate Twilio phone call via REST API to ensure no billing or lingering phone line
+        if session and session.twilio_call_sid and session.organization_id:
+            try:
+                logger.info(f"[VoiceGateway] Ensuring Twilio call {session.twilio_call_sid} is terminated on stream disconnect...")
+                await twilio_service.end_call(session.organization_id, session.twilio_call_sid)
+            except Exception as tw_err:
+                logger.debug(f"[VoiceGateway] Notice on ending Twilio call: {tw_err}")
 
         if session:
             final_status = "failed" if session.last_error and session.error_type == "deepgram_connection_error" else "completed"

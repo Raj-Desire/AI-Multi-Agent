@@ -8,7 +8,7 @@ export interface ModalProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl";
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -39,47 +39,49 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   const maxWidthClasses = {
-    sm: "max-w-sm",
-    md: "max-w-md",
-    lg: "max-w-lg",
-    xl: "max-w-xl",
-    "2xl": "max-w-2xl",
+    sm: "max-w-md",
+    md: "max-w-lg",
+    lg: "max-w-2xl",
+    xl: "max-w-4xl",
+    "2xl": "max-w-5xl",
+    "3xl": "max-w-6xl",
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 md:p-6 animate-in fade-in duration-150">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Card */}
+      {/* Modal Card with Flex Col and Max-Height */}
       <div
-        className={`relative w-full ${maxWidthClasses[maxWidth]} bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-lg z-10 overflow-hidden text-left`}
+        className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[92vh] flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl z-10 text-left`}
       >
-        {/* Header */}
-        <div className="px-5 py-3.5 border-b border-[var(--color-border)] flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-[var(--color-heading)]">{title}</h3>
+        {/* Header (Pinned) */}
+        <div className="px-5 py-3.5 border-b border-[var(--color-border)] flex items-center justify-between shrink-0 bg-[var(--color-surface)]">
+          <div className="pr-4 min-w-0">
+            <h3 className="text-sm font-semibold text-[var(--color-heading)] truncate">{title}</h3>
             {description && (
-              <p className="text-xs text-[var(--color-muted)] mt-0.5">{description}</p>
+              <p className="text-xs text-[var(--color-muted)] mt-0.5 line-clamp-2">{description}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
+            className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer shrink-0"
+            title="Close (Esc)"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5">{children}</div>
+        {/* Body (Scrollable with proper padding) */}
+        <div className="p-5 overflow-y-auto flex-1 min-h-0">{children}</div>
 
-        {/* Footer */}
+        {/* Footer (Pinned if provided) */}
         {footer && (
-          <div className="px-5 py-3 bg-[var(--color-surface-muted)]/50 border-t border-[var(--color-border)] flex items-center justify-end gap-2.5">
+          <div className="px-5 py-3 bg-[var(--color-surface-muted)]/50 border-t border-[var(--color-border)] flex items-center justify-end gap-2.5 shrink-0">
             {footer}
           </div>
         )}

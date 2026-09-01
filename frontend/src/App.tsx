@@ -1,4 +1,12 @@
 import React, { useState } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate
+} from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { LoginPage } from "./components/LoginPage";
@@ -11,7 +19,9 @@ import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
 import { AgentManagementView } from "./components/AgentManagementView";
 import { BusinessProfileView } from "./components/BusinessProfileView";
-import { Sidebar, NavTab } from "./components/Sidebar";
+import { ProspectsView } from "./components/prospects/ProspectsView";
+import { CampaignsView } from "./components/campaigns/CampaignsView";
+import { Sidebar, NavTab, TAB_ROUTE_MAP, ROUTE_TAB_MAP } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
 import { Modal } from "./components/ui/Modal";
 import { Button } from "./components/ui/Button";
@@ -21,9 +31,11 @@ import {
   PhoneCall,
   PhoneOutgoing,
   Bot,
+  Megaphone,
   Sliders,
   Palette,
   Users,
+  UserCheck,
   ShieldAlert,
   Building2,
   AlertCircle,
@@ -32,25 +44,39 @@ import {
 
 function MainContent() {
   const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin } = useAuth();
-  const { draftTheme, isThemeReady } = useTheme();
-  const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
+  const { draftTheme } = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // Unsaved Voice Agent Changes Global Interception State
+  // Unsaved Editor Changes Global Interception State (Agents & Campaigns)
   const [isAgentEditorDirty, setIsAgentEditorDirty] = useState(false);
+  const [isCampaignEditorDirty, setIsCampaignEditorDirty] = useState(false);
   const [saveDraftFn, setSaveDraftFn] = useState<(() => Promise<void>) | null>(null);
   const [discardDraftFn, setDiscardDraftFn] = useState<(() => void) | null>(null);
-  const [pendingTabChange, setPendingTabChange] = useState<NavTab | null>(null);
+  const [pendingTargetRoute, setPendingTargetRoute] = useState<string | null>(null);
   const [showNavConfirmModal, setShowNavConfirmModal] = useState(false);
+  const [navConfirmSource, setNavConfirmSource] = useState<"agent" | "campaign">("agent");
+
+  // Determine current active NavTab from URL path
+  const currentPath = location.pathname.toLowerCase().replace(/\/$/, "") || "/";
+  const activeTab: NavTab = ROUTE_TAB_MAP[currentPath] || "dashboard";
 
   const handleTabSelect = (tab: NavTab) => {
+    const targetRoute = TAB_ROUTE_MAP[tab] || "/dashboard";
     if (activeTab === "voice_agent" && isAgentEditorDirty && tab !== "voice_agent") {
-      setPendingTabChange(tab);
+      setNavConfirmSource("agent");
+      setPendingTargetRoute(targetRoute);
+      setShowNavConfirmModal(true);
+    } else if (activeTab === "campaigns" && isCampaignEditorDirty && tab !== "campaigns") {
+      setNavConfirmSource("campaign");
+      setPendingTargetRoute(targetRoute);
       setShowNavConfirmModal(true);
     } else {
-      setActiveTab(tab);
+      navigate(targetRoute);
     }
   };
 
@@ -97,6 +123,18 @@ function MainContent() {
           title: "AI Voice Agents",
           sub: "Configure, test, and manage your organization's AI voice agents.",
           icon: Bot,
+        };
+      case "campaigns":
+        return {
+          title: "Outbound Campaigns",
+          sub: "Automated dialer scheduler, audience queues & AI voice dispatching",
+          icon: Megaphone,
+        };
+      case "prospects":
+        return {
+          title: "Contacts & Leads",
+          sub: "Unified audience registry, custom attributes, DNC compliance & calling",
+          icon: UserCheck,
         };
       case "business_profile":
         return {
@@ -211,46 +249,86 @@ function MainContent() {
           </div>
         </header>
 
-        {/* Dynamic Main View - Full Width & Fully Responsive */}
-        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 transition-all text-left">
-          {currentTab === "dashboard" ? (
-            <DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />
-          ) : currentTab === "ai_dialer" ? (
-            <AIAgentDialerView
-              initialAgentId={activeDialerAgentId}
-              onNavigateSettings={() => handleTabSelect("twilio")}
-              onNavigateAgents={() => handleTabSelect("voice_agent")}
+        {/* Dynamic Route View - Full Width & Fully Responsive */}
+        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/dashboard"
+              element={<DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />}
             />
-          ) : currentTab === "voice_agent" ? (
-            <AgentManagementView
-              onNavigateToDialer={(agentId) => {
-                setActiveDialerAgentId(agentId);
-                handleTabSelect("ai_dialer");
-              }}
-              onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
-                setIsAgentEditorDirty(isDirty);
-                setSaveDraftFn(() => handleSaveDraft);
-                setDiscardDraftFn(() => handleDiscard);
-              }}
+            <Route
+              path="/dialer"
+              element={
+                <AIAgentDialerView
+                  initialAgentId={activeDialerAgentId}
+                  onNavigateSettings={() => handleTabSelect("twilio")}
+                  onNavigateAgents={() => handleTabSelect("voice_agent")}
+                />
+              }
             />
-          ) : currentTab === "business_profile" ? (
-            <BusinessProfileView />
-          ) : currentTab === "twilio" ? (
-            <TwilioSettingsView />
-          ) : currentTab === "theme" ? (
-            <ThemeStudioView />
-          ) : currentTab === "superadmin" ? (
-            <SuperAdminPanel />
-          ) : (
-            <AdminPanel />
-          )}
+            <Route path="/ai-dialer" element={<Navigate to="/dialer" replace />} />
+            <Route
+              path="/agents"
+              element={
+                <AgentManagementView
+                  onNavigateToDialer={(agentId) => {
+                    setActiveDialerAgentId(agentId);
+                    handleTabSelect("ai_dialer");
+                  }}
+                  onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
+                    setIsAgentEditorDirty(isDirty);
+                    setSaveDraftFn(() => handleSaveDraft);
+                    setDiscardDraftFn(() => handleDiscard);
+                  }}
+                />
+              }
+            />
+            <Route path="/voice-agents" element={<Navigate to="/agents" replace />} />
+            <Route
+              path="/campaigns"
+              element={
+                <CampaignsView
+                  onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
+                    setIsCampaignEditorDirty(isDirty);
+                    setSaveDraftFn(() => handleSaveDraft);
+                    setDiscardDraftFn(() => handleDiscard);
+                  }}
+                />
+              }
+            />
+            <Route path="/prospects" element={<ProspectsView />} />
+            <Route path="/contacts" element={<Navigate to="/prospects" replace />} />
+            <Route path="/knowledge" element={<BusinessProfileView />} />
+            <Route path="/company-profile" element={<Navigate to="/knowledge" replace />} />
+            <Route
+              path="/phone-settings"
+              element={isAdmin ? <TwilioSettingsView /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route path="/twilio" element={<Navigate to="/phone-settings" replace />} />
+            <Route
+              path="/theme"
+              element={isAdmin ? <ThemeStudioView /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route
+              path="/team"
+              element={isAdmin ? <AdminPanel /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route path="/admin" element={<Navigate to="/team" replace />} />
+            <Route
+              path="/superadmin"
+              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to="/dashboard" replace />}
+            />
+            {/* Catch all route - redirect to dashboard */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </main>
 
-        {/* Unsaved Agent Navigation Confirmation Modal */}
+        {/* Unsaved Agent / Campaign Navigation Confirmation Modal */}
         <Modal
           isOpen={showNavConfirmModal}
           onClose={() => setShowNavConfirmModal(false)}
-          title="Unsaved Voice Agent Changes"
+          title={navConfirmSource === "campaign" ? "Unsaved Campaign Setup" : "Unsaved Voice Agent Changes"}
           maxWidth="sm"
         >
           <div className="space-y-4 text-xs">
@@ -261,7 +339,9 @@ function MainContent() {
                   Are you sure you want to leave this page?
                 </p>
                 <p className="text-[var(--color-muted)] leading-relaxed">
-                  Your voice agent changes are not saved yet. Would you like to save this as a draft before navigating away, or discard your current edits?
+                  {navConfirmSource === "campaign"
+                    ? "Your campaign setup has unsaved changes. Would you like to save this campaign as a draft before navigating away, or discard your current setup?"
+                    : "Your voice agent changes are not saved yet. Would you like to save this as a draft before navigating away, or discard your current edits?"}
                 </p>
               </div>
             </div>
@@ -272,7 +352,7 @@ function MainContent() {
                 size="sm"
                 onClick={() => {
                   setShowNavConfirmModal(false);
-                  setPendingTabChange(null);
+                  setPendingTargetRoute(null);
                 }}
                 className="w-full sm:w-auto cursor-pointer"
               >
@@ -285,8 +365,9 @@ function MainContent() {
                   if (discardDraftFn) discardDraftFn();
                   setShowNavConfirmModal(false);
                   setIsAgentEditorDirty(false);
-                  if (pendingTabChange) setActiveTab(pendingTabChange);
-                  setPendingTabChange(null);
+                  setIsCampaignEditorDirty(false);
+                  if (pendingTargetRoute) navigate(pendingTargetRoute);
+                  setPendingTargetRoute(null);
                 }}
                 className="w-full sm:w-auto cursor-pointer"
               >
@@ -301,8 +382,9 @@ function MainContent() {
                   }
                   setShowNavConfirmModal(false);
                   setIsAgentEditorDirty(false);
-                  if (pendingTabChange) setActiveTab(pendingTabChange);
-                  setPendingTabChange(null);
+                  setIsCampaignEditorDirty(false);
+                  if (pendingTargetRoute) navigate(pendingTargetRoute);
+                  setPendingTargetRoute(null);
                 }}
                 leftIcon={<Save className="w-3.5 h-3.5" />}
                 className="w-full sm:w-auto cursor-pointer font-semibold"
@@ -331,20 +413,22 @@ function MainContent() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <MainContent />
-        <Toaster
-          position="top-right"
-          richColors
-          closeButton
-          toastOptions={{
-            duration: 4000,
-            className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
-          }}
-        />
-      </ThemeProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <ThemeProvider>
+          <MainContent />
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            toastOptions={{
+              duration: 4000,
+              className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
+            }}
+          />
+        </ThemeProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

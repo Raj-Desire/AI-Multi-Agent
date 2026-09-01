@@ -19,6 +19,7 @@ call_service = CallService(twilio_repo, call_repo)
 def get_twilio_service() -> TwilioService:
     return twilio_service
 
+@router.get("", response_model=ApiResponse[Optional[TwilioConfigResponse]])
 @router.get("/configuration", response_model=ApiResponse[Optional[TwilioConfigResponse]])
 async def get_configuration(
     organization_id: Optional[str] = None,
