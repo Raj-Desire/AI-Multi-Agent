@@ -258,7 +258,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
   }
 
   return (
-    <div className="space-y-6 text-left max-w-7xl mx-auto">
+    <div className="space-y-6 text-left max-w-7xl mx-auto "> 
       {/* Top Header & Metrics Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
         <div>
@@ -279,7 +279,6 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             disabled={isLoading || isRefreshing}
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? "animate-spin" : ""}`} />
-            Refresh
           </Button>
 
           <Button
@@ -288,7 +287,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             onClick={() => setIsCreatingCampaign(true)}
             className="bg-[var(--color-primary)] text-white shadow-xs"
           >
-            <Plus className="w-4 h-4 mr-1.5" />
+            {/* <Plus className="w-4 h-4 mr-1.5" /> */}
             Create Campaign
           </Button>
         </div>
@@ -394,7 +393,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             onClick={() => setIsCreatingCampaign(true)}
             className="bg-[var(--color-primary)] text-white mt-2"
           >
-            <Plus className="w-4 h-4 mr-1.5" />
+            {/* <Plus className="w-4 h-4 mr-1.5" /> */}
             Create Campaign
           </Button>
         </div>

@@ -118,14 +118,31 @@ class CallService:
     <Hangup/>
 </Response>"""
 
+        # Add Twilio StatusCallback URL for accurate PSTN status tracking (busy, no-answer, failed, completed)
+        status_callback_params = []
+        if campaign_id:
+            status_callback_params.append(f"campaign_id={campaign_id}")
+        if resolved_prospect_id:
+            status_callback_params.append(f"prospect_id={resolved_prospect_id}")
+        if ctx.organization_id:
+            status_callback_params.append(f"organization_id={ctx.organization_id}")
+
+        query_str = f"?{'&'.join(status_callback_params)}" if status_callback_params else ""
+        status_callback_url = f"{base_url}/api/v1/twilio/voice/status{query_str}" if base_url and not ("localhost" in base_url or "127.0.0.1" in base_url) else None
+
         try:
             def _sync_twilio_call():
                 client = Client(tw_cfg.account_sid, auth_token)
-                return client.calls.create(
-                    to=to_number,
-                    from_=selected_from,
-                    twiml=twiml_body
-                )
+                create_kwargs: Dict[str, Any] = {
+                    "to": to_number,
+                    "from_": selected_from,
+                    "twiml": twiml_body,
+                }
+                if status_callback_url:
+                    create_kwargs["status_callback"] = status_callback_url
+                    create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed", "busy", "no-answer", "canceled"]
+                    create_kwargs["status_callback_method"] = "POST"
+                return client.calls.create(**create_kwargs)
 
             tw_call = await asyncio.to_thread(_sync_twilio_call)
             real_call_sid = tw_call.sid

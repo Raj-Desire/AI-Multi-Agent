@@ -46,11 +46,15 @@ class CampaignRepository:
             if not container:
                 return None
 
-            query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
-            params = [
-                {"name": "@id", "value": campaign_id},
-                {"name": "@organization_id", "value": organization_id}
-            ]
+            if organization_id == "global":
+                query = "SELECT * FROM c WHERE c.id = @id"
+                params = [{"name": "@id", "value": campaign_id}]
+            else:
+                query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
+                params = [
+                    {"name": "@id", "value": campaign_id},
+                    {"name": "@organization_id", "value": organization_id}
+                ]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 if items:
@@ -195,11 +199,15 @@ class CampaignMemberRepository:
             if not container:
                 return None
 
-            query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
-            params = [
-                {"name": "@id", "value": member_id},
-                {"name": "@organization_id", "value": organization_id}
-            ]
+            if organization_id == "global":
+                query = "SELECT * FROM c WHERE c.id = @id"
+                params = [{"name": "@id", "value": member_id}]
+            else:
+                query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
+                params = [
+                    {"name": "@id", "value": member_id},
+                    {"name": "@organization_id", "value": organization_id}
+                ]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 if items:
@@ -344,11 +352,18 @@ class CampaignMemberRepository:
                 if st == "queued":
                     eligible.append(m)
                 elif st == "retrying":
-                    if m.next_attempt_at and m.next_attempt_at <= now:
-                        eligible.append(m)
+                    if m.next_attempt_at:
+                        next_dt = m.next_attempt_at if m.next_attempt_at.tzinfo else m.next_attempt_at.replace(tzinfo=timezone.utc)
+                        if next_dt <= now:
+                            eligible.append(m)
 
             # Sort queued first, then earlier next_attempt_at
-            eligible.sort(key=lambda x: x.next_attempt_at or datetime.min.replace(tzinfo=timezone.utc))
+            def _sort_key(x: CampaignMember):
+                if not x.next_attempt_at:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+                return x.next_attempt_at if x.next_attempt_at.tzinfo else x.next_attempt_at.replace(tzinfo=timezone.utc)
+
+            eligible.sort(key=_sort_key)
             return eligible[:limit]
 
         return await asyncio.to_thread(_sync_eligible)

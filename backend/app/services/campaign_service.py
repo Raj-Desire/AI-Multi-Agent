@@ -382,14 +382,15 @@ class CampaignService:
     # -------------------------------------------------------------
     async def start_campaign(self, ctx: TenantContext, campaign_id: str) -> Campaign:
         campaign = await self.get_campaign(ctx, campaign_id)
-        self._validate_state_transition(campaign.status, CampaignStatus.RUNNING)
+        if campaign.status != CampaignStatus.RUNNING:
+            self._validate_state_transition(campaign.status, CampaignStatus.RUNNING)
 
         # Refresh stats and verify queue is not empty
         await self.recalculate_campaign_stats(campaign_id)
         members = await self.member_repo.get_all_by_campaign(campaign_id)
         pending = [
             m for m in members
-            if str(getattr(m.status, "value", m.status)).lower() in ["queued", "retrying"]
+            if str(getattr(m.status, "value", m.status)).lower() in ["queued", "retrying", "calling"]
         ]
         if not pending:
             raise HTTPException(
@@ -397,18 +398,20 @@ class CampaignService:
                 detail="Cannot start campaign: All prospects have already completed or exhausted retry attempts."
             )
 
-        campaign.status = CampaignStatus.RUNNING
-        campaign.updated_at = datetime.now(timezone.utc)
-        campaign.updated_by = ctx.email or ctx.user_id
-        saved = await self.campaign_repo.save(campaign)
+        if campaign.status != CampaignStatus.RUNNING:
+            campaign.status = CampaignStatus.RUNNING
+            campaign.updated_at = datetime.now(timezone.utc)
+            campaign.updated_by = ctx.email or ctx.user_id
+            saved = await self.campaign_repo.save(campaign)
 
-        await self.event_repo.log_event(
-            organization_id=ctx.organization_id,
-            campaign_id=campaign_id,
-            event_type=CampaignEventType.STARTED,
-            message=f"Campaign '{campaign.name}' started by {ctx.email or ctx.user_id}."
-        )
-        return saved
+            await self.event_repo.log_event(
+                organization_id=ctx.organization_id,
+                campaign_id=campaign_id,
+                event_type=CampaignEventType.STARTED,
+                message=f"Campaign '{campaign.name}' started by {ctx.email or ctx.user_id}."
+            )
+            return saved
+        return campaign
 
     async def pause_campaign(self, ctx: TenantContext, campaign_id: str) -> Campaign:
         campaign = await self.get_campaign(ctx, campaign_id)
@@ -576,9 +579,9 @@ class CampaignService:
 
             # Outcome tallies
             outcome = (m.last_call_outcome or "").lower()
-            if "connected" in outcome or outcome == "interested" or outcome == "qualified" or outcome == "converted":
+            if "connected" in outcome or outcome in ["interested", "qualified", "converted", "completed"]:
                 stats.connected += 1
-            elif "no_answer" in outcome or "no-answer" in outcome:
+            elif any(w in outcome for w in ["no_answer", "no-answer", "no answer", "not_answer", "not answered", "not answer", "unanswered"]):
                 stats.no_answer += 1
             elif "busy" in outcome:
                 stats.busy += 1

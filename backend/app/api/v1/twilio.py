@@ -224,3 +224,137 @@ async def voice_twiml_webhook(request: Request):
         print(f"[Twilio Voice TwiML Error] {e}")
         fallback_xml = '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred generating call instructions.</Say><Hangup/></Response>'
         return Response(content=fallback_xml, media_type="application/xml")
+
+
+@router.api_route("/voice/status", methods=["GET", "POST"])
+async def voice_status_webhook(request: Request):
+    """
+    Public webhook endpoint invoked by Twilio on call status transitions
+    (initiated, ringing, answered, in-progress, completed, busy, no-answer, failed, canceled).
+    Synchronizes real-time call states across Call, Prospect, and Campaign entities.
+    """
+    form_data = {}
+    if request.method == "POST":
+        try:
+            form_data = await request.form()
+        except Exception:
+            form_data = {}
+
+    call_sid = form_data.get("CallSid") or request.query_params.get("CallSid")
+    call_status = (form_data.get("CallStatus") or request.query_params.get("CallStatus") or "").lower().strip()
+    call_duration_str = form_data.get("CallDuration") or request.query_params.get("CallDuration") or "0"
+    call_duration = int(call_duration_str) if str(call_duration_str).isdigit() else 0
+
+    campaign_id = request.query_params.get("campaign_id") or form_data.get("campaign_id")
+    prospect_id = request.query_params.get("prospect_id") or form_data.get("prospect_id")
+    org_id = request.query_params.get("organization_id") or form_data.get("organization_id")
+
+    if not call_sid:
+        return Response(content="<Response/>", media_type="application/xml")
+
+    try:
+        # Find Call record by call_sid
+        existing_call = await call_repo.get_by_call_sid(call_sid)
+        if not existing_call:
+            # Try memory search or cross-partition lookup
+            existing_call = await call_repo.get_by_id("global", call_sid)
+
+        target_campaign_id = campaign_id or (existing_call.campaign_id if existing_call else None)
+        target_prospect_id = prospect_id or (existing_call.prospect_id if existing_call else None)
+        target_org_id = org_id or (existing_call.organization_id if existing_call else "global")
+
+        # Distinguish Non-Terminal (initiated, ringing, in-progress) vs Terminal (completed, busy, no-answer, failed, canceled)
+        INTERMEDIATE_STATUSES = {"queued", "initiated", "ringing", "in-progress", "answered"}
+        TERMINAL_STATUSES = {"completed", "busy", "no-answer", "no_answer", "failed", "canceled"}
+
+        if existing_call:
+            existing_call.status = call_status
+            if call_duration > 0:
+                existing_call.duration = call_duration
+            if target_campaign_id and not existing_call.campaign_id:
+                existing_call.campaign_id = target_campaign_id
+            if target_prospect_id and not existing_call.prospect_id:
+                existing_call.prospect_id = target_prospect_id
+
+        if call_status in INTERMEDIATE_STATUSES:
+            if existing_call:
+                if call_status in ["in-progress", "answered"]:
+                    existing_call.outcome = "connected"
+                await call_repo.save(existing_call)
+
+            # Ensure Campaign Member status is marked as CALLING during active ringing/progress
+            if target_campaign_id and target_prospect_id:
+                from app.models.campaign import CampaignMemberStatus
+                from app.repositories.campaign_repository import CampaignMemberRepository
+                mem_repo = CampaignMemberRepository()
+                target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
+                if target_mem and target_mem.status in [CampaignMemberStatus.QUEUED, CampaignMemberStatus.RETRYING]:
+                    target_mem.status = CampaignMemberStatus.CALLING
+                    await mem_repo.save(target_mem)
+
+        elif call_status in TERMINAL_STATUSES:
+            # Map Twilio PSTN status to human-grade outcome
+            outcome = "failed"
+            if call_status == "completed":
+                if existing_call and existing_call.outcome in ["connected", "interested", "qualified", "converted"]:
+                    outcome = existing_call.outcome
+                elif call_duration > 0:
+                    outcome = "connected"
+                else:
+                    outcome = "completed"
+            elif call_status in ["no-answer", "no_answer"]:
+                outcome = "no_answer"
+            elif call_status == "busy":
+                outcome = "busy"
+            elif call_status == "failed":
+                outcome = "failed"
+            elif call_status == "canceled":
+                outcome = "canceled"
+
+            if existing_call:
+                existing_call.outcome = outcome
+                await call_repo.save(existing_call)
+
+            # Sync Prospect Activity & Outcome
+            if target_org_id and existing_call and (existing_call.to_number or target_prospect_id):
+                try:
+                    from app.services.prospect_service import ProspectService
+                    from app.repositories.prospect_repository import ProspectRepository
+                    prospect_svc = ProspectService(ProspectRepository(), call_repo)
+                    await prospect_svc.record_call_outcome(
+                        organization_id=target_org_id,
+                        phone_number=existing_call.to_number or "",
+                        call_id=existing_call.id,
+                        duration=call_duration,
+                        outcome=outcome,
+                        is_success=(outcome == "connected" or (call_status == "completed" and call_duration > 0))
+                    )
+                except Exception as pe:
+                    print(f"[Twilio Status Webhook] Prospect sync warning: {pe}")
+
+            # Sync Campaign Member if call is part of a Campaign
+            if target_campaign_id and target_prospect_id:
+                try:
+                    from app.models.campaign import CampaignMemberStatus
+                    from app.services.campaign_service import CampaignService
+                    from app.repositories.campaign_repository import CampaignMemberRepository
+                    mem_repo = CampaignMemberRepository()
+                    target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
+                    if target_mem and target_mem.status != CampaignMemberStatus.COMPLETED:
+                        cmp_svc = CampaignService()
+                        is_success = (outcome == "connected" or (call_status == "completed" and call_duration > 0))
+                        await cmp_svc.record_call_outcome(
+                            campaign_id=target_campaign_id,
+                            member_id=target_mem.id,
+                            call_id=existing_call.id if existing_call else call_sid,
+                            duration=call_duration,
+                            outcome=outcome,
+                            is_success=is_success
+                        )
+                except Exception as ce:
+                    print(f"[Twilio Status Webhook] Campaign sync warning: {ce}")
+
+    except Exception as e:
+        print(f"[Twilio Status Webhook Error] {e}")
+
+    return Response(content="<Response/>", media_type="application/xml")

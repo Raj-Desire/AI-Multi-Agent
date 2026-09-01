@@ -46,7 +46,7 @@ class CampaignCallingConfig(BaseModel):
     caller_phone_number: str = Field(default="", description="Twilio phone number used as Caller ID")
     max_concurrent_calls: int = Field(default=5, ge=1, le=100, description="Max concurrent live calls allowed")
     max_attempts_per_prospect: int = Field(default=3, ge=1, le=20, description="Max dialing attempts before marking failed")
-    retry_delay_minutes: int = Field(default=0, ge=0, description="Delay in minutes before retrying eligible unanswered calls")
+    retry_delay_minutes: int = Field(default=15, ge=0, description="Delay in minutes before retrying eligible unanswered calls")
     call_timeout_seconds: int = Field(default=30, ge=5, le=300, description="Ringing timeout before marking no answer")
 
 

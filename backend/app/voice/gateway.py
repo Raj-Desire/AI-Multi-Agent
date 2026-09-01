@@ -141,7 +141,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         if stream_sid:
             clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
             try:
-                await websocket.send_text(json.dumps(clear_msg))
+                await websocket.send_text(clear_msg)
                 logger.info(f"[VoiceGateway] Instant barge-in clear signal sent to Twilio for stream {stream_sid}")
             except Exception as e:
                 logger.error(f"[VoiceGateway] Failed to send clear message: {e}")

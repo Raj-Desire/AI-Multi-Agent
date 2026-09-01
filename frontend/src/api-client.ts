@@ -2,6 +2,9 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api
 
 // Fast client-side cache: { url: { data: any, timestamp: number } }
 const _API_CACHE = new Map<string, { data: any; timestamp: number }>();
+// In-flight Promise tracker to deduplicate simultaneous identical requests
+const _IN_FLIGHT_REQUESTS = new Map<string, Promise<any>>();
+
 const DEFAULT_CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL
 
 export function invalidateApiCache(pathPrefix?: string) {
@@ -23,7 +26,6 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
 
   // If this is a mutation (POST, PUT, DELETE, PATCH), invalidate related caches so subsequent GETs fetch fresh data
   if (method !== "GET") {
-    // Invalidate related cache keys
     const baseSegment = path.split("/")[1] || "";
     if (baseSegment) {
       invalidateApiCache(`/${baseSegment}`);
@@ -31,10 +33,16 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
       invalidateApiCache();
     }
   } else {
-    // Check in-memory cache for instant return (<1ms)
+    // 1. Check in-memory cache for instant return (<1ms)
     const cached = _API_CACHE.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < DEFAULT_CACHE_TTL_MS) {
       return cached.data as T;
+    }
+
+    // 2. If identical GET request is already in-flight, return existing Promise (De-duplication)
+    const existingInFlight = _IN_FLIGHT_REQUESTS.get(cacheKey);
+    if (existingInFlight) {
+      return existingInFlight as Promise<T>;
     }
   }
 
@@ -51,40 +59,53 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      signal: options.signal || controller.signal,
-      headers,
-    });
-
-    let json: any;
+  const executeFetch = async (): Promise<T> => {
     try {
-      json = await res.json();
-    } catch {
-      json = { detail: `HTTP ${res.status} ${res.statusText}` };
-    }
-    
-    if (!res.ok) {
-      throw new Error(json.detail || json.error?.message || "API request failed");
-    }
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        signal: options.signal || controller.signal,
+        headers,
+      });
 
-    const resultData = json.success !== undefined ? json.data : json;
+      let json: any;
+      try {
+        json = await res.json();
+      } catch {
+        json = { detail: `HTTP ${res.status} ${res.statusText}` };
+      }
+      
+      if (!res.ok) {
+        throw new Error(json.detail || json.error?.message || "API request failed");
+      }
 
-    // Cache successful GET results
-    if (method === "GET") {
-      _API_CACHE.set(cacheKey, { data: resultData, timestamp: Date.now() });
-    }
+      const resultData = json.success !== undefined ? json.data : json;
 
-    return resultData as T;
-  } catch (err: any) {
-    if (err.name === "AbortError") {
-      throw new Error("Network request timed out. Please check your connection.");
+      // Cache successful GET results
+      if (method === "GET") {
+        _API_CACHE.set(cacheKey, { data: resultData, timestamp: Date.now() });
+      }
+
+      return resultData as T;
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        throw new Error("Network request timed out. Please check your connection.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+      if (method === "GET") {
+        _IN_FLIGHT_REQUESTS.delete(cacheKey);
+      }
     }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+  };
+
+  if (method === "GET") {
+    const promise = executeFetch();
+    _IN_FLIGHT_REQUESTS.set(cacheKey, promise);
+    return promise;
   }
+
+  return executeFetch();
 }
 
 

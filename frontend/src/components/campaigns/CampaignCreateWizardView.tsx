@@ -754,14 +754,16 @@ export function CampaignCreateWizardView({
         body: JSON.stringify(payload),
       });
 
-      // If user selected start immediately, dispatch campaign start
       if (startImmediately && created && created.id) {
-        try {
-          await fetchApi(`/campaigns/${created.id}/start`, { method: "POST" });
-          toast.success(`Campaign "${created.name}" created and launched!`);
-        } catch (err: any) {
-          toast.warning(`Campaign created as draft, but could not auto-start: ${err.message}`);
+        // If created in draft state, trigger start endpoint
+        if (created.status === "draft") {
+          try {
+            await fetchApi(`/campaigns/${created.id}/start`, { method: "POST" });
+          } catch (err: any) {
+            console.warn("Could not trigger start endpoint:", err);
+          }
         }
+        toast.success(`Campaign "${created.name}" created and launched!`);
       } else {
         toast.success(`Campaign "${created.name}" created successfully as draft.`);
       }
