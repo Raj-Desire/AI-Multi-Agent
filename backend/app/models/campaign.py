@@ -19,6 +19,7 @@ class CampaignMemberStatus(str, Enum):
     CALLING = "calling"
     COMPLETED = "completed"
     RETRYING = "retrying"
+    UNANSWERED = "unanswered"
     FAILED = "failed"
     SKIPPED_DNC = "skipped_dnc"
     SKIPPED_INVALID = "skipped_invalid"
@@ -70,6 +71,8 @@ class CampaignStats(BaseModel):
     total_prospects: int = 0
     queued: int = 0
     calling: int = 0
+    retrying: int = 0
+    unanswered: int = 0
     completed: int = 0
     connected: int = 0
     failed: int = 0

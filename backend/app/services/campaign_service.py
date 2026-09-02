@@ -297,6 +297,11 @@ class CampaignService:
                 event_type=CampaignEventType.STARTED,
                 message=f"Campaign '{campaign.name}' started immediately."
             )
+            try:
+                from app.services.campaign_dialer import campaign_dialer_engine
+                asyncio.create_task(campaign_dialer_engine.process_campaign(saved))
+            except Exception as de:
+                logger.warning(f"Failed to auto-dispatch campaign: {de}")
 
         return saved
 
@@ -410,7 +415,18 @@ class CampaignService:
                 event_type=CampaignEventType.STARTED,
                 message=f"Campaign '{campaign.name}' started by {ctx.email or ctx.user_id}."
             )
+            try:
+                from app.services.campaign_dialer import campaign_dialer_engine
+                asyncio.create_task(campaign_dialer_engine.process_campaign(saved))
+            except Exception as de:
+                logger.warning(f"Failed to auto-dispatch on start: {de}")
             return saved
+
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            asyncio.create_task(campaign_dialer_engine.process_campaign(campaign))
+        except Exception:
+            pass
         return campaign
 
     async def pause_campaign(self, ctx: TenantContext, campaign_id: str) -> Campaign:
@@ -569,7 +585,9 @@ class CampaignService:
             elif st == "calling":
                 stats.calling += 1
             elif st == "retrying":
-                stats.queued += 1
+                stats.retrying += 1
+            elif st == "unanswered":
+                stats.unanswered += 1
             elif st == "completed":
                 stats.completed += 1
             elif st in ["failed", "skipped_invalid"]:
@@ -600,7 +618,7 @@ class CampaignService:
                 call_count_with_duration += 1
 
         if stats.total_prospects > 0:
-            stats.completion_rate = round(((stats.completed + stats.failed + stats.dnc) / stats.total_prospects) * 100.0, 1)
+            stats.completion_rate = round(((stats.completed + stats.unanswered + stats.failed + stats.dnc) / stats.total_prospects) * 100.0, 1)
             stats.connection_rate = round((stats.connected / stats.total_prospects) * 100.0, 1)
 
         if call_count_with_duration > 0:
@@ -612,7 +630,7 @@ class CampaignService:
         if campaign:
             campaign.stats = stats
             # Auto-complete campaign if everything is processed
-            if stats.total_prospects > 0 and (stats.completed + stats.failed + stats.dnc) == stats.total_prospects:
+            if stats.total_prospects > 0 and (stats.completed + stats.unanswered + stats.failed + stats.dnc) == stats.total_prospects:
                 if campaign.status == CampaignStatus.RUNNING:
                     campaign.status = CampaignStatus.COMPLETED
                     campaign.completed_at = datetime.now(timezone.utc)
@@ -662,8 +680,8 @@ class CampaignService:
         retry_delay = campaign.calling_config.retry_delay_minutes
 
         # Check if outcome is terminal vs retryable
-        is_terminal = any(term in clean_outcome for term in ["connected", "interested", "not_interested", "qualified", "converted", "dnc", "invalid"])
-        if is_success and duration > 0:
+        is_terminal = any(term in clean_outcome for term in ["connected", "interested", "not_interested", "qualified", "converted", "dnc", "invalid", "completed"])
+        if is_success:
             is_terminal = True
 
         if is_terminal or member.attempts >= max_attempts:
@@ -672,7 +690,11 @@ class CampaignService:
             elif clean_outcome in ["invalid", "invalid_number"]:
                 member.status = CampaignMemberStatus.SKIPPED_INVALID
             elif not is_success and member.attempts >= max_attempts:
-                member.status = CampaignMemberStatus.FAILED
+                # If exhausted retry attempts due to no answer, busy or rejected
+                if any(k in clean_outcome for k in ["busy", "no_answer", "no-answer", "no answer", "canceled", "unanswered", "voicemail"]):
+                    member.status = CampaignMemberStatus.UNANSWERED
+                else:
+                    member.status = CampaignMemberStatus.FAILED
             else:
                 member.status = CampaignMemberStatus.COMPLETED
             member.next_attempt_at = None
@@ -687,7 +709,8 @@ class CampaignService:
         else:
             # Schedule Retry
             member.status = CampaignMemberStatus.RETRYING
-            member.next_attempt_at = now + timedelta(minutes=retry_delay)
+            effective_delay = max(1, retry_delay) if retry_delay > 0 else 15
+            member.next_attempt_at = now + timedelta(minutes=effective_delay)
             await self.event_repo.log_event(
                 organization_id=campaign.organization_id,
                 campaign_id=campaign_id,

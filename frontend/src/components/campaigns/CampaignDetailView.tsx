@@ -116,7 +116,7 @@ export function CampaignDetailView({
     if (!campaign || campaign.status !== "running") return;
     const interval = setInterval(() => {
       loadCampaignData(true);
-    }, 4000);
+    }, 1500);
     return () => clearInterval(interval);
   }, [campaign?.status, loadCampaignData]);
 
@@ -282,6 +282,12 @@ export function CampaignDetailView({
             Retrying
           </span>
         );
+      case "unanswered":
+        return (
+          <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+            Not Answered
+          </span>
+        );
       case "completed":
         return (
           <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-500/10 text-slate-600 border border-slate-500/30">
@@ -343,8 +349,10 @@ export function CampaignDetailView({
             onClick={() => loadCampaignData(false)}
             disabled={isActionLoading}
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isActionLoading ? "animate-spin" : ""}`} />
-            Refresh
+            <span className="flex items-center">
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isActionLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </span>
           </Button>
 
           {campaign.status === "draft" && (
@@ -502,6 +510,16 @@ export function CampaignDetailView({
           <span className="text-[10px] text-[var(--color-muted)]">Active now</span>
         </div>
 
+        {/* Retrying */}
+        <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
+          <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+            <span>Retrying</span>
+            <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
+          </div>
+          <p className="text-xl font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.retrying || 0}</p>
+          <span className="text-[10px] text-[var(--color-muted)]">Cooldown</span>
+        </div>
+
         {/* Connected */}
         <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
           <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)]">
@@ -577,11 +595,10 @@ export function CampaignDetailView({
         <button
           type="button"
           onClick={() => setActiveTab("queue")}
-          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${
-            activeTab === "queue"
-              ? "bg-[var(--color-primary)] text-white shadow-2xs"
-              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-          }`}
+          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === "queue"
+            ? "bg-[var(--color-primary)] text-white shadow-2xs"
+            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+            }`}
         >
           <Users className="w-3.5 h-3.5" />
           <span>Audience & Live Queue ({memberTotal})</span>
@@ -590,11 +607,10 @@ export function CampaignDetailView({
         <button
           type="button"
           onClick={() => setActiveTab("analytics")}
-          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${
-            activeTab === "analytics"
-              ? "bg-[var(--color-primary)] text-white shadow-2xs"
-              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-          }`}
+          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === "analytics"
+            ? "bg-[var(--color-primary)] text-white shadow-2xs"
+            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+            }`}
         >
           <Activity className="w-3.5 h-3.5" />
           <span>Outcomes & Analytics</span>
@@ -603,11 +619,10 @@ export function CampaignDetailView({
         <button
           type="button"
           onClick={() => setActiveTab("events")}
-          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${
-            activeTab === "events"
-              ? "bg-[var(--color-primary)] text-white shadow-2xs"
-              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-          }`}
+          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === "events"
+            ? "bg-[var(--color-primary)] text-white shadow-2xs"
+            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+            }`}
         >
           <History className="w-3.5 h-3.5" />
           <span>Event Timeline ({events.length})</span>
@@ -616,11 +631,10 @@ export function CampaignDetailView({
         <button
           type="button"
           onClick={() => setActiveTab("settings")}
-          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${
-            activeTab === "settings"
-              ? "bg-[var(--color-primary)] text-white shadow-2xs"
-              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-          }`}
+          className={`px-3 py-2 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === "settings"
+            ? "bg-[var(--color-primary)] text-white shadow-2xs"
+            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+            }`}
         >
           <Sliders className="w-3.5 h-3.5" />
           <span>Configuration & Schedule</span>
@@ -633,7 +647,7 @@ export function CampaignDetailView({
           {/* Filters & Search */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {["all", "queued", "calling", "retrying", "completed", "failed", "skipped_dnc"].map((st) => (
+              {["all", "queued", "calling", "retrying", "unanswered", "completed", "failed", "skipped_dnc"].map((st) => (
                 <button
                   key={st}
                   type="button"
@@ -641,11 +655,10 @@ export function CampaignDetailView({
                     setMemberStatusFilter(st);
                     setMemberPage(1);
                   }}
-                  className={`px-2.5 py-1 rounded text-xs capitalize cursor-pointer font-medium transition-all ${
-                    memberStatusFilter === st
-                      ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold border border-[var(--color-primary)]/30"
-                      : "bg-[var(--color-surface)] text-[var(--color-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
-                  }`}
+                  className={`px-2.5 py-1 rounded text-xs capitalize cursor-pointer font-medium transition-all ${memberStatusFilter === st
+                    ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold border border-[var(--color-primary)]/30"
+                    : "bg-[var(--color-surface)] text-[var(--color-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+                    }`}
                 >
                   {st.replace("_", " ")}
                 </button>

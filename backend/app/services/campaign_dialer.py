@@ -277,6 +277,7 @@ class CampaignDialerEngine:
             member.last_attempt_at = now
             member.updated_at = now
             await self.member_repo.save(member)
+            await self.campaign_service.recalculate_campaign_stats(campaign.id)
 
             await self.event_repo.log_event(
                 organization_id=campaign.organization_id,

@@ -576,6 +576,7 @@ export type CampaignMemberStatus =
   | "calling"
   | "completed"
   | "retrying"
+  | "unanswered"
   | "failed"
   | "skipped_dnc"
   | "skipped_invalid";
@@ -616,6 +617,8 @@ export interface CampaignStats {
   total_prospects: number;
   queued: number;
   calling: number;
+  retrying: number;
+  unanswered?: number;
   completed: number;
   connected: number;
   failed: number;

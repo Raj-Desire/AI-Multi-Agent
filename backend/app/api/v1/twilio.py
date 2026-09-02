@@ -285,12 +285,15 @@ async def voice_status_webhook(request: Request):
             # Ensure Campaign Member status is marked as CALLING during active ringing/progress
             if target_campaign_id and target_prospect_id:
                 from app.models.campaign import CampaignMemberStatus
+                from app.services.campaign_service import CampaignService
                 from app.repositories.campaign_repository import CampaignMemberRepository
                 mem_repo = CampaignMemberRepository()
                 target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
                 if target_mem and target_mem.status in [CampaignMemberStatus.QUEUED, CampaignMemberStatus.RETRYING]:
                     target_mem.status = CampaignMemberStatus.CALLING
                     await mem_repo.save(target_mem)
+                    cmp_svc = CampaignService()
+                    await cmp_svc.recalculate_campaign_stats(target_campaign_id)
 
         elif call_status in TERMINAL_STATUSES:
             # Map Twilio PSTN status to human-grade outcome
@@ -327,7 +330,7 @@ async def voice_status_webhook(request: Request):
                         call_id=existing_call.id,
                         duration=call_duration,
                         outcome=outcome,
-                        is_success=(outcome == "connected" or (call_status == "completed" and call_duration > 0))
+                        is_success=(outcome in ["connected", "completed"] or call_duration > 0)
                     )
                 except Exception as pe:
                     print(f"[Twilio Status Webhook] Prospect sync warning: {pe}")
@@ -335,14 +338,13 @@ async def voice_status_webhook(request: Request):
             # Sync Campaign Member if call is part of a Campaign
             if target_campaign_id and target_prospect_id:
                 try:
-                    from app.models.campaign import CampaignMemberStatus
                     from app.services.campaign_service import CampaignService
                     from app.repositories.campaign_repository import CampaignMemberRepository
                     mem_repo = CampaignMemberRepository()
                     target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
-                    if target_mem and target_mem.status != CampaignMemberStatus.COMPLETED:
+                    if target_mem:
                         cmp_svc = CampaignService()
-                        is_success = (outcome == "connected" or (call_status == "completed" and call_duration > 0))
+                        is_success = (outcome in ["connected", "completed"] or (call_status == "completed" and call_duration > 0))
                         await cmp_svc.record_call_outcome(
                             campaign_id=target_campaign_id,
                             member_id=target_mem.id,
