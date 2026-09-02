@@ -847,9 +847,6 @@ export function Step3VoiceLanguage({
                   position="top"
                 />
               </h3>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                Eliminates awkward robotic pronunciation of local places, company terms, and abbreviations.
-              </p>
             </div>
           </div>
 

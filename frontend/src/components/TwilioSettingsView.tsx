@@ -898,7 +898,7 @@ export function TwilioSettingsView() {
                     <optgroup label="My Organization Agents">
                       {availableAgents.my_agents.map((a) => (
                         <option key={`my_def_${a.agent_id}`} value={a.agent_id}>
-                          {a.name} (v{a.version}) - {a.role}
+                          {a.name} - {a.role}
                         </option>
                       ))}
                     </optgroup>

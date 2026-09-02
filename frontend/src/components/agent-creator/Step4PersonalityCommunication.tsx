@@ -1279,13 +1279,6 @@ export function Step4PersonalityCommunication({
               </Badge>
             )}
           </div>
-          {matchedPurpose?.recommendationRationale && (
-            <p className="text-[11px] text-[var(--color-muted)] mt-1 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-[var(--color-primary)] inline shrink-0" />
-              <span className="font-semibold text-[var(--color-primary)]">Recommendation Insight:</span>
-              <span>{matchedPurpose.recommendationRationale}</span>
-            </p>
-          )}
         </div>
 
         {/* Abstract AI Waveform Visualization & Reset */}
@@ -1662,9 +1655,6 @@ export function Step4PersonalityCommunication({
                   position="top"
                 />
               </h3>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                Demonstrates ideal turn-by-turn conversational cadence tailored to your industry.
-              </p>
             </div>
           </div>
 

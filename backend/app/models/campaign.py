@@ -81,7 +81,13 @@ class CampaignStats(BaseModel):
     voicemail: int = 0
     callbacks: int = 0
     interested: int = 0
+    warm_interested: int = 0
+    highly_interested: int = 0
     not_interested: int = 0
+    qualified: int = 0
+    converted: int = 0
+    follow_up_required: int = 0
+    information_requested: int = 0
     dnc: int = 0
     connection_rate: float = 0.0  # percentage 0.0 - 100.0
     completion_rate: float = 0.0   # percentage 0.0 - 100.0

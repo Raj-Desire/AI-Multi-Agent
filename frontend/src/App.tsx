@@ -21,6 +21,7 @@ import { AgentManagementView } from "./components/AgentManagementView";
 import { BusinessProfileView } from "./components/BusinessProfileView";
 import { ProspectsView } from "./components/prospects/ProspectsView";
 import { CampaignsView } from "./components/campaigns/CampaignsView";
+import { LeadIntelligenceView } from "./components/lead-intelligence/LeadIntelligenceView";
 import { Sidebar, NavTab, TAB_ROUTE_MAP, ROUTE_TAB_MAP } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
 import { Modal } from "./components/ui/Modal";
@@ -39,7 +40,8 @@ import {
   ShieldAlert,
   Building2,
   AlertCircle,
-  Save
+  Save,
+  Sparkles
 } from "lucide-react";
 
 function MainContent() {
@@ -123,6 +125,12 @@ function MainContent() {
           title: "AI Voice Agents",
           sub: "Configure, test, and manage your organization's AI voice agents.",
           icon: Bot,
+        };
+      case "lead_intelligence":
+        return {
+          title: "Lead Intelligence",
+          sub: "Organization-wide interested prospects, callback requests & post-call AI insights",
+          icon: Sparkles,
         };
       case "campaigns":
         return {
@@ -285,6 +293,10 @@ function MainContent() {
               }
             />
             <Route path="/voice-agents" element={<Navigate to="/agents" replace />} />
+            <Route path="/lead-intelligence" element={<LeadIntelligenceView />} />
+            <Route path="/leads" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route path="/opportunities" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route path="/lead-insights" element={<Navigate to="/lead-intelligence" replace />} />
             <Route
               path="/campaigns"
               element={

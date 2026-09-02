@@ -599,7 +599,7 @@ export function CampaignCreateWizardView({
       });
 
       const cleanGroup = directCsvGroupName.trim();
-      const res = await fetchApi<{ imported_count: number; total_rows: number; updated_count: number }>("/prospects/import/csv", {
+      const res = await fetchApi<{ imported_count: number; total_rows: number; updated_count: number }>("/prospects/import", {
         method: "POST",
         body: JSON.stringify({
           csv_content: directCsvContent,
@@ -974,7 +974,6 @@ export function CampaignCreateWizardView({
                           <span className="px-2 py-0.5 rounded bg-[var(--color-surface-muted)] font-mono border border-[var(--color-border)]">
                             {voiceName}
                           </span>
-                          <span>v{agent.version || 1}</span>
                         </div>
                       </div>
                     );

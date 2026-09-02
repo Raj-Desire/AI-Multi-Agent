@@ -309,28 +309,23 @@ export function Step5BehaviorSafety({
         </div>
 
         {/* Row 1: Customer Interruption Setting (Full Width Card) */}
-        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0 mt-0.5">
+        <div className="px-4 py-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs flex items-center justify-between gap-3 transition-all">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
               <Zap className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-xs font-bold text-[var(--color-heading)]">
-                  Allow Customer Interruptions (Barge-In)
-                </h4>
-                <InfoTooltip
-                  content="When enabled, the AI immediately stops speaking as soon as intentional caller speech is detected."
-                  position="top"
-                />
-              </div>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                Let callers speak naturally and interrupt the AI when necessary.
-              </p>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-bold text-[var(--color-heading)]">
+                Allow Customer Interruptions (Barge-In)
+              </h4>
+              <InfoTooltip
+                content="When enabled, the AI immediately stops speaking as soon as intentional caller speech is detected."
+                position="top"
+              />
             </div>
           </div>
 
-          <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             <span
               className={`text-xs font-bold font-mono ${
                 bargeInEnabled ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--color-muted)]"

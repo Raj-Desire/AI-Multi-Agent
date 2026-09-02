@@ -273,6 +273,26 @@ class ProspectService:
             sort_order=sort_order
         )
 
+        # Reconcile true total_calls from actual Call records
+        try:
+            all_calls = await self.call_repo.list_by_org(ctx.organization_id)
+            for p in items:
+                norm = p.normalized_phone or normalize_phone(p.phone_number)
+                prospect_calls = [
+                    c for c in all_calls
+                    if (hasattr(c, "prospect_id") and getattr(c, "prospect_id") == p.id) or
+                       (c.to_number == p.phone_number) or
+                       (norm and normalize_phone(c.to_number) == norm)
+                ]
+                real_count = len(prospect_calls)
+                if p.total_calls != real_count:
+                    p.total_calls = real_count
+                    p.successful_calls = len([c for c in prospect_calls if (c.duration and c.duration > 0) or c.status == "completed"])
+                    p.failed_calls = max(0, real_count - p.successful_calls)
+                    await self.repo.save(p)
+        except Exception as e:
+            logger.warning(f"Error reconciling prospect call counts: {e}")
+
         total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 1
         return ProspectPaginationResponse(
             items=[ProspectResponse.model_validate(p) for p in items],
@@ -646,6 +666,73 @@ class ProspectService:
     async def list_distinct_groups(self, ctx: TenantContext) -> List[str]:
         return await self.repo.list_distinct_groups(ctx.organization_id)
 
+    async def delete_group(
+        self,
+        ctx: TenantContext,
+        group_name: str,
+        action: str = "unassign",
+        target_group_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Deletes or reassigns contacts in a group with 3 user options:
+        1. 'unassign': Keeps contacts, unassigns group.
+        2. 'move': Moves contacts to target_group_name.
+        3. 'delete_contacts': Permanently deletes contacts belonging to the group.
+        """
+        clean_group = group_name.strip()
+        clean_target = target_group_name.strip() if target_group_name and target_group_name.strip() else None
+
+        all_prospects, _ = await self.repo.list_by_org(ctx.organization_id, page=1, page_size=10000)
+        matching = [
+            p for p in all_prospects
+            if (p.group_name and p.group_name.strip() == clean_group) or (clean_group in (p.tags or []))
+        ]
+
+        affected_count = len(matching)
+
+        if action == "delete_contacts":
+            p_ids = [p.id for p in matching]
+            if p_ids:
+                await self.repo.bulk_delete(ctx.organization_id, p_ids)
+            return {
+                "deleted_group": clean_group,
+                "action": "delete_contacts",
+                "target_group": None,
+                "affected_contacts": affected_count
+            }
+
+        elif action == "move":
+            for p in matching:
+                p.group_name = clean_target
+                new_tags = [t for t in (p.tags or []) if t != clean_group]
+                if clean_target and clean_target not in new_tags:
+                    new_tags.append(clean_target)
+                p.tags = new_tags
+                p.updated_at = datetime.now(timezone.utc)
+                p.updated_by = ctx.email
+                await self.repo.save(p)
+            return {
+                "deleted_group": clean_group,
+                "action": "move",
+                "target_group": clean_target,
+                "affected_contacts": affected_count
+            }
+
+        else:  # "unassign"
+            for p in matching:
+                if p.group_name and p.group_name.strip() == clean_group:
+                    p.group_name = None
+                p.tags = [t for t in (p.tags or []) if t != clean_group]
+                p.updated_at = datetime.now(timezone.utc)
+                p.updated_by = ctx.email
+                await self.repo.save(p)
+            return {
+                "deleted_group": clean_group,
+                "action": "unassign",
+                "target_group": None,
+                "affected_contacts": affected_count
+            }
+
     async def bulk_delete(self, ctx: TenantContext, prospect_ids: List[str]) -> int:
         if not prospect_ids:
             return 0
@@ -703,13 +790,32 @@ class ProspectService:
             return
         p = await self.repo.get_by_normalized_phone(organization_id, norm)
         if p:
-            p.total_calls += 1
-            if is_success:
-                p.successful_calls += 1
+            # Reconcile exact calls from CallRepository to prevent double-increments
+            try:
+                all_calls = await self.call_repo.list_by_org(organization_id)
+                prospect_calls = [
+                    c for c in all_calls
+                    if (hasattr(c, "prospect_id") and getattr(c, "prospect_id") == p.id) or
+                       (c.to_number == p.phone_number) or
+                       (normalize_phone(c.to_number) == norm)
+                ]
+                call_ids = {c.id for c in prospect_calls}
+                if call_id:
+                    call_ids.add(call_id)
+                p.total_calls = len(call_ids)
+                p.successful_calls = len([c for c in prospect_calls if (c.duration and c.duration > 0) or c.status == "completed"])
+                p.failed_calls = max(0, p.total_calls - p.successful_calls)
+            except Exception:
+                if p.last_call_id != call_id:
+                    p.total_calls += 1
+                    if is_success or (duration and duration > 0):
+                        p.successful_calls += 1
+                    else:
+                        p.failed_calls += 1
+
+            if is_success or (duration and duration > 0):
                 if p.status == ProspectStatus.NEW:
                     p.status = ProspectStatus.CONTACTED
-            else:
-                p.failed_calls += 1
 
             p.last_contacted_at = datetime.now(timezone.utc)
             p.last_call_id = call_id

@@ -253,6 +253,48 @@ async def list_campaign_events(
     return ApiResponse.ok([CampaignEventResponse.model_validate(e) for e in events])
 
 
+@router.get("/{campaign_id}/calls", response_model=ApiResponse[Dict[str, Any]])
+async def list_campaign_calls(
+    campaign_id: str,
+    status: Optional[str] = None,
+    outcome: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: CampaignService = Depends(get_campaign_service)
+):
+    """Retrieves call intelligence history records specifically associated with this campaign."""
+    items, total = await service.list_campaign_calls(
+        ctx=ctx,
+        campaign_id=campaign_id,
+        status=status,
+        outcome=outcome,
+        search=search,
+        page=page,
+        page_size=page_size
+    )
+    total_pages = max(1, math.ceil(total / page_size))
+    return ApiResponse.ok({
+        "items": [c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    })
+
+
+@router.get("/{campaign_id}/active-calls", response_model=ApiResponse[List[Dict[str, Any]]])
+async def get_campaign_active_calls(
+    campaign_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: CampaignService = Depends(get_campaign_service)
+):
+    """Lists currently in-progress active voice calls for this campaign."""
+    active_calls = await service.get_active_calls(ctx, campaign_id)
+    return ApiResponse.ok(active_calls)
+
+
 @router.post("/{campaign_id}/dial-now", response_model=ApiResponse[Dict[str, Any]])
 async def trigger_dial_now(
     campaign_id: str,
@@ -264,3 +306,23 @@ async def trigger_dial_now(
     await campaign_dialer_engine.process_campaign(campaign)
     stats = await service.recalculate_campaign_stats(campaign_id)
     return ApiResponse.ok({"status": "dispatched", "stats": stats})
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+from app.voice.events import telemetry_broadcaster
+
+@router.websocket("/{campaign_id}/stream")
+async def campaign_events_websocket(websocket: WebSocket, campaign_id: str):
+    """Real-time WebSocket stream for campaign live status and execution updates."""
+    await websocket.accept()
+    q = await telemetry_broadcaster.subscribe(f"campaign_{campaign_id}")
+    try:
+        while True:
+            event_data = await q.get()
+            await websocket.send_json(event_data)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        await telemetry_broadcaster.unsubscribe(f"campaign_{campaign_id}", q)

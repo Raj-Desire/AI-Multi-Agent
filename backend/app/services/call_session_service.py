@@ -216,44 +216,104 @@ class CallSessionService:
         except Exception as analytics_err:
             logger.error(f"[CallSessionService] Post-call analytics error: {analytics_err}")
 
-        # Persist to Call model in Cosmos DB
-        call_doc = Call(
-            id=session.call_session_id,
-            organization_id=session.organization_id,
-            user_id=session.user_id or "system",
-            prospect_id=session.prospect_id,
-            campaign_id=session.campaign_id,
-            twilio_configuration_id=session.agent_id,
-            call_sid=session.twilio_call_sid,
-            from_number=session.phone_number or "Voice Gateway",
-            to_number=session.destination_number or "Customer",
-            duration=session.call_duration,
-            prompt=transcript_preview,
-            status=final_status,
-            agent_id=session.agent_id,
-            agent_version=agent_version,
-            agent_name=session.agent_name,
-            agent_scope=agent_scope,
-            agent_config_snapshot=session.agent_config_snapshot,
-            transcript=transcript_records,
-            outcome=session.outcome or analytics_data.get("interest_level"),
-            summary=analytics_data.get("summary"),
-            key_insights=analytics_data.get("key_insights"),
-            intent=analytics_data.get("intent"),
-            sentiment=analytics_data.get("sentiment"),
-            lead_score=analytics_data.get("lead_score"),
-            interest_level=analytics_data.get("interest_level"),
-            classification=analytics_data.get("classification"),
-            callback_datetime=analytics_data.get("callback_datetime"),
-            analytics=analytics_data if analytics_data else None,
-            latency_metrics=latency_dict,
-            created_at=session.started_at,
-            updated_at=session.ended_at
-        )
+        # Persist or update Call model in Cosmos DB (prevent duplicate records when call was initiated via dialer)
+        resolved_business_outcome = session.outcome or analytics_data.get("business_outcome") or analytics_data.get("interest_level") or "Completed"
+        
+        existing_call = None
+        if session.twilio_call_sid:
+            try:
+                existing_call = await self.call_repo.get_by_call_sid(session.twilio_call_sid)
+            except Exception as e:
+                logger.warning(f"Error fetching call by SID {session.twilio_call_sid}: {e}")
+        if not existing_call:
+            try:
+                existing_call = await self.call_repo.get_by_id(session.call_session_id)
+            except Exception as e:
+                logger.warning(f"Error fetching call by ID {session.call_session_id}: {e}")
+
+        if existing_call:
+            call_doc = existing_call
+            call_doc.duration = session.call_duration or existing_call.duration
+            call_doc.status = final_status
+            call_doc.prompt = transcript_preview
+            call_doc.agent_id = session.agent_id or existing_call.agent_id
+            call_doc.agent_version = agent_version
+            call_doc.agent_name = session.agent_name or existing_call.agent_name
+            call_doc.agent_scope = agent_scope
+            call_doc.agent_config_snapshot = session.agent_config_snapshot or existing_call.agent_config_snapshot
+            call_doc.transcript = transcript_records
+            call_doc.outcome = resolved_business_outcome
+            call_doc.business_outcome = resolved_business_outcome
+            call_doc.summary = analytics_data.get("summary") or existing_call.summary
+            call_doc.key_insights = analytics_data.get("key_insights") or existing_call.key_insights
+            call_doc.key_requirements = analytics_data.get("key_requirements") or existing_call.key_requirements
+            call_doc.customer_questions = analytics_data.get("customer_questions") or existing_call.customer_questions
+            call_doc.objections = analytics_data.get("objections") or existing_call.objections
+            call_doc.important_info = analytics_data.get("important_info") or existing_call.important_info
+            call_doc.next_action = analytics_data.get("next_action") or existing_call.next_action
+            call_doc.intent = analytics_data.get("intent") or existing_call.intent
+            call_doc.sentiment = analytics_data.get("sentiment") or existing_call.sentiment
+            call_doc.lead_score = analytics_data.get("lead_score") if analytics_data.get("lead_score") is not None else existing_call.lead_score
+            call_doc.interest_level = analytics_data.get("interest_level") or existing_call.interest_level
+            call_doc.classification = analytics_data.get("classification") or existing_call.classification
+            call_doc.callback_datetime = analytics_data.get("callback_datetime") or existing_call.callback_datetime
+            call_doc.analytics_status = "ready" if analytics_data else "unavailable"
+            call_doc.analytics = analytics_data if analytics_data else existing_call.analytics
+            call_doc.latency_metrics = latency_dict or existing_call.latency_metrics
+            call_doc.updated_at = session.ended_at
+            call_doc.session_id = session.call_session_id
+            call_doc.call_session_id = session.call_session_id
+            if session.campaign_id and not call_doc.campaign_id:
+                call_doc.campaign_id = session.campaign_id
+            if session.prospect_id and not call_doc.prospect_id:
+                call_doc.prospect_id = session.prospect_id
+        else:
+            call_doc = Call(
+                id=session.call_session_id,
+                organization_id=session.organization_id,
+                user_id=session.user_id or "system",
+                prospect_id=session.prospect_id,
+                campaign_id=session.campaign_id,
+                twilio_configuration_id=session.agent_id,
+                call_sid=session.twilio_call_sid,
+                session_id=session.call_session_id,
+                call_session_id=session.call_session_id,
+                from_number=session.phone_number or "Voice Gateway",
+                to_number=session.destination_number or "Customer",
+                duration=session.call_duration,
+                prompt=transcript_preview,
+                status=final_status,
+                agent_id=session.agent_id,
+                agent_version=agent_version,
+                agent_name=session.agent_name,
+                agent_scope=agent_scope,
+                agent_config_snapshot=session.agent_config_snapshot,
+                transcript=transcript_records,
+                outcome=resolved_business_outcome,
+                business_outcome=resolved_business_outcome,
+                summary=analytics_data.get("summary"),
+                key_insights=analytics_data.get("key_insights"),
+                key_requirements=analytics_data.get("key_requirements"),
+                customer_questions=analytics_data.get("customer_questions"),
+                objections=analytics_data.get("objections"),
+                important_info=analytics_data.get("important_info"),
+                next_action=analytics_data.get("next_action"),
+                intent=analytics_data.get("intent"),
+                sentiment=analytics_data.get("sentiment"),
+                lead_score=analytics_data.get("lead_score"),
+                interest_level=analytics_data.get("interest_level"),
+                classification=analytics_data.get("classification"),
+                callback_datetime=analytics_data.get("callback_datetime"),
+                analytics_status="ready" if analytics_data else "unavailable",
+                analytics=analytics_data if analytics_data else None,
+                latency_metrics=latency_dict,
+                created_at=session.started_at,
+                updated_at=session.ended_at
+            )
 
         try:
             await self.call_repo.save(call_doc)
-            logger.info(f"Persisted CallSession {session.call_session_id} to database with Agent {session.agent_name} (v{agent_version}).")
+            logger.info(f"Persisted CallSession {call_doc.id} (SID: {session.twilio_call_sid}) to database with Agent {session.agent_name} (v{agent_version}). Outcome: {resolved_business_outcome}")
         except Exception as e:
             logger.error(f"Error saving CallSession to database: {e}")
 
@@ -267,7 +327,7 @@ class CallSessionService:
                 phone_number=session.destination_number,
                 call_id=session.call_session_id,
                 duration=session.call_duration,
-                outcome=session.outcome or analytics_data.get("interest_level"),
+                outcome=resolved_business_outcome,
                 is_success=(final_status == "completed" or session.call_duration > 0)
             )
         except Exception as p_err:
@@ -285,9 +345,9 @@ class CallSessionService:
                     await cmp_svc.record_call_outcome(
                         campaign_id=session.campaign_id,
                         member_id=target_mem.id,
-                        call_id=session.call_session_id,
+                        call_id=call_doc.id,
                         duration=session.call_duration,
-                        outcome=session.outcome or analytics_data.get("interest_level"),
+                        outcome=resolved_business_outcome,
                         is_success=(final_status == "completed" or session.call_duration > 0)
                     )
             except Exception as cmp_err:
@@ -301,9 +361,17 @@ class CallSessionService:
             agent_id=session.agent_id,
             twilio_call_sid=session.twilio_call_sid,
             payload={
+                "call_id": session.call_session_id,
+                "campaign_id": session.campaign_id,
+                "prospect_id": session.prospect_id,
                 "call_duration": session.call_duration,
                 "turn_count": session.turn_count,
                 "status": final_status,
+                "business_outcome": resolved_business_outcome,
+                "summary": analytics_data.get("summary", ""),
+                "next_action": analytics_data.get("next_action", ""),
+                "interest_level": analytics_data.get("interest_level", ""),
+                "lead_score": analytics_data.get("lead_score", 0),
                 "message_count": len(session.messages),
                 "agent_name": session.agent_name,
                 "agent_version": agent_version

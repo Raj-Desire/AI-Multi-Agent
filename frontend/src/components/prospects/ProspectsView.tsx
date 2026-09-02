@@ -34,7 +34,10 @@ import {
   MoreVertical,
   Check,
   AlertTriangle,
-  Folder
+  Folder,
+  AlertCircle,
+  FolderPlus,
+  CheckCircle2
 } from "lucide-react";
 
 const STATUS_FILTERS: { value: string; label: string }[] = [
@@ -44,8 +47,7 @@ const STATUS_FILTERS: { value: string; label: string }[] = [
   { value: "Connected", label: "Connected" },
   { value: "Interested", label: "Interested" },
   { value: "Callback Requested", label: "Callback Requested" },
-  { value: "Qualified", label: "Qualified" },
-  { value: "Converted", label: "Converted" },
+  { value: "Not Interested", label: "Not Interested" },
   { value: "Do Not Contact", label: "Do Not Contact (DNC)" },
 ];
 
@@ -76,6 +78,13 @@ export function ProspectsView() {
   const [showBulkGroupModal, setShowBulkGroupModal] = useState(false);
   const [bulkTargetGroup, setBulkTargetGroup] = useState("");
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
+  // Delete Contact Group Modal States
+  const [showDeleteGroupModal, setShowDeleteGroupModal] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState("");
+  const [groupDeleteAction, setGroupDeleteAction] = useState<"unassign" | "move" | "delete_contacts">("unassign");
+  const [groupMoveTarget, setGroupMoveTarget] = useState("");
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
 
   // Modal / Drawer Active States
   const [editorModalOpen, setEditorModalOpen] = useState(false);
@@ -274,6 +283,48 @@ export function ProspectsView() {
     }
   };
 
+  const handleExecuteDeleteGroup = async () => {
+    if (!groupToDelete) return;
+    try {
+      setIsDeletingGroup(true);
+      const res = await fetchApi<{
+        deleted_group: string;
+        action: string;
+        target_group?: string;
+        affected_contacts: number;
+      }>(`/prospects/groups/delete?group_name=${encodeURIComponent(groupToDelete)}`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: groupDeleteAction,
+          target_group_name: groupDeleteAction === "move" ? groupMoveTarget.trim() || undefined : undefined,
+        }),
+      });
+
+      if (groupDeleteAction === "unassign") {
+        toast.success(`Removed group "${groupToDelete}". Preserved ${res.affected_contacts} contacts in your list.`);
+      } else if (groupDeleteAction === "move") {
+        toast.success(`Moved ${res.affected_contacts} contacts to "${groupMoveTarget}".`);
+      } else {
+        toast.success(`Deleted group "${groupToDelete}" and removed ${res.affected_contacts} contacts.`);
+      }
+
+      setShowDeleteGroupModal(false);
+      if (selectedGroup === groupToDelete) {
+        setSelectedGroup("all");
+      }
+      setGroupToDelete("");
+      setGroupMoveTarget("");
+      setGroupDeleteAction("unassign");
+      invalidateApiCache("/prospects");
+      loadProspects();
+      fetchDistinctGroups();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete contact group.");
+    } finally {
+      setIsDeletingGroup(false);
+    }
+  };
+
   const handleDeleteSingle = async () => {
     if (!deletingProspect) return;
     try {
@@ -356,10 +407,12 @@ export function ProspectsView() {
     switch (st) {
       case "Qualified":
       case "Converted":
-        return <Badge variant="success">{st}</Badge>;
       case "Interested":
+        return <Badge variant="success">Interested</Badge>;
       case "Connected":
         return <Badge variant="primary">{st}</Badge>;
+      case "Not Interested":
+        return <Badge variant="neutral">Not Interested</Badge>;
       case "Callback Requested":
         return <Badge variant="warning">{st}</Badge>;
       case "Do Not Contact":
@@ -450,11 +503,25 @@ export function ProspectsView() {
         render: (row: Prospect) => {
           const displayGroup = row.group_name || (row.tags && row.tags.length > 0 ? row.tags[0] : null);
           return displayGroup ? (
-            <div className="flex items-center gap-1 max-w-44 truncate">
+            <div className="flex items-center gap-1.5 max-w-48 truncate group/grp">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-[var(--color-surface-muted)] text-[var(--color-heading)] font-medium border border-[var(--color-border)] truncate">
                 <Folder className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
                 <span className="truncate">{displayGroup}</span>
               </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGroupToDelete(displayGroup);
+                  setGroupDeleteAction("unassign");
+                  setGroupMoveTarget("");
+                  setShowDeleteGroupModal(true);
+                }}
+                title={`Delete or reassign group "${displayGroup}"`}
+                className="opacity-0 group-hover/grp:opacity-100 p-0.5 text-[var(--color-muted)] hover:text-rose-600 transition-opacity rounded cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
             </div>
           ) : (
             <span className="text-[10px] text-[var(--color-muted)] opacity-50">—</span>
@@ -533,7 +600,7 @@ export function ProspectsView() {
       {/* Header Bar */}
       <PageHeader
         title="Prospect &amp; Contact Management"
-        description="Unified contact registry, custom attributes, Do-Not-Contact compliance, and AI calling integration."
+        // description="Unified contact registry, custom attributes, Do-Not-Contact compliance, and AI calling integration."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -542,7 +609,7 @@ export function ProspectsView() {
               onClick={handleExportCSV}
               leftIcon={<Download className="w-3.5 h-3.5" />}
             >
-              Export CSV
+              Export
             </Button>
             <Button
               variant="outline"
@@ -550,7 +617,7 @@ export function ProspectsView() {
               onClick={() => setImportModalOpen(true)}
               leftIcon={<UploadCloud className="w-3.5 h-3.5" />}
             >
-              Import CSV
+              Import
             </Button>
             <Button
               variant="primary"
@@ -590,21 +657,41 @@ export function ProspectsView() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
             {/* Contact Group / List Filter */}
-            <select
-              value={selectedGroup}
-              onChange={(e) => {
-                setSelectedGroup(e.target.value);
-                setPage(1);
-              }}
-              className="px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-heading)] font-medium"
-            >
-              <option value="all">All Contact Groups</option>
-              {availableGroups.map((grp) => (
-                <option key={grp} value={grp}>
-                  {grp}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={selectedGroup}
+                onChange={(e) => {
+                  setSelectedGroup(e.target.value);
+                  setPage(1);
+                }}
+                className="px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-heading)] font-medium"
+              >
+                <option value="all">All Contact Groups</option>
+                {availableGroups.map((grp) => (
+                  <option key={grp} value={grp}>
+                    {grp}
+                  </option>
+                ))}
+              </select>
+
+              {selectedGroup !== "all" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setGroupToDelete(selectedGroup);
+                    setGroupDeleteAction("unassign");
+                    setGroupMoveTarget("");
+                    setShowDeleteGroupModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900 h-[30px] px-2"
+                  title={`Delete or reassign group "${selectedGroup}"`}
+                >
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Delete Group</span>
+                </Button>
+              )}
+            </div>
 
             <select
               value={selectedStatus}
@@ -986,6 +1073,184 @@ export function ProspectsView() {
             </Button>
             <Button variant="danger" size="sm" isLoading={isBulkDeleting} disabled={isBulkDeleting} onClick={handleExecuteBulkDelete}>
               Delete {selectedIds.length} Contacts
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Contact Group Modal with Contact Reassignment / Deletion Options */}
+      <Modal
+        isOpen={showDeleteGroupModal}
+        onClose={() => {
+          if (isDeletingGroup) return;
+          setShowDeleteGroupModal(false);
+        }}
+        title={`Delete Contact Group: "${groupToDelete}"`}
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs text-left">
+          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 space-y-1">
+            <p className="font-semibold flex items-center gap-1.5 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>What would you like to do with contacts in "{groupToDelete}"?</span>
+            </p>
+            <p className="text-[11px] leading-relaxed opacity-90">
+              Select whether to keep your contacts, move them to another group, or permanently delete them from Contacts & Leads:
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            {/* Option 1: Unassign (Keep Contacts) */}
+            <label
+              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                groupDeleteAction === "unassign"
+                  ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 shadow-2xs"
+                  : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+              }`}
+            >
+              <input
+                type="radio"
+                name="groupDeleteAction"
+                value="unassign"
+                checked={groupDeleteAction === "unassign"}
+                onChange={() => setGroupDeleteAction("unassign")}
+                className="mt-0.5 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+              />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <span>Keep contacts (Remove from this group)</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded font-normal bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                    Recommended
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+                  Removes the group tag from contacts, but safely preserves all contacts in your Contacts & Leads list.
+                </p>
+              </div>
+            </label>
+
+            {/* Option 2: Move Contacts to Another Group */}
+            <label
+              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                groupDeleteAction === "move"
+                  ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 shadow-2xs"
+                  : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+              }`}
+            >
+              <input
+                type="radio"
+                name="groupDeleteAction"
+                value="move"
+                checked={groupDeleteAction === "move"}
+                onChange={() => setGroupDeleteAction("move")}
+                className="mt-0.5 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+              />
+              <div className="space-y-2 flex-1">
+                <div>
+                  <div className="font-semibold text-[var(--color-heading)]">Move contacts to another group</div>
+                  <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+                    Reassign all contacts from "{groupToDelete}" into a different existing or new group.
+                  </p>
+                </div>
+
+                {groupDeleteAction === "move" && (
+                  <div className="space-y-2 pt-1">
+                    {availableGroups.filter((g) => g !== groupToDelete).length > 0 && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[var(--color-muted)] mb-1">
+                          Select Target Group:
+                        </label>
+                        <select
+                          value={groupMoveTarget}
+                          onChange={(e) => setGroupMoveTarget(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-heading)]"
+                        >
+                          <option value="">-- Choose existing group --</option>
+                          {availableGroups
+                            .filter((g) => g !== groupToDelete)
+                            .map((grp) => (
+                              <option key={grp} value={grp}>
+                                {grp}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[var(--color-muted)] mb-1">
+                        Or Create New Group Name:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Q4 Priority Leads"
+                        value={groupMoveTarget}
+                        onChange={(e) => setGroupMoveTarget(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-heading)]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </label>
+
+            {/* Option 3: Delete Contacts Permanently */}
+            <label
+              className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                groupDeleteAction === "delete_contacts"
+                  ? "border-rose-500 bg-rose-500/5 shadow-2xs"
+                  : "border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+              }`}
+            >
+              <input
+                type="radio"
+                name="groupDeleteAction"
+                value="delete_contacts"
+                checked={groupDeleteAction === "delete_contacts"}
+                onChange={() => setGroupDeleteAction("delete_contacts")}
+                className="mt-0.5 text-rose-600 focus:ring-rose-500"
+              />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                  <span>Permanently delete all contacts in this group</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded font-normal bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+                    Destructive
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+                  Deletes this group AND permanently removes all associated contacts from Contacts & Leads.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--color-border)]">
+            <Button variant="ghost" size="sm" disabled={isDeletingGroup} onClick={() => setShowDeleteGroupModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant={groupDeleteAction === "delete_contacts" ? "danger" : "primary"}
+              size="sm"
+              isLoading={isDeletingGroup}
+              disabled={isDeletingGroup || (groupDeleteAction === "move" && !groupMoveTarget.trim())}
+              onClick={handleExecuteDeleteGroup}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              {groupDeleteAction === "delete_contacts" ? (
+                <>
+                  <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Delete Group & Contacts</span>
+                </>
+              ) : groupDeleteAction === "move" ? (
+                <>
+                  <FolderPlus className="w-3.5 h-3.5 shrink-0" />
+                  <span>Move & Delete Group</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Keep Contacts & Delete Group</span>
+                </>
+              )}
             </Button>
           </div>
         </div>

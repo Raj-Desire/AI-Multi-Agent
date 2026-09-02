@@ -103,8 +103,12 @@ class CallRepository:
         def _sync_get():
             container = get_calls_container()
             if not container:
-                return self._memory_store.get(call_id)
-            query = "SELECT * FROM c WHERE c.id = @call_id"
+                item = self._memory_store.get(call_id)
+                if not item:
+                    item = next((c for c in self._memory_store.values() if getattr(c, 'call_sid', None) == call_id or getattr(c, 'session_id', None) == call_id), None)
+                return item
+
+            query = "SELECT * FROM c WHERE c.id = @call_id OR c.session_id = @call_id OR c.call_session_id = @call_id OR c.call_sid = @call_id"
             params = [{"name": "@call_id", "value": call_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))

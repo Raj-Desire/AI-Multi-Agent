@@ -579,6 +579,33 @@ class CampaignService:
         call_count_with_duration = 0
 
         for m in members:
+            # Auto-sync rich outcome and true call ID from call record
+            if m.last_call_id or m.prospect_id:
+                try:
+                    call_rec = None
+                    if m.last_call_id:
+                        call_rec = await self.call_repo.get_by_id(m.last_call_id)
+                    if not call_rec and m.prospect_id:
+                        # Fallback query by campaign and prospect
+                        org_id = campaign.organization_id if campaign else "global"
+                        calls = await self.call_repo.list_by_org(org_id)
+                        call_rec = next((c for c in calls if c.campaign_id == campaign_id and (c.prospect_id == m.prospect_id or c.to_number == m.phone_number)), None)
+
+                    if call_rec:
+                        if m.last_call_id != call_rec.id:
+                            m.last_call_id = call_rec.id
+                        has_spoke = bool((call_rec.transcript and len(call_rec.transcript) > 0) or (call_rec.duration and call_rec.duration > 0))
+                        rich_outcome = call_rec.business_outcome or call_rec.outcome
+                        if has_spoke and rich_outcome and rich_outcome.lower() not in ["no_answer", "no answer", "failed", "busy", "unanswered"]:
+                            if (m.last_call_outcome or "").lower() in ["no_answer", "no answer", "failed", "unanswered", "completed", ""]:
+                                m.last_call_outcome = rich_outcome
+                                m.last_call_duration = max(m.last_call_duration or 0, call_rec.duration or 0)
+                                if m.status in [CampaignMemberStatus.UNANSWERED, CampaignMemberStatus.FAILED]:
+                                    m.status = CampaignMemberStatus.COMPLETED
+                        await self.member_repo.save(m)
+                except Exception:
+                    pass
+
             st = str(getattr(m.status, "value", m.status)).lower()
             if st == "queued":
                 stats.queued += 1
@@ -596,41 +623,71 @@ class CampaignService:
                 stats.dnc += 1
 
             # Outcome tallies
-            outcome = (m.last_call_outcome or "").lower()
-            if "connected" in outcome or outcome in ["interested", "qualified", "converted", "completed"]:
-                stats.connected += 1
-            elif any(w in outcome for w in ["no_answer", "no-answer", "no answer", "not_answer", "not answered", "not answer", "unanswered"]):
-                stats.no_answer += 1
-            elif "busy" in outcome:
-                stats.busy += 1
-            elif "voicemail" in outcome:
-                stats.voicemail += 1
-            elif "callback" in outcome:
-                stats.callbacks += 1
+            raw_outcome = (m.last_call_outcome or "").lower().replace("-", "_").replace(" ", "_")
+            has_connected = bool((m.last_call_duration and m.last_call_duration > 0) or ("connected" in raw_outcome) or (raw_outcome in ["interested", "warm_interested", "highly_interested", "qualified", "converted", "follow_up_required", "information_requested", "completed"]))
 
-            if outcome == "interested" or outcome == "qualified" or outcome == "converted":
+            if has_connected:
+                stats.connected += 1
+            elif any(w in raw_outcome for w in ["no_answer", "not_answer", "not_answered", "unanswered"]):
+                stats.no_answer += 1
+            elif "busy" in raw_outcome:
+                stats.busy += 1
+            elif "voicemail" in raw_outcome:
+                stats.voicemail += 1
+
+            # Positive interest funnel metrics
+            is_positive_interest = False
+            if "callback" in raw_outcome:
+                stats.callbacks += 1
+                is_positive_interest = True
+            if "warm_interested" in raw_outcome:
+                stats.warm_interested += 1
+                is_positive_interest = True
+            elif "highly_interested" in raw_outcome:
+                stats.highly_interested += 1
+                is_positive_interest = True
+            elif "interested" in raw_outcome and "not" not in raw_outcome:
+                is_positive_interest = True
+
+            if "qualified" in raw_outcome:
+                stats.qualified += 1
+                is_positive_interest = True
+            if "converted" in raw_outcome:
+                stats.converted += 1
+                is_positive_interest = True
+            if "follow_up" in raw_outcome:
+                stats.follow_up_required += 1
+                is_positive_interest = True
+            if "information_requested" in raw_outcome:
+                stats.information_requested += 1
+                is_positive_interest = True
+
+            if is_positive_interest:
                 stats.interested += 1
-            elif outcome == "not_interested" or outcome == "not interested":
+
+            if "not_interested" in raw_outcome:
                 stats.not_interested += 1
+            if raw_outcome in ["dnc", "do_not_contact"]:
+                stats.dnc += 1
 
             if m.last_call_duration and m.last_call_duration > 0:
                 total_duration += m.last_call_duration
                 call_count_with_duration += 1
 
         if stats.total_prospects > 0:
-            stats.completion_rate = round(((stats.completed + stats.unanswered + stats.failed + stats.dnc) / stats.total_prospects) * 100.0, 1)
+            terminal_count = stats.completed + stats.unanswered + stats.failed + stats.dnc
+            stats.completion_rate = round((terminal_count / stats.total_prospects) * 100.0, 1)
             stats.connection_rate = round((stats.connected / stats.total_prospects) * 100.0, 1)
 
         if call_count_with_duration > 0:
             stats.avg_duration_seconds = int(total_duration / call_count_with_duration)
 
         # Update Campaign record
-        # Note: we use "global" to look up campaign regardless of tenant context for worker updates
         campaign = await self.campaign_repo.get_by_id("global", campaign_id)
         if campaign:
             campaign.stats = stats
-            # Auto-complete campaign if everything is processed
-            if stats.total_prospects > 0 and (stats.completed + stats.unanswered + stats.failed + stats.dnc) == stats.total_prospects:
+            # Auto-complete campaign ONLY if every single prospect is in a final terminal state
+            if stats.total_prospects > 0 and stats.queued == 0 and stats.calling == 0 and stats.retrying == 0:
                 if campaign.status == CampaignStatus.RUNNING:
                     campaign.status = CampaignStatus.COMPLETED
                     campaign.completed_at = datetime.now(timezone.utc)
@@ -651,12 +708,12 @@ class CampaignService:
         self,
         campaign_id: str,
         member_id: str,
-        call_id: str,
+        call_id: Optional[str],
         duration: int,
         outcome: Optional[str] = None,
         is_success: bool = True,
         error: Optional[str] = None
-    ) -> CampaignMember:
+    ) -> Optional[CampaignMember]:
         member = await self.member_repo.get_by_id("global", member_id)
         if not member:
             logger.warning(f"[CampaignService] Member {member_id} not found for outcome sync.")
@@ -670,7 +727,7 @@ class CampaignService:
         now = datetime.now(timezone.utc)
 
         member.last_call_id = call_id
-        member.last_call_outcome = clean_outcome
+        member.last_call_outcome = outcome or clean_outcome
         member.last_call_duration = duration
         member.last_error = error
         member.last_attempt_at = now
@@ -680,18 +737,18 @@ class CampaignService:
         retry_delay = campaign.calling_config.retry_delay_minutes
 
         # Check if outcome is terminal vs retryable
-        is_terminal = any(term in clean_outcome for term in ["connected", "interested", "not_interested", "qualified", "converted", "dnc", "invalid", "completed"])
+        norm_outcome = clean_outcome.replace("-", "_").replace(" ", "_")
+        is_terminal = any(term in norm_outcome for term in ["connected", "interested", "not_interested", "qualified", "converted", "dnc", "do_not_contact", "invalid", "completed", "follow_up"])
         if is_success:
             is_terminal = True
 
         if is_terminal or member.attempts >= max_attempts:
-            if clean_outcome in ["dnc", "do_not_contact"]:
+            if norm_outcome in ["dnc", "do_not_contact"]:
                 member.status = CampaignMemberStatus.SKIPPED_DNC
-            elif clean_outcome in ["invalid", "invalid_number"]:
+            elif norm_outcome in ["invalid", "invalid_number"]:
                 member.status = CampaignMemberStatus.SKIPPED_INVALID
             elif not is_success and member.attempts >= max_attempts:
-                # If exhausted retry attempts due to no answer, busy or rejected
-                if any(k in clean_outcome for k in ["busy", "no_answer", "no-answer", "no answer", "canceled", "unanswered", "voicemail"]):
+                if any(k in norm_outcome for k in ["busy", "no_answer", "canceled", "unanswered", "voicemail"]):
                     member.status = CampaignMemberStatus.UNANSWERED
                 else:
                     member.status = CampaignMemberStatus.FAILED
@@ -703,7 +760,7 @@ class CampaignService:
                 organization_id=campaign.organization_id,
                 campaign_id=campaign_id,
                 event_type=CampaignEventType.CALL_COMPLETED,
-                message=f"Call to {member.prospect_name} ({member.phone_number}) finished. Outcome: {clean_outcome}, Final Status: {member.status.value}",
+                message=f"Call to {member.prospect_name} ({member.phone_number}) finished. Outcome: {member.last_call_outcome}, Final Status: {member.status.value}",
                 details={"member_id": member.id, "call_id": call_id, "duration": duration, "attempts": member.attempts}
             )
         else:
@@ -715,10 +772,100 @@ class CampaignService:
                 organization_id=campaign.organization_id,
                 campaign_id=campaign_id,
                 event_type=CampaignEventType.RETRY_SCHEDULED,
-                message=f"Call to {member.prospect_name} ({member.phone_number}) resulted in '{clean_outcome}'. Retry attempt #{member.attempts + 1} scheduled for {member.next_attempt_at.strftime('%Y-%m-%d %H:%M:%S UTC')}.",
+                message=f"Call to {member.prospect_name} ({member.phone_number}) resulted in '{member.last_call_outcome}'. Retry attempt #{member.attempts + 1} scheduled for {member.next_attempt_at.strftime('%Y-%m-%d %H:%M:%S UTC')}.",
                 details={"member_id": member.id, "next_attempt_at": member.next_attempt_at.isoformat(), "attempts": member.attempts}
             )
 
         await self.member_repo.save(member)
         await self.recalculate_campaign_stats(campaign_id)
         return member
+
+    # -------------------------------------------------------------
+    # Campaign Call History & Live Active Calls
+    # -------------------------------------------------------------
+    async def list_campaign_calls(
+        self,
+        ctx: TenantContext,
+        campaign_id: str,
+        status: Optional[str] = None,
+        outcome: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 25
+    ) -> Tuple[List[Any], int]:
+        """Returns single-source-of-truth call records for this campaign."""
+        await self.get_campaign(ctx, campaign_id)
+        all_calls = await self.call_repo.list_by_org(ctx.organization_id)
+        raw_campaign_calls = [c for c in all_calls if c.campaign_id == campaign_id]
+
+        # Deduplicate calls by call_sid (if available) or id, prioritizing richer intelligence records
+        deduped_map: Dict[str, Any] = {}
+        for c in raw_campaign_calls:
+            key = c.call_sid if c.call_sid else c.id
+            if key not in deduped_map:
+                deduped_map[key] = c
+            else:
+                existing = deduped_map[key]
+                # Determine which has more detailed intelligence (summary, transcript, or higher duration)
+                has_rich_existing = bool(existing.summary or (existing.transcript and len(existing.transcript) > 0) or existing.business_outcome not in [None, "", "completed", "connected"])
+                has_rich_new = bool(c.summary or (c.transcript and len(c.transcript) > 0) or c.business_outcome not in [None, "", "completed", "connected"])
+                if has_rich_new and not has_rich_existing:
+                    deduped_map[key] = c
+                elif has_rich_new and has_rich_existing:
+                    if len(c.transcript or []) > len(existing.transcript or []):
+                        deduped_map[key] = c
+
+        campaign_calls = list(deduped_map.values())
+
+        # Apply Filters
+        filtered = []
+        for c in campaign_calls:
+            if status and status != "all":
+                if (c.status or "").lower() != status.lower():
+                    continue
+            if outcome and outcome != "all":
+                c_out = (c.business_outcome or c.outcome or "").lower()
+                if outcome.lower() not in c_out:
+                    continue
+            if search and search.strip():
+                query = search.strip().lower()
+                match = (
+                    query in (c.to_number or "").lower()
+                    or query in (c.from_number or "").lower()
+                    or query in (c.agent_name or "").lower()
+                    or query in (c.summary or "").lower()
+                    or query in (c.intent or "").lower()
+                )
+                if not match:
+                    continue
+            filtered.append(c)
+
+        filtered.sort(key=lambda x: getattr(x, "created_at", datetime.min), reverse=True)
+        total = len(filtered)
+        start_idx = (page - 1) * page_size
+        items = filtered[start_idx : start_idx + page_size]
+        return items, total
+
+    async def get_active_calls(self, ctx: TenantContext, campaign_id: str) -> List[Dict[str, Any]]:
+        """Returns in-flight active calls currently in progress for this campaign."""
+        await self.get_campaign(ctx, campaign_id)
+        from app.voice.session import active_sessions
+        active_list = []
+        now = datetime.now(timezone.utc)
+        for s in active_sessions._sessions.values():
+            if s.campaign_id == campaign_id and (s.organization_id == ctx.organization_id or ctx.role == "superadmin"):
+                dur = int((now - s.started_at).total_seconds()) if s.started_at else 0
+                active_list.append({
+                    "call_session_id": s.call_session_id,
+                    "twilio_call_sid": s.twilio_call_sid,
+                    "prospect_id": s.prospect_id,
+                    "phone_number": s.destination_number,
+                    "agent_id": s.agent_id,
+                    "agent_name": s.agent_name,
+                    "status": s.status,
+                    "direction": s.direction,
+                    "duration": dur,
+                    "turn_count": s.turn_count,
+                    "started_at": s.started_at.isoformat() if s.started_at else None
+                })
+        return active_list

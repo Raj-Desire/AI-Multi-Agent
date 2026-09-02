@@ -16,7 +16,9 @@ from app.schemas.prospect import (
     BulkGroupUpdateRequest,
     BulkDeleteRequest,
     AddTagRequest,
-    DistinctGroupsResponse
+    DistinctGroupsResponse,
+    DeleteGroupRequest,
+    DeleteGroupResponse
 )
 from app.services.prospect_service import ProspectService
 from app.repositories.prospect_repository import ProspectRepository
@@ -79,6 +81,29 @@ async def list_distinct_groups(
     return ApiResponse.ok(DistinctGroupsResponse(groups=groups))
 
 
+@router.post("/groups/delete", response_model=ApiResponse[DeleteGroupResponse])
+async def delete_contact_group_post(
+    payload: DeleteGroupRequest,
+    group_name: str = Query(..., description="Name of the group to delete"),
+    ctx: TenantContext = Depends(get_tenant_context),
+    service: ProspectService = Depends(get_prospect_service)
+):
+    """
+    Deletes or reassigns contacts in a group based on chosen policy:
+    - 'unassign': Removes group tag while preserving contacts.
+    - 'move': Moves contacts to target_group_name.
+    - 'delete_contacts': Permanently removes all contacts in the group.
+    """
+    res = await service.delete_group(
+        ctx=ctx,
+        group_name=group_name,
+        action=payload.action,
+        target_group_name=payload.target_group_name
+    )
+    return ApiResponse.ok(DeleteGroupResponse.model_validate(res))
+
+
+
 @router.post("", response_model=ApiResponse[ProspectResponse], status_code=status.HTTP_201_CREATED)
 async def create_prospect(
     payload: CreateProspectRequest,
@@ -106,6 +131,7 @@ async def validate_csv_import(
 
 
 @router.post("/import", response_model=ApiResponse[CSVImportSummaryResponse])
+@router.post("/import/csv", response_model=ApiResponse[CSVImportSummaryResponse])
 async def import_prospects_csv(
     payload: CSVImportRequest,
     ctx: TenantContext = Depends(get_tenant_context),

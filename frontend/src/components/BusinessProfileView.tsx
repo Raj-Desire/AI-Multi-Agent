@@ -192,13 +192,13 @@ export function BusinessProfileView() {
       {/* Header */}
       <PageHeader
         title="Company Business Profile & Knowledge Base"
-        description="Single central knowledge base for your entire organization. Configure services, office address, operating hours, and custom FAQs used across all voice agents."
+        // description="Single central knowledge base for your entire organization. Configure services, office address, operating hours, and custom FAQs used across all voice agents."
         badge={
           <div className="flex items-center gap-1.5">
-            <Badge variant="primary" className="gap-1.5 py-1 px-2.5">
+            {/* <Badge variant="primary" className="gap-1.5 py-1 px-2.5">
               <Brain className="w-3.5 h-3.5 text-amber-300" />
               Live Voice Brain
-            </Badge>
+            </Badge> */}
             {!canEdit && (
               <Badge variant="neutral" className="text-[10px] py-1 px-2 gap-1 flex items-center">
                 <Lock className="w-3 h-3 text-[var(--color-muted)]" />
@@ -514,9 +514,6 @@ export function BusinessProfileView() {
             <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider">
               Physical Head Office Address
             </h3>
-            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-              The agent provides this location when callers inquire about meeting or visiting in person.
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -579,9 +576,6 @@ export function BusinessProfileView() {
               <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider">
                 Operating / Business Hours
               </h3>
-              <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-                The agent accurately quotes working hours for staff support, callback requests, and office visits.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

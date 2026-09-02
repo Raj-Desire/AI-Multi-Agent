@@ -539,7 +539,6 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
         <div className="min-w-0 max-w-[280px]">
           <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5 truncate">
             <span className="truncate whitespace-nowrap">{a.name}</span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)] shrink-0 px-1 py-0.2 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)]">v{a.version || 1}</span>
           </div>
           {a.description && (
             <p className="text-[11px] text-[var(--color-muted)] truncate whitespace-nowrap mt-0.5" title={a.description}>
@@ -1030,9 +1029,9 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
               <h2 className="text-sm font-bold text-[var(--color-heading)]">My AI Agents</h2>
               <span className="text-xs text-[var(--color-muted)] font-normal">({myOrgAgents.length})</span>
             </div>
-            <p className="text-xs text-[var(--color-muted)] mt-0.5">
+            {/* <p className="text-xs text-[var(--color-muted)] mt-0.5">
               AI voice agents created and managed by your organization.
-            </p>
+            </p> */}
           </div>
         </div>
 

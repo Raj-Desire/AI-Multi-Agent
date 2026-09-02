@@ -849,7 +849,7 @@ export function VoiceAgentView() {
               </div>
 
               {/* Event Timeline Log */}
-              <div>
+              {/* <div>
                 <div className="text-xs font-semibold mb-1.5 text-[var(--color-heading)]">Server Event Log</div>
                 <div className="h-36 overflow-y-auto p-2 font-mono text-[10px] rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 space-y-1">
                   {telemetryEvents.length === 0 ? (
@@ -874,7 +874,7 @@ export function VoiceAgentView() {
                     ))
                   )}
                 </div>
-              </div>
+              </div> */}
             </CardContent>
           </Card>
         </div>

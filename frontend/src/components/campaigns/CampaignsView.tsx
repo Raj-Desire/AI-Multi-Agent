@@ -266,9 +266,9 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             <Megaphone className="w-5 h-5 text-[var(--color-primary)]" />
             Outbound Calling Campaigns
           </h1>
-          <p className="text-xs text-[var(--color-muted)] mt-0.5">
+          {/* <p className="text-xs text-[var(--color-muted)] mt-0.5">
             Automated dialer scheduler, audience queues, and real-time AI voice conversation dispatching.
-          </p>
+          </p> */}
         </div>
 
         <div className="flex items-center gap-2">
@@ -277,8 +277,10 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             size="sm"
             onClick={() => loadCampaigns(false)}
             disabled={isLoading || isRefreshing}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap active:scale-95 transition-transform"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isRefreshing ? "animate-spin text-[var(--color-primary)]" : ""}`} />
+            <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
           </Button>
 
           <Button
@@ -301,7 +303,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             <Megaphone className="w-4 h-4 text-[var(--color-primary)]" />
           </div>
           <p className="text-2xl font-bold text-[var(--color-heading)] mt-1">{runningCount}</p>
-          <span className="text-[11px] text-[var(--color-muted)]">{campaigns.length} total campaigns</span>
+          {/* <span className="text-[11px] text-[var(--color-muted)]">{campaigns.length} total campaigns</span> */}
         </div>
 
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
@@ -310,7 +312,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             <Users className="w-4 h-4 text-blue-500" />
           </div>
           <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">{totalAudience}</p>
-          <span className="text-[11px] text-[var(--color-muted)]">Enrolled prospects</span>
+          {/* <span className="text-[11px] text-[var(--color-muted)]">Enrolled prospects</span> */}
         </div>
 
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
@@ -319,7 +321,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             <PhoneCall className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{totalConnected}</p>
-          <span className="text-[11px] text-[var(--color-muted)]">Conversations completed</span>
+          {/* <span className="text-[11px] text-[var(--color-muted)]">Conversations completed</span> */}
         </div>
 
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
@@ -328,7 +330,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
             <Activity className="w-4 h-4 text-indigo-500" />
           </div>
           <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{avgConnectionRate}%</p>
-          <span className="text-[11px] text-[var(--color-muted)]">Across all campaigns</span>
+          {/* <span className="text-[11px] text-[var(--color-muted)]">Across all campaigns</span> */}
         </div>
       </div>
 

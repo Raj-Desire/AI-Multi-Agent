@@ -296,26 +296,57 @@ async def voice_status_webhook(request: Request):
                     await cmp_svc.recalculate_campaign_stats(target_campaign_id)
 
         elif call_status in TERMINAL_STATUSES:
-            # Map Twilio PSTN status to human-grade outcome
-            outcome = "failed"
-            if call_status == "completed":
-                if existing_call and existing_call.outcome in ["connected", "interested", "qualified", "converted"]:
+            # Check if conversation actually took place (via audio stream / transcript / existing call state)
+            has_spoke = False
+            if existing_call:
+                if (existing_call.transcript and len(existing_call.transcript) > 0) or (existing_call.duration and existing_call.duration > 0):
+                    has_spoke = True
+                if existing_call.business_outcome and existing_call.business_outcome.lower() not in ["no_answer", "no answer", "failed", "busy", "initiated", "ringing"]:
+                    has_spoke = True
+                elif existing_call.outcome and existing_call.outcome.lower() not in ["no_answer", "no answer", "failed", "busy", "initiated", "ringing"]:
+                    has_spoke = True
+
+            effective_duration = max(call_duration, existing_call.duration if existing_call else 0)
+
+            # Determine human-grade commercial outcome
+            if has_spoke and existing_call:
+                outcome = existing_call.business_outcome or existing_call.outcome or "connected"
+                is_success = True
+            elif call_status == "completed":
+                if existing_call and existing_call.business_outcome:
+                    outcome = existing_call.business_outcome
+                    is_success = True
+                elif existing_call and existing_call.outcome and existing_call.outcome.lower() not in ["initiated", "ringing"]:
                     outcome = existing_call.outcome
-                elif call_duration > 0:
+                    is_success = True
+                elif effective_duration > 0:
                     outcome = "connected"
+                    is_success = True
                 else:
                     outcome = "completed"
+                    is_success = True
             elif call_status in ["no-answer", "no_answer"]:
-                outcome = "no_answer"
+                outcome = (existing_call.business_outcome or existing_call.outcome) if (has_spoke and existing_call) else "no_answer"
+                is_success = has_spoke
             elif call_status == "busy":
-                outcome = "busy"
+                outcome = (existing_call.business_outcome or existing_call.outcome) if (has_spoke and existing_call) else "busy"
+                is_success = has_spoke
             elif call_status == "failed":
-                outcome = "failed"
+                outcome = (existing_call.business_outcome or existing_call.outcome) if (has_spoke and existing_call) else "failed"
+                is_success = has_spoke
             elif call_status == "canceled":
-                outcome = "canceled"
+                outcome = (existing_call.business_outcome or existing_call.outcome) if (has_spoke and existing_call) else "canceled"
+                is_success = has_spoke
+            else:
+                outcome = (existing_call.business_outcome or existing_call.outcome) if (has_spoke and existing_call) else "failed"
+                is_success = has_spoke
 
             if existing_call:
                 existing_call.outcome = outcome
+                if not existing_call.business_outcome or existing_call.business_outcome in ["completed", "connected"]:
+                    existing_call.business_outcome = outcome
+                if effective_duration > 0:
+                    existing_call.duration = effective_duration
                 await call_repo.save(existing_call)
 
             # Sync Prospect Activity & Outcome
@@ -328,9 +359,9 @@ async def voice_status_webhook(request: Request):
                         organization_id=target_org_id,
                         phone_number=existing_call.to_number or "",
                         call_id=existing_call.id,
-                        duration=call_duration,
+                        duration=effective_duration,
                         outcome=outcome,
-                        is_success=(outcome in ["connected", "completed"] or call_duration > 0)
+                        is_success=is_success
                     )
                 except Exception as pe:
                     print(f"[Twilio Status Webhook] Prospect sync warning: {pe}")
@@ -344,12 +375,11 @@ async def voice_status_webhook(request: Request):
                     target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
                     if target_mem:
                         cmp_svc = CampaignService()
-                        is_success = (outcome in ["connected", "completed"] or (call_status == "completed" and call_duration > 0))
                         await cmp_svc.record_call_outcome(
                             campaign_id=target_campaign_id,
                             member_id=target_mem.id,
                             call_id=existing_call.id if existing_call else call_sid,
-                            duration=call_duration,
+                            duration=effective_duration,
                             outcome=outcome,
                             is_success=is_success
                         )

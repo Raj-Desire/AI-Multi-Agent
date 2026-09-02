@@ -387,6 +387,8 @@ export interface CallRecord {
   duration: number;
   prompt?: string;
   status: string;
+  prospect_id?: string;
+  campaign_id?: string;
   agent_id?: string;
   agent_version?: number;
   agent_name?: string;
@@ -394,6 +396,22 @@ export interface CallRecord {
   agent_config_snapshot?: Partial<AgentConfig> | Record<string, any>;
   transcript?: ConversationTurnMessage[];
   outcome?: string;
+  business_outcome?: string;
+  summary?: string;
+  key_insights?: string[];
+  key_requirements?: string[];
+  customer_questions?: string[];
+  objections?: string[];
+  important_info?: string;
+  next_action?: string;
+  intent?: string;
+  sentiment?: string;
+  lead_score?: number;
+  interest_level?: string;
+  classification?: string;
+  callback_datetime?: string;
+  analytics_status?: string;
+  analytics?: Record<string, any>;
   latency_metrics?: Record<string, any>;
   error_information?: Record<string, any>;
   created_at: string;
@@ -613,6 +631,35 @@ export interface CampaignSchedule {
   timezone: string;
 }
 
+export type BusinessOutcome =
+  | "Highly Interested"
+  | "Interested"
+  | "Warm Interested"
+  | "Callback Requested"
+  | "Follow-up Required"
+  | "Information Requested"
+  | "Qualified"
+  | "Converted"
+  | "Not Interested"
+  | "Do Not Contact"
+  | "Voicemail"
+  | "No Answer"
+  | "Failed";
+
+export interface ActiveCampaignCall {
+  call_session_id: string;
+  twilio_call_sid?: string;
+  prospect_id?: string;
+  phone_number: string;
+  agent_id?: string;
+  agent_name?: string;
+  status: string;
+  direction: string;
+  duration: number;
+  turn_count: number;
+  started_at?: string;
+}
+
 export interface CampaignStats {
   total_prospects: number;
   queued: number;
@@ -627,7 +674,13 @@ export interface CampaignStats {
   voicemail: number;
   callbacks: number;
   interested: number;
+  warm_interested?: number;
+  highly_interested?: number;
   not_interested: number;
+  qualified?: number;
+  converted?: number;
+  follow_up_required?: number;
+  information_requested?: number;
   dnc: number;
   connection_rate: number;
   completion_rate: number;
@@ -726,5 +779,184 @@ export interface CampaignMemberListResponse {
   total_pages: number;
 }
 
+// ------------------------------------------------------------------
+// Lead Intelligence Domain Types
+// ------------------------------------------------------------------
 
+export interface LeadKPISummary {
+  total_leads: number;
+  interested: number;
+  callback_requested: number;
+  needs_follow_up: number;
+  not_interested: number;
+  no_answer: number;
+  avg_lead_score: number;
+  avg_call_duration_seconds: number;
+  total_leads_change_pct?: number | null;
+  interested_change_pct?: number | null;
+  callback_change_pct?: number | null;
+  needs_follow_up_change_pct?: number | null;
+  not_interested_change_pct?: number | null;
+  no_answer_change_pct?: number | null;
+  period_label: string;
+  comparison_label?: string | null;
+}
 
+export interface LeadTrendPoint {
+  date: string;
+  display_label: string;
+  total_leads: number;
+  interested: number;
+  callback_requested: number;
+  needs_follow_up: number;
+  not_interested: number;
+  no_answer: number;
+}
+
+export interface LeadTrendsResponse {
+  metric: string;
+  points: LeadTrendPoint[];
+  total_data_points: number;
+}
+
+export interface LeadOutcomeDistributionItem {
+  outcome: string;
+  count: number;
+  percentage: number;
+  color_hint: string;
+}
+
+export interface LeadOutcomeDistributionResponse {
+  total_analyzed_calls: number;
+  distribution: LeadOutcomeDistributionItem[];
+}
+
+export interface CampaignLeadStat {
+  campaign_id: string;
+  campaign_name: string;
+  status: string;
+  total_leads: number;
+  interested: number;
+  callback_requested: number;
+  needs_follow_up: number;
+  not_interested: number;
+  no_answer: number;
+  conversion_rate: number;
+  last_lead_at?: string | null;
+}
+
+export interface AgentLeadStat {
+  agent_id: string;
+  agent_name: string;
+  total_calls: number;
+  interested_leads: number;
+  callback_leads: number;
+  avg_lead_score: number;
+}
+
+export interface LeadListItem {
+  prospect_id: string;
+  full_name: string;
+  company?: string | null;
+  phone_number: string;
+  email?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  business_outcome: string;
+  interest_level: string;
+  lead_score: number;
+  last_call_id?: string | null;
+  last_call_at?: string | null;
+  last_call_duration: number;
+  next_action?: string | null;
+  prospect_status: string;
+  callback_datetime?: string | null;
+  summary?: string | null;
+  tags: string[];
+}
+
+export interface LeadListPaginationResponse {
+  items: LeadListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface CallbackListItem {
+  prospect_id: string;
+  full_name: string;
+  company?: string | null;
+  phone_number: string;
+  email?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  requested_datetime?: string | null;
+  last_call_at?: string | null;
+  summary?: string | null;
+  next_action?: string | null;
+  business_outcome: string;
+  interest_level: string;
+  lead_score: number;
+  prospect_status: string;
+}
+
+export interface CallbackListPaginationResponse {
+  items: CallbackListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface LeadHighlightEvidence {
+  icon: string;
+  text: string;
+}
+
+export interface LeadDetailResponse {
+  prospect: Prospect;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  latest_call_id?: string | null;
+  latest_call_at?: string | null;
+  business_outcome: string;
+  interest_level: string;
+  lead_score: number;
+  summary?: string | null;
+  intent?: string | null;
+  sentiment?: string | null;
+  key_insights: string[];
+  key_requirements: string[];
+  customer_questions: string[];
+  objections: string[];
+  important_info?: string | null;
+  next_action?: string | null;
+  callback_datetime?: string | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  highlight_reasons: LeadHighlightEvidence[];
+  transcript: ConversationTurnMessage[];
+  call_history: Array<{
+    call_id: string;
+    created_at: string;
+    duration: number;
+    outcome: string;
+    summary: string;
+    agent_name?: string;
+    campaign_id?: string;
+  }>;
+}
+
+export interface LeadActionRequest {
+  status?: string;
+  next_follow_up_at?: string;
+  callback_datetime?: string;
+  note?: string;
+  tags?: string[];
+  assigned_owner?: string;
+}

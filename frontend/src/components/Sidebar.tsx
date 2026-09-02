@@ -20,17 +20,19 @@ import {
   Building2,
   BookOpen,
   UserCheck,
-  Contact
+  Contact,
+  Sparkles
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
 
 export const TAB_ROUTE_MAP: Record<NavTab, string> = {
   dashboard: "/dashboard",
   ai_dialer: "/dialer",
   voice_agent: "/agents",
+  lead_intelligence: "/lead-intelligence",
   campaigns: "/campaigns",
   prospects: "/prospects",
   business_profile: "/knowledge",
@@ -47,6 +49,10 @@ export const ROUTE_TAB_MAP: Record<string, NavTab> = {
   "/ai-dialer": "ai_dialer",
   "/agents": "voice_agent",
   "/voice-agents": "voice_agent",
+  "/lead-intelligence": "lead_intelligence",
+  "/leads": "lead_intelligence",
+  "/opportunities": "lead_intelligence",
+  "/lead-insights": "lead_intelligence",
   "/campaigns": "campaigns",
   "/prospects": "prospects",
   "/contacts": "prospects",
@@ -105,6 +111,13 @@ export function Sidebar({
           icon: PhoneCall,
           visible: true,
         },
+        // {
+        //   id: "lead_intelligence",
+        //   label: "Lead Intelligence",
+        //   icon: Sparkles,
+        //   visible: true,
+        //   badge: "New",
+        // },
         {
           id: "ai_dialer",
           label: "AI Agent Dialer",

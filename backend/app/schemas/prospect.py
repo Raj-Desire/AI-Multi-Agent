@@ -176,3 +176,18 @@ class AddTagRequest(BaseModel):
 class DistinctGroupsResponse(BaseModel):
     groups: List[str] = Field(default_factory=list)
 
+
+class DeleteGroupRequest(BaseModel):
+    action: str = "unassign"  # "unassign" | "move" | "delete_contacts"
+    target_group_name: Optional[str] = None
+
+
+class DeleteGroupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    deleted_group: str
+    action: str
+    target_group: Optional[str] = None
+    affected_contacts: int
+
+

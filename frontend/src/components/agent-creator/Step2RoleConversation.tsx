@@ -302,9 +302,6 @@ export function Step2RoleConversation({
             <label className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
               <span>Primary Agent Objective</span>
               <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
-              <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
-                Required
-              </span>
             </label>
             <InfoTooltip
               content="In 1–2 sentences, define the single most important goal and outcome of every phone call."

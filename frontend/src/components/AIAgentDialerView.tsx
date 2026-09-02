@@ -301,7 +301,6 @@ export function AIAgentDialerView({
         <div>
           <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1">
             <span>{c.agent_name || "Receptionist"}</span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">v{c.agent_version || 1}</span>
           </div>
           <span className="text-[10px] text-[var(--color-muted)]">
             {c.agent_scope === "GLOBAL" ? "Platform" : "Organization"}
@@ -468,7 +467,7 @@ export function AIAgentDialerView({
                   <optgroup label="My Organization Agents">
                     {availableAgents.my_agents.map((a) => (
                       <option key={`my_agent_${a.agent_id}`} value={a.agent_id}>
-                        {a.name} (v{a.version}) - {a.role}
+                        {a.name} - {a.role}
                       </option>
                     ))}
                   </optgroup>
@@ -753,9 +752,9 @@ export function AIAgentDialerView({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Version & Scope:</span>
+                  <span className="text-[var(--color-muted)]">Scope:</span>
                   <span className="font-mono text-[var(--color-muted)]">
-                    v{selectedCall.agent_version || 1} &bull; {selectedCall.agent_scope || "ORGANIZATION"}
+                    {selectedCall.agent_scope || "ORGANIZATION"}
                   </span>
                 </div>
               </div>

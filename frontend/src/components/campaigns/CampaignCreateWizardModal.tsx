@@ -12,6 +12,7 @@ import {
   Prospect,
   TwilioConfig,
 } from "../../types";
+import { TimezoneLiveClock } from "./TimezoneLiveClock";
 import { toast } from "sonner";
 import {
   Megaphone,
@@ -478,7 +479,7 @@ export function CampaignCreateWizardModal({
       });
 
       const cleanGroup = directCsvGroupName.trim();
-      const res = await fetchApi<{ imported_count: number; total_rows: number; updated_count: number }>("/prospects/import/csv", {
+      const res = await fetchApi<{ imported_count: number; total_rows: number; updated_count: number }>("/prospects/import", {
         method: "POST",
         body: JSON.stringify({
           csv_content: directCsvContent,
@@ -808,7 +809,6 @@ export function CampaignCreateWizardModal({
                           <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-mono">
                             {voiceName}
                           </span>
-                          <span>v{agent.version || 1}</span>
                         </div>
                       </div>
                     );
@@ -1635,6 +1635,18 @@ export function CampaignCreateWizardModal({
                     </select>
                   </div>
                 </div>
+
+                {/* Live Timezone & Window Preview */}
+                <TimezoneLiveClock
+                  schedule={{
+                    calling_days: callingDays,
+                    calling_start_time: startTime,
+                    calling_end_time: endTime,
+                    timezone: timezone,
+                    start_date: startDate,
+                    end_date: endDate
+                  }}
+                />
 
                 {/* Dynamic Schedule Summary Box */}
                 <div className="p-3 bg-[var(--color-primary-subtle,rgba(59,130,246,0.06))] border border-[var(--color-primary)]/30 rounded-lg flex items-start gap-2.5 text-xs text-[var(--color-heading)]">

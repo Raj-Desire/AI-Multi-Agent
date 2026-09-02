@@ -19,6 +19,15 @@ export function invalidateApiCache(pathPrefix?: string) {
   }
 }
 
+export function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("desire_token");
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const token = localStorage.getItem("desire_token");

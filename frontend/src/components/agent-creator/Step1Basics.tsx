@@ -134,66 +134,40 @@ export function Step1Basics({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
-                  <span>Agent Name</span>
-                  <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
-                  <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
-                    Required
-                  </span>
-                </label>
-                <InfoTooltip
-                  content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics."
-                  position="top"
-                />
-              </div>
-              {isCustomHighlighted && (
-                <span className="text-[10px] font-medium text-[var(--color-primary)] animate-pulse flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
-                  <span>Custom Purpose Name</span>
-                </span>
-              )}
-            </div>
-            <input
-              key={`name-input-${shakeTriggerKey}`}
-              ref={nameInputRef}
-              type="text"
-              value={agentData.name}
-              onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
-              placeholder={selectedPurposeId === "custom" ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
-              className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-300 ${
-                isNameInvalid
-                  ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
-                  : isCustomHighlighted
-                  ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 bg-[var(--color-primary)]/[0.015] animate-soft-highlight"
-                  : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
-              }`}
-            />
-          </div>
-
-          <div className="space-y-1.5">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Initial Status
+              <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+                <span>Agent Name</span>
+                <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
               </label>
               <InfoTooltip
-                content="Control whether this agent is ready to take live organizational calls or active only in testing mode."
+                content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics."
                 position="top"
               />
             </div>
-            <select
-              value={agentData.status}
-              onChange={(e) => setAgentData({ ...agentData, status: e.target.value as any })}
-              className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 font-medium shadow-2xs cursor-pointer"
-            >
-              <option value="DRAFT">Draft (Testing only)</option>
-              <option value="ACTIVE">Active (Live in Org)</option>
-              <option value="INACTIVE">Inactive (Disabled)</option>
-            </select>
+            {isCustomHighlighted && (
+              <span className="text-[10px] font-medium text-[var(--color-primary)] animate-pulse flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+                <span>Custom Purpose Name</span>
+              </span>
+            )}
           </div>
+          <input
+            key={`name-input-${shakeTriggerKey}`}
+            ref={nameInputRef}
+            type="text"
+            value={agentData.name}
+            onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
+            placeholder={selectedPurposeId === "custom" ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
+            className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-300 ${
+              isNameInvalid
+                ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
+                : isCustomHighlighted
+                ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 bg-[var(--color-primary)]/[0.015] animate-soft-highlight"
+                : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+            }`}
+          />
         </div>
 
         <div className="space-y-1.5">
@@ -202,9 +176,6 @@ export function Step1Basics({
               <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
                 <span>Description</span>
                 <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
-                <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] px-1.5 py-0.5 rounded">
-                  Required
-                </span>
               </label>
               <InfoTooltip
                 content="Explain what this agent does. This helps colleagues and helps our AI generator produce optimal prompts."
