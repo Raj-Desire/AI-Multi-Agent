@@ -156,10 +156,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [user?.id, user?.organization_id]);
 
-  // Apply draftTheme CSS tokens to document in real time
+  // Apply SAVED theme CSS tokens to global document root
   useEffect(() => {
-    applyThemeToCss(draftTheme, userPreferences);
-  }, [draftTheme, userPreferences]);
+    applyThemeToCss(theme, userPreferences);
+  }, [theme, userPreferences]);
 
   const updateDraftTheme = (updater: (prev: OrganizationThemeConfig) => OrganizationThemeConfig) => {
     setDraftTheme((prev) => updater(prev));

@@ -57,7 +57,7 @@ export const Modal: React.FC<ModalProps> = ({
 
       {/* Modal Card with Flex Col and Max-Height */}
       <div
-        className={`relative w-full ${maxWidthClasses[maxWidth]} max-h-[92vh] flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl z-10 text-left`}
+        className={`ui-modal-panel relative w-full ${maxWidthClasses[maxWidth]} max-h-[92vh] flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xl z-10 text-left`}
       >
         {/* Header (Pinned) */}
         <div className="px-5 py-3.5 border-b border-[var(--color-border)] flex items-center justify-between shrink-0 bg-[var(--color-surface)]">

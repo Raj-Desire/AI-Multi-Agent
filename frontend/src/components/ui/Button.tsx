@@ -30,15 +30,15 @@ export const Button: React.FC<ButtonProps> = ({
     primary:
       "ui-button-primary text-white shadow-xs hover:opacity-95 active:scale-[0.99] border-transparent",
     secondary:
-      "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:scale-[0.99]",
+      "ui-button-secondary bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:scale-[0.99]",
     outline:
-      "bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-border-strong)] active:scale-[0.99] shadow-xs",
+      "ui-button-outline bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-border-strong)] active:scale-[0.99] shadow-xs",
     ghost:
-      "bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-heading)] active:scale-[0.99]",
+      "ui-button-ghost bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-heading)] active:scale-[0.99]",
     danger:
-      "bg-[var(--color-danger)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
+      "ui-button-danger bg-[var(--color-danger)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
     success:
-      "bg-[var(--color-success)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
+      "ui-button-success bg-[var(--color-success)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
   };
 
   return (

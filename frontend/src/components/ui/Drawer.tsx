@@ -62,7 +62,7 @@ export const Drawer: React.FC<DrawerProps> = ({
 
       {/* Drawer Panel */}
       <div
-        className={`fixed ${positionClasses[position]} ${sizeClasses[size]} bg-[var(--color-surface)] border-[var(--color-border)] shadow-xl z-10 flex flex-col justify-between text-left`}
+        className={`ui-drawer-panel fixed ${positionClasses[position]} ${sizeClasses[size]} bg-[var(--color-surface)] border-[var(--color-border)] shadow-xl z-10 flex flex-col justify-between text-left`}
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">

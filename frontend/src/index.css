@@ -127,11 +127,6 @@ body {
   color: var(--color-muted) !important;
 }
 
-.text-caption {
-  color: var(--color-muted) !important;
-  font-size: 0.75rem;
-}
-
 /* =========================================================
    GENERIC DESIGN SYSTEM COMPONENT CLASSES
    ========================================================= */
@@ -159,15 +154,61 @@ body {
   border-color: var(--color-border-strong);
 }
 
-/* Inputs */
-.ui-input {
+/* Outline Button */
+.ui-button-outline {
+  background-color: var(--color-surface);
+  color: var(--color-heading);
+  border: 1px solid var(--color-border);
+  transition: all 0.15s ease;
+}
+.ui-button-outline:hover {
+  background-color: var(--color-surface-muted);
+  border-color: var(--color-border-strong);
+}
+
+/* Ghost Button */
+.ui-button-ghost {
+  background-color: transparent;
+  color: var(--color-text);
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.ui-button-ghost:hover {
+  background-color: var(--color-surface-muted);
+  color: var(--color-heading);
+}
+
+/* Danger Button */
+.ui-button-danger {
+  background-color: var(--color-danger);
+  color: #ffffff;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.ui-button-danger:hover {
+  opacity: 0.92;
+}
+
+/* Success Button */
+.ui-button-success {
+  background-color: var(--color-success);
+  color: #ffffff;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.ui-button-success:hover {
+  opacity: 0.92;
+}
+
+/* Inputs & Selects */
+.ui-input, .ui-select {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-heading);
   border-radius: var(--radius-main);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.ui-input:focus {
+.ui-input:focus, .ui-select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-ring);
   outline: none;
@@ -182,6 +223,23 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Table Container */
+.ui-table-container {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-main);
+  box-shadow: var(--shadow-subtle);
+  transition: border-color 0.15s ease;
+}
+
+/* Modals & Drawers */
+.ui-modal-panel, .ui-drawer-panel {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-main);
+  box-shadow: var(--shadow-elevated);
+}
+
 /* Tabs */
 .ui-tab-active {
   background-color: var(--color-surface);
@@ -191,140 +249,508 @@ body {
 }
 
 /* Badges */
-.ui-badge-primary {
-  background-color: var(--color-primary-light);
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary-ring);
-}
-.ui-badge-secondary {
-  background-color: var(--color-secondary-light);
-  color: var(--color-secondary);
-  border: 1px solid rgba(var(--color-secondary-rgb), 0.2);
-}
-.ui-badge-accent {
-  background-color: var(--color-accent-light);
-  color: var(--color-accent);
-  border: 1px solid rgba(var(--color-accent-rgb), 0.2);
+.ui-badge {
+  border-radius: calc(var(--radius-main) - 2px);
+  transition: all 0.15s ease;
 }
 
 /* =========================================================
    UI STYLE ARCHITECTURE (8 STYLES)
    ========================================================= */
 
-/* 1. Default Style: Modern Clean B2B SaaS */
+/* ---------------------------------------------------------
+   1. Default Style: Modern Clean B2B SaaS
+   --------------------------------------------------------- */
 [data-ui-style="default"] .ui-card {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-main);
   box-shadow: var(--shadow-card);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 [data-ui-style="default"] .ui-card:hover {
   box-shadow: var(--shadow-card-hover);
 }
-[data-ui-style="default"] .ui-button-primary {
+[data-ui-style="default"] .ui-button-primary,
+[data-ui-style="default"] .ui-button-secondary,
+[data-ui-style="default"] .ui-button-outline,
+[data-ui-style="default"] .ui-button-danger,
+[data-ui-style="default"] .ui-button-success {
   border-radius: var(--radius-main);
+  box-shadow: var(--shadow-subtle);
+  transition: all 0.15s ease;
+}
+[data-ui-style="default"] .ui-button-primary:hover {
+  box-shadow: var(--shadow-card);
+}
+[data-ui-style="default"] .ui-button-primary:active:not(:disabled) {
+  transform: scale(0.985);
+}
+[data-ui-style="default"] .ui-input,
+[data-ui-style="default"] .ui-select {
+  border-radius: var(--radius-main);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-subtle);
+}
+[data-ui-style="default"] .ui-table-container {
+  border-radius: var(--radius-main);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+[data-ui-style="default"] .ui-modal-panel,
+[data-ui-style="default"] .ui-drawer-panel {
+  border-radius: var(--radius-main);
+  box-shadow: var(--shadow-elevated);
 }
 
-/* 2. Minimal Style: Flat, Sharp Edges, Zero Shadows */
+/* ---------------------------------------------------------
+   2. Minimal Style: Flat, Sharp Edges, Zero Shadows
+   --------------------------------------------------------- */
 [data-ui-style="minimal"] .ui-card {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 0.125rem;
+  border-radius: 0.125rem !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease;
+}
+[data-ui-style="minimal"] .ui-card:hover {
+  border-color: var(--color-border-strong);
   box-shadow: none !important;
 }
-[data-ui-style="minimal"] .ui-button-primary {
-  border-radius: 0.125rem;
+[data-ui-style="minimal"] .ui-button-primary,
+[data-ui-style="minimal"] .ui-button-secondary,
+[data-ui-style="minimal"] .ui-button-outline,
+[data-ui-style="minimal"] .ui-button-danger,
+[data-ui-style="minimal"] .ui-button-success,
+[data-ui-style="minimal"] .ui-button-ghost {
+  border-radius: 0.125rem !important;
+  box-shadow: none !important;
+  border-width: 1px !important;
+}
+[data-ui-style="minimal"] .ui-button-primary:hover {
+  filter: brightness(0.92);
+}
+[data-ui-style="minimal"] .ui-button-primary:active:not(:disabled) {
+  filter: brightness(0.85);
+}
+[data-ui-style="minimal"] .ui-input,
+[data-ui-style="minimal"] .ui-select {
+  border-radius: 0.125rem !important;
+  box-shadow: none !important;
+  border: 1px solid var(--color-border);
+}
+[data-ui-style="minimal"] .ui-input:focus,
+[data-ui-style="minimal"] .ui-select:focus {
+  box-shadow: none !important;
+  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+[data-ui-style="minimal"] .ui-table-container {
+  border-radius: 0.125rem !important;
   box-shadow: none !important;
 }
-[data-ui-style="minimal"] .ui-input {
-  border-radius: 0.125rem;
-  box-shadow: none !important;
+[data-ui-style="minimal"] .ui-badge {
+  border-radius: 0.125rem !important;
+}
+[data-ui-style="minimal"] .ui-modal-panel,
+[data-ui-style="minimal"] .ui-drawer-panel {
+  border-radius: 0.125rem !important;
+  box-shadow: 0 0 0 1px var(--color-border), 0 8px 16px rgba(0, 0, 0, 0.08) !important;
 }
 
-/* 3. Glassmorphism: Frosted Translucent */
+/* ---------------------------------------------------------
+   3. Glassmorphism: Frosted Translucent Surfaces & Glow
+   --------------------------------------------------------- */
 [data-ui-style="glassmorphism"] .ui-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-  border-radius: calc(var(--radius-main) + 2px);
-  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.04);
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.65) !important;
+  border-radius: calc(var(--radius-main) + 4px);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 .dark[data-ui-style="glassmorphism"] .ui-card {
-  background: rgba(17, 24, 39, 0.85);
+  background: rgba(17, 24, 39, 0.75) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+[data-ui-style="glassmorphism"] .ui-button-primary {
+  background: rgba(var(--color-primary-rgb), 0.9) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  border-radius: calc(var(--radius-main) + 2px);
+  box-shadow: 0 4px 14px rgba(var(--color-primary-rgb), 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+[data-ui-style="glassmorphism"] .ui-button-primary:hover {
+  background: rgba(var(--color-primary-rgb), 1) !important;
+  box-shadow: 0 6px 18px rgba(var(--color-primary-rgb), 0.4);
+}
+[data-ui-style="glassmorphism"] .ui-button-primary:active:not(:disabled) {
+  opacity: 0.9;
+  transform: scale(0.985);
+}
+[data-ui-style="glassmorphism"] .ui-button-secondary,
+[data-ui-style="glassmorphism"] .ui-button-outline {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: calc(var(--radius-main) + 2px);
+}
+.dark[data-ui-style="glassmorphism"] .ui-button-secondary,
+.dark[data-ui-style="glassmorphism"] .ui-button-outline {
+  background: rgba(30, 41, 59, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-ui-style="glassmorphism"] .ui-input,
+[data-ui-style="glassmorphism"] .ui-select {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: calc(var(--radius-main) + 2px);
+}
+.dark[data-ui-style="glassmorphism"] .ui-input,
+.dark[data-ui-style="glassmorphism"] .ui-select {
+  background: rgba(17, 24, 39, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-ui-style="glassmorphism"] .ui-table-container {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: calc(var(--radius-main) + 4px);
+}
+.dark[data-ui-style="glassmorphism"] .ui-table-container {
+  background: rgba(17, 24, 39, 0.75) !important;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+[data-ui-style="glassmorphism"] .ui-modal-panel,
+[data-ui-style="glassmorphism"] .ui-drawer-panel {
+  background: rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.65) !important;
+  border-radius: calc(var(--radius-main) + 6px);
+  box-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.08);
+}
+.dark[data-ui-style="glassmorphism"] .ui-modal-panel,
+.dark[data-ui-style="glassmorphism"] .ui-drawer-panel {
+  background: rgba(17, 24, 39, 0.86) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 16px 40px 0 rgba(0, 0, 0, 0.5);
 }
 
-/* 4. Liquid Glass: Fluid, subtle sheen */
+/* ---------------------------------------------------------
+   4. Liquid Glass: Fluid Highlights & Rounded Sheen
+   --------------------------------------------------------- */
 [data-ui-style="liquid_glass"] .ui-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.88) 100%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.78) 100%) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  box-shadow: 0 8px 30px -5px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(var(--color-primary-rgb), 0.18) !important;
+  border-radius: 0.875rem;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.7);
 }
 .dark[data-ui-style="liquid_glass"] .ui-card {
-  background: linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(17, 24, 39, 0.88) 100%);
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.92) 0%, rgba(17, 24, 39, 0.78) 100%) !important;
+  border-color: rgba(var(--color-primary-rgb), 0.25) !important;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+[data-ui-style="liquid_glass"] .ui-button-primary {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 14px rgba(var(--color-primary-rgb), 0.32);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-ui-style="liquid_glass"] .ui-button-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(var(--color-primary-rgb), 0.45);
+}
+[data-ui-style="liquid_glass"] .ui-button-primary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+[data-ui-style="liquid_glass"] .ui-button-secondary,
+[data-ui-style="liquid_glass"] .ui-button-outline {
+  border-radius: 9999px !important;
+  border-color: rgba(var(--color-primary-rgb), 0.22);
+}
+[data-ui-style="liquid_glass"] .ui-input,
+[data-ui-style="liquid_glass"] .ui-select {
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-color: rgba(var(--color-primary-rgb), 0.22);
+}
+.dark[data-ui-style="liquid_glass"] .ui-input,
+.dark[data-ui-style="liquid_glass"] .ui-select {
+  background: rgba(17, 24, 39, 0.82);
+  border-color: rgba(var(--color-primary-rgb), 0.25);
+}
+[data-ui-style="liquid_glass"] .ui-badge {
+  border-radius: 9999px !important;
 }
 
-/* 5. Brutalism: Bold 2px Solid Borders, Crisp Offset Shadows */
+/* ---------------------------------------------------------
+   5. Neo-Brutalism: Bold 2px Solid Borders, Hard Offset Shadows
+   --------------------------------------------------------- */
 [data-ui-style="brutalism"] .ui-card {
   background-color: var(--color-surface);
-  border: 2px solid #0f172a;
-  border-radius: 0px;
-  box-shadow: 3px 3px 0px #0f172a;
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px #0f172a !important;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 .dark[data-ui-style="brutalism"] .ui-card {
-  border-color: #f8fafc;
-  box-shadow: 3px 3px 0px #f8fafc;
+  border-color: #f8fafc !important;
+  box-shadow: 3px 3px 0px #f8fafc !important;
 }
 [data-ui-style="brutalism"] .ui-button-primary {
-  background-color: var(--color-primary);
-  color: #ffffff;
-  border: 2px solid #0f172a;
-  border-radius: 0px;
-  box-shadow: 2px 2px 0px #0f172a;
-  font-weight: 600;
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px #0f172a !important;
+  font-weight: 700 !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
-[data-ui-style="brutalism"] .ui-input {
-  border: 2px solid #0f172a;
-  border-radius: 0px;
+.dark[data-ui-style="brutalism"] .ui-button-primary {
+  border-color: #f8fafc !important;
+  box-shadow: 3px 3px 0px #f8fafc !important;
 }
-.dark[data-ui-style="brutalism"] .ui-input {
-  border-color: #f8fafc;
+[data-ui-style="brutalism"] .ui-button-secondary,
+[data-ui-style="brutalism"] .ui-button-outline {
+  background-color: var(--color-surface) !important;
+  color: var(--color-heading) !important;
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px #0f172a !important;
+  font-weight: 600 !important;
+}
+.dark[data-ui-style="brutalism"] .ui-button-secondary,
+.dark[data-ui-style="brutalism"] .ui-button-outline {
+  border-color: #f8fafc !important;
+  box-shadow: 3px 3px 0px #f8fafc !important;
+}
+[data-ui-style="brutalism"] .ui-button-danger {
+  background-color: var(--color-danger) !important;
+  color: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px #0f172a !important;
+  font-weight: 700 !important;
+}
+.dark[data-ui-style="brutalism"] .ui-button-danger {
+  border-color: #f8fafc !important;
+  box-shadow: 3px 3px 0px #f8fafc !important;
+}
+[data-ui-style="brutalism"] button:active:not(:disabled),
+[data-ui-style="brutalism"] .ui-button-primary:active:not(:disabled),
+[data-ui-style="brutalism"] .ui-button-secondary:active:not(:disabled),
+[data-ui-style="brutalism"] .ui-button-outline:active:not(:disabled) {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 1px 1px 0px #0f172a !important;
+}
+.dark[data-ui-style="brutalism"] button:active:not(:disabled),
+.dark[data-ui-style="brutalism"] .ui-button-primary:active:not(:disabled),
+.dark[data-ui-style="brutalism"] .ui-button-secondary:active:not(:disabled),
+.dark[data-ui-style="brutalism"] .ui-button-outline:active:not(:disabled) {
+  box-shadow: 1px 1px 0px #f8fafc !important;
+}
+[data-ui-style="brutalism"] .ui-input,
+[data-ui-style="brutalism"] .ui-select {
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 2px 2px 0px rgba(15, 23, 42, 0.2);
+}
+.dark[data-ui-style="brutalism"] .ui-input,
+.dark[data-ui-style="brutalism"] .ui-select {
+  border-color: #f8fafc !important;
+  box-shadow: 2px 2px 0px rgba(248, 250, 252, 0.2);
+}
+[data-ui-style="brutalism"] .ui-input:focus,
+[data-ui-style="brutalism"] .ui-select:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 3px 3px 0px var(--color-primary) !important;
+}
+[data-ui-style="brutalism"] .ui-badge {
+  border: 1.5px solid #0f172a !important;
+  border-radius: 0px !important;
+  font-weight: 700;
+  box-shadow: 1px 1px 0px #0f172a;
+}
+.dark[data-ui-style="brutalism"] .ui-badge {
+  border-color: #f8fafc !important;
+  box-shadow: 1px 1px 0px #f8fafc;
+}
+[data-ui-style="brutalism"] .ui-table-container {
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 3px 3px 0px #0f172a;
+}
+.dark[data-ui-style="brutalism"] .ui-table-container {
+  border-color: #f8fafc !important;
+  box-shadow: 3px 3px 0px #f8fafc;
+}
+[data-ui-style="brutalism"] .ui-modal-panel,
+[data-ui-style="brutalism"] .ui-drawer-panel {
+  border: 2px solid #0f172a !important;
+  border-radius: 0px !important;
+  box-shadow: 6px 6px 0px #0f172a !important;
+}
+.dark[data-ui-style="brutalism"] .ui-modal-panel,
+.dark[data-ui-style="brutalism"] .ui-drawer-panel {
+  border-color: #f8fafc !important;
+  box-shadow: 6px 6px 0px #f8fafc !important;
 }
 
-/* 6. Claymorphism: Soft 3D Surfaces */
+/* ---------------------------------------------------------
+   6. Claymorphism: Soft 3D Pillowed Surfaces & Inner Specular
+   --------------------------------------------------------- */
 [data-ui-style="claymorphism"] .ui-card {
   background-color: var(--color-surface);
-  border-radius: 0.75rem;
-  border: 1px solid var(--color-border);
+  border-radius: 1rem !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.75) !important;
   box-shadow: 
-    4px 6px 16px rgba(0, 0, 0, 0.04),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.8);
+    6px 8px 18px rgba(0, 0, 0, 0.05),
+    inset 2px 2px 3px rgba(255, 255, 255, 0.85),
+    inset -2px -2px 3px rgba(0, 0, 0, 0.03);
+}
+.dark[data-ui-style="claymorphism"] .ui-card {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 
+    6px 8px 20px rgba(0, 0, 0, 0.35),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.12),
+    inset -1px -1px 2px rgba(0, 0, 0, 0.2);
+}
+[data-ui-style="claymorphism"] .ui-button-primary {
+  border-radius: 0.75rem !important;
+  box-shadow: 3px 5px 12px rgba(var(--color-primary-rgb), 0.32), inset 1px 1px 2px rgba(255, 255, 255, 0.45);
+  transition: all 0.15s ease;
+}
+[data-ui-style="claymorphism"] .ui-button-primary:hover {
+  box-shadow: 4px 6px 14px rgba(var(--color-primary-rgb), 0.4), inset 1px 1px 2px rgba(255, 255, 255, 0.55);
+}
+[data-ui-style="claymorphism"] .ui-button-primary:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: 1px 2px 6px rgba(var(--color-primary-rgb), 0.25);
+}
+[data-ui-style="claymorphism"] .ui-button-secondary,
+[data-ui-style="claymorphism"] .ui-button-outline {
+  border-radius: 0.75rem !important;
+  box-shadow: 3px 4px 10px rgba(0, 0, 0, 0.05), inset 1px 1px 2px rgba(255, 255, 255, 0.8);
+}
+[data-ui-style="claymorphism"] .ui-input,
+[data-ui-style="claymorphism"] .ui-select {
+  border-radius: 0.75rem !important;
+  box-shadow: inset 2px 2px 4px rgba(0, 0, 0, 0.04), inset -1px -1px 2px rgba(255, 255, 255, 0.8);
+}
+[data-ui-style="claymorphism"] .ui-badge {
+  border-radius: 0.625rem !important;
+  box-shadow: 1px 2px 4px rgba(0, 0, 0, 0.04), inset 1px 1px 1px rgba(255, 255, 255, 0.6);
+}
+[data-ui-style="claymorphism"] .ui-table-container {
+  border-radius: 1rem !important;
+  box-shadow: 6px 8px 18px rgba(0, 0, 0, 0.05);
 }
 
-/* 7. Neomorphism: Soft Dual Shadows */
+/* ---------------------------------------------------------
+   7. Neomorphism: Soft Extruded Raised & Debossed Inset Surfaces
+   --------------------------------------------------------- */
 [data-ui-style="neomorphism"] .ui-card {
   background: var(--color-surface);
-  border-radius: 0.625rem;
+  border-radius: 0.875rem !important;
   border: 1px solid var(--color-border);
   box-shadow: 
-    3px 3px 8px rgba(0, 0, 0, 0.04),
-    -3px -3px 8px rgba(255, 255, 255, 0.7);
+    5px 5px 12px rgba(0, 0, 0, 0.05),
+    -5px -5px 12px rgba(255, 255, 255, 0.85);
+}
+.dark[data-ui-style="neomorphism"] .ui-card {
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 
+    5px 5px 14px rgba(0, 0, 0, 0.4),
+    -4px -4px 10px rgba(255, 255, 255, 0.03);
+}
+[data-ui-style="neomorphism"] .ui-button-primary {
+  border-radius: 0.625rem !important;
+  box-shadow: 3px 3px 8px rgba(var(--color-primary-rgb), 0.3), -2px -2px 6px rgba(255, 255, 255, 0.2);
+  transition: all 0.12s ease;
+}
+[data-ui-style="neomorphism"] .ui-button-primary:hover {
+  box-shadow: 4px 4px 10px rgba(var(--color-primary-rgb), 0.35), -3px -3px 8px rgba(255, 255, 255, 0.25);
+}
+[data-ui-style="neomorphism"] .ui-button-secondary,
+[data-ui-style="neomorphism"] .ui-button-outline {
+  border-radius: 0.625rem !important;
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.04), -3px -3px 8px rgba(255, 255, 255, 0.8);
+}
+[data-ui-style="neomorphism"] button:active:not(:disabled),
+[data-ui-style="neomorphism"] .ui-button-primary:active:not(:disabled),
+[data-ui-style="neomorphism"] .ui-button-secondary:active:not(:disabled) {
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.12), inset -2px -2px 5px rgba(255, 255, 255, 0.5) !important;
+}
+[data-ui-style="neomorphism"] .ui-input,
+[data-ui-style="neomorphism"] .ui-select {
+  border-radius: 0.625rem !important;
+  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.05), inset -2px -2px 5px rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--color-border);
+}
+.dark[data-ui-style="neomorphism"] .ui-input,
+.dark[data-ui-style="neomorphism"] .ui-select {
+  box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.4), inset -1px -1px 3px rgba(255, 255, 255, 0.03);
 }
 
-/* 8. Retro: Vintage Terminal */
+/* ---------------------------------------------------------
+   8. Retro: Vintage Console Terminal Aesthetics
+   --------------------------------------------------------- */
 [data-ui-style="retro"] .ui-card {
   background-color: var(--color-surface);
-  border: 2px solid var(--color-border-strong);
-  border-radius: 2px;
-  box-shadow: 1px 1px 0px rgba(0,0,0,0.2);
+  border: 2px solid var(--color-border-strong) !important;
+  border-radius: 2px !important;
+  box-shadow: 2px 2px 0px rgba(0,0,0,0.18) !important;
+}
+[data-ui-style="retro"] .ui-button-primary,
+[data-ui-style="retro"] .ui-button-secondary,
+[data-ui-style="retro"] .ui-button-outline,
+[data-ui-style="retro"] .ui-button-danger,
+[data-ui-style="retro"] .ui-button-success {
+  border-radius: 2px !important;
+  font-family: 'Space Grotesk', 'Fira Code', monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem !important;
+  transition: transform 0.08s ease;
 }
 [data-ui-style="retro"] .ui-button-primary {
-  border-radius: 2px;
-  font-family: 'Fira Code', monospace;
-  font-size: 0.8125rem;
+  border: 2px solid var(--color-primary-hover) !important;
+  box-shadow: 2px 2px 0px rgba(0,0,0,0.25) !important;
+}
+[data-ui-style="retro"] .ui-button-primary:active:not(:disabled) {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px rgba(0,0,0,0.25) !important;
+}
+[data-ui-style="retro"] .ui-input,
+[data-ui-style="retro"] .ui-select {
+  border-radius: 2px !important;
+  font-family: 'Space Grotesk', 'Fira Code', monospace !important;
+  border: 2px solid var(--color-border-strong) !important;
+}
+[data-ui-style="retro"] .ui-badge {
+  border-radius: 2px !important;
+  font-family: 'Space Grotesk', 'Fira Code', monospace !important;
+  font-size: 0.6875rem !important;
+  text-transform: uppercase;
+  border: 1px solid currentColor !important;
+}
+[data-ui-style="retro"] .ui-table-container {
+  border-radius: 2px !important;
+  font-family: 'Space Grotesk', 'Fira Code', monospace;
+  border: 2px solid var(--color-border-strong) !important;
 }
 
 /* =========================================================
