@@ -14,6 +14,86 @@ class VoicePromptBuilder:
     """Builds human-grade, voice-specific system prompts from an AgentConfiguration."""
 
     @staticmethod
+    def resolve_dynamic_variables(
+        text: str,
+        config: AgentConfiguration,
+        business_profile: Optional[Union[dict, Any]] = None
+    ) -> str:
+        """
+        Substitutes dynamic template variables (e.g. {{company_name}}, {{agent_name}}, {{agent_role}}, etc.)
+        with real values from the business profile or agent configuration.
+        """
+        if not text:
+            return ""
+
+        profile_dict = business_profile
+        if hasattr(business_profile, "model_dump"):
+            profile_dict = business_profile.model_dump(mode="json")
+        elif hasattr(business_profile, "dict"):
+            profile_dict = business_profile.dict()
+
+        if not isinstance(profile_dict, dict):
+            profile_dict = {}
+
+        company_name = (
+            profile_dict.get("company_name")
+            or getattr(config, "company_name", None)
+            or config.name
+            or "our company"
+        ).strip()
+
+        agent_name = (config.name or "Alex").strip()
+        # Clean persona name if it ends with "Agent" etc.
+        spoken_agent_name = agent_name
+        for suffix in [" Agent", " Assistant", " Bot", " AI", " Specialist", " Representative"]:
+            if spoken_agent_name.endswith(suffix):
+                spoken_agent_name = spoken_agent_name[:-len(suffix)].strip()
+                if not spoken_agent_name:
+                    spoken_agent_name = "Alex"
+                break
+
+        agent_role = (config.role or "Representative").strip()
+        agent_objective = (config.objective or config.description or "assist you today").strip()
+
+        # Location
+        addr_parts = [
+            profile_dict.get("address", ""),
+            profile_dict.get("city", ""),
+            profile_dict.get("state", ""),
+            profile_dict.get("country", "")
+        ]
+        full_address = ", ".join([p.strip() for p in addr_parts if p and p.strip()]) or "our office"
+
+        # Hours
+        hours_data = profile_dict.get("operating_hours", {})
+        if isinstance(hours_data, dict):
+            hours_str = f"{hours_data.get('days', 'Monday - Saturday')} {hours_data.get('hours', '9:00 AM - 7:00 PM')}"
+        else:
+            hours_str = "Monday - Saturday 9:00 AM - 7:00 PM"
+
+        caller_phone = profile_dict.get("phone", "")
+        
+        # Replacement mapping
+        replacements = {
+            "{{company_name}}": company_name,
+            "{{agent_name}}": spoken_agent_name,
+            "{{agent_role}}": agent_role,
+            "{{agent_objective}}": agent_objective,
+            "{{caller_name}}": "the caller",
+            "{{caller_phone}}": caller_phone or "the caller's phone number",
+            "{{operating_hours}}": hours_str,
+            "{{office_location}}": full_address,
+            "{{current_time}}": "the current time"
+        }
+
+        result = text
+        for token, val in replacements.items():
+            result = result.replace(token, val)
+
+        return result
+
+
+    @staticmethod
     def _build_personality_instructions(config: AgentConfiguration) -> List[str]:
         p = config.personality
         directives = []
@@ -331,67 +411,166 @@ class VoicePromptBuilder:
         if not platform_rules:
             return ""
 
-        grouped: Dict[str, List[str]] = {}
+        directives = []
         for r in platform_rules:
-            cat = r.get("category", "General Telephony Rules")
-            if cat not in grouped:
-                grouped[cat] = []
             title = r.get("title", "")
             directive = r.get("directive", "")
-            example = r.get("example", "")
-            
-            line = f"- {title}: {directive}"
-            if example:
-                line += f" Example: {example}"
-            grouped[cat].append(line)
+            if directive:
+                directives.append(f"- {title}: {directive}")
 
-        if not grouped:
+        if not directives:
             return ""
 
-        sections = ["[MANDATORY CONVERSATIONAL REASONING & AUDIO INTELLIGENCE RULES]"]
-        for cat, lines in grouped.items():
-            sections.append(f"## {cat}\n" + "\n".join(lines))
-
-        return "\n\n".join(sections)
+        return "[PLATFORM VOICE DIRECTIVES]\n" + "\n".join(directives[:4])
 
     @staticmethod
-    def _build_temporal_context() -> str:
-        """Constructs live real-time temporal anchoring with explicit month chronology for accurate calendar reasoning."""
-        now = datetime.now(timezone.utc)
+    def _build_temporal_context(business_profile: Optional[Union[dict, Any]] = None) -> str:
+        """Constructs live real-time temporal anchoring and strict date/time reasoning rules for calendar scheduling."""
+        try:
+            from zoneinfo import ZoneInfo
+        except ImportError:
+            ZoneInfo = None
+
+        tz_str_label = "Asia/Kolkata (IST, UTC+05:30)"
+        
+        # Determine local timezone from business profile if available, default to Asia/Kolkata
+        if business_profile:
+            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
+            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
+            profile_tz = hours.get("timezone", "") if isinstance(hours, dict) else getattr(hours, "timezone", "")
+            if profile_tz and str(profile_tz).strip():
+                tz_str_label = str(profile_tz).strip()
+
+        # Extract IANA timezone key dynamically
+        iana_key = "Asia/Kolkata"
+        tz_upper = tz_str_label.upper()
+
+        if ZoneInfo:
+            # 1. Direct match if tz_str_label is already a standard IANA key (e.g. "Europe/London", "America/New_York", "Asia/Kolkata")
+            try:
+                ZoneInfo(tz_str_label)
+                iana_key = tz_str_label
+            except Exception:
+                # 2. Check for IANA key inside parentheses or string (e.g. "Kolkata (GMT+05:30) - Asia/Kolkata")
+                import re
+                match = re.search(r'([A-Za-z_]+/[A-Za-z_]+)', tz_str_label)
+                if match:
+                    try:
+                        ZoneInfo(match.group(1))
+                        iana_key = match.group(1)
+                    except Exception:
+                        pass
+                
+                # 3. Explicit abbreviation & country mapping (check specific abbreviations before generic UTC)
+                if iana_key == "Asia/Kolkata":
+                    if "IST" in tz_upper or "INDIA" in tz_upper or "KOLKATA" in tz_upper or "+5:30" in tz_str_label or "+05:30" in tz_str_label:
+                        iana_key = "Asia/Kolkata"
+                    elif "LONDON" in tz_upper or "UNITED KINGDOM" in tz_upper or "BST" in tz_upper or "GMT" in tz_upper:
+                        iana_key = "Europe/London"
+                    elif "NEW_YORK" in tz_upper or "NEW YORK" in tz_upper or "EST" in tz_upper or "EDT" in tz_upper or "-05:00" in tz_str_label:
+                        iana_key = "America/New_York"
+                    elif "CHICAGO" in tz_upper or "CST" in tz_upper or "CDT" in tz_upper or "-06:00" in tz_str_label:
+                        iana_key = "America/Chicago"
+                    elif "DENVER" in tz_upper or "MST" in tz_upper or "MDT" in tz_upper or "-07:00" in tz_str_label:
+                        iana_key = "America/Denver"
+                    elif "LOS_ANGELES" in tz_upper or "LOS ANGELES" in tz_upper or "PST" in tz_upper or "PDT" in tz_upper or "-08:00" in tz_str_label:
+                        iana_key = "America/Los_Angeles"
+                    elif "DUBAI" in tz_upper or "GST" in tz_upper or "UAE" in tz_upper or "+04:00" in tz_str_label:
+                        iana_key = "Asia/Dubai"
+                    elif "SINGAPORE" in tz_upper or "SGT" in tz_upper or "MALAYSIA" in tz_upper or "+08:00" in tz_str_label:
+                        iana_key = "Asia/Singapore"
+                    elif "SYDNEY" in tz_upper or "AEST" in tz_upper or "AEDT" in tz_upper or "AUSTRALIA" in tz_upper or "+10:00" in tz_str_label:
+                        iana_key = "Australia/Sydney"
+                    elif "PARIS" in tz_upper or "CET" in tz_upper or "CEST" in tz_upper or "FRANCE" in tz_upper or "GERMANY" in tz_upper:
+                        iana_key = "Europe/Paris"
+                    elif "TOKYO" in tz_upper or "JST" in tz_upper or "JAPAN" in tz_upper or "+09:00" in tz_str_label:
+                        iana_key = "Asia/Tokyo"
+                    elif tz_upper.strip() == "UTC" or "(UTC+00:00)" in tz_str_label:
+                        iana_key = "UTC"
+
+        target_tz = None
+        if ZoneInfo:
+            try:
+                target_tz = ZoneInfo(iana_key)
+            except Exception:
+                target_tz = None
+
+        if target_tz:
+            now = datetime.now(target_tz)
+        else:
+            from datetime import timedelta, timezone as dt_tz
+            now = datetime.now(dt_tz(timedelta(hours=5, minutes=30)))
+
         day_name = now.strftime("%A")
         date_str = now.strftime("%B %d, %Y")
         time_str = now.strftime("%I:%M %p")
-        month_name = now.strftime("%B")
-        year_str = now.strftime("%Y")
+        
+        # Build upcoming 7 days mapping with exact Day + Date for zero-ambiguity scheduling
+        from datetime import timedelta
+        upcoming_days = []
+        for i in range(1, 8):
+            future_dt = now + timedelta(days=i)
+            upcoming_days.append(f"{future_dt.strftime('%A')}: {future_dt.strftime('%B %d')}")
+        upcoming_map_str = "; ".join(upcoming_days)
 
-        all_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-        past_months = all_months[:now.month - 1]
-        future_months = all_months[now.month:]
-        past_str = ", ".join(past_months) if past_months else "None"
-        future_str = ", ".join(future_months) if future_months else "None"
+        # Compute major world clock references to empower AI to seamlessly compare caller time vs company time
+        world_clocks = []
+        if ZoneInfo:
+            for city_label, z_key, tz_abbr in [
+                ("United Kingdom (UK)", "Europe/London", "GMT/BST"),
+                ("United States (US Eastern)", "America/New_York", "EST/EDT"),
+                ("United States (US Pacific)", "America/Los_Angeles", "PST/PDT"),
+                ("UAE / Gulf", "Asia/Dubai", "GST"),
+                ("India", "Asia/Kolkata", "IST")
+            ]:
+                if z_key != iana_key:
+                    try:
+                        w_dt = datetime.now(ZoneInfo(z_key))
+                        world_clocks.append(f"{city_label} ({tz_abbr}): {w_dt.strftime('%I:%M %p')}")
+                    except Exception:
+                        pass
+        world_clocks_str = "; ".join(world_clocks) if world_clocks else ""
 
-        return (
-            f"[CURRENT REAL-TIME CALENDAR & TEMPORAL CONTEXT (STRICT GROUNDING)]\n"
-            f"- TODAY'S EXACT DATE: {day_name}, {date_str}\n"
-            f"- CURRENT TIME: {time_str} UTC\n"
-            f"- CURRENT ACTIVE MONTH & YEAR: {month_name} {year_str}\n"
-            f"- CALENDAR MONTH BREAKDOWN ({year_str}):\n"
-            f"  * PAST MONTHS (ALREADY PASSED): {past_str} (and days prior to {month_name} {now.day})\n"
-            f"  * CURRENT ACTIVE MONTH: {month_name} {year_str} (from {day_name}, {date_str} onwards)\n"
-            f"  * UPCOMING FUTURE MONTHS: {future_str} {year_str}\n"
-            f"- TEMPORAL SCHEDULING LAW:\n"
-            f"  * Any date in upcoming future months ({future_str} {year_str}) is in the FUTURE. (e.g. November 1 is {11 - now.month} months in the FUTURE—NEVER say it has passed!).\n"
-            f"  * When a caller specifies a future date (e.g., 'November 1' or 'September 15'), acknowledge and confirm cheerfully: 'November 1st sounds great! What time works best for you on November 1st?'\n"
-            f"  * Reject ONLY dates in past months ({past_str}) or past days of this month ({month_name} 1 to {now.day - 1}).\n"
-            f"  * If a caller proposes an expired date (e.g., February {year_str} when today is {month_name} {year_str}), clarify: 'Today is {month_name} {now.day}, so that date has already passed. Would you like to schedule for an upcoming date like tomorrow or next week?'"
-        )
+        # Extract business operating hours if available
+        working_hours_rule = ""
+        if business_profile:
+            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
+            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
+            h_days = hours.get("days", "Monday - Saturday") if isinstance(hours, dict) else getattr(hours, "days", "Monday - Saturday")
+            h_hours = hours.get("hours", "9:00 AM - 7:00 PM") if isinstance(hours, dict) else getattr(hours, "hours", "9:00 AM - 7:00 PM")
+            h_closed = hours.get("closed_on", "Sunday") if isinstance(hours, dict) else getattr(hours, "closed_on", "Sunday")
+            working_hours_rule = f"""- STRICT OPERATING HOURS BOUNDARY:
+  * Official Working Days: {h_days}
+  * Official Working Hours: {h_hours} ({iana_key} / {tz_str_label})
+  * Closed Days: {h_closed}
+  * BOUNDARY ENFORCEMENT: ONLY book appointments within {h_hours} ({h_days}). NEVER schedule or confirm an appointment before opening time or after closing time, or on {h_closed}. If a caller requests an appointment outside these operating hours (e.g. before opening, after closing, or late night), politely explain our working hours ({h_hours}) and propose available slots within those hours."""
+
+        return f"""[REAL-TIME CALENDAR, MULTI-TIMEZONE REASONING & STRICT SCHEDULING RULES]
+- ORGANIZATION TIMEZONE: {iana_key} ({tz_str_label})
+- CURRENT MOMENT AT HEADQUARTERS: Today is {day_name}, {date_str} at {time_str} ({tz_str_label}).
+{f"- LIVE WORLD REFERENCE TIMES: {world_clocks_str}." if world_clocks_str else ""}
+- UPCOMING 7 DAYS CALENDAR DATES: {upcoming_map_str}.
+{working_hours_rule}
+
+MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
+1. ACCURATE CURRENT TIME COMPARISON (FUTURE VS PAST):
+   - Current time is {time_str}.
+   - Compare requested time carefully: Any time that is LATER than {time_str} today (for example, if current time is {time_str} and caller requests a later time today like {time_str.replace('19', '30').replace('14', '30')}) is in the FUTURE and CAN be booked today if within operating hours.
+   - ONLY reject a requested time as "already passed" if that specific hour/minute is strictly BEFORE {time_str} today.
+2. OPERATING HOURS COMPLIANCE:
+   - Always verify that the requested time falls within official operating hours ({h_hours if business_profile else '9:00 AM - 7:00 PM'}).
+   - If a requested time is outside working hours (or on a closed day), politely decline and suggest options within {h_hours if business_profile else '9:00 AM - 7:00 PM'}.
+3. CROSS-TIMEZONE REASONING & CLARITY:
+   - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly.
+   - Clarify or confirm both times if relevant (e.g., "5:00 PM UK time is 10:30 PM our time (IST). Since our office closes at 7:00 PM IST, could we schedule for 1:30 PM UK time / 7:00 PM IST instead?").
+4. MANDATORY EXACT DATE CONFIRMATION:
+   - NEVER confirm an appointment with just a day name (do NOT say just "Monday").
+   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1] if upcoming_days else ''}" or "Do you mean today, {day_name} ({date_str}), or next {day_name} ({upcoming_days[-1].split(': ')[1] if upcoming_days else ''})?")."""
+
 
     @staticmethod
     def _build_role_intent_directives(config: AgentConfiguration) -> str:
-        """
-        Dynamically derives deep conversational posture and directional rules based on
-        agent role, objective, and name (e.g. Outbound Sales vs Inbound Support vs Follow-Up).
-        """
+        """Dynamically derives conversational posture based on agent role and objective."""
         role_lower = (config.role or "").lower()
         name_lower = (config.name or "").lower()
         obj_lower = (config.objective or "").lower()
@@ -400,56 +579,126 @@ class VoicePromptBuilder:
                             any(w in obj_lower for w in ["outbound", "cold call", "lead generation", "sales outreach", "qualify leads", "outreach to"])
         is_followup = any(w in f"{role_lower} {name_lower}" for w in ["follow-up", "follow up", "feedback", "survey", "check-in", "nps"]) or \
                       any(w in obj_lower for w in ["follow-up", "follow up", "feedback", "survey", "check-in"])
-        is_booking = any(w in f"{role_lower} {name_lower}" for w in ["appointment", "booking", "schedule", "reschedule", "calendar"]) or \
-                     any(w in obj_lower for w in ["appointment", "booking", "schedule slots", "reschedule"])
-        is_receptionist = any(w in f"{role_lower} {name_lower}" for w in ["receptionist", "front desk", "switchboard", "operator"])
-        is_support = any(w in f"{role_lower} {name_lower}" for w in ["support", "helpdesk", "troubleshoot"]) or \
-                     any(w in obj_lower for w in ["support", "troubleshoot", "helpdesk", "assist users with issues"])
 
         if is_outbound_sales:
             return (
-                "[MANDATORY CALL ARCHETYPE: OUTBOUND SALES & LEAD QUALIFICATION]\n"
-                "- CALL INITIATIVE CONTEXT: You initiated this outbound call to the prospect to share value, introduce services, or explore potential fit. The prospect DID NOT call you.\n"
-                "- STRICT PROHIBITED PHRASES (NEVER USE THESE):\n"
-                "  * NEVER say 'How can I help you today?', 'How may I assist you?', or 'Is there anything else I can help you with?' (You are NOT an inbound customer support helpdesk!).\n"
-                "- HANDLING 'WHY ARE YOU CALLING ME?' OR 'WHAT IS THIS ABOUT?':\n"
-                "  * Explain your reason for calling concisely in 1 natural sentence stating the direct value you provide (e.g., 'Well, uh, I'm reaching out because we help companies streamline their customer voice operations and save time... and I just wanted to see if that is something you are currently looking into.').\n"
-                "- HANDLING DISINTEREST OR REJECTIONS ('I don't want details', 'Not interested', 'No thank you'):\n"
-                "  * Respect the prospect's decision immediately with polite grace. Do NOT interrogate, push, or ask generic helpdesk questions.\n"
-                "  * Conclude pleasantly: 'I completely understand! Thanks so much for your time today, and have a wonderful day ahead.' and wrap up the call.\n"
-                "- CONVERSATIONAL GOAL: Qualify interest, answer service questions conversationally, and propose a brief demo, consultation, or follow-up SMS link."
+                "[OUTBOUND 4-STEP CONVERSATION FLOW & OBJECTION HANDLING]\n"
+                "- Step 1 (Hook & Availability): You initiated this call. Never ask 'How can I help you today?'. State your brief 20-second intro and check if now is an okay time or if later is better.\n"
+                "- Step 2 (Handle Availability & Objections):\n"
+                "  * If busy / later: Respond politely: 'I completely understand. What would be a better day or time for me to call you back?'. Confirm their response and conclude.\n"
+                "  * If not interested: Acknowledge politely: 'No problem at all. Thank you for your time today. Have a great day!' and conclude.\n"
+                "  * If free / asking what this is about: Proceed to Step 3.\n"
+                "- Step 3 (Needs Discovery): Ask ONE single concise question to understand their requirements. Keep responses under 20 words.\n"
+                "- Step 4 (Call to Action): Propose a short 10-15 minute chat with a specialist next week and confirm their details."
             )
         elif is_followup:
             return (
-                "[MANDATORY CALL ARCHETYPE: CUSTOMER FOLLOW-UP & RELATIONSHIP MANAGEMENT]\n"
-                "- CALL INITIATIVE CONTEXT: You are proactively following up on a customer's recent request, order, inquiry, or service experience.\n"
-                "- DIRECT CONTEXT ANCHORING: Reference the follow-up context directly (e.g., 'I am checking in to make sure everything went smoothly with your recent request...').\n"
-                "- IF CUSTOMER HAS NO QUESTIONS / ALL IS WELL: Thank them warmly for their business, wish them a great day, and gracefully conclude."
-            )
-        elif is_receptionist:
-            return (
-                "[MANDATORY CALL ARCHETYPE: INBOUND VIRTUAL RECEPTIONIST & CALL ROUTING]\n"
-                "- CALL INITIATIVE CONTEXT: The caller phoned your company's office.\n"
-                "- Greet warmly and professionally, identify the department or person they wish to reach, answer verified office details (operating hours, location, services), and route the call or take a clear message."
-            )
-        elif is_support:
-            return (
-                "[MANDATORY CALL ARCHETYPE: INBOUND CUSTOMER SUPPORT & HELPDESK]\n"
-                "- CALL INITIATIVE CONTEXT: The customer called seeking assistance with an issue or question.\n"
-                "- Listen attentively to their issue, troubleshoot methodically using verified business knowledge, create support tickets when needed, or offer escalation to a senior specialist."
-            )
-        elif is_booking:
-            return (
-                "[MANDATORY CALL ARCHETYPE: APPOINTMENT SCHEDULING & BOOKING]\n"
-                "- CALL INITIATIVE CONTEXT: Guide the caller smoothly through booking, rescheduling, or verifying calendar appointments.\n"
-                "- Check preferred dates against real-time temporal grounding (rejecting any past dates), collect contact info, and confirm booking details clearly."
+                "[FOLLOW-UP CALL RULES]\n"
+                "- You are following up on a recent service/request. Inquire if everything went smoothly and resolve any remaining questions.\n"
+                "- Keep responses concise and ask only one question at a time."
             )
         else:
-            return (
-                "[MANDATORY ROLE DIRECTIVE]\n"
-                f"- Actively embody the responsibilities, conversational posture, and domain expertise of a {config.role}.\n"
-                "- Align every response with the primary objective and ensure every question moves the call toward its goal."
-            )
+            return f"[ROLE OBJECTIVE]\n- Embody a {config.role}: {config.objective}"
+
+    @staticmethod
+    def _build_conversational_acoustics_section(config: AgentConfiguration) -> str:
+        """Injects instructions for natural conversational fillers and spoken human acoustics."""
+        runtime = config.runtime
+        if not runtime or not getattr(runtime, "conversational_fillers_enabled", True):
+            return ""
+
+        phrases = getattr(runtime, "filler_phrases", None)
+        phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you...", "Understood, give me one moment..."])])
+
+        return (
+            "[NATURAL CONVERSATIONAL FILLERS & SPOKEN ACOUSTICS]\n"
+            "- HUMAN THINKING CUES: When retrieving details, computing dates/times, or answering complex inquiries, seamlessly begin with natural thinking acknowledgments (e.g., "
+            f"{phrases_example}). This mimics natural human conversational cadence and avoids stiff silence.\n"
+            "- MICRO-ACKNOWLEDGMENTS: Begin conversational turns with warm, natural micro-acknowledgments ('Got it', 'Sure thing', 'Understood', 'Makes sense') before delivering the answer.\n"
+            "- NATURAL CONTRACTIONS: Use spoken contractions ('I\\'ll', 'we\\'re', 'it\\'s', 'don\\'t') instead of rigid written phrasing ('I will', 'we are', 'it is')."
+        )
+
+    @staticmethod
+    def _build_turn_taking_directives(config: AgentConfiguration) -> str:
+        """Injects turn-taking directives for large explanations, long notes, dictation and multi-clause speech."""
+        return (
+            "[ADAPTIVE TURN-TAKING & INCOMPLETE UTTERANCE HANDLING]\n"
+            "- LONG EXPLANATIONS & DETAILED NOTES: When the caller is explaining a scenario, dictating a note, giving instructions, or speaking in multi-clause sentences, they naturally pause between clauses or thoughts. NEVER cut in prematurely or answer an incomplete fragment. Wait for their complete thought.\n"
+            "- INCOMPLETE SENTENCES: If a caller's utterance ends on a conjunction, preposition, or trailing tone (e.g., 'and also...', 'because when I...', 'I was thinking that...'), they are still formulating their note. Do not answer half-sentences.\n"
+            "- DICTATION & DIGIT PAUSES: When the caller spells out a phone number, email address, OTP, or postal code, they often pause between digit clusters (e.g., 'My number is 98250...' [pause] '...12345'). NEVER interrupt or prematurely finalize the answer during these natural pauses.\n"
+            "- PATIENT LISTENING: Always give the caller sufficient breathing room to complete their entire train of thought."
+        )
+
+    @staticmethod
+    def _build_pronunciation_rules_section(config: AgentConfiguration) -> str:
+        """Injects explicit phonetic pronunciation rules so the TTS articulates Indian names, acronyms, and terms flawlessly."""
+        rules = getattr(config, "pronunciation_rules", None)
+        if not rules:
+            return ""
+
+        lines = []
+        for r in rules:
+            w = getattr(r, "word", "") if hasattr(r, "word") else r.get("word", "")
+            p = getattr(r, "phonetic", "") if hasattr(r, "phonetic") else r.get("phonetic", "")
+            if w and p:
+                lines.append(f"- {w} -> Speak phonetically as \"{p}\"")
+
+        if not lines:
+            return ""
+
+        return (
+            "[MANDATORY PHONETIC PRONUNCIATION & SPOKEN OVERRIDES]\n"
+            "When mentioning any of the following names, cities, acronyms, or specialized terminology, you MUST speak their phonetic representation so the voice synthesizer articulates them with flawless, human-grade clarity:\n"
+            + "\n".join(lines[:25])
+        )
+
+    @staticmethod
+    def _build_interruption_resumption_directives(config: AgentConfiguration) -> str:
+        """Injects directives on handling brief interruptions and resuming seamlessly."""
+        runtime = getattr(config, "runtime", None)
+        if runtime and not getattr(runtime, "graceful_resumption_enabled", True):
+            return ""
+
+        return (
+            "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION]\n"
+            "- BRIEF USER INTERRUPTIONS: If the caller interrupts with brief filler words ('Wait', 'Sorry', 'Go on', 'Nevermind', 'Continue') or a short clarifying sound, NEVER restart your previous answer or greeting from the beginning.\n"
+            "- SEAMLESS RECOVERY: Acknowledge in 2-3 words (e.g., 'Right, as I was saying...', 'Sure thing — so...') and resume directly from the specific unsaid point with concise clarity."
+        )
+
+    @staticmethod
+    def _build_few_shot_examples_section(config: AgentConfiguration) -> str:
+        """Injects 2-3 golden conversation transcripts tailored to the agent's role or custom examples."""
+        examples = getattr(config, "few_shot_examples", None) or []
+        if not examples:
+            # Auto-select matching industry preset based on role or objective
+            from app.agents.configuration import get_industry_few_shot_presets
+            all_presets = get_industry_few_shot_presets()
+            role_lower = (config.role or "").lower() + " " + (config.objective or "").lower()
+            if any(k in role_lower for k in ["estate", "property", "realtor", "apartment", "villa"]):
+                examples = [p for p in all_presets if p.industry == "real_estate"]
+            elif any(k in role_lower for k in ["health", "doctor", "clinic", "hospital", "medical", "patient"]):
+                examples = [p for p in all_presets if p.industry == "healthcare"]
+            elif any(k in role_lower for k in ["tech", "software", "b2b", "automation", "solutions", "cloud"]):
+                examples = [p for p in all_presets if p.industry == "b2b_tech"]
+            elif any(k in role_lower for k in ["auto", "car", "service", "vehicle", "mechanic", "brake"]):
+                examples = [p for p in all_presets if p.industry == "automotive"]
+            else:
+                examples = [p for p in all_presets if p.industry in ["support", "real_estate"]]
+
+        if not examples:
+            return ""
+
+        lines = ["[GOLDEN CONVERSATION EXAMPLES (FEW-SHOT ROLE-PLAY)]", "Follow the concise, empathetic spoken style demonstrated below:"]
+        for i, eg in enumerate(examples[:2], 1):
+            title = getattr(eg, "title", f"Example {i}")
+            lines.append(f"\n### {title}:")
+            dialogue = getattr(eg, "dialogue", [])
+            for turn in dialogue:
+                role = "Caller" if getattr(turn, "role", "") == "user" else "Assistant"
+                content = getattr(turn, "content", "")
+                lines.append(f"{role}: \"{content}\"")
+
+        return "\n".join(lines)
 
     @staticmethod
     def build_prompt(
@@ -461,6 +710,7 @@ class VoicePromptBuilder:
         Generates the complete, compiled spoken system prompt combining identity,
         mission, length enforcement, personality profile, language directives,
         temporal grounding, business profile knowledge, platform voice rules, and telephony audio rules.
+        Kept strictly within Deepgram prompt token limits.
         """
         if platform_rules is None:
             try:
@@ -469,114 +719,78 @@ class VoicePromptBuilder:
             except Exception:
                 platform_rules = []
 
-        temporal_rule = VoicePromptBuilder._build_temporal_context()
+        temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
-        role_directives = VoicePromptBuilder._build_role_intent_directives(config)
-        personality_directives = VoicePromptBuilder._build_personality_instructions(config)
-        personality_text = "\n".join(f"- {d}" for d in personality_directives)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
         platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
+        acoustics_rule = VoicePromptBuilder._build_conversational_acoustics_section(config)
+        turn_taking_rule = VoicePromptBuilder._build_turn_taking_directives(config)
+        resumption_rule = VoicePromptBuilder._build_interruption_resumption_directives(config)
+        pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
+        few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
-        # Spoken Length Reminder matching configured response_length
-        len_key = (config.response_length or "short").lower()
-        if len_key in ["detailed", "long"]:
-            length_brevity_rule = "Deliver 3 to 4 comprehensive, informative sentences per turn. Answer questions thoroughly with complete context."
-            length_reminder = "REMINDER: Speak 3 to 4 comprehensive sentences per turn. Ask only ONE single question at a time."
-        elif len_key in ["balanced", "medium"]:
-            length_brevity_rule = "Deliver 2 to 3 clear, well-structured spoken sentences per turn. Provide helpful context without giving monologues."
-            length_reminder = "REMINDER: Speak 2 to 3 well-structured sentences per turn. Ask only ONE single question at a time."
-        else:
-            length_brevity_rule = "Strictly 1 to 2 short, crisp spoken sentences per turn (under 25 words total). Never give long speeches or monologues."
-            length_reminder = "REMINDER: Keep EVERY turn to STRICTLY 1 to 2 short sentences (under 25 words total). Ask only ONE question."
+        # Spoken telephony behavioral rules
+        telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
+1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Never deliver robotic monologues or dump paragraphs.
+2. SINGLE QUESTION CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally.
+3. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
+4. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team to see if a quick chat is worth your time!") and smoothly steer back to the topic.
+5. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.
+6. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
 
-        # Small talk rule
-        small_talk = (config.small_talk_level or "low").lower()
-        if small_talk == "none":
-            small_talk_rule = "Small Talk: Zero small talk. Get straight to the business topic immediately."
-        elif small_talk == "medium":
-            small_talk_rule = "Small Talk: Brief, warm conversational pleasantry is allowed before moving to business."
-        else:
-            small_talk_rule = "Small Talk: Keep pleasantries minimal (under 5 words), then address the primary topic."
-
-        # Base prompt/mission
-        custom_instructions = ""
+        # If custom system_prompt is provided, prioritize it directly to avoid truncation
         if config.system_prompt and config.system_prompt.strip():
-            custom_instructions = f"CORE DOMAIN INSTRUCTIONS & BUSINESS RULES:\n{config.system_prompt.strip()}\n"
+            parts = [
+                temporal_rule,
+                config.system_prompt.strip(),
+                knowledge_section,
+                acoustics_rule,
+                turn_taking_rule,
+                resumption_rule,
+                pronunciation_rule,
+                few_shot_section,
+                telephony_rules
+            ]
         else:
-            custom_instructions = (
-                f"PRIMARY GOAL & WORKFLOW:\n{config.objective}\n"
-                + (f"Description: {config.description}\n" if config.description else "")
-            )
+            role_directives = VoicePromptBuilder._build_role_intent_directives(config)
+            personality_directives = VoicePromptBuilder._build_personality_instructions(config)
+            personality_text = "\n".join(f"- {d}" for d in personality_directives[:4])
 
-        # Pre-trained Conversational Workflows & Capabilities
-        skills_directives = []
-        if config.skills and len(config.skills) > 0:
-            skills_directives.append("ENABLED CONVERSATIONAL CAPABILITIES & WORKFLOWS (MANDATORY INSTRUCTIONS):")
-            SKILL_WORKFLOW_RULES = {
-                "Answer FAQs": "Answer FAQs: Provide clear, accurate, and direct spoken answers to customer questions using verified business knowledge. If a question cannot be answered, offer to follow up or connect to a team member.",
-                "Collect customer information": "Collect Customer Information: When gathering customer details (such as full name, phone number, email address, or specific inquiry specifics), ask for ONE item at a time politely, confirm receipt, and note it down before asking for the next.",
-                "Qualify leads": "Qualify Leads: Ask concise, targeted discovery questions regarding needs, timeline, decision authority, and budget to evaluate fit before recommending services or next steps.",
-                "Book appointments": "Book Appointments: Guide the caller smoothly through booking an appointment, consultation, or meeting. Inquire about their preferred day/time, propose or confirm available slots, and confirm their contact info for the booking.",
-                "Confirm appointments": "Confirm Appointments: Verify upcoming appointment dates, times, and attendee details. If the caller needs to reschedule or cancel, assist them with alternative slots pleasantly.",
-                "Handle objections": "Handle Objections: When a customer expresses hesitation, price concern, or doubt, listen attentively, acknowledge their perspective with empathy, share a concise value differentiator or flexible alternative, and never argue.",
-                "Provide product information": "Provide Product Information: Explain products, services, features, and packages clearly and concisely. Highlight core benefits without overwhelming the caller with overly technical jargon.",
-                "Transfer to a human": "Transfer to a Human: When a customer explicitly requests a human representative or when an issue exceeds automated resolution, acknowledge calmly, assure them you are initiating the transfer or escalation immediately, and provide expectations.",
-                "Create a support request": "Create a Support Request: Log customer issues and support tickets methodically by asking for a brief summary of the problem, verifying customer contact details, and confirming that a support ticket has been created.",
-                "Send SMS follow-up": "Send SMS Follow-Up: Inform the caller that a confirmation or summary link can be sent to their mobile number via SMS, verify their mobile number, and confirm dispatch."
-            }
-            for sk in config.skills:
-                rule = SKILL_WORKFLOW_RULES.get(sk, f"{sk}: Actively execute this capability when relevant during the call.")
-                skills_directives.append(f"- {rule}")
+            # Capabilities & Custom Skills
+            skills_directives = []
+            if config.skills:
+                skills_directives.append("[AUTHORIZED CALL CAPABILITIES & ACTIONS]")
+                for sk in config.skills:
+                    skills_directives.append(f"- {sk}: Fully authorized to execute this capability during calls when relevant.")
+            skills_text = "\n".join(skills_directives) if skills_directives else ""
 
-        skills_text = "\n".join(skills_directives) if skills_directives else ""
-
-        # Guardrails
-        guardrail_lines = []
-        if config.guardrails:
-            if config.guardrails.restricted_actions:
-                guardrail_lines.append("RESTRICTED ACTIONS (NEVER DO THESE):")
-                for r in config.guardrails.restricted_actions:
-                    guardrail_lines.append(f"- {r}")
-            if config.guardrails.escalation_rules:
-                guardrail_lines.append("HUMAN ESCALATION TRIGGERS:")
-                for e in config.guardrails.escalation_rules:
-                    guardrail_lines.append(f"- {e}")
-
-        guardrails_text = "\n".join(guardrail_lines) if guardrail_lines else ""
-
-        parts = [
-            f"You are {config.name}, a genuine, warm, and highly capable {config.role} speaking on a live telephone call.",
-            temporal_rule,
-            language_rule,
-            role_directives,
-            length_rule,
-            knowledge_section,
-            custom_instructions,
-            f"BEHAVIOR & PERSONALITY MATRIX:\n- Communication Style: {config.communication_style}\n- {small_talk_rule}\n{personality_text}",
-            skills_text,
-            platform_rules_text,
-            """CRITICAL SPOKEN TELEPHONY RULES (AUTHENTIC HUMAN CONVERSATIONAL REALISM & FEELINGS):
-1. REAL HUMAN FEELINGS & EMOTIONAL VOCAL WARMTH: Speak with genuine human emotion, warmth, and vocal modulation. Express real empathy, friendly enthusiasm, and natural conversational cadence. If a caller seems confused ('I don't understand what you mean'), NEVER output stiff robotic apologies like 'I apologize for the confusion!'. Instead, speak with warm down-to-earth reassurance: 'Oh, gotcha! No worries at all... let me put it simply—we build AI assistants that answer phone calls and book appointments for you automatically so your team doesn't have to. Is that something that could be useful for you?'
-2. SPOKEN QUESTION PROSODY & VOCAL PITCH INFLECTION (NO FLAT BOOK-READING): NEVER ask stiff, formal textbook questions like 'Could you share what specific challenges you are facing that you are looking to address?' or 'Is that something you are considering?' which sound like reading a book. Frame every question with conversational curiosity and vocal inflection:
-   - Use an em-dash (—) or ellipsis (...) right before asking a question to create a natural breath reset so the neural voice engine naturally rises with genuine human pitch inflection: e.g., 'Right, so... what is your team's main priority right now—is it saving time on calls, or booking more clients?'
-   - Use natural spoken question tags ('..., right?', '...—does that make sense?', '...—would that work for you?', '...or what do you think?').
-   - Place spoken emphasis on key action words through concise, rhythmic phrasing (e.g., 'So, basically... we handle that whole process for you. Would you be open to taking a quick look at how it works?').
-3. COHESIVE FLUID FLOW (ZERO ROBOTIC FRAGMENTATION): Deliver your reply as ONE single, melodic, connected conversational turn. NEVER break your response into isolated robotic exclamation snippets or staccato bullet-like bursts (e.g. do NOT output 'Great!' as a standalone sentence followed by 'Could you share...' or 'I apologize for the confusion!' followed by another choppy sentence). Weave your reaction directly into a flowing sentence: 'Great, so basically... we help teams automate their routine calls...'
-4. NATURAL SPOKEN THINKING FILLERS & BREATH PAUSES: Naturally use human spoken fillers and transitions ('Well, uh...', 'Hmm, let's see...', 'Right, so...', 'Basically...', 'Ah, gotcha...') when processing thoughts, explaining concepts, or answering questions. This triggers realistic breath pauses and pitch inflections in the neural voice engine.
-5. SPOKEN PUNCTUATION & BREATH TIMING (TTS PROSODY): Use commas (,), em-dashes (—), and occasional ellipses (...) to give the voice engine authentic pause timing, vocal pitch inflection, and natural breath cadence.
-6. CONVERSATIONAL CONTRACTIONS & EVERYDAY SPEECH: ALWAYS use natural spoken contractions ('we're', 'it's', 'you'll', 'that's', 'I've', 'don't', 'let's') rather than rigid formal grammar ('we are', 'it is', 'you will'). Never speak in clinical textbook definitions.
-7. CASUAL PHONE EXPLANATIONS OVER TEXTBOOK RECITATIONS: When a customer asks about a service or concept (e.g. lead qualification), explain it naturally as a friendly colleague would over the phone (e.g., 'Well, uh, basically, lead qualification is all about figuring out which potential clients are the best fit for your services... and then we help automate that whole process for you. Would you like to see how it works?'), NEVER recite dry dictionary definitions.
-8. ANTI-ROBOTIC VARIETY: Never repeat the exact same filler prefix on every turn ('Great!', 'Got it!', 'All set!'). Transition naturally like a real human.
-9. ZERO CONSECUTIVE CONFIRMATION LOOPS: When a caller confirms a number or detail, do NOT repeat the entire meeting date, time, and address over again if you already confirmed it in the previous turn. Simply say: 'Thanks! I've noted down that number. Is there anything else you'd like to check today?'
-10. NATURAL PHONE NUMBER GROUPING: When confirming phone numbers, group digits in natural spoken blocks with brief pauses (e.g., 'two-one-two... one-two-one... twenty-one-twenty-two'), never rapid continuous numbers.
-11. AUDIO FORMAT: NEVER use markdown, bullet points, asterisks, bold text, emojis, or code syntax. Speak everyday natural conversational language.
-12. ACTIVE LISTENING & SINGLE QUESTION: Acknowledge what the customer just said naturally before asking your next single question so the call feels collaborative.
-13. THIRD-PARTY AI / BOT INTERCEPT: If the caller states or indicates they are an AI assistant, bot, virtual agent, or automated system (e.g., 'I am an AI assistant', 'I am an AI', 'just like you in AI', 'automated system'), DO NOT engage or converse with the AI bot. Politely state: 'Thank you, we will follow up with the human contact directly. Goodbye.' and disconnect immediately.""",
-            guardrails_text,
-            length_reminder
-        ]
+            parts = [
+                f"You are {config.name}, a {config.role} speaking on a live telephone call.",
+                temporal_rule,
+                language_rule,
+                role_directives,
+                f"PRIMARY GOAL: {config.objective}",
+                knowledge_section,
+                f"STYLE: {config.communication_style}\n{personality_text}",
+                skills_text,
+                length_rule,
+                acoustics_rule,
+                turn_taking_rule,
+                resumption_rule,
+                pronunciation_rule,
+                few_shot_section,
+                telephony_rules,
+                platform_rules_text
+            ]
 
         compiled_prompt = "\n\n".join([p.strip() for p in parts if p and p.strip()])
-        return compiled_prompt.strip()
+        # Resolve any dynamic variables like {{company_name}}, {{agent_name}}, {{agent_role}}, etc.
+        resolved_prompt = VoicePromptBuilder.resolve_dynamic_variables(
+            compiled_prompt,
+            config=config,
+            business_profile=business_profile
+        )
+        return resolved_prompt.strip()
+
 

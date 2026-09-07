@@ -1,4 +1,12 @@
 import React, { useState } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate
+} from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { LoginPage } from "./components/LoginPage";
@@ -11,36 +19,76 @@ import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
 import { AgentManagementView } from "./components/AgentManagementView";
 import { BusinessProfileView } from "./components/BusinessProfileView";
-import { Sidebar, NavTab } from "./components/Sidebar";
+import { ProspectsView } from "./components/prospects/ProspectsView";
+import { CampaignsView } from "./components/campaigns/CampaignsView";
+import { LeadIntelligenceView } from "./components/lead-intelligence/LeadIntelligenceView";
+import { Sidebar, NavTab, TAB_ROUTE_MAP, ROUTE_TAB_MAP } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
-import { Toaster } from "sonner";
+import { Modal } from "./components/ui/Modal";
+import { Button } from "./components/ui/Button";
+import { Toaster, toast } from "sonner";
 import {
   Menu,
   PhoneCall,
   PhoneOutgoing,
   Bot,
+  Megaphone,
   Sliders,
   Palette,
   Users,
+  UserCheck,
   ShieldAlert,
-  Building2
+  Building2,
+  AlertCircle,
+  Save,
+  Sparkles
 } from "lucide-react";
 
 function MainContent() {
   const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin } = useAuth();
-  const { draftTheme, isThemeReady } = useTheme();
-  const [activeTab, setActiveTab] = useState<NavTab>("dashboard");
+  const { draftTheme } = useTheme();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [activeDialerAgentId, setActiveDialerAgentId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
-  // When verifying auth session OR when logged in and waiting for organization custom theme to apply
-  if (isAuthLoading || (user && !isThemeReady)) {
+  // Unsaved Editor Changes Global Interception State (Agents & Campaigns)
+  const [isAgentEditorDirty, setIsAgentEditorDirty] = useState(false);
+  const [isCampaignEditorDirty, setIsCampaignEditorDirty] = useState(false);
+  const [saveDraftFn, setSaveDraftFn] = useState<(() => Promise<void>) | null>(null);
+  const [discardDraftFn, setDiscardDraftFn] = useState<(() => void) | null>(null);
+  const [pendingTargetRoute, setPendingTargetRoute] = useState<string | null>(null);
+  const [showNavConfirmModal, setShowNavConfirmModal] = useState(false);
+  const [navConfirmSource, setNavConfirmSource] = useState<"agent" | "campaign">("agent");
+
+  // Determine current active NavTab from URL path
+  const currentPath = location.pathname.toLowerCase().replace(/\/$/, "") || "/";
+  const activeTab: NavTab = ROUTE_TAB_MAP[currentPath] || "dashboard";
+
+  const handleTabSelect = (tab: NavTab) => {
+    const targetRoute = TAB_ROUTE_MAP[tab] || "/dashboard";
+    if (activeTab === "voice_agent" && isAgentEditorDirty && tab !== "voice_agent") {
+      setNavConfirmSource("agent");
+      setPendingTargetRoute(targetRoute);
+      setShowNavConfirmModal(true);
+    } else if (activeTab === "campaigns" && isCampaignEditorDirty && tab !== "campaigns") {
+      setNavConfirmSource("campaign");
+      setPendingTargetRoute(targetRoute);
+      setShowNavConfirmModal(true);
+    } else {
+      navigate(targetRoute);
+    }
+  };
+
+  // When verifying auth session
+  if (isAuthLoading) {
     return (
       <LoadingState
         fullPage
         message="Loading workspace session..."
-        subMessage="Applying organization identity and theme styling"
+        subMessage="Signing into your voice workspace"
         size="md"
       />
     );
@@ -75,8 +123,26 @@ function MainContent() {
       case "voice_agent":
         return {
           title: "AI Voice Agents",
-          sub: "Spoken AI & LLM voice agent configurations, prompts & library",
+          sub: "Configure, test, and manage your organization's AI voice agents.",
           icon: Bot,
+        };
+      case "lead_intelligence":
+        return {
+          title: "Lead Intelligence",
+          sub: "Organization-wide interested prospects, callback requests & post-call AI insights",
+          icon: Sparkles,
+        };
+      case "campaigns":
+        return {
+          title: "Outbound Campaigns",
+          sub: "Automated dialer scheduler, audience queues & AI voice dispatching",
+          icon: Megaphone,
+        };
+      case "prospects":
+        return {
+          title: "Contacts & Leads",
+          sub: "Unified audience registry, custom attributes, DNC compliance & calling",
+          icon: UserCheck,
         };
       case "business_profile":
         return {
@@ -126,7 +192,7 @@ function MainContent() {
       <div className="hidden md:block">
         <Sidebar
           activeTab={currentTab}
-          onTabChange={(tab) => setActiveTab(tab)}
+          onTabChange={handleTabSelect}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
         />
@@ -145,25 +211,27 @@ function MainContent() {
             <Sidebar
               activeTab={currentTab}
               onTabChange={(tab) => {
-                setActiveTab(tab);
+                handleTabSelect(tab);
                 setMobileSidebarOpen(false);
               }}
               collapsed={false}
+              onToggleCollapse={() => setMobileSidebarOpen(false)}
             />
           </div>
         </div>
       )}
 
-      {/* Main Workspace Column */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-        {/* Minimal Sticky Top Bar */}
-        <header className="bg-[var(--color-surface)]/80 backdrop-blur-md border-b border-[var(--color-border)] px-4 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-20">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header Bar */}
+        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 shadow-2xs">
           <div className="flex items-center gap-3">
-            {/* Mobile Hamburger */}
+            {/* Mobile Sidebar Hamburger Toggle */}
             <button
               type="button"
               onClick={() => setMobileSidebarOpen(true)}
-              className="p-1.5 rounded border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)] md:hidden cursor-pointer"
+              className="md:hidden p-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-heading)] hover:bg-[var(--color-surface)] cursor-pointer"
+              aria-label="Open navigation menu"
             >
               <Menu className="w-4 h-4" />
             </button>
@@ -189,38 +257,158 @@ function MainContent() {
           </div>
         </header>
 
-        {/* Dynamic Main View - Full Width & Fully Responsive */}
-        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 transition-all text-left">
-          {currentTab === "dashboard" ? (
-            <DashboardView onNavigateSettings={() => setActiveTab("twilio")} />
-          ) : currentTab === "ai_dialer" ? (
-            <AIAgentDialerView
-              initialAgentId={activeDialerAgentId}
-              onNavigateSettings={() => setActiveTab("twilio")}
-              onNavigateAgents={() => setActiveTab("voice_agent")}
+        {/* Dynamic Route View - Full Width & Fully Responsive */}
+        <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route
+              path="/dashboard"
+              element={<DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />}
             />
-          ) : currentTab === "voice_agent" ? (
-            <AgentManagementView
-              onNavigateToDialer={(agentId) => {
-                setActiveDialerAgentId(agentId);
-                setActiveTab("ai_dialer");
-              }}
+            <Route
+              path="/dialer"
+              element={
+                <AIAgentDialerView
+                  initialAgentId={activeDialerAgentId}
+                  onNavigateSettings={() => handleTabSelect("twilio")}
+                  onNavigateAgents={() => handleTabSelect("voice_agent")}
+                />
+              }
             />
-          ) : currentTab === "business_profile" ? (
-            <BusinessProfileView />
-          ) : currentTab === "twilio" ? (
-            <TwilioSettingsView />
-          ) : currentTab === "theme" ? (
-            <ThemeStudioView />
-          ) : currentTab === "superadmin" ? (
-            <SuperAdminPanel />
-          ) : (
-            <AdminPanel />
-          )}
+            <Route path="/ai-dialer" element={<Navigate to="/dialer" replace />} />
+            <Route
+              path="/agents"
+              element={
+                <AgentManagementView
+                  onNavigateToDialer={(agentId) => {
+                    setActiveDialerAgentId(agentId);
+                    handleTabSelect("ai_dialer");
+                  }}
+                  onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
+                    setIsAgentEditorDirty(isDirty);
+                    setSaveDraftFn(() => handleSaveDraft);
+                    setDiscardDraftFn(() => handleDiscard);
+                  }}
+                />
+              }
+            />
+            <Route path="/voice-agents" element={<Navigate to="/agents" replace />} />
+            <Route path="/lead-intelligence" element={<LeadIntelligenceView />} />
+            <Route path="/leads" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route path="/opportunities" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route path="/lead-insights" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route
+              path="/campaigns"
+              element={
+                <CampaignsView
+                  onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
+                    setIsCampaignEditorDirty(isDirty);
+                    setSaveDraftFn(() => handleSaveDraft);
+                    setDiscardDraftFn(() => handleDiscard);
+                  }}
+                />
+              }
+            />
+            <Route path="/prospects" element={<ProspectsView />} />
+            <Route path="/contacts" element={<Navigate to="/prospects" replace />} />
+            <Route path="/knowledge" element={<BusinessProfileView />} />
+            <Route path="/company-profile" element={<Navigate to="/knowledge" replace />} />
+            <Route
+              path="/phone-settings"
+              element={isAdmin ? <TwilioSettingsView /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route path="/twilio" element={<Navigate to="/phone-settings" replace />} />
+            <Route
+              path="/theme"
+              element={isAdmin ? <ThemeStudioView /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route
+              path="/team"
+              element={isAdmin ? <AdminPanel /> : <Navigate to="/dashboard" replace />}
+            />
+            <Route path="/admin" element={<Navigate to="/team" replace />} />
+            <Route
+              path="/superadmin"
+              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to="/dashboard" replace />}
+            />
+            {/* Catch all route - redirect to dashboard */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </main>
 
+        {/* Unsaved Agent / Campaign Navigation Confirmation Modal */}
+        <Modal
+          isOpen={showNavConfirmModal}
+          onClose={() => setShowNavConfirmModal(false)}
+          title={navConfirmSource === "campaign" ? "Unsaved Campaign Setup" : "Unsaved Voice Agent Changes"}
+          maxWidth="sm"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-[var(--color-warning-subtle)] border border-[var(--color-warning)]/30 rounded-[var(--radius-main,0.375rem)] flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold text-[var(--color-heading)]">
+                  Are you sure you want to leave this page?
+                </p>
+                <p className="text-[var(--color-muted)] leading-relaxed">
+                  {navConfirmSource === "campaign"
+                    ? "Your campaign setup has unsaved changes. Would you like to save this campaign as a draft before navigating away, or discard your current setup?"
+                    : "Your voice agent changes are not saved yet. Would you like to save this as a draft before navigating away, or discard your current edits?"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowNavConfirmModal(false);
+                  setPendingTargetRoute(null);
+                }}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Keep Editing
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (discardDraftFn) discardDraftFn();
+                  setShowNavConfirmModal(false);
+                  setIsAgentEditorDirty(false);
+                  setIsCampaignEditorDirty(false);
+                  if (pendingTargetRoute) navigate(pendingTargetRoute);
+                  setPendingTargetRoute(null);
+                }}
+                className="w-full sm:w-auto cursor-pointer"
+              >
+                Discard &amp; Leave
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  if (saveDraftFn) {
+                    await saveDraftFn();
+                  }
+                  setShowNavConfirmModal(false);
+                  setIsAgentEditorDirty(false);
+                  setIsCampaignEditorDirty(false);
+                  if (pendingTargetRoute) navigate(pendingTargetRoute);
+                  setPendingTargetRoute(null);
+                }}
+                leftIcon={<Save className="w-3.5 h-3.5" />}
+                className="w-full sm:w-auto cursor-pointer font-semibold"
+              >
+                Save Draft &amp; Leave
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
         {/* Minimal Footer */}
-        <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
+        {/* <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
           <div>
             &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "AI Voice Platform")}. All rights reserved.
           </div>
@@ -229,7 +417,7 @@ function MainContent() {
             <span>&bull;</span>
             <span>WebRTC Gateway v2.11</span>
           </div>
-        </footer>
+        </footer> */}
       </div>
     </div>
   );
@@ -237,20 +425,22 @@ function MainContent() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <MainContent />
-        <Toaster
-          position="top-right"
-          richColors
-          closeButton
-          toastOptions={{
-            duration: 4000,
-            className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
-          }}
-        />
-      </ThemeProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <ThemeProvider>
+          <MainContent />
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            toastOptions={{
+              duration: 4000,
+              className: "text-xs font-sans shadow-lg border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
+            }}
+          />
+        </ThemeProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

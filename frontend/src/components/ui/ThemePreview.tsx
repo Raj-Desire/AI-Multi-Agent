@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { OrganizationThemeConfig } from "../../types";
+import { getThemeCssVariables } from "../../utils/themeUtils";
 import {
   PhoneCall,
   PhoneOutgoing,
@@ -17,9 +18,14 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 
 export const ThemePreview: React.FC<{ theme: OrganizationThemeConfig }> = ({ theme }) => {
   const [activeTab, setActiveTab] = useState<"overview" | "calls">("overview");
+  const inlineThemeStyles = getThemeCssVariables(theme);
 
   return (
-    <div className="w-full rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] shadow-sm overflow-hidden text-[var(--color-text)] bg-[var(--color-surface)] transition-all text-left">
+    <div
+      style={inlineThemeStyles as React.CSSProperties}
+      data-ui-style={theme.appearance.ui_style || "default"}
+      className="w-full rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] shadow-sm overflow-hidden text-[var(--color-text)] bg-[var(--color-surface)] transition-all text-left"
+    >
       {/* Mock Browser Header Bar */}
       <div className="bg-[var(--color-surface-muted)] px-3.5 py-2 border-b border-[var(--color-border)] flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -52,6 +52,7 @@ class CallSession(BaseModel):
     agent_id: str
     user_id: Optional[str] = None
     prospect_id: Optional[str] = None
+    campaign_id: Optional[str] = None
     twilio_call_sid: Optional[str] = None
     twilio_stream_sid: Optional[str] = None
     phone_number: str = ""          # Twilio phone number
@@ -81,6 +82,7 @@ class CallSession(BaseModel):
     # Latency Telemetry (latest turn and aggregates)
     latest_latency: LatencyTelemetry = Field(default_factory=LatencyTelemetry)
     avg_turn_latency_ms: float = 0.0
+    outcome: Optional[str] = None
 
     # Error Tracking
     last_error: Optional[str] = None

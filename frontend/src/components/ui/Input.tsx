@@ -36,7 +36,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           <input
             id={inputId}
             ref={ref}
-            className={`w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] placeholder-[var(--color-muted)]/70 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed border rounded-[var(--radius-main,0.375rem)] ${
+            className={`ui-input w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] placeholder-[var(--color-muted)]/70 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed border rounded-[var(--radius-main,0.375rem)] ${
               leftIcon ? "pl-9" : ""
             } ${rightIcon ? "pr-9" : ""} ${
               error

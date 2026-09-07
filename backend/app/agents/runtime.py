@@ -61,14 +61,34 @@ class AgentRuntimeBuilder:
             configured_lang = config.voice.language.lower().strip()
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
-        listen_endpointing = getattr(config.listen, "endpointing", 500) if config.listen else 500
+        
+        # Adaptive endpointing calculation for sub-second human turn taking (350ms - 600ms)
+        mode = getattr(config.listen, "endpointing_mode", "rapid") if config.listen else "rapid"
+        if mode == "rapid":
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 350) or 350
+        elif mode == "dictation":
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 900) or 900
+        elif mode == "balanced":
+            listen_endpointing = getattr(config.listen, "endpointing", 450) or 450
+        else:
+            # Fast conversational default: 400ms for natural human pacing
+            listen_endpointing = min(getattr(config.listen, "endpointing", 450) or 450, 500)
+
+        # Merge keyterms from listen config and pronunciation rules for recognition boosting
+        combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
+        if getattr(config, "pronunciation_rules", None):
+            for rule in config.pronunciation_rules:
+                w = getattr(rule, "word", "") if hasattr(rule, "word") else (rule.get("word", "") if isinstance(rule, dict) else "")
+                if w and w.strip() and w.strip() not in combined_keyterms:
+                    combined_keyterms.append(w.strip())
+
         listen_provider = DeepgramListenProvider(
             type="deepgram",
             model=listen_model,
             language=configured_lang,
             smart_format=True,
-            endpointing=listen_endpointing or 500,
-            keyterms=config.listen.keyterms if config.listen and config.listen.keyterms else None
+            endpointing=listen_endpointing,
+            keyterms=combined_keyterms if combined_keyterms else None
         )
         listen_config = DeepgramListenConfig(
             provider=listen_provider
@@ -97,9 +117,17 @@ class AgentRuntimeBuilder:
             provider=speak_provider
         )
 
-        # 5. Combined Agent Config with Greeting
+        # 5. Combined Agent Config with Greeting (Resolved for dynamic variables)
+        resolved_greeting = None
+        if config.greeting and config.greeting.strip():
+            resolved_greeting = VoicePromptBuilder.resolve_dynamic_variables(
+                config.greeting.strip(),
+                config=config,
+                business_profile=business_profile
+            )
+
         agent_config = DeepgramAgentConfig(
-            greeting=config.greeting if config.greeting else None,
+            greeting=resolved_greeting,
             listen=listen_config,
             think=think_config,
             speak=speak_config

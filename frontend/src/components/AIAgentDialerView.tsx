@@ -200,7 +200,7 @@ export function AIAgentDialerView({
           setCallState("idle");
           setCalling(false);
           stopTimer();
-          fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+          fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
         }
       } catch (err) {
         console.error("Telemetry parse error:", err);
@@ -242,7 +242,7 @@ export function AIAgentDialerView({
       setCallState("connected");
       startTimer();
       connectTelemetryStream(res.call_session_id);
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
     } catch (err: any) {
       setCalling(false);
       setCallState("idle");
@@ -269,7 +269,7 @@ export function AIAgentDialerView({
       setCallState("idle");
       stopTimer();
       if (telemetryWsRef.current) telemetryWsRef.current.close();
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
     }
   }
 
@@ -301,7 +301,6 @@ export function AIAgentDialerView({
         <div>
           <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1">
             <span>{c.agent_name || "Receptionist"}</span>
-            <span className="font-mono text-[10px] text-[var(--color-muted)]">v{c.agent_version || 1}</span>
           </div>
           <span className="text-[10px] text-[var(--color-muted)]">
             {c.agent_scope === "GLOBAL" ? "Platform" : "Organization"}
@@ -468,7 +467,7 @@ export function AIAgentDialerView({
                   <optgroup label="My Organization Agents">
                     {availableAgents.my_agents.map((a) => (
                       <option key={`my_agent_${a.agent_id}`} value={a.agent_id}>
-                        {a.name} (v{a.version}) - {a.role}
+                        {a.name} - {a.role}
                       </option>
                     ))}
                   </optgroup>
@@ -660,11 +659,10 @@ export function AIAgentDialerView({
                       {msg.role === "user" ? "Customer" : selectedAgent?.name || "AI Agent"}
                     </div>
                     <div
-                      className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${
-                        msg.role === "user"
+                      className={`p-2.5 rounded-[var(--radius-main,0.375rem)] max-w-[85%] text-xs ${msg.role === "user"
                           ? "bg-[var(--color-primary)] text-white font-medium"
                           : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       {msg.content}
                     </div>
@@ -754,9 +752,9 @@ export function AIAgentDialerView({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Version & Scope:</span>
+                  <span className="text-[var(--color-muted)]">Scope:</span>
                   <span className="font-mono text-[var(--color-muted)]">
-                    v{selectedCall.agent_version || 1} &bull; {selectedCall.agent_scope || "ORGANIZATION"}
+                    {selectedCall.agent_scope || "ORGANIZATION"}
                   </span>
                 </div>
               </div>
@@ -770,11 +768,10 @@ export function AIAgentDialerView({
                   {selectedCall.transcript.map((t, idx) => (
                     <div
                       key={idx}
-                      className={`p-2 rounded text-xs ${
-                        t.role === "user"
+                      className={`p-2 rounded text-xs ${t.role === "user"
                           ? "bg-[var(--color-primary-light)] text-[var(--color-primary)] font-medium"
                           : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize">
                         {t.role === "user" ? "Customer" : selectedCall.agent_name || "AI Agent"}

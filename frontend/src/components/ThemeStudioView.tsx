@@ -12,6 +12,7 @@ import {
   getPalettePreset,
   shuffleColors,
   checkContrast,
+  getThemeCssVariables,
 } from "../utils/themeUtils";
 import {
   Palette,
@@ -98,6 +99,7 @@ export const ThemeStudioView: React.FC = () => {
     { name: "Mono", label: "Monochrome" },
     { name: "Pastel", label: "Soft Pastel" },
     { name: "Deep", label: "Deep Navy" },
+    { name: "Spectrum", label: "Dynamic Spectrum" },
   ];
 
   const handleApplyPreset = (presetName: PalettePreset) => {
@@ -137,7 +139,7 @@ export const ThemeStudioView: React.FC = () => {
       setIsSaving(true);
       setStatusMessage(null);
       await saveTheme();
-      setStatusMessage({ text: "Theme tokens and settings saved successfully.", type: "success" });
+      setStatusMessage({ text: "Theme saved and applied permanently across all application pages.", type: "success" });
     } catch (err: any) {
       setStatusMessage({ text: err.message || "Failed to save theme.", type: "danger" });
     } finally {
@@ -354,6 +356,25 @@ export const ThemeStudioView: React.FC = () => {
         </Alert>
       )}
 
+      {isDirty && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-[var(--radius-main,0.375rem)] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+            <span>
+              <strong>Draft Preview Active:</strong> Changes are only visible in Theme Studio previews. Click <strong>"Save Theme"</strong> to apply permanently across all platform pages.
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={discardChanges}
+            className="text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+          >
+            Reset Preview
+          </Button>
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <Tabs
         tabs={[
@@ -421,44 +442,85 @@ export const ThemeStudioView: React.FC = () => {
 
           {/* Interactive Live Style Demo Sandbox */}
           <div className="pt-2">
-            <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-4">
+            <div
+              style={getThemeCssVariables(draftTheme) as React.CSSProperties}
+              data-ui-style={draftTheme.appearance.ui_style || "default"}
+              className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs space-y-4 text-left"
+            >
               <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
                 <div>
                   <h4 className="text-xs font-semibold text-[var(--color-heading)]">
                     Active Style Live Sandbox ({uiStyles.find((s) => s.id === draftTheme.appearance.ui_style)?.title})
                   </h4>
                   <p className="text-[11px] text-[var(--color-muted)]">
-                    This sandbox reflects the active architecture style token applied in real time.
+                    This sandbox directly consumes the resolved architecture style and design tokens in real time.
                   </p>
                 </div>
-                <Badge variant="primary" size="sm">
-                  {draftTheme.appearance.ui_style}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <span className="ui-badge px-2 py-0.5 text-xs font-medium bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary-ring)]">
+                    Active: {draftTheme.appearance.ui_style}
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
-                <div className="ui-card p-3.5 space-y-2">
-                  <div className="text-xs font-semibold text-[var(--color-heading)]">Sample Card Component</div>
-                  <p className="text-[11px] text-[var(--color-muted)]">Borders, radius, and shadows update dynamically.</p>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+                {/* 1. Card */}
+                <div className="ui-card p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[var(--color-heading)]">Live UI Card</span>
+                    <span className="ui-badge px-2 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    Surface material, border thickness, corner radius, and elevation adjust according to design contract.
+                  </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[var(--color-heading)] block">Sample Input Field</label>
-                  <input
-                    type="text"
-                    readOnly
-                    value="Input field with style focus"
-                    className="w-full h-9 text-xs px-3 ui-input bg-[var(--color-surface)] text-[var(--color-heading)]"
-                  />
+                {/* 2. Controls (Input & Select) */}
+                <div className="space-y-2.5">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-[var(--color-heading)] block">Sample Field</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value="Interactive input component"
+                      className="w-full h-9 text-xs px-3 ui-input bg-[var(--color-surface)] text-[var(--color-heading)]"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button type="button" className="ui-button-primary px-3.5 py-1.5 text-xs font-medium cursor-pointer">
+                      Primary
+                    </button>
+                    <button type="button" className="ui-button-secondary px-3.5 py-1.5 text-xs font-medium cursor-pointer">
+                      Secondary
+                    </button>
+                    <button type="button" className="ui-button-outline px-3.5 py-1.5 text-xs font-medium cursor-pointer">
+                      Outline
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 justify-start sm:justify-end">
-                  <button type="button" className="ui-button-primary px-3.5 py-2 text-xs font-medium cursor-pointer">
-                    Primary Action
-                  </button>
-                  <button type="button" className="ui-button-secondary px-3.5 py-2 text-xs font-medium cursor-pointer">
-                    Secondary
-                  </button>
+                {/* 3. Mini Table */}
+                <div className="ui-table-container overflow-hidden">
+                  <table className="ui-table w-full text-left text-xs">
+                    <thead className="bg-[var(--color-surface-muted)]/50 border-b border-[var(--color-border)] text-[10px] text-[var(--color-muted)] font-semibold">
+                      <tr>
+                        <th className="px-3 py-1.5">Component</th>
+                        <th className="px-3 py-1.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--color-border)]">
+                      <tr>
+                        <td className="px-3 py-1.5 font-medium text-[var(--color-heading)]">Dialer Engine</td>
+                        <td className="px-3 py-1.5 text-emerald-600 font-medium">Ready</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-1.5 font-medium text-[var(--color-heading)]">Voice Assistant</td>
+                        <td className="px-3 py-1.5 text-[var(--color-primary)] font-medium">Synced</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -506,27 +568,82 @@ export const ThemeStudioView: React.FC = () => {
           </FormSection>
 
           {/* Color Tokens Editor */}
+          {/* Color Tokens Editor */}
           <FormSection
             title="Semantic Color Tokens"
-            description="Customize individual brand and UI colors. Contrast ratios are computed automatically."
+            description="Customize individual brand and UI colors. Contrast ratios are computed automatically against their actual render surface."
           >
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { key: "primary" as const, label: "Primary Brand Color", val: draftTheme.colors.primary },
-                { key: "secondary" as const, label: "Secondary Accent", val: draftTheme.colors.secondary },
-                { key: "accent" as const, label: "Tertiary Accent", val: draftTheme.colors.accent },
-                { key: "background" as const, label: "App Canvas Background", val: draftTheme.colors.background },
-                { key: "surface" as const, label: "Card & Table Surface", val: draftTheme.colors.surface },
-                { key: "sidebar" as const, label: "Sidebar Background", val: draftTheme.colors.sidebar },
+                {
+                  key: "primary" as const,
+                  label: "Primary Brand Color",
+                  val: draftTheme.colors.primary,
+                  pairLabel: "Button text (#fff) on Primary",
+                  contrast: checkContrast("#ffffff", draftTheme.colors.primary),
+                },
+                {
+                  key: "secondary" as const,
+                  label: "Secondary Accent",
+                  val: draftTheme.colors.secondary,
+                  pairLabel: "Secondary on Surface",
+                  contrast: checkContrast(draftTheme.colors.secondary, draftTheme.colors.surface || "#ffffff"),
+                },
+                {
+                  key: "accent" as const,
+                  label: "Tertiary Accent",
+                  val: draftTheme.colors.accent,
+                  pairLabel: "Accent on Surface",
+                  contrast: checkContrast(draftTheme.colors.accent, draftTheme.colors.surface || "#ffffff"),
+                },
+                {
+                  key: "background" as const,
+                  label: "App Canvas Background",
+                  val: draftTheme.colors.background,
+                  pairLabel: "Text on Background Canvas",
+                  contrast: checkContrast(draftTheme.colors.text || "#1e293b", draftTheme.colors.background || "#fafafa"),
+                },
+                {
+                  key: "surface" as const,
+                  label: "Card & Table Surface",
+                  val: draftTheme.colors.surface,
+                  pairLabel: "Heading on Card Surface",
+                  contrast: checkContrast(draftTheme.colors.heading || "#0f172a", draftTheme.colors.surface || "#ffffff"),
+                },
+                {
+                  key: "sidebar" as const,
+                  label: "Sidebar Background",
+                  val: draftTheme.colors.sidebar,
+                  pairLabel: "Sidebar Text on Sidebar",
+                  contrast: checkContrast(draftTheme.colors.sidebar_text || "#0f172a", draftTheme.colors.sidebar || "#f8f9fa"),
+                },
               ].map((c) => {
-                const contrast = checkContrast(c.val, "#ffffff");
+                const ratioNum = c.contrast.ratio;
+                const badgeStyle =
+                  ratioNum >= 7.0
+                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                    : ratioNum >= 4.5
+                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                    : ratioNum >= 3.0
+                    ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                    : "bg-rose-500/10 text-rose-600 border-rose-500/20";
+
+                const badgeText =
+                  ratioNum >= 7.0
+                    ? "AAA"
+                    : ratioNum >= 4.5
+                    ? "AA"
+                    : ratioNum >= 3.0
+                    ? "AA Large"
+                    : "Low Contrast";
+
                 return (
                   <div key={c.key} className="p-3 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-[var(--color-heading)]">{c.label}</span>
                       <span
                         style={{ backgroundColor: c.val }}
-                        className="w-5 h-5 rounded border border-black/10 shrink-0"
+                        className="w-5 h-5 rounded border border-black/10 shrink-0 shadow-xs"
                       />
                     </div>
                     <div className="flex items-center gap-2">
@@ -543,8 +660,14 @@ export const ThemeStudioView: React.FC = () => {
                         className="font-mono text-xs px-2 py-1 border border-[var(--color-border)] rounded w-full bg-[var(--color-surface)] text-[var(--color-heading)]"
                       />
                     </div>
-                    <div className="text-[10px] text-[var(--color-muted)]">
-                      WCAG Contrast: <strong className="text-[var(--color-heading)]">{contrast.ratio}:1</strong>
+                    <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]/60 text-[10px] text-[var(--color-muted)]">
+                      <span className="truncate pr-1" title={c.pairLabel}>{c.pairLabel}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <strong className="text-[var(--color-heading)]">{c.contrast.ratio}:1</strong>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${badgeStyle}`}>
+                          {badgeText}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -639,8 +762,9 @@ export const ThemeStudioView: React.FC = () => {
                 >
                   <option value="Inter">Inter (Modern Neutral)</option>
                   <option value="Plus Jakarta Sans">Plus Jakarta Sans (Clean Geometric)</option>
-                  <option value="Outfit">Outfit (Contemporary)</option>
+                  <option value="Outfit">Outfit (Contemporary Display)</option>
                   <option value="Roboto">Roboto (Enterprise Standard)</option>
+                  <option value="Poppins">Poppins (Friendly Geometric)</option>
                   <option value="Space Grotesk">Space Grotesk (Tech Monospace Accent)</option>
                 </select>
               </div>
@@ -661,9 +785,10 @@ export const ThemeStudioView: React.FC = () => {
                 >
                   <option value="none">Square (0px)</option>
                   <option value="sm">Small (4px)</option>
-                  <option value="md">Medium (6px - Recommended)</option>
-                  <option value="lg">Large (10px)</option>
+                  <option value="md">Medium (8px - Recommended)</option>
+                  <option value="lg">Large (12px)</option>
                   <option value="xl">Extra Large (16px)</option>
+                  <option value="full">Pill / Full (9999px)</option>
                 </select>
               </div>
             </div>

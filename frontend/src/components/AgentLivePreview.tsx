@@ -19,10 +19,14 @@ import {
   Clock,
   Zap,
   Sliders,
-  Loader2
+  Loader2,
+  Info,
+  ShieldAlert,
+  PhoneCall
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
+import { InfoTooltip } from "./ui/Tooltip";
 import { useAuth } from "../context/AuthContext";
 
 interface AgentLivePreviewProps {
@@ -46,10 +50,13 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const muteGainRef = useRef<GainNode | null>(null);
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
+  const heartbeatIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
@@ -57,18 +64,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     };
   }, []);
 
-  // Update prompt dynamically if agentConfig changes while session is active
+  // Update prompt dynamically if agentConfig changes while session is active without restarting WS
   useEffect(() => {
     if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: "configure",
-          agent_config: agentConfig,
-          greeting: agentConfig.greeting,
+          type: "update_prompt",
+          prompt: agentConfig.system_prompt || agentConfig.objective,
         })
       );
     }
-  }, [JSON.stringify(agentConfig)]);
+  }, [agentConfig.system_prompt, agentConfig.objective]);
 
   useEffect(() => {
     if (transcriptBoxRef.current) {
@@ -120,6 +126,14 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             greeting: agentConfig.greeting,
           })
         );
+
+        // Start heartbeat interval to keep browser WS connection permanently active
+        if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 5000);
       };
 
       ws.onmessage = (event) => {
@@ -157,12 +171,10 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
             setIsUserSpeaking(false);
           } else if (data.type === "call_concluded") {
-            setTimeout(() => {
-              stopPreviewSession();
-            }, 1200);
+            // In Live Playground mode, do NOT auto-stop session — keep session listening continuously until user clicks Stop
+            console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
-            stopPreviewSession();
           }
         } catch (e) {
           console.error("Preview WS parse error:", e);
@@ -238,13 +250,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       try {
         await audioCtx.audioWorklet.addModule(workletUrl);
         const workletNode = new AudioWorkletNode(audioCtx, "mic-processor");
+        workletNodeRef.current = workletNode;
+
+        // Keep audio graph alive in Chromium by routing workletNode through a silent gain node to destination
+        const muteGain = audioCtx.createGain();
+        muteGain.gain.value = 0.0;
+        muteGainRef.current = muteGain;
 
         workletNode.port.onmessage = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > 65536) return; // Drop frame if network buffer is backlogged
           const inputData: Float32Array = e.data;
           if (!inputData || inputData.length === 0) return;
 
-          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to Deepgram input rate (24000Hz)
+          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to 24000Hz Linear PCM
           const targetSampleRate = 24000;
           const srcSampleRate = audioCtx.sampleRate;
           let resampledData: Float32Array;
@@ -264,31 +283,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             }
           }
 
-          // Convert Float32 to Int16 PCM (16-bit linear at 24000Hz)
+          // Convert Float32 to Int16 Linear PCM (16-bit linear at 24000Hz)
           const pcm16Buffer = new Int16Array(resampledData.length);
           for (let i = 0; i < resampledData.length; i++) {
             const s = Math.max(-1, Math.min(1, resampledData[i]));
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
-          // Convert Int16Array buffer to base64
-          const uint8 = new Uint8Array(pcm16Buffer.buffer);
-          let binary = "";
-          for (let i = 0; i < uint8.length; i++) {
-            binary += String.fromCharCode(uint8[i]);
-          }
-          const b64 = btoa(binary);
-
-          ws.send(
-            JSON.stringify({
-              type: "audio",
-              payload: b64,
-              format: "pcm16",
-            })
-          );
+          // Send raw binary PCM16 buffer directly for maximum throughput and zero serialization latency
+          ws.send(pcm16Buffer.buffer);
         };
 
         source.connect(workletNode);
+        workletNode.connect(muteGain);
+        muteGain.connect(audioCtx.destination);
       } catch (workletErr) {
         console.warn("AudioWorklet fallback to ScriptProcessor:", workletErr);
         const processor = audioCtx.createScriptProcessor(2048, 1, 1);
@@ -296,6 +304,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
         processor.onaudioprocess = (e) => {
           if (ws.readyState !== WebSocket.OPEN) return;
+          if (ws.bufferedAmount > 65536) return;
           const inputData = e.inputBuffer.getChannelData(0);
 
           // Resample from browser native sample rate to 24000Hz
@@ -324,20 +333,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
           }
 
-          const uint8 = new Uint8Array(pcm16Buffer.buffer);
-          let binary = "";
-          for (let i = 0; i < uint8.length; i++) {
-            binary += String.fromCharCode(uint8[i]);
-          }
-          const b64 = btoa(binary);
-
-          ws.send(
-            JSON.stringify({
-              type: "audio",
-              payload: b64,
-              format: "pcm16",
-            })
-          );
+          ws.send(pcm16Buffer.buffer);
         };
 
         source.connect(processor);
@@ -355,6 +351,25 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     setIsMicActive(false);
     setIsAgentSpeaking(false);
     setIsUserSpeaking(false);
+
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    if (workletNodeRef.current) {
+      try {
+        workletNodeRef.current.disconnect();
+      } catch (e) {}
+      workletNodeRef.current = null;
+    }
+
+    if (muteGainRef.current) {
+      try {
+        muteGainRef.current.disconnect();
+      } catch (e) {}
+      muteGainRef.current = null;
+    }
 
     if (processorNodeRef.current) {
       try {
@@ -511,6 +526,23 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
                 <Radio className="w-2.5 h-2.5 animate-pulse" />
                 <span>Real-Time Voice</span>
               </span>
+              {agentConfig.runtime?.conversational_fillers_enabled && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs shrink-0" title="Conversational Fillers & Natural Thinking Sounds enabled">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span>Thinking Fillers</span>
+                </span>
+              )}
+              {agentConfig.runtime?.backchanneling_enabled && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shadow-2xs shrink-0" title="Continuous Speech Backchanneling active">
+                  <Activity className="w-2.5 h-2.5" />
+                  <span>Backchanneling</span>
+                </span>
+              )}
+              {agentConfig.pronunciation_rules && agentConfig.pronunciation_rules.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shadow-2xs shrink-0" title={`${agentConfig.pronunciation_rules.length} phonetic pronunciation rules active`}>
+                  <span>Phonetics ({agentConfig.pronunciation_rules.length})</span>
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-snug">
               Talk directly with your microphone or test conversational turns with ultra-low latency.
@@ -597,6 +629,20 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             )}
           </div>
         )}
+      </div>
+
+      {/* Live Preview Rules & Behavior Info Banner */}
+      <div className="px-4 py-2 bg-amber-500/5 dark:bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-3 text-[11px]">
+        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 min-w-0">
+          <Info className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="leading-tight truncate">
+            <strong>Playground Mode:</strong> Silence auto-cut & reprompts are bypassed here so you can test freely.
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-muted)] shrink-0 font-medium">
+          <PhoneCall className="w-3 h-3 text-emerald-500" />
+          <span>Real calls enforce silence limits ({agentConfig.runtime?.silence_timeout ?? 5}s)</span>
+        </div>
       </div>
 
       {/* Conversational Transcript Feed */}

@@ -56,6 +56,8 @@ class CallRepository:
                         id=item["id"],
                         organization_id=item.get("organization_id", organization_id),
                         user_id=item.get("user_id", ""),
+                        prospect_id=item.get("prospect_id"),
+                        campaign_id=item.get("campaign_id"),
                         twilio_configuration_id=item.get("twilio_configuration_id", ""),
                         call_sid=item.get("call_sid"),
                         from_number=item.get("from_number", ""),
@@ -70,6 +72,15 @@ class CallRepository:
                         agent_config_snapshot=item.get("agent_config_snapshot"),
                         transcript=item.get("transcript"),
                         outcome=item.get("outcome"),
+                        summary=item.get("summary"),
+                        key_insights=item.get("key_insights"),
+                        intent=item.get("intent"),
+                        sentiment=item.get("sentiment"),
+                        lead_score=item.get("lead_score"),
+                        interest_level=item.get("interest_level"),
+                        classification=item.get("classification"),
+                        callback_datetime=item.get("callback_datetime"),
+                        analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
                         created_at=created_dt,
@@ -92,8 +103,12 @@ class CallRepository:
         def _sync_get():
             container = get_calls_container()
             if not container:
-                return self._memory_store.get(call_id)
-            query = "SELECT * FROM c WHERE c.id = @call_id"
+                item = self._memory_store.get(call_id)
+                if not item:
+                    item = next((c for c in self._memory_store.values() if getattr(c, 'call_sid', None) == call_id or getattr(c, 'session_id', None) == call_id), None)
+                return item
+
+            query = "SELECT * FROM c WHERE c.id = @call_id OR c.session_id = @call_id OR c.call_session_id = @call_id OR c.call_sid = @call_id"
             params = [{"name": "@call_id", "value": call_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
@@ -105,6 +120,8 @@ class CallRepository:
                         id=item["id"],
                         organization_id=item.get("organization_id", ""),
                         user_id=item.get("user_id", ""),
+                        prospect_id=item.get("prospect_id"),
+                        campaign_id=item.get("campaign_id"),
                         twilio_configuration_id=item.get("twilio_configuration_id", ""),
                         call_sid=item.get("call_sid"),
                         from_number=item.get("from_number", ""),
@@ -119,6 +136,15 @@ class CallRepository:
                         agent_config_snapshot=item.get("agent_config_snapshot"),
                         transcript=item.get("transcript"),
                         outcome=item.get("outcome"),
+                        summary=item.get("summary"),
+                        key_insights=item.get("key_insights"),
+                        intent=item.get("intent"),
+                        sentiment=item.get("sentiment"),
+                        lead_score=item.get("lead_score"),
+                        interest_level=item.get("interest_level"),
+                        classification=item.get("classification"),
+                        callback_datetime=item.get("callback_datetime"),
+                        analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
                         created_at=created_dt,
@@ -147,6 +173,8 @@ class CallRepository:
                         id=item["id"],
                         organization_id=item.get("organization_id", ""),
                         user_id=item.get("user_id", ""),
+                        prospect_id=item.get("prospect_id"),
+                        campaign_id=item.get("campaign_id"),
                         twilio_configuration_id=item.get("twilio_configuration_id", ""),
                         call_sid=item.get("call_sid"),
                         from_number=item.get("from_number", ""),
@@ -161,6 +189,15 @@ class CallRepository:
                         agent_config_snapshot=item.get("agent_config_snapshot"),
                         transcript=item.get("transcript"),
                         outcome=item.get("outcome"),
+                        summary=item.get("summary"),
+                        key_insights=item.get("key_insights"),
+                        intent=item.get("intent"),
+                        sentiment=item.get("sentiment"),
+                        lead_score=item.get("lead_score"),
+                        interest_level=item.get("interest_level"),
+                        classification=item.get("classification"),
+                        callback_datetime=item.get("callback_datetime"),
+                        analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
                         created_at=created_dt,

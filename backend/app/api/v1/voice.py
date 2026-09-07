@@ -40,6 +40,7 @@ class TestAICallRequest(BaseModel):
     agent_id: Optional[str] = "agt_receptionist_default"
     custom_prompt: Optional[str] = None
     agent_config_override: Optional[Dict[str, Any]] = None
+    prospect_id: Optional[str] = None
 
 
 class HangupCallRequest(BaseModel):
@@ -48,9 +49,43 @@ class HangupCallRequest(BaseModel):
 
 
 from app.voice.audio import AudioAdapter
+from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.runtime import AgentRuntimeBuilder
 import time
+import re
+
+
+def detect_conversation_conclusion(text: str) -> bool:
+    """
+    Detects if a transcript turn indicates that the conversation has concluded
+    (e.g., farewells, goodbyes, thanking and ending, hangup cues, multilingual closings).
+    """
+    if not text:
+        return False
+    lower = text.lower().strip()
+
+    # 1. Multilingual / Indic keyword matches (no ASCII \b boundaries)
+    indic_farewells = ["આવજો", "अलવિદા", "अलविदा", "शुभ दिन", "दिन शुभ", "સારો રહે", "સારું રહે"]
+    if any(k in lower for k in indic_farewells):
+        return True
+
+    # 2. English & Latin Regex Patterns with word boundaries
+    patterns = [
+        r"\b(goodbye|good\s*bye|bye\s*bye|bye\s*now|bye|cya)\b",
+        r"\b(have\s+a\s+(great|good|wonderful|nice|fantastic|pleasant|blessed)\s+(day|evening|night|weekend|rest\s+of\s+(your\s+)?day))\b",
+        r"\b(take\s*care|see\s*you|talk\s*to\s*you\s*later|catch\s*you\s*later)\b",
+        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling|thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
+        r"\b(disconnect(ing)?\s*now|hang(ing)?\s*up\s*now|end\s*the\s*call|ending\s*the\s*call)\b",
+        r"\b(reached\s*(your\s*)?voicemail|leave\s+a\s+message\s+after)\b",
+        r"\b(we\s+will\s+follow\s+up\s+at\s+a\s+convenient\s+time)\b",
+        r"\b(glad\s+i\s+could\s+help|happy\s+to\s+help|pleasure\s+helping\s+you)\b.*\b(bye|goodbye|take\s+care)\b",
+        r"\b(adiós|hasta\s+luego|hasta\s+pronto|que\s+tengas\s+un\s+buen\s+día)\b",
+        r"\b(au\s+revoir|bonne\s+journée|à\s+bientôt)\b",
+        r"\b(auf\s+wiedersehen|tschüss|schönen\s+tag)\b"
+    ]
+    return any(re.search(p, lower, re.IGNORECASE) for p in patterns)
+
 
 @router.websocket("/telemetry/{call_session_id}")
 async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
@@ -76,7 +111,7 @@ async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
 @router.websocket("/preview-stream")
 async def browser_preview_stream_websocket(websocket: WebSocket):
     """
-    Direct in-browser live voice preview stream (like Deepgram Playground).
+    Direct in-browser live voice preview stream.
     Allows testing any agent directly with browser microphone & audio playback
     without placing a Twilio phone call.
     """
@@ -91,6 +126,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     # Lifecycle state
     call_start_time: float = time.time()
     last_user_speech_time: float = time.time()
+    user_speech_start_time: float = time.time()
+    last_backchannel_time: float = time.time()
     last_agent_speech_done_time: float = time.time()
     is_agent_speaking: bool = False
     is_user_speaking: bool = False
@@ -98,6 +135,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     is_concluding_call: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
+    thinking_filler_task: Optional[asyncio.Task] = None
+    barge_in_debounce_task: Optional[asyncio.Task] = None
 
     preview_chunk_counter: int = 0
     total_preview_bytes: int = 0
@@ -143,6 +182,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
     async def handle_dg_event(event_type: str, data: dict):
         try:
+            if event_type == "UserStoppedSpeaking":
+                nonlocal is_user_speaking
+                is_user_speaking = False
             await websocket.send_json({
                 "type": "event",
                 "event_type": event_type,
@@ -152,7 +194,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_transcript(role: str, content: str):
-        nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call
+        nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
@@ -160,58 +202,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             last_user_speech_time = time.time()
             is_user_speaking = False
             has_reprompted_silence = False
-
-            # Smart IVR Detection in simulator
-            if not is_concluding_call:
-                try:
-                    from app.voice.ivr_detector import SmartIVRDetector
-                    from app.repositories.platform_rules_repository import PlatformRulesRepository
-
-                    active_rules_list = PlatformRulesRepository.get_active_rule_directives_sync()
-                    rules_map = {r["id"]: True for r in active_rules_list}
-
-                    ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=rules_map)
-                    if ivr_res.is_ivr:
-                        logger.warning(
-                            f"[VoicePreview:IVR_DETECTED] Machine detected! "
-                            f"Type='{ivr_res.symptom_type}', Phrase='{ivr_res.matched_phrase}'"
-                        )
-                        is_concluding_call = True
-                        if ivr_res.recommended_action == "disconnect_immediate":
-                            asyncio.create_task(terminate_preview_session())
-                        else:
-                            conclusion_text = "Thank you, we will follow up at a convenient time. Goodbye."
-                            if agent_config and agent_config.runtime and agent_config.runtime.conclusion_message:
-                                conclusion_text = agent_config.runtime.conclusion_message
-                            await deepgram_client.inject_agent_message(conclusion_text)
-                            asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
-                except Exception as ivr_err:
-                    logger.error(f"[VoicePreview] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
-            lower_content = content.lower().strip()
-            conclusion_triggers = [
-                "disconnect now",
-                "disconnecting now",
-                "hang up now",
-                "hanging up now",
-                "reached voicemail",
-                "reach voicemail",
-                "reached your voicemail",
-                "leave a message after",
-                "thank you for your time. have a great day",
-                "we will follow up at a convenient time. goodbye",
-                "have a great day, goodbye",
-                "have a great day! goodbye",
-                "goodbye and have a wonderful day",
-                "thanks for your time today, goodbye",
-                "goodbye, take care"
-            ]
-            if any(t in lower_content for t in conclusion_triggers):
-                logger.info(f"[VoicePreview] Assistant conclusion phrase detected: '{content[:50]}...'. Ending session.")
-                is_concluding_call = True
-                has_reprompted_silence = True
-                asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
 
         try:
             await websocket.send_json({
@@ -224,12 +216,17 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_user_speaking():
-        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, has_reprompted_silence, is_concluding_call
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task
+        user_speech_start_time = time.time()
         is_user_speaking = True
+        if not is_concluding_call:
+            last_user_speech_time = time.time()
+            has_reprompted_silence = False
+
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
+
         is_agent_speaking = False
-        is_concluding_call = False  # Reset conclusion state when user speaks
-        last_user_speech_time = time.time()
-        has_reprompted_silence = False
         try:
             await websocket.send_json({
                 "type": "clear"
@@ -238,85 +235,71 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_agent_speaking(data: dict):
-        nonlocal is_agent_speaking, is_user_speaking
+        nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task
         is_agent_speaking = True
         is_user_speaking = False
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
+
+    async def handle_dg_agent_thinking(data: dict):
+        nonlocal thinking_filler_task, deepgram_client
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
+
+        runtime = agent_config.runtime if agent_config else None
+        if runtime and getattr(runtime, "conversational_fillers_enabled", True):
+            async def _delayed_preview_filler():
+                try:
+                    await asyncio.sleep(1.20)
+                    if is_user_speaking or is_agent_speaking or is_concluding_call:
+                        return
+                    phrases = getattr(runtime, "filler_phrases", None) or [
+                        "Got it, let me check that for you...",
+                        "Understood, give me one moment...",
+                        "Sure thing, looking into that right now..."
+                    ]
+                    import random
+                    filler = random.choice(phrases)
+                    norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
+                    if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
+                        logger.info(f"[VoicePreview] Agent thinking threshold reached. Emitting filler: '{norm_filler}'")
+                        await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
+                except asyncio.CancelledError:
+                    pass
+                except Exception as ex:
+                    logger.debug(f"[VoicePreview] Filler notice: {ex}")
+            thinking_filler_task = asyncio.create_task(_delayed_preview_filler())
 
     async def handle_dg_agent_audio_done():
-        nonlocal is_agent_speaking, is_concluding_call
-        if is_concluding_call:
-            logger.info("[VoicePreview] Conclusion audio finished playing. Concluding session.")
-            asyncio.create_task(terminate_preview_session())
+        nonlocal is_agent_speaking
+        is_agent_speaking = False
+        logger.debug("[VoicePreview] Agent finished speaking turn. Actively listening for user speech.")
 
     async def terminate_preview_session():
-        nonlocal call_ended_event
-        call_ended_event.set()
-        await asyncio.sleep(1.2)
-        try:
-            await websocket.send_json({
-                "type": "call_concluded",
-                "reason": "completed"
-            })
-        except Exception:
-            pass
+        nonlocal call_ended_event, lifecycle_task, deepgram_client, thinking_filler_task
+        if thinking_filler_task and not thinking_filler_task.done():
+            thinking_filler_task.cancel()
 
     async def preview_lifecycle_monitor():
-        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking
+        """Keeps live preview stream alive indefinitely by sending periodic KeepAlive pulses to Deepgram."""
+        nonlocal last_backchannel_time
+        keepalive_counter = 0
         try:
             while not call_ended_event.is_set():
-                await asyncio.sleep(0.5)
-                if not deepgram_client or not deepgram_client.is_ready or not agent_config:
+                await asyncio.sleep(1.0)
+                keepalive_counter += 1
+                if not deepgram_client or not deepgram_client.is_ready:
                     continue
 
-                runtime = agent_config.runtime or AgentRuntimeSettings()
-                # In interactive browser preview playground, allow generous silence window
-                silence_timeout = max(15, runtime.silence_timeout if runtime.silence_timeout > 5 else 20)
-                hangup_delay = max(10, runtime.silence_hangup_delay if runtime.silence_hangup_delay > 5 else 15)
-                max_duration = max(30, runtime.maximum_call_duration or 1800)
-                conclusion_msg = (runtime.conclusion_message or "Thank you for your time. Have a great day!").strip()
-                reprompt_msg = (runtime.silence_reprompt_message or "Are you still there? I'm here if you have any questions.").strip()
-
+                # Monologue monitor (ensure keepalive without disruptive agent injection)
                 now = time.time()
-                elapsed_call_time = now - call_start_time
 
-                # Check if agent is currently speaking or audio is still playing in user's speaker
-                if now < last_agent_speech_done_time:
-                    is_agent_speaking = True
-                    continue
-                else:
-                    is_agent_speaking = False
-
-                # 1. Maximum Call Duration Check
-                if elapsed_call_time >= max_duration and not is_concluding_call:
-                    if is_user_speaking:
-                        continue
-
-                    logger.info(f"[VoicePreview] Maximum duration ({max_duration}s) reached. Speaking conclusion message.")
-                    is_concluding_call = True
-                    await deepgram_client.inject_agent_message(conclusion_msg)
-                    asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
-                    break
-
-                # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
-                if not is_concluding_call and not is_user_speaking:
-                    last_activity = max(last_user_speech_time, last_agent_speech_done_time)
-                    silence_elapsed = now - last_activity
-
-                    # Phase 1: Reprompt
-                    if silence_elapsed >= silence_timeout and not has_reprompted_silence:
-                        logger.info(f"[VoicePreview] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{reprompt_msg}'")
-                        has_reprompted_silence = True
-                        last_agent_speech_done_time = now + 2.5
-                        await deepgram_client.inject_agent_message(reprompt_msg)
-
-                    # Phase 2: Post-reprompt silence conclusion
-                    elif has_reprompted_silence and silence_elapsed >= (silence_timeout + hangup_delay):
-                        logger.info(f"[VoicePreview] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion.")
-                        is_concluding_call = True
-                        await deepgram_client.inject_agent_message(conclusion_msg)
-                        asyncio.create_task(asyncio.sleep(4.5)).add_done_callback(lambda _: asyncio.create_task(terminate_preview_session()))
-                        break
-
+                # Send periodic keep-alive every 4 seconds to guarantee WebSocket connection never drops during silence
+                if keepalive_counter % 4 == 0:
+                    try:
+                        await deepgram_client.send_keep_alive()
+                    except Exception as ke:
+                        logger.debug(f"[VoicePreview] KeepAlive pulse: {ke}")
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -324,123 +307,148 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
     try:
         while True:
-            msg = await websocket.receive_text()
-            if not msg:
-                continue
+            recv_data = await websocket.receive()
+            if recv_data.get("type") == "websocket.disconnect":
+                break
 
-            try:
-                data = json.loads(msg)
-            except Exception:
-                continue
-
-            msg_type = data.get("type")
-
-            # 1. Initialize session with agent config parameters
-            if msg_type == "configure":
-                agent_dict = data.get("agent_config", {})
-                greeting = data.get("greeting") or agent_dict.get("greeting")
-                try:
-                    agent_config = AgentConfiguration.model_validate(agent_dict)
-                except Exception as e:
-                    logger.warning(f"[VoicePreview] Invalid agent configuration passed: {e}")
-                    agent_config = AgentConfiguration(
-                        name="Preview Agent",
-                        role="Assistant",
-                        objective="Helpful Assistant",
-                        greeting="Hello! I am ready to test."
-                    )
-
-                from app.repositories.business_profile_repository import BusinessProfileRepository
-                target_org_id = agent_config.organization_id
-                if not target_org_id or target_org_id == "default":
-                    target_org_id = "org_platform_root"
-                business_profile = await BusinessProfileRepository.get_profile(target_org_id)
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
-                    agent_config,
-                    business_profile=business_profile,
-                    audio_profile="playground"
-                )
-
-                if lifecycle_task:
-                    lifecycle_task.cancel()
-                    lifecycle_task = None
-
-                if deepgram_client:
-                    await deepgram_client.close()
-
-                # Reset state
-                call_start_time = time.time()
+            # 1. Direct binary audio chunk from browser mic (24kHz Linear16 PCM) - Zero JSON/Base64 overhead
+            if "bytes" in recv_data and recv_data["bytes"]:
+                raw_bytes = recv_data["bytes"]
                 last_user_speech_time = time.time()
-                last_agent_speech_done_time = time.time()
-                is_concluding_call = False
-                has_reprompted_silence = False
-                call_ended_event.clear()
-
-                deepgram_client = DeepgramVoiceAgentClient(
-                    on_audio=handle_dg_audio,
-                    on_event=handle_dg_event,
-                    on_transcript=handle_dg_transcript,
-                    on_user_speaking=handle_dg_user_speaking,
-                    on_agent_speaking=handle_dg_agent_speaking,
-                    on_agent_audio_done=handle_dg_agent_audio_done
-                )
-
-                try:
-                    await deepgram_client.connect_and_configure(
-                        settings=deepgram_settings,
-                        greeting=greeting or agent_config.greeting
-                    )
-                    await websocket.send_json({
-                        "type": "ready",
-                        "agent_name": agent_config.name,
-                        "voice": agent_config.voice.voice,
-                        "model": agent_config.llm.model,
-                        "audio_profile": "playground",
-                        "sample_rate": 24000,
-                        "encoding": "linear16"
-                    })
-                    logger.info("[VoicePreview] Deepgram agent connected in HD Studio mode (24kHz Linear PCM) for in-browser preview.")
-                    lifecycle_task = asyncio.create_task(preview_lifecycle_monitor())
-                except Exception as dg_err:
-                    logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": str(dg_err)
-                    })
-
-            # 2. Receive live microphone audio chunk from browser (linear16 PCM at 24000Hz)
-            elif msg_type == "audio":
-                audio_payload = data.get("payload")
-                if audio_payload and deepgram_client and deepgram_client.is_ready:
-                    import base64
+                if deepgram_client and deepgram_client.is_ready:
                     try:
-                        raw_bytes = base64.b64decode(audio_payload)
-                        # In playground mode, audio is 24kHz Linear16 PCM - stream directly to Deepgram
                         await deepgram_client.send_audio(raw_bytes)
                     except Exception as e:
-                        logger.error(f"[VoicePreview] Error processing audio payload: {e}")
+                        logger.error(f"[VoicePreview] Error forwarding binary audio to voice agent: {e}")
+                continue
 
-            # 3. Dynamic Prompt / Parameter update while speaking
-            elif msg_type == "update_prompt":
-                new_prompt = data.get("prompt")
-                if new_prompt and deepgram_client and deepgram_client.is_ready:
-                    await deepgram_client.update_prompt(new_prompt)
+            # 2. JSON control or data message
+            elif "text" in recv_data and recv_data["text"]:
+                msg = recv_data["text"]
+                try:
+                    data = json.loads(msg)
+                except Exception:
+                    continue
 
-            # 4. Inject specific speech text
-            elif msg_type == "inject_text":
-                text = data.get("text")
-                if text and deepgram_client and deepgram_client.is_ready:
-                    await deepgram_client.inject_agent_message(text)
+                msg_type = data.get("type")
 
-            # 5. Stop preview session
-            elif msg_type == "stop":
-                call_ended_event.set()
-                if lifecycle_task:
-                    lifecycle_task.cancel()
-                    lifecycle_task = None
-                if deepgram_client:
-                    await deepgram_client.close()
-                await websocket.send_json({"type": "stopped"})
+                # Configure & Start Session
+                if msg_type == "configure":
+                    agent_dict = data.get("agent_config", {})
+                    greeting = data.get("greeting") or agent_dict.get("greeting")
+                    try:
+                        agent_config = AgentConfiguration.model_validate(agent_dict)
+                    except Exception as e:
+                        logger.warning(f"[VoicePreview] Invalid agent configuration passed: {e}")
+                        agent_config = AgentConfiguration(
+                            name="Preview Agent",
+                            role="Assistant",
+                            objective="Helpful Assistant",
+                            greeting="Hello! I am ready to test."
+                        )
+
+                    from app.repositories.business_profile_repository import BusinessProfileRepository
+                    target_org_id = agent_config.organization_id
+                    if not target_org_id or target_org_id == "default":
+                        target_org_id = "org_platform_root"
+                    business_profile = await BusinessProfileRepository.get_profile(target_org_id)
+                    deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
+                        agent_config,
+                        business_profile=business_profile,
+                        audio_profile="playground"
+                    )
+
+                    if lifecycle_task:
+                        lifecycle_task.cancel()
+                        lifecycle_task = None
+
+                    if deepgram_client:
+                        await deepgram_client.close()
+
+                    # Reset state
+                    call_start_time = time.time()
+                    last_user_speech_time = time.time()
+                    user_speech_start_time = time.time()
+                    last_backchannel_time = time.time()
+                    last_agent_speech_done_time = time.time()
+                    is_concluding_call = False
+                    has_reprompted_silence = False
+                    call_ended_event.clear()
+
+                    deepgram_client = DeepgramVoiceAgentClient(
+                        on_audio=handle_dg_audio,
+                        on_event=handle_dg_event,
+                        on_transcript=handle_dg_transcript,
+                        on_user_speaking=handle_dg_user_speaking,
+                        on_agent_thinking=handle_dg_agent_thinking,
+                        on_agent_speaking=handle_dg_agent_speaking,
+                        on_agent_audio_done=handle_dg_agent_audio_done
+                    )
+
+                    try:
+                        raw_greeting = greeting or agent_config.greeting
+                        norm_greeting = PronunciationNormalizer.normalize(
+                            raw_greeting,
+                            getattr(agent_config, "pronunciation_rules", None)
+                        ) if raw_greeting else None
+                        await deepgram_client.connect_and_configure(
+                            settings=deepgram_settings,
+                            greeting=norm_greeting
+                        )
+                        await websocket.send_json({
+                            "type": "ready",
+                            "agent_name": agent_config.name,
+                            "voice": agent_config.voice.voice,
+                            "model": agent_config.llm.model,
+                            "audio_profile": "playground",
+                            "sample_rate": 24000,
+                            "encoding": "linear16"
+                        })
+                        logger.info("[VoicePreview] Deepgram agent connected in HD Studio mode (24kHz Linear PCM) for in-browser preview.")
+                        lifecycle_task = asyncio.create_task(preview_lifecycle_monitor())
+                    except Exception as dg_err:
+                        logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": str(dg_err)
+                        })
+
+                # Legacy base64 JSON audio chunk fallback
+                elif msg_type == "audio":
+                    audio_payload = data.get("payload")
+                    if audio_payload and deepgram_client and deepgram_client.is_ready:
+                        import base64
+                        try:
+                            raw_bytes = base64.b64decode(audio_payload)
+                            await deepgram_client.send_audio(raw_bytes)
+                        except Exception as e:
+                            logger.error(f"[VoicePreview] Error processing audio payload: {e}")
+
+                # Dynamic Prompt / Parameter update while speaking
+                elif msg_type == "update_prompt":
+                    new_prompt = data.get("prompt")
+                    if new_prompt and deepgram_client and deepgram_client.is_ready:
+                        await deepgram_client.update_prompt(new_prompt)
+
+                # Inject specific speech text
+                elif msg_type == "inject_text":
+                    text = data.get("text")
+                    if text and deepgram_client and deepgram_client.is_ready:
+                        await deepgram_client.inject_agent_message(text)
+
+                # Heartbeat ping/pong
+                elif msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+
+                # Stop preview session
+                elif msg_type == "stop":
+                    call_ended_event.set()
+                    if lifecycle_task:
+                        lifecycle_task.cancel()
+                        lifecycle_task = None
+                    if deepgram_client:
+                        await deepgram_client.close()
+                    await websocket.send_json({"type": "stopped"})
 
     except WebSocketDisconnect:
         logger.info("[VoicePreview] Browser WebSocket disconnected.")
@@ -461,11 +469,14 @@ class SampleSpeechRequest(BaseModel):
     speed: Optional[float] = 0.95
 
 
+SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
+
+
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
     Synthesizes a sample audio snippet using Deepgram Aura Text-to-Speech.
-    Returns audio/wav for instant in-browser playback.
+    Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
     import os
     import httpx
@@ -478,18 +489,26 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     sample_text = sample_text.strip()
     voice = payload.voice or "aura-orion-en"
 
-    # Deepgram Aura REST TTS
+    cache_key = f"{voice}:{sample_text}"
+    if cache_key in SAMPLE_SPEECH_CACHE:
+        return Response(
+            content=SAMPLE_SPEECH_CACHE[cache_key],
+            media_type="audio/mp3",
+            headers={"Cache-Control": "public, max-age=86400", "X-Cache": "HIT"}
+        )
+
+    # Deepgram Aura REST TTS (Lightweight MP3 encoding for instant playback)
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
 
-    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&container=wav&encoding=linear16"
+    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&encoding=mp3"
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json"
     }
     body = {
-        "text": payload.text
+        "text": sample_text
     }
 
     try:
@@ -499,7 +518,12 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
                 logger.error(f"[SampleSpeech Error] Voice TTS returned {resp.status_code}: {resp.text}")
                 raise HTTPException(status_code=resp.status_code, detail=f"Voice synthesis error: {resp.text}")
 
-            return Response(content=resp.content, media_type="audio/wav")
+            SAMPLE_SPEECH_CACHE[cache_key] = resp.content
+            return Response(
+                content=resp.content,
+                media_type="audio/mp3",
+                headers={"Cache-Control": "public, max-age=86400", "X-Cache": "MISS"}
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -527,6 +551,27 @@ async def initiate_ai_test_call(
     """
     Places an outbound phone call via Twilio and immediately connects it to the AI Voice Gateway Media Stream.
     """
+    # 1. Strict Backend DNC Enforcement
+    from app.services.prospect_service import ProspectService
+    from app.repositories.prospect_repository import ProspectRepository
+    prospect_repo = ProspectRepository()
+    prospect_svc = ProspectService(prospect_repo, call_repo)
+
+    if await prospect_svc.is_dnc_blocked(ctx.organization_id, payload.to_number):
+        raise HTTPException(
+            status_code=400,
+            detail="Call blocked: This recipient is registered on your Do Not Contact (DNC) list."
+        )
+
+    # Lookup prospect details if available
+    matched_prospect = None
+    if payload.prospect_id:
+        matched_prospect = await prospect_repo.get_by_id(ctx.organization_id, payload.prospect_id)
+    else:
+        matched_prospect = await prospect_svc.get_prospect_by_phone(ctx.organization_id, payload.to_number)
+
+    resolved_prospect_id = matched_prospect.id if matched_prospect else payload.prospect_id
+
     tw_cfg = await twilio_repo.get_by_org(ctx.organization_id)
     if not tw_cfg:
         raise HTTPException(
@@ -580,6 +625,7 @@ async def initiate_ai_test_call(
         organization_id=ctx.organization_id,
         agent_id=agent_config.agent_id,
         user_id=ctx.user_id,
+        prospect_id=resolved_prospect_id,
         phone_number=selected_from,
         destination_number=payload.to_number,
         direction="outbound",
@@ -591,7 +637,7 @@ async def initiate_ai_test_call(
         agent_config_snapshot=agent_config.model_dump(mode="json")
     )
 
-    # Build TwiML containing <Connect><Stream> with fallback
+    # Build TwiML containing <Connect><Stream> with immediate hangup on stream completion
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
@@ -605,8 +651,6 @@ async def initiate_ai_test_call(
             <Parameter name="user_id" value="{ctx.user_id}" />
         </Stream>
     </Connect>
-    <Pause length="2"/>
-    <Say voice="Google.en-US-Neural2-F">The AI Voice connection has closed. Goodbye.</Say>
     <Hangup/>
 </Response>"""
 

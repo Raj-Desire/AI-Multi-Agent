@@ -404,7 +404,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       {/* Top Header */}
       <PageHeader
         title="Calling Console"
-        description="Direct in-browser WebRTC calling, DTMF signaling, live session telemetry, and call logs."
+        // description="Direct in-browser WebRTC calling, DTMF signaling, live session telemetry, and call logs."
         badge={
           <StatusIndicator
             status={deviceReady ? "connected" : "idle"}

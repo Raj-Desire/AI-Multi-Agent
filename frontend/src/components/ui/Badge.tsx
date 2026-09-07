@@ -43,7 +43,7 @@ export const Badge: React.FC<BadgeProps> = ({
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-md border ${
+      className={`ui-badge inline-flex items-center font-medium rounded-md border ${
         sizeClasses[size]
       } ${variantClasses[variant] || variantClasses.default} ${className}`}
       {...props}

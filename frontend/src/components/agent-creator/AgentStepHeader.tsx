@@ -57,9 +57,6 @@ export function AgentStepHeader({
               <h1 className="text-sm font-bold text-[var(--color-heading)] tracking-tight truncate max-w-[260px] sm:max-w-[340px]">
                 {initialAgent ? `Edit: ${agentData.name || initialAgent.name}` : (agentData.name || "Create AI Voice Agent")}
               </h1>
-              <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-medium">
-                v{agentData.version || 1}
-              </Badge>
               <Badge
                 variant={agentData.status === "ACTIVE" ? "success" : "neutral"}
                 className="text-[10px] py-0 px-1.5 font-medium"

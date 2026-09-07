@@ -131,9 +131,9 @@ export function DataTable<T extends Record<string, any>>({
           action={emptyAction}
         />
       ) : (
-        <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] overflow-hidden bg-[var(--color-surface)] shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm border-collapse">
+        <div className="ui-table-container border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] shadow-xs">
+          <div className="overflow-x-auto min-h-[160px]">
+            <table className="ui-table w-full text-left text-sm border-collapse">
               <thead className="bg-[var(--color-surface-muted)]/50 border-b border-[var(--color-border)] text-xs font-semibold text-[var(--color-muted)]">
                 <tr>
                   {columns.map((col) => {
@@ -176,7 +176,7 @@ export function DataTable<T extends Record<string, any>>({
                     {columns.map((col) => (
                       <td
                         key={col.key}
-                        className={`px-4 py-3 text-sm text-[var(--color-text)] ${col.className || ""}`}
+                        className={`px-4 py-2.5 text-sm text-[var(--color-text)] align-middle ${col.className || ""}`}
                       >
                         {col.render ? col.render(item, rowIdx) : item[col.key]}
                       </td>

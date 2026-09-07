@@ -6,8 +6,8 @@ export const Table: React.FC<React.TableHTMLAttributes<HTMLTableElement>> = ({
   ...props
 }) => {
   return (
-    <div className="w-full overflow-x-auto border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)]">
-      <table className={`w-full text-left text-sm border-collapse ${className}`} {...props}>
+    <div className="ui-table-container w-full overflow-x-auto border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)]">
+      <table className={`ui-table w-full text-left text-sm border-collapse ${className}`} {...props}>
         {children}
       </table>
     </div>

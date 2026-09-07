@@ -46,13 +46,105 @@ class ThinkProviderConfig(BaseModel):
     reasoning_mode: Optional[str] = "low"
 
 
+class PronunciationRule(BaseModel):
+    word: str
+    phonetic: str
+    category: Optional[str] = "general"  # "indian_places" | "acronyms" | "brand" | "custom"
+
+
+class FewShotTurn(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class FewShotExample(BaseModel):
+    title: str
+    industry: str  # "real_estate" | "healthcare" | "b2b_tech" | "automotive" | "legal" | "support" | "general"
+    dialogue: List[FewShotTurn]
+
+
+def get_default_pronunciation_rules() -> List[PronunciationRule]:
+    return [
+        PronunciationRule(word="Schedule", phonetic="sked-jool", category="general"),
+        PronunciationRule(word="Status", phonetic="stay-tuhs", category="general"),
+        PronunciationRule(word="Route", phonetic="root", category="general"),
+        PronunciationRule(word="Suite", phonetic="sweet", category="general"),
+        PronunciationRule(word="Data", phonetic="day-tuh", category="general"),
+        PronunciationRule(word="B2B", phonetic="B-to-B", category="acronyms"),
+        PronunciationRule(word="FAQ", phonetic="F-A-Q", category="acronyms"),
+        PronunciationRule(word="API", phonetic="A-P-I", category="acronyms"),
+        PronunciationRule(word="VIP", phonetic="V-I-P", category="acronyms"),
+        PronunciationRule(word="CRM", phonetic="C-R-M", category="acronyms"),
+    ]
+
+
+
+def get_industry_few_shot_presets() -> List[FewShotExample]:
+    """Returns standard industry few-shot dialogue examples for role-play consistency."""
+    return [
+        FewShotExample(
+            title="Real Estate Property Inquiry & Visit Booking",
+            industry="real_estate",
+            dialogue=[
+                FewShotTurn(role="user", content="Hi, I saw your listing for the 3 BHK in Ahmedabad. What is the square footage and price?"),
+                FewShotTurn(role="assistant", content="Hello! That 3 BHK is 2,100 square feet with park-facing balconies, starting at 1.45 Crore. Would you like to schedule a site visit this Saturday?"),
+                FewShotTurn(role="user", content="Yes, Saturday afternoon works."),
+                FewShotTurn(role="assistant", content="Perfect, I have you down for Saturday at 3:00 PM. I'll send the location pin to your number. Is there anything else you'd like to check?")
+            ]
+        ),
+        FewShotExample(
+            title="Healthcare Clinic Consultation Booking",
+            industry="healthcare",
+            dialogue=[
+                FewShotTurn(role="user", content="Hi, I need to see Dr. Patel for a follow-up consultation this week."),
+                FewShotTurn(role="assistant", content="Certainly! Dr. Patel is available this Wednesday at 10:30 AM or Thursday at 4 PM. Which time suits you better?"),
+                FewShotTurn(role="user", content="Thursday at 4 PM please."),
+                FewShotTurn(role="assistant", content="You're all set for Thursday at 4:00 PM with Dr. Patel. Please arrive 10 minutes early with your previous reports.")
+            ]
+        ),
+        FewShotExample(
+            title="B2B Tech Solutions & Discovery Call",
+            industry="b2b_tech",
+            dialogue=[
+                FewShotTurn(role="user", content="We spend hours manually reconciling spreadsheets every week. Can your software automate this?"),
+                FewShotTurn(role="assistant", content="Absolutely. We build custom workflow automations that sync spreadsheet data directly with your CRM and accounting tools in real time. Would a brief 15-minute demo with our technical specialist be helpful?"),
+                FewShotTurn(role="user", content="Sure, let's do tomorrow morning."),
+                FewShotTurn(role="assistant", content="Great! I'll reserve 10:00 AM tomorrow for your discovery session and email you the calendar invite. What is the best email address for you?")
+            ]
+        ),
+        FewShotExample(
+            title="Automotive Service & Brake Diagnostic",
+            industry="automotive",
+            dialogue=[
+                FewShotTurn(role="user", content="My car's brakes are making a squeaking sound. Can I bring it in for inspection?"),
+                FewShotTurn(role="assistant", content="We can certainly inspect that for you right away. We have open service bays tomorrow at 9 AM or 2 PM. Which works best?"),
+                FewShotTurn(role="user", content="9 AM is good."),
+                FewShotTurn(role="assistant", content="Confirmed for tomorrow at 9:00 AM at our main service center. Our technician will perform a complete brake diagnostics inspection for you.")
+            ]
+        ),
+        FewShotExample(
+            title="Customer Support & Order Tracking",
+            industry="support",
+            dialogue=[
+                FewShotTurn(role="user", content="I placed an order two days ago and haven't received a tracking update yet."),
+                FewShotTurn(role="assistant", content="I'd be glad to check that for you! May I have your order number or registered phone number?"),
+                FewShotTurn(role="user", content="It's order number 84210."),
+                FewShotTurn(role="assistant", content="Thanks! Order 84210 has been packed and is scheduled for courier pickup today with estimated delivery on Thursday.")
+            ]
+        )
+    ]
+
+
 class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
-    endpointing: int = 500  # End-of-turn timeout in ms (prevents cutting off user during natural breath pauses)
+    endpointing: int = 400  # Fast sub-second human turn-taking endpointing (ms)
+    endpointing_mode: str = "rapid"  # "rapid" (350ms) | "balanced" (450ms) | "dictation" (900ms) | "adaptive" (400ms)
+    dictation_endpointing: int = 900
+    rapid_endpointing: int = 350
     eot_threshold: Optional[float] = None
-    eager_eot: bool = False
+    eager_eot: bool = True
     keyterms: List[str] = Field(default_factory=list)
 
 
@@ -67,6 +159,30 @@ class AgentRuntimeSettings(BaseModel):
     customer_response_timeout: int = 15
     retry_attempts: int = 2
     auto_hangup_on_completion: bool = True
+
+    # Conversational Fillers & Natural Thinking Sounds
+    conversational_fillers_enabled: bool = True
+    filler_phrases: List[str] = Field(default_factory=lambda: [
+        "Got it, let me check that for you...",
+        "Understood, give me one moment...",
+        "Sure thing, looking into that right now...",
+        "Let me see..."
+    ])
+
+    # Active Backchanneling
+    backchanneling_enabled: bool = True
+    backchannel_interval_seconds: float = 4.5
+    backchannel_phrases: List[str] = Field(default_factory=lambda: [
+        "Mhm",
+        "Right",
+        "I understand",
+        "Yeah"
+    ])
+
+    # Advanced Interruption & Ambient Audio Filtering
+    ambient_noise_filtering: bool = True
+    barge_in_min_speech_duration_ms: int = 220  # Minimum sustained vocalization (ms) before clearing audio
+    graceful_resumption_enabled: bool = True
 
 
 class AgentGuardrails(BaseModel):
@@ -158,6 +274,12 @@ class AgentConfiguration(BaseModel):
     include_business_knowledge: bool = True
     custom_knowledge: Optional[str] = None
 
+    # Phonetic Pronunciation Dictionaries
+    pronunciation_rules: List[PronunciationRule] = Field(default_factory=get_default_pronunciation_rules)
+
+    # Dynamic Few-Shot Role-Play Dialogues
+    few_shot_examples: List[FewShotExample] = Field(default_factory=list)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -190,24 +312,51 @@ def get_default_platform_agents() -> List[AgentConfiguration]:
         AgentConfiguration(
             agent_id="agt_sales_rep_default",
             organization_id="global",
-            name="Sales Representative",
-            description="Engages prospective clients, presents product offerings, uncovers buying criteria, and qualifies opportunities.",
+            name="B2B Tech Solutions & AI Outreach",
+            description="Brief, high-impact discovery outreach for Microsoft 365 setup, AI voice solutions, process automation, and custom software development.",
             scope="GLOBAL",
             status="ACTIVE",
             version=1,
-            role="Inbound/Outbound Sales Representative",
-            objective="Understand the prospect's requirements, present key product value propositions, and secure a qualified next step or demo.",
+            role="B2B Technology & AI Solutions Specialist",
+            objective="Conduct a brief, polite introductory discovery call to explore fit for Microsoft 365 workflow automation, AI solutions, and custom software or web/mobile development, then connect interested prospects with technical specialists.",
             services=[
-                AgentServiceItem(name="Product Presentation", description="Explaining features and benefits", enabled=True, priority=1),
-                AgentServiceItem(name="Pricing Guidance", description="General plan explanations", enabled=True, priority=2),
-                AgentServiceItem(name="Demo Scheduling", description="Booking sales calls", enabled=True, priority=3)
+                AgentServiceItem(name="Microsoft 365 & Power Platform", description="Workflow and spreadsheet automation using existing M365 tools", enabled=True, priority=1),
+                AgentServiceItem(name="AI Voice & Conversational Systems", description="Automated intelligent voice and support solutions", enabled=True, priority=2),
+                AgentServiceItem(name="Custom App & Software Development", description="Bespoke web, mobile, and cloud software engineering", enabled=True, priority=3)
             ],
             skills=["Lead Qualification", "Product Knowledge", "Objection Handling", "Appointment Booking"],
-            communication_style="Confident + Persuasive",
-            greeting="Hello! Thanks for connecting with us. I'd love to learn more about what you're looking to achieve today.",
-            personality=AgentPersonality(professionalism=85, friendliness=80, empathy=75, patience=80, confidence=95, energy=85, assertiveness=75, humor=20, curiosity=85),
+            communication_style="Consultative + Professional Warmth",
+            greeting="Hi, this is Aria — I'm an AI voice assistant calling on behalf of our solutions team. I'll be brief and won't take more than twenty seconds. We help teams automate manual, spreadsheet-based workflows and build custom software and AI systems. I'm not selling anything on this call — just checking whether it's worth a short conversation with one of our specialists. Is now an okay time, or would later suit you better?",
+            system_prompt="""You are Aria, an articulate AI Voice Assistant calling on behalf of our enterprise solutions team.
+
+MISSION & CONVERSATIONAL FLOW:
+Conduct a brief, high-value exploratory call to see if the prospect's team wants to automate manual spreadsheet processes, deploy intelligent AI voice systems, or build custom software and web/mobile apps.
+
+STAGE 1 (INTRO & HOOK):
+- Started with the 20s hook. If busy or asking to call later, offer to reconnect tomorrow. If interested or asking what this is regarding, proceed to Stage 2.
+
+STAGE 2 (SERVICE OVERVIEW & DISCOVERY):
+- State: "Our team helps businesses improve productivity and growth through workflow automation, AI solutions, and custom software or web and mobile application development."
+- Ask: "Are there any specific technology platforms, internal processes, or custom apps your team is looking to build or optimize?"
+
+STAGE 3 (ACTIVE LISTENING & REQUIREMENT EXPLORATION):
+- Listen carefully to their problems and requirements.
+- Validate their tech stack (e.g. process automation, AI assistants, custom mobile/web apps).
+- Ask an engaging follow-up: "That sounds like a great initiative! What kind of timeline or specific features are you envisioning for that?"
+
+STAGE 4 (SCHEDULE SPECIALIST CALL):
+- Propose: "I'd love to connect you with one of our technical specialists for a quick, 15-minute discovery chat to dive deeper into your requirements. Would tomorrow or Thursday work better for you?"
+- Confirm attendee name, best phone/email, and time.
+
+OBJECTIONS & PHONE RULES:
+- Pricing: "Because every solution is tailored to your scope, our specialist can give you an accurate estimate on a short 15-minute call. Would later this week work?"
+- Are you AI?: "Yes, I am an AI voice assistant calling on behalf of our team. I can have one of our human specialists reach out directly if you prefer!"
+- Email info: "Certainly! What is the best email address to send our overview to?"
+- Disinterest: "Understood! Thanks so much for your time today. Have a wonderful day!"
+""",
+            personality=AgentPersonality(professionalism=90, friendliness=85, empathy=80, patience=85, confidence=90, energy=75, assertiveness=65, humor=15, curiosity=90),
             voice=SpeakProviderConfig(voice="aura-luna-en", speed=1.0),
-            llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.5)
+            llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.45)
         ),
         AgentConfiguration(
             agent_id="agt_support_default",

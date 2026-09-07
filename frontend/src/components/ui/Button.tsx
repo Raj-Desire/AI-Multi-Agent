@@ -30,21 +30,21 @@ export const Button: React.FC<ButtonProps> = ({
     primary:
       "ui-button-primary text-white shadow-xs hover:opacity-95 active:scale-[0.99] border-transparent",
     secondary:
-      "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:scale-[0.99]",
+      "ui-button-secondary bg-[var(--color-surface-muted)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)] active:scale-[0.99]",
     outline:
-      "bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-border-strong)] active:scale-[0.99] shadow-xs",
+      "ui-button-outline bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-border-strong)] active:scale-[0.99] shadow-xs",
     ghost:
-      "bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-heading)] active:scale-[0.99]",
+      "ui-button-ghost bg-transparent text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-heading)] active:scale-[0.99]",
     danger:
-      "bg-[var(--color-danger)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
+      "ui-button-danger bg-[var(--color-danger)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
     success:
-      "bg-[var(--color-success)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
+      "ui-button-success bg-[var(--color-success)] hover:opacity-90 text-white active:scale-[0.99] shadow-xs border-transparent",
   };
 
   return (
     <button
       disabled={disabled || isLoading}
-      className={`inline-flex items-center justify-center transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--color-primary-ring)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none font-sans ${
+      className={`inline-flex items-center justify-center whitespace-nowrap transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[var(--color-primary-ring)] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer select-none font-sans ${
         sizeClasses[size]
       } ${variantClasses[variant]} ${className}`}
       {...props}
@@ -52,11 +52,15 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
       ) : leftIcon ? (
-        <span className="shrink-0 flex items-center">{leftIcon}</span>
+        <span className="shrink-0 inline-flex items-center">{leftIcon}</span>
       ) : null}
-      <span>{children}</span>
+      {children ? (
+        <span className="inline-flex items-center gap-1.5 leading-none whitespace-nowrap">
+          {children}
+        </span>
+      ) : null}
       {!isLoading && rightIcon && (
-        <span className="shrink-0 flex items-center">{rightIcon}</span>
+        <span className="shrink-0 inline-flex items-center">{rightIcon}</span>
       )}
     </button>
   );

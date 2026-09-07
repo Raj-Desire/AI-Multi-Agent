@@ -193,15 +193,15 @@ export function generateSmartTheme(primaryHex: string, isDarkMode = false): Them
   const primaryHsl = hexToHsl(primaryHex);
 
   const secondaryHsl: HSL = {
-    h: (primaryHsl.h + 8) % 360,
-    s: Math.max(70, Math.min(95, primaryHsl.s + 5)),
-    l: isDarkMode ? Math.min(75, primaryHsl.l + 10) : Math.max(25, primaryHsl.l - 12),
+    h: (primaryHsl.h + 25) % 360,
+    s: Math.max(70, Math.min(95, primaryHsl.s)),
+    l: isDarkMode ? Math.min(75, primaryHsl.l + 10) : Math.max(25, primaryHsl.l - 10),
   };
 
   const accentHsl: HSL = {
     h: (primaryHsl.h + 175) % 360,
-    s: Math.max(55, Math.min(90, primaryHsl.s)),
-    l: isDarkMode ? 65 : 42,
+    s: Math.max(60, Math.min(90, primaryHsl.s)),
+    l: isDarkMode ? 65 : 45,
   };
 
   const primaryHoverHsl: HSL = {
@@ -235,9 +235,9 @@ export function generateSmartTheme(primaryHex: string, isDarkMode = false): Them
     primary_hover: hslToHex(primaryHoverHsl),
     secondary: hslToHex(secondaryHsl),
     accent: hslToHex(accentHsl),
-    background: "#ffffff",
+    background: "#fafafa",
     surface: "#ffffff",
-    sidebar: "#faf9fa",
+    sidebar: "#f8f9fa",
     sidebar_text: "#0f172a",
     heading: "#0f172a",
     text: "#1e293b",
@@ -250,19 +250,17 @@ export function generateSmartTheme(primaryHex: string, isDarkMode = false): Them
   };
 }
 
-export function getPalettePreset(preset: PalettePreset, basePrimary = "#e8568a"): ThemeColors {
-  const baseHsl = hexToHsl(basePrimary);
-
+export function getPalettePreset(preset: PalettePreset, currentPrimary = "#4f46e5"): ThemeColors {
   switch (preset) {
-    case "Original":
+    case "Original": // Default Indigo
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 8) }),
-        secondary: hslToHex({ h: (baseHsl.h + 5) % 360, s: Math.min(95, baseHsl.s + 10), l: Math.max(25, baseHsl.l - 12) }),
-        accent: hslToHex({ h: (baseHsl.h + 175) % 360, s: 65, l: 42 }),
-        background: "#ffffff",
+        primary: "#4f46e5",
+        primary_hover: "#4338ca",
+        secondary: "#0ea5e9",
+        accent: "#8b5cf6",
+        background: "#fafafa",
         surface: "#ffffff",
-        sidebar: "#faf9fa",
+        sidebar: "#f8f9fa",
         sidebar_text: "#0f172a",
         heading: "#0f172a",
         text: "#1e293b",
@@ -274,12 +272,12 @@ export function getPalettePreset(preset: PalettePreset, basePrimary = "#e8568a")
         info: "#3b82f6",
       };
 
-    case "Dark":
+    case "Dark": // Midnight Dark
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.min(80, baseHsl.l + 10) }),
-        secondary: hslToHex({ h: (baseHsl.h + 20) % 360, s: 75, l: 55 }),
-        accent: hslToHex({ h: (baseHsl.h + 180) % 360, s: 75, l: 60 }),
+        primary: "#6366f1",
+        primary_hover: "#818cf8",
+        secondary: "#38bdf8",
+        accent: "#a855f7",
         background: "#090d16",
         surface: "#111827",
         sidebar: "#0d131f",
@@ -294,81 +292,73 @@ export function getPalettePreset(preset: PalettePreset, basePrimary = "#e8568a")
         info: "#0284c7",
       };
 
-    case "Vivid": {
-      const p = hslToHex({ h: baseHsl.h, s: 98, l: 50 });
+    case "Muted": // Neutral Slate
       return {
-        primary: p,
-        primary_hover: hslToHex({ h: baseHsl.h, s: 98, l: 40 }),
-        secondary: hslToHex({ h: (baseHsl.h + 25) % 360, s: 95, l: 45 }),
-        accent: hslToHex({ h: (baseHsl.h + 170) % 360, s: 95, l: 48 }),
-        background: "#ffffff",
+        primary: "#475569",
+        primary_hover: "#334155",
+        secondary: "#64748b",
+        accent: "#94a3b8",
+        background: "#f8fafc",
         surface: "#ffffff",
-        sidebar: "#fbf6f8",
-        sidebar_text: "#090d16",
-        heading: "#090d16",
-        text: "#1e293b",
-        text_muted: "#4b5563",
-        border: "#e5e7eb",
-        success: "#059669",
-        warning: "#d97706",
-        danger: "#dc2626",
-        info: "#2563eb",
+        sidebar: "#f1f5f9",
+        sidebar_text: "#0f172a",
+        heading: "#0f172a",
+        text: "#334155",
+        text_muted: "#64748b",
+        border: "#e2e8f0",
+        success: "#10b981",
+        warning: "#f59e0b",
+        danger: "#ef4444",
+        info: "#3b82f6",
       };
-    }
 
-    case "Muted": {
-      const p = hslToHex({ h: baseHsl.h, s: 45, l: 52 });
+    case "Vivid": // Vivid Coral
       return {
-        primary: p,
-        primary_hover: hslToHex({ h: baseHsl.h, s: 45, l: 42 }),
-        secondary: hslToHex({ h: (baseHsl.h + 15) % 360, s: 40, l: 48 }),
-        accent: hslToHex({ h: (baseHsl.h + 180) % 360, s: 35, l: 48 }),
-        background: "#ffffff",
+        primary: "#f43f5e",
+        primary_hover: "#e11d48",
+        secondary: "#fb7185",
+        accent: "#fb923c",
+        background: "#fff5f5",
         surface: "#ffffff",
-        sidebar: "#f8f7f9",
+        sidebar: "#fff1f2",
         sidebar_text: "#1e293b",
         heading: "#0f172a",
         text: "#1e293b",
         text_muted: "#475569",
-        border: "#e2e8f0",
+        border: "#ffe4e6",
         success: "#10b981",
         warning: "#f59e0b",
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
-    case "Complement": {
-      const compH = (baseHsl.h + 180) % 360;
+    case "Complement": // Teal Complement
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 8) }),
-        secondary: hslToHex({ h: compH, s: 80, l: 46 }),
-        accent: hslToHex({ h: (compH + 40) % 360, s: 85, l: 52 }),
-        background: "#ffffff",
+        primary: "#0d9488",
+        primary_hover: "#0f766e",
+        secondary: "#14b8a6",
+        accent: "#06b6d4",
+        background: "#f0fdfa",
         surface: "#ffffff",
-        sidebar: "#fbfafc",
-        sidebar_text: "#0f172a",
-        heading: "#0f172a",
-        text: "#1e293b",
-        text_muted: "#475569",
-        border: "#e2e8f0",
+        sidebar: "#f0fdf4",
+        sidebar_text: "#042f2e",
+        heading: "#042f2e",
+        text: "#134e4a",
+        text_muted: "#5eead4",
+        border: "#ccfbf1",
         success: "#10b981",
         warning: "#f59e0b",
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
-    case "Triadic": {
-      const t1 = (baseHsl.h + 120) % 360;
-      const t2 = (baseHsl.h + 240) % 360;
+    case "Triadic": // Triadic Harmony
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 8) }),
-        secondary: hslToHex({ h: t1, s: 75, l: 48 }),
-        accent: hslToHex({ h: t2, s: 75, l: 52 }),
-        background: "#ffffff",
+        primary: "#6366f1",
+        primary_hover: "#4f46e5",
+        secondary: "#ec4899",
+        accent: "#eab308",
+        background: "#fafafa",
         surface: "#ffffff",
         sidebar: "#faf9fb",
         sidebar_text: "#0f172a",
@@ -381,103 +371,95 @@ export function getPalettePreset(preset: PalettePreset, basePrimary = "#e8568a")
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
-    case "Analogous": {
-      const a1 = (baseHsl.h + 25) % 360;
-      const a2 = (baseHsl.h + 50) % 360;
+    case "Analogous": // Analogous Sky
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 8) }),
-        secondary: hslToHex({ h: a1, s: 75, l: 48 }),
-        accent: hslToHex({ h: a2, s: 80, l: 50 }),
-        background: "#ffffff",
+        primary: "#0284c7",
+        primary_hover: "#0369a1",
+        secondary: "#38bdf8",
+        accent: "#6366f1",
+        background: "#f0f9ff",
         surface: "#ffffff",
-        sidebar: "#fcf9fa",
-        sidebar_text: "#0f172a",
-        heading: "#0f172a",
-        text: "#1e293b",
-        text_muted: "#475569",
-        border: "#e2e8f0",
+        sidebar: "#e0f2fe",
+        sidebar_text: "#082f49",
+        heading: "#082f49",
+        text: "#0c4a6e",
+        text_muted: "#38bdf8",
+        border: "#bae6fd",
         success: "#10b981",
         warning: "#f59e0b",
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
-    case "Mono": {
+    case "Mono": // Monochrome
+    case "Monochrome":
       return {
-        primary: basePrimary,
-        primary_hover: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 8) }),
-        secondary: hslToHex({ ...baseHsl, l: Math.max(20, baseHsl.l - 16) }),
-        accent: hslToHex({ ...baseHsl, l: Math.min(85, baseHsl.l + 25) }),
-        background: "#ffffff",
+        primary: "#18181b",
+        primary_hover: "#27272a",
+        secondary: "#3f3f46",
+        accent: "#71717a",
+        background: "#fafafa",
         surface: "#ffffff",
-        sidebar: "#fcf9fa",
-        sidebar_text: "#0f172a",
-        heading: "#0f172a",
-        text: "#1e293b",
-        text_muted: "#475569",
-        border: "#e2e8f0",
+        sidebar: "#f4f4f5",
+        sidebar_text: "#09090b",
+        heading: "#09090b",
+        text: "#27272a",
+        text_muted: "#71717a",
+        border: "#e4e4e7",
         success: "#10b981",
         warning: "#f59e0b",
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
-    case "Pastel": {
-      const p = hslToHex({ h: baseHsl.h, s: 65, l: 62 });
+    case "Pastel": // Soft Pastel
       return {
-        primary: p,
-        primary_hover: hslToHex({ h: baseHsl.h, s: 65, l: 50 }),
-        secondary: hslToHex({ h: (baseHsl.h + 35) % 360, s: 65, l: 64 }),
-        accent: hslToHex({ h: (baseHsl.h + 175) % 360, s: 65, l: 68 }),
-        background: "#ffffff",
+        primary: "#818cf8",
+        primary_hover: "#6366f1",
+        secondary: "#f472b6",
+        accent: "#38bdf8",
+        background: "#fbfaff",
         surface: "#ffffff",
-        sidebar: "#fdfbfd",
-        sidebar_text: "#1e293b",
-        heading: "#0f172a",
-        text: "#1e293b",
-        text_muted: "#475569",
-        border: "#e2e8f0",
+        sidebar: "#f5f3ff",
+        sidebar_text: "#1e1b4b",
+        heading: "#1e1b4b",
+        text: "#334155",
+        text_muted: "#64748b",
+        border: "#e0e7ff",
         success: "#34d399",
         warning: "#fbbf24",
         danger: "#f87171",
         info: "#60a5fa",
       };
-    }
 
-    case "Deep": {
-      const p = hslToHex({ h: baseHsl.h, s: 85, l: 30 });
+    case "Deep": // Deep Navy
       return {
-        primary: p,
-        primary_hover: hslToHex({ h: baseHsl.h, s: 85, l: 22 }),
-        secondary: hslToHex({ h: (baseHsl.h + 20) % 360, s: 80, l: 35 }),
-        accent: hslToHex({ h: (baseHsl.h + 180) % 360, s: 80, l: 38 }),
-        background: "#ffffff",
-        surface: "#ffffff",
-        sidebar: "#18111e",
+        primary: "#1e3a8a",
+        primary_hover: "#172554",
+        secondary: "#2563eb",
+        accent: "#3b82f6",
+        background: "#0f172a",
+        surface: "#1e293b",
+        sidebar: "#0b1120",
         sidebar_text: "#f8fafc",
-        heading: "#0f172a",
-        text: "#1e293b",
-        text_muted: "#475569",
-        border: "#cbd5e1",
+        heading: "#f8fafc",
+        text: "#e2e8f0",
+        text_muted: "#94a3b8",
+        border: "#334155",
         success: "#059669",
         warning: "#d97706",
         danger: "#dc2626",
-        info: "#1d4ed8",
+        info: "#3b82f6",
       };
-    }
 
-    case "Spectrum": {
+    case "Spectrum": // Dynamic Spectrum
       return {
         primary: "#e8568a",
         primary_hover: "#d01249",
         secondary: "#8b5cf6",
         accent: "#f59e0b",
-        background: "#ffffff",
+        background: "#fafafa",
         surface: "#ffffff",
         sidebar: "#fbf9fb",
         sidebar_text: "#18181b",
@@ -490,14 +472,13 @@ export function getPalettePreset(preset: PalettePreset, basePrimary = "#e8568a")
         danger: "#ef4444",
         info: "#3b82f6",
       };
-    }
 
     default:
-      return generateSmartTheme(basePrimary);
+      return generateSmartTheme(currentPrimary);
   }
 }
 
-export function shuffleColors(currentBase: string): ThemeColors {
+export function shuffleColors(currentBase = "#4f46e5"): ThemeColors {
   const randomHue = Math.floor(Math.random() * 360);
   const randomPrimary = hslToHex({ h: randomHue, s: 78, l: 52 });
   return generateSmartTheme(randomPrimary);
@@ -533,7 +514,7 @@ export function applyThemeToCss(
   root.style.setProperty("--color-primary", colors.primary);
   root.style.setProperty("--color-primary-rgb", `${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}`);
   root.style.setProperty("--color-primary-light", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.12)`);
-  root.style.setProperty("--color-primary-subtle", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.06)`);
+  root.style.setProperty("--color-primary-subtle", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.05)`);
   root.style.setProperty("--color-primary-ring", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.25)`);
   root.style.setProperty("--color-primary-hover", colors.primary_hover || autoFixContrast(colors.primary, isDark ? "#000000" : "#ffffff"));
   
@@ -545,60 +526,42 @@ export function applyThemeToCss(
   root.style.setProperty("--color-accent-rgb", `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
   root.style.setProperty("--color-accent-light", `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`);
 
-  // Check luminance to correctly map dark/light colors dynamically
-  const isColorLight = (hex?: string, defaultVal = "#ffffff") => {
-    try {
-      return getLuminance(hex || defaultVal) > 0.45;
-    } catch {
-      return true;
-    }
-  };
+  // Evaluate surface luminance to ensure proper text/border contrast
+  const surfaceLum = getLuminance(colors.surface || (isDark ? "#111827" : "#ffffff"));
+  const isSurfaceDark = surfaceLum < 0.45;
 
-  const isColorDark = (hex?: string, defaultVal = "#000000") => !isColorLight(hex, defaultVal);
+  const bgLum = getLuminance(colors.background || (isDark ? "#090d16" : "#fafafa"));
+  const isBgDark = bgLum < 0.45;
 
-  if (isDark) {
-    // Dark Mode Theme Tokens
-    const effectiveBg = isColorLight(colors.background, "#ffffff") ? "#090d16" : (colors.background || "#090d16");
-    const effectiveSurface = isColorLight(colors.surface, "#ffffff") ? "#111827" : (colors.surface || "#111827");
-    const effectiveSidebar = isColorLight(colors.sidebar, "#ffffff") ? "#0d131f" : (colors.sidebar || "#0d131f");
-    const effectiveHeading = isColorDark(colors.heading, "#000000") ? "#f8fafc" : (colors.heading || "#f8fafc");
-    const effectiveText = isColorDark(colors.text, "#000000") ? "#e2e8f0" : (colors.text || "#e2e8f0");
-    const effectiveMuted = isColorDark(colors.text_muted, "#000000") ? "#94a3b8" : (colors.text_muted || "#94a3b8");
-    const effectiveBorder = isColorLight(colors.border, "#ffffff") ? "#1f2937" : (colors.border || "#1f2937");
+  const sidebarLum = getLuminance(colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa"));
+  const isSidebarDark = sidebarLum < 0.45;
 
-    root.style.setProperty("--color-background", effectiveBg);
-    root.style.setProperty("--color-surface", effectiveSurface);
-    root.style.setProperty("--color-surface-muted", "#182234");
-    root.style.setProperty("--color-surface-elevated", "#1e293b");
-    root.style.setProperty("--color-sidebar", effectiveSidebar);
-    root.style.setProperty("--color-sidebar-text", "#f3f4f6");
-    root.style.setProperty("--color-heading", effectiveHeading);
-    root.style.setProperty("--color-text", effectiveText);
-    root.style.setProperty("--color-muted", effectiveMuted);
-    root.style.setProperty("--color-border", effectiveBorder);
-    root.style.setProperty("--color-border-strong", "#374151");
-  } else {
-    // Light Mode Theme Tokens
-    const effectiveBg = isColorDark(colors.background, "#000000") ? "#fafafa" : (colors.background || "#fafafa");
-    const effectiveSurface = isColorDark(colors.surface, "#000000") ? "#ffffff" : (colors.surface || "#ffffff");
-    const effectiveSidebar = isColorDark(colors.sidebar, "#000000") ? "#f8f9fa" : (colors.sidebar || "#f8f9fa");
-    const effectiveHeading = isColorLight(colors.heading, "#ffffff") ? "#0f172a" : (colors.heading || "#0f172a");
-    const effectiveText = isColorLight(colors.text, "#ffffff") ? "#1e293b" : (colors.text || "#1e293b");
-    const effectiveMuted = isColorLight(colors.text_muted, "#ffffff") ? "#64748b" : (colors.text_muted || "#64748b");
-    const effectiveBorder = isColorDark(colors.border, "#000000") ? "#e5e7eb" : (colors.border || "#e5e7eb");
+  // Background & Surface Tokens
+  const effectiveBg = colors.background || (isDark ? "#090d16" : "#fafafa");
+  const effectiveSurface = colors.surface || (isDark ? "#111827" : "#ffffff");
+  const effectiveSidebar = colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa");
 
-    root.style.setProperty("--color-background", effectiveBg);
-    root.style.setProperty("--color-surface", effectiveSurface);
-    root.style.setProperty("--color-surface-muted", "#f4f5f7");
-    root.style.setProperty("--color-surface-elevated", "#ffffff");
-    root.style.setProperty("--color-sidebar", effectiveSidebar);
-    root.style.setProperty("--color-sidebar-text", "#0f172a");
-    root.style.setProperty("--color-heading", effectiveHeading);
-    root.style.setProperty("--color-text", effectiveText);
-    root.style.setProperty("--color-muted", effectiveMuted);
-    root.style.setProperty("--color-border", effectiveBorder);
-    root.style.setProperty("--color-border-strong", "#d1d5db");
-  }
+  // Dynamic Text Colors based on surface luminance
+  const effectiveHeading = colors.heading || (isSurfaceDark ? "#f8fafc" : "#0f172a");
+  const effectiveText = colors.text || (isSurfaceDark ? "#e2e8f0" : "#1e293b");
+  const effectiveMuted = colors.text_muted || (isSurfaceDark ? "#94a3b8" : "#64748b");
+  const effectiveBorder = colors.border || (isSurfaceDark ? "#1f2937" : "#e5e7eb");
+  const effectiveBorderStrong = isSurfaceDark ? "#374151" : "#d1d5db";
+  const effectiveSurfaceMuted = isSurfaceDark ? "#182234" : "#f4f5f7";
+  const effectiveSurfaceElevated = isSurfaceDark ? "#1e293b" : "#ffffff";
+  const effectiveSidebarText = colors.sidebar_text || (isSidebarDark ? "#f3f4f6" : "#0f172a");
+
+  root.style.setProperty("--color-background", effectiveBg);
+  root.style.setProperty("--color-surface", effectiveSurface);
+  root.style.setProperty("--color-surface-muted", effectiveSurfaceMuted);
+  root.style.setProperty("--color-surface-elevated", effectiveSurfaceElevated);
+  root.style.setProperty("--color-sidebar", effectiveSidebar);
+  root.style.setProperty("--color-sidebar-text", effectiveSidebarText);
+  root.style.setProperty("--color-heading", effectiveHeading);
+  root.style.setProperty("--color-text", effectiveText);
+  root.style.setProperty("--color-muted", effectiveMuted);
+  root.style.setProperty("--color-border", effectiveBorder);
+  root.style.setProperty("--color-border-strong", effectiveBorderStrong);
 
   root.style.setProperty("--color-success", colors.success || "#10b981");
   root.style.setProperty("--color-warning", colors.warning || "#f59e0b");
@@ -617,7 +580,7 @@ export function applyThemeToCss(
 
   root.style.setProperty(
     "--font-family-base",
-    `'${typography.font_family}', system-ui, -apple-system, sans-serif`
+    `'${typography.font_family || "Inter"}', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
   );
 
   const densityMap: Record<string, { padding: string; gap: string; textScale: string }> = {
@@ -640,6 +603,101 @@ export function applyThemeToCss(
   }
 
   if (theme.identity.org_name) {
-    document.title = `${theme.identity.org_name} - AI Agent Platform`;
+    document.title = `${theme.identity.org_name} - AI Voice Platform`;
   }
+}
+
+export function getThemeCssVariables(
+  theme: OrganizationThemeConfig,
+  userPrefs?: UserPreferences
+): Record<string, string> {
+  const colors = theme.colors;
+  const appearance = theme.appearance;
+  const typography = theme.typography;
+
+  const effectiveMode =
+    userPrefs?.color_mode === "dark"
+      ? "dark"
+      : appearance.color_mode === "dark"
+      ? "dark"
+      : "light";
+
+  const isDark = effectiveMode === "dark";
+  const effectiveDensity = userPrefs?.ui_density || appearance.ui_density || "comfortable";
+
+  const primaryRgb = hexToRgb(colors.primary);
+  const secondaryRgb = hexToRgb(colors.secondary);
+  const accentRgb = hexToRgb(colors.accent);
+
+  const surfaceLum = getLuminance(colors.surface || (isDark ? "#111827" : "#ffffff"));
+  const isSurfaceDark = surfaceLum < 0.45;
+
+  const bgLum = getLuminance(colors.background || (isDark ? "#090d16" : "#fafafa"));
+
+  const sidebarLum = getLuminance(colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa"));
+  const isSidebarDark = sidebarLum < 0.45;
+
+  const effectiveBg = colors.background || (isDark ? "#090d16" : "#fafafa");
+  const effectiveSurface = colors.surface || (isDark ? "#111827" : "#ffffff");
+  const effectiveSidebar = colors.sidebar || (isDark ? "#0d131f" : "#f8f9fa");
+
+  const effectiveHeading = colors.heading || (isSurfaceDark ? "#f8fafc" : "#0f172a");
+  const effectiveText = colors.text || (isSurfaceDark ? "#e2e8f0" : "#1e293b");
+  const effectiveMuted = colors.text_muted || (isSurfaceDark ? "#94a3b8" : "#64748b");
+  const effectiveBorder = colors.border || (isSurfaceDark ? "#1f2937" : "#e5e7eb");
+  const effectiveBorderStrong = isSurfaceDark ? "#374151" : "#d1d5db";
+  const effectiveSurfaceMuted = isSurfaceDark ? "#182234" : "#f4f5f7";
+  const effectiveSurfaceElevated = isSurfaceDark ? "#1e293b" : "#ffffff";
+  const effectiveSidebarText = colors.sidebar_text || (isSidebarDark ? "#f3f4f6" : "#0f172a");
+
+  const radiusMap: Record<string, string> = {
+    none: "0px",
+    sm: "0.25rem",
+    md: "0.5rem",
+    lg: "0.75rem",
+    xl: "1rem",
+    full: "9999px",
+  };
+
+  const densityMap: Record<string, { padding: string; gap: string; textScale: string }> = {
+    compact: { padding: "0.5rem 0.75rem", gap: "0.5rem", textScale: "0.875rem" },
+    comfortable: { padding: "0.75rem 1rem", gap: "0.75rem", textScale: "1rem" },
+    spacious: { padding: "1rem 1.25rem", gap: "1rem", textScale: "1.0625rem" },
+  };
+  const d = densityMap[effectiveDensity] || densityMap.comfortable;
+
+  return {
+    "--color-primary": colors.primary,
+    "--color-primary-rgb": `${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}`,
+    "--color-primary-light": `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.12)`,
+    "--color-primary-subtle": `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.05)`,
+    "--color-primary-ring": `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.25)`,
+    "--color-primary-hover": colors.primary_hover || autoFixContrast(colors.primary, isDark ? "#000000" : "#ffffff"),
+    "--color-secondary": colors.secondary,
+    "--color-secondary-rgb": `${secondaryRgb.r}, ${secondaryRgb.g}, ${secondaryRgb.b}`,
+    "--color-secondary-light": `rgba(${secondaryRgb.r}, ${secondaryRgb.g}, ${secondaryRgb.b}, 0.12)`,
+    "--color-accent": colors.accent,
+    "--color-accent-rgb": `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`,
+    "--color-accent-light": `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`,
+    "--color-background": effectiveBg,
+    "--color-surface": effectiveSurface,
+    "--color-surface-muted": effectiveSurfaceMuted,
+    "--color-surface-elevated": effectiveSurfaceElevated,
+    "--color-sidebar": effectiveSidebar,
+    "--color-sidebar-text": effectiveSidebarText,
+    "--color-heading": effectiveHeading,
+    "--color-text": effectiveText,
+    "--color-muted": effectiveMuted,
+    "--color-border": effectiveBorder,
+    "--color-border-strong": effectiveBorderStrong,
+    "--color-success": colors.success || "#10b981",
+    "--color-warning": colors.warning || "#f59e0b",
+    "--color-danger": colors.danger || "#ef4444",
+    "--color-info": colors.info || "#3b82f6",
+    "--radius-main": radiusMap[appearance.border_radius] || "0.5rem",
+    "--font-family-base": `'${typography.font_family || "Inter"}', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+    "--density-padding": d.padding,
+    "--density-gap": d.gap,
+    fontFamily: `'${typography.font_family || "Inter"}', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`,
+  };
 }

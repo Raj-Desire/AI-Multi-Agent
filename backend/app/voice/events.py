@@ -28,6 +28,7 @@ class VoiceEventType:
     WARNING = "Warning"
     ERROR = "Error"
     CALL_ENDED = "CallEnded"
+    LEAD_INTELLIGENCE_UPDATED = "LeadIntelligenceUpdated"
 
 
 class VoiceEventMessage(BaseModel):
@@ -64,6 +65,14 @@ class TelemetryBroadcaster:
     async def broadcast(self, event: VoiceEventMessage):
         async with self._lock:
             queues = list(self._subscribers.get(event.call_session_id, []))
+            # Also route to organization subscribers
+            if event.organization_id:
+                queues.extend(list(self._subscribers.get(f"org_{event.organization_id}", [])))
+                queues.extend(list(self._subscribers.get(event.organization_id, [])))
+            # Also route to campaign subscribers if campaign_id is present
+            campaign_id = event.payload.get("campaign_id") if event.payload else None
+            if campaign_id:
+                queues.extend(list(self._subscribers.get(f"campaign_{campaign_id}", [])))
             # Also broadcast to global "all" listeners if present
             all_queues = list(self._subscribers.get("global_debug", []))
             combined = set(queues + all_queues)

@@ -36,7 +36,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           <select
             id={selectId}
             ref={ref}
-            className={`w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] border rounded-[var(--radius-main,0.375rem)] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer ${
+            className={`ui-select w-full h-9 text-sm px-3 py-2 transition-all text-[var(--color-heading)] bg-[var(--color-surface)] border rounded-[var(--radius-main,0.375rem)] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer ${
               error
                 ? "border-[var(--color-danger)] focus:border-[var(--color-danger)] focus:ring-2 focus:ring-[var(--color-danger)]/15"
                 : "border-[var(--color-border)] hover:border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary-ring)]"
