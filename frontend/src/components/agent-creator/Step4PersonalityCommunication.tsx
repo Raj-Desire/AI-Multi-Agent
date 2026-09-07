@@ -635,7 +635,7 @@ function InteractivePersonalityRadar({
                   fill="transparent"
                 />
 
-                {/* Outer Ripple / Pulse Ring */}
+                {/* Outer Ripple / Pulse Ring - Perfectly Centered */}
                 {(isDragging || isHovered) && (
                   <circle
                     cx={x}
@@ -644,8 +644,11 @@ function InteractivePersonalityRadar({
                     fill="none"
                     stroke="var(--color-primary)"
                     strokeWidth="2"
-                    strokeOpacity={isDragging ? "0.9" : "0.6"}
-                    className="animate-ping [animation-duration:2s]"
+                    strokeOpacity={isDragging ? "0.8" : "0.5"}
+                    style={{
+                      transformOrigin: `${x}px ${y}px`,
+                      animation: "radarPulseRing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite"
+                    }}
                   />
                 )}
 
@@ -660,6 +663,7 @@ function InteractivePersonalityRadar({
                   filter={isDragging ? "url(#activePointGlow)" : isHovered ? "url(#pointGlow)" : "none"}
                   className="transition-all duration-150 shadow-md"
                 />
+
 
                 {/* Inner Core Bullet */}
                 <circle

@@ -688,22 +688,18 @@ export const CREATOR_STEPS = [
 ];
 
 export const DEFAULT_PRONUNCIATION_RULES = [
-  { word: "Ahmedabad", phonetic: "Ahm-da-baad", category: "indian_places" },
-  { word: "Vadodara", phonetic: "Vuh-doh-duh-rah", category: "indian_places" },
-  { word: "Gandhinagar", phonetic: "Gahn-dhi-nuh-guhr", category: "indian_places" },
-  { word: "Rajkot", phonetic: "Raaj-kote", category: "indian_places" },
-  { word: "Surat", phonetic: "Soo-ruht", category: "indian_places" },
-  { word: "Bengaluru", phonetic: "Beng-guh-loo-roo", category: "indian_places" },
-  { word: "Coimbatore", phonetic: "Koym-buh-tor", category: "indian_places" },
-  { word: "GST", phonetic: "G-S-T", category: "acronyms" },
-  { word: "OTP", phonetic: "O-T-P", category: "acronyms" },
-  { word: "KYC", phonetic: "K-Y-C", category: "acronyms" },
-  { word: "Sq Ft", phonetic: "square feet", category: "acronyms" },
-  { word: "Sq. Ft.", phonetic: "square feet", category: "acronyms" },
-  { word: "INR", phonetic: "Rupees", category: "acronyms" },
+  { word: "Schedule", phonetic: "sked-jool", category: "general" },
+  { word: "Status", phonetic: "stay-tuhs", category: "general" },
+  { word: "Route", phonetic: "root", category: "general" },
+  { word: "Suite", phonetic: "sweet", category: "general" },
+  { word: "Data", phonetic: "day-tuh", category: "general" },
   { word: "B2B", phonetic: "B-to-B", category: "acronyms" },
-  { word: "B2C", phonetic: "B-to-C", category: "acronyms" }
+  { word: "FAQ", phonetic: "F-A-Q", category: "acronyms" },
+  { word: "API", phonetic: "A-P-I", category: "acronyms" },
+  { word: "VIP", phonetic: "V-I-P", category: "acronyms" },
+  { word: "CRM", phonetic: "C-R-M", category: "acronyms" }
 ];
+
 
 export const INDUSTRY_FEW_SHOT_PRESETS: FewShotExample[] = [
   {

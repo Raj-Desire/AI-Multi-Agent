@@ -116,7 +116,7 @@ export function Step3VoiceLanguage({
     }));
   };
 
-  const handleLoadPresetPack = (category: "indian_places" | "acronyms") => {
+  const handleLoadPresetPack = (category: "general" | "acronyms") => {
     const presetItems = DEFAULT_PRONUNCIATION_RULES.filter((r) => r.category === category);
     const existingWords = new Set(pronunciationRules.map((r) => r.word.toLowerCase()));
     const itemsToAdd = presetItems.filter((r) => !existingWords.has(r.word.toLowerCase()));
@@ -126,6 +126,7 @@ export function Step3VoiceLanguage({
       pronunciation_rules: [...pronunciationRules, ...itemsToAdd]
     }));
   };
+
 
   const handleResetPronunciationRules = () => {
     setAgentData((prev) => ({
@@ -382,7 +383,7 @@ export function Step3VoiceLanguage({
           <div>
             <div className="flex items-center gap-1.5">
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Voice Model (Aura Lifelike)
+                Voice Model
               </label>
               <InfoTooltip
                 content="Aura voices provide human-like tone, natural breathing, and ~200ms ultra-low latency for seamless telephone conversations."
@@ -873,11 +874,11 @@ export function Step3VoiceLanguage({
               </span>
               <button
                 type="button"
-                onClick={() => handleLoadPresetPack("indian_places")}
+                onClick={() => handleLoadPresetPack("general")}
                 className="px-2.5 py-1 text-[11px] rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:bg-[var(--color-surface)] text-[var(--color-heading)] font-medium flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
               >
                 <Plus className="w-3 h-3 text-[var(--color-primary)]" />
-                <span>Indian Cities &amp; Names (Ahmedabad, Vadodara, Surat...)</span>
+                <span>Global English Words (Schedule, Status, Route...)</span>
               </button>
               <button
                 type="button"
@@ -885,7 +886,7 @@ export function Step3VoiceLanguage({
                 className="px-2.5 py-1 text-[11px] rounded-[var(--radius-main,0.25rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:bg-[var(--color-surface)] text-[var(--color-heading)] font-medium flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
               >
                 <Plus className="w-3 h-3 text-[var(--color-primary)]" />
-                <span>Telephony &amp; Business Acronyms (GST, OTP, KYC, Sq Ft...)</span>
+                <span>Telephony &amp; Business Acronyms (B2B, FAQ, API, VIP...)</span>
               </button>
               <button
                 type="button"
@@ -905,7 +906,7 @@ export function Step3VoiceLanguage({
                 <div className="sm:col-span-4">
                   <input
                     type="text"
-                    placeholder="Written word (e.g. Ahmedabad)"
+                    placeholder="Written word (e.g. Schedule)"
                     value={newWord}
                     onChange={(e) => setNewWord(e.target.value)}
                     className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
@@ -914,7 +915,7 @@ export function Step3VoiceLanguage({
                 <div className="sm:col-span-5">
                   <input
                     type="text"
-                    placeholder="Spoken phonetic (e.g. Ahm-da-baad)"
+                    placeholder="Spoken phonetic (e.g. sked-jool)"
                     value={newPhonetic}
                     onChange={(e) => setNewPhonetic(e.target.value)}
                     className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
@@ -927,10 +928,11 @@ export function Step3VoiceLanguage({
                     className="w-full h-8 px-2 text-[11px] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
                   >
                     <option value="custom">Custom</option>
-                    <option value="indian_places">Indian Place</option>
+                    <option value="general">General Word</option>
                     <option value="acronyms">Acronym</option>
                     <option value="brand">Brand</option>
                   </select>
+
                   <Button
                     size="sm"
                     variant="primary"

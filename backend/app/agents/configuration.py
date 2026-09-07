@@ -65,22 +65,18 @@ class FewShotExample(BaseModel):
 
 def get_default_pronunciation_rules() -> List[PronunciationRule]:
     return [
-        PronunciationRule(word="Ahmedabad", phonetic="Ahm-da-baad", category="indian_places"),
-        PronunciationRule(word="Vadodara", phonetic="Vuh-doh-duh-rah", category="indian_places"),
-        PronunciationRule(word="Gandhinagar", phonetic="Gahn-dhi-nuh-guhr", category="indian_places"),
-        PronunciationRule(word="Rajkot", phonetic="Raaj-kote", category="indian_places"),
-        PronunciationRule(word="Surat", phonetic="Soo-ruht", category="indian_places"),
-        PronunciationRule(word="Bengaluru", phonetic="Beng-guh-loo-roo", category="indian_places"),
-        PronunciationRule(word="Coimbatore", phonetic="Koym-buh-tor", category="indian_places"),
-        PronunciationRule(word="GST", phonetic="G-S-T", category="acronyms"),
-        PronunciationRule(word="OTP", phonetic="O-T-P", category="acronyms"),
-        PronunciationRule(word="KYC", phonetic="K-Y-C", category="acronyms"),
-        PronunciationRule(word="Sq Ft", phonetic="square feet", category="acronyms"),
-        PronunciationRule(word="Sq. Ft.", phonetic="square feet", category="acronyms"),
-        PronunciationRule(word="INR", phonetic="Rupees", category="acronyms"),
+        PronunciationRule(word="Schedule", phonetic="sked-jool", category="general"),
+        PronunciationRule(word="Status", phonetic="stay-tuhs", category="general"),
+        PronunciationRule(word="Route", phonetic="root", category="general"),
+        PronunciationRule(word="Suite", phonetic="sweet", category="general"),
+        PronunciationRule(word="Data", phonetic="day-tuh", category="general"),
         PronunciationRule(word="B2B", phonetic="B-to-B", category="acronyms"),
-        PronunciationRule(word="B2C", phonetic="B-to-C", category="acronyms"),
+        PronunciationRule(word="FAQ", phonetic="F-A-Q", category="acronyms"),
+        PronunciationRule(word="API", phonetic="A-P-I", category="acronyms"),
+        PronunciationRule(word="VIP", phonetic="V-I-P", category="acronyms"),
+        PronunciationRule(word="CRM", phonetic="C-R-M", category="acronyms"),
     ]
+
 
 
 def get_industry_few_shot_presets() -> List[FewShotExample]:

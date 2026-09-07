@@ -408,7 +408,7 @@ function MainContent() {
         </Modal>
 
         {/* Minimal Footer */}
-        <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
+        {/* <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
           <div>
             &copy; 2026 {draftTheme.identity.org_name || (user.org_name || "AI Voice Platform")}. All rights reserved.
           </div>
@@ -417,7 +417,7 @@ function MainContent() {
             <span>&bull;</span>
             <span>WebRTC Gateway v2.11</span>
           </div>
-        </footer>
+        </footer> */}
       </div>
     </div>
   );

@@ -34,7 +34,7 @@ import {
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
-import { AgentConfig } from "../../types";
+import { AgentConfig, CompanyBusinessProfile } from "../../types";
 import { AURA_VOICES } from "./constants";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
@@ -68,13 +68,36 @@ export function Step6PromptInstructions({
   const [greetingOptions, setGreetingOptions] = useState<GreetingOption[]>([]);
   const [isExpandedEditor, setIsExpandedEditor] = useState(false);
   const [showMoreVariables, setShowMoreVariables] = useState(false);
+  const [showPromptVariables, setShowPromptVariables] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [pendingDiff, setPendingDiff] = useState<PromptDiffPreview | null>(null);
+
+  // Business Profile for resolving {{company_name}} and other variables
+  const [businessProfile, setBusinessProfile] = useState<CompanyBusinessProfile | null>(null);
+
+  // Textarea DOM refs for inserting variables precisely at cursor position
+  const greetingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Audio preview state for greeting
   const [isPlayingGreeting, setIsPlayingGreeting] = useState(false);
   const [playingGreetingText, setPlayingGreetingText] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Fetch organization business profile to get live company name
+  useEffect(() => {
+    async function loadBusinessProfile() {
+      try {
+        const profile = await fetchApi<CompanyBusinessProfile>("/business-profile");
+        if (profile) {
+          setBusinessProfile(profile);
+        }
+      } catch (err) {
+        console.warn("Could not fetch business profile in Step 6:", err);
+      }
+    }
+    loadBusinessProfile();
+  }, []);
 
   // Clean up audio on unmount
   useEffect(() => {
@@ -98,6 +121,11 @@ export function Step6PromptInstructions({
   const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
   const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
 
+  // Effective company name resolved from business profile or fallback
+  const resolvedCompanyName = businessProfile?.company_name?.trim() || "Apex Solutions";
+  const resolvedAgentName = agentData.name?.trim() || "Alex";
+  const resolvedAgentRole = agentData.role?.trim() || "Voice Assistant";
+
   const defaultGreetings: GreetingOption[] = [
     {
       label: "Direct & Warm",
@@ -114,6 +142,7 @@ export function Step6PromptInstructions({
   ];
 
   const activeGreetings = greetingOptions.length > 0 ? greetingOptions : defaultGreetings;
+
 
   // Synthesize Spoken Prompt & Greetings with AI (Full Generation)
   async function handleGenerateInstructions(silent = false) {
@@ -304,13 +333,53 @@ export function Step6PromptInstructions({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Insert Variable into Greeting
+  // Insert Variable into Greeting at cursor position
   const insertVariableIntoGreeting = (varToken: string) => {
+    const textarea = greetingTextareaRef.current;
     const current = agentData.greeting || "";
-    setAgentData({
-      ...agentData,
-      greeting: current ? `${current} ${varToken}` : varToken
-    });
+
+    if (textarea) {
+      const start = textarea.selectionStart ?? current.length;
+      const end = textarea.selectionEnd ?? current.length;
+      const updated = current.substring(0, start) + varToken + current.substring(end);
+      setAgentData((prev) => ({ ...prev, greeting: updated }));
+      
+      // Restore cursor right after the inserted variable
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + varToken.length, start + varToken.length);
+      }, 0);
+    } else {
+      setAgentData((prev) => ({
+        ...prev,
+        greeting: current ? `${current} ${varToken}` : varToken
+      }));
+    }
+    toast.success(`Inserted ${varToken}`);
+  };
+
+  // Insert Variable into Prompt at cursor position
+  const insertVariableIntoPrompt = (varToken: string) => {
+    const textarea = promptTextareaRef.current;
+    const current = agentData.system_prompt || "";
+
+    if (textarea) {
+      const start = textarea.selectionStart ?? current.length;
+      const end = textarea.selectionEnd ?? current.length;
+      const updated = current.substring(0, start) + varToken + current.substring(end);
+      setAgentData((prev) => ({ ...prev, system_prompt: updated }));
+
+      // Restore cursor right after the inserted variable
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + varToken.length, start + varToken.length);
+      }, 0);
+    } else {
+      setAgentData((prev) => ({
+        ...prev,
+        system_prompt: current ? `${current} ${varToken}` : varToken
+      }));
+    }
     toast.success(`Inserted ${varToken}`);
   };
 
@@ -325,6 +394,20 @@ export function Step6PromptInstructions({
     toast.success(`Inserted section: ${title}`);
   };
 
+  // Helper to resolve variables for preview
+  const resolvePreviewText = (text: string): string => {
+    if (!text) return "";
+    return text
+      .replace(/{{caller_name}}/g, "Alex")
+      .replace(/{{company_name}}/g, resolvedCompanyName)
+      .replace(/{{agent_name}}/g, resolvedAgentName)
+      .replace(/{{agent_role}}/g, resolvedAgentRole)
+      .replace(/{{current_time}}/g, "today")
+      .replace(/{{caller_phone}}/g, "the caller's phone number")
+      .replace(/{{operating_hours}}/g, "Monday to Friday 9 AM to 6 PM")
+      .replace(/{{office_location}}/g, businessProfile?.city || "our office");
+  };
+
   // Play Greeting Sample Audio using selected voice
   const handlePlayGreetingAudio = async (textToPlay: string) => {
     if (isPlayingGreeting && playingGreetingText === textToPlay) {
@@ -336,12 +419,8 @@ export function Step6PromptInstructions({
     setIsPlayingGreeting(true);
     setPlayingGreetingText(textToPlay);
 
-    // Replace template tags with realistic preview values for audio
-    const sanitized = textToPlay
-      .replace(/{{caller_name}}/g, "Alex")
-      .replace(/{{company_name}}/g, "our company")
-      .replace(/{{agent_name}}/g, agentData.name || "the assistant")
-      .replace(/{{current_time}}/g, "today");
+    // Replace template tags with realistic resolved values from business profile
+    const sanitized = resolvePreviewText(textToPlay);
 
     try {
       const token = localStorage.getItem("desire_token");
@@ -594,7 +673,7 @@ export function Step6PromptInstructions({
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>AI Greeting Suggestions</span>
+                <span>Greeting Suggestions</span>
                 <InfoTooltip
                   content="Select an intelligent opening line or generate more options tailored to your role and tone."
                   position="top"
@@ -697,6 +776,7 @@ export function Step6PromptInstructions({
           {/* Script Textarea */}
           <div className="relative">
             <textarea
+              ref={greetingTextareaRef}
               rows={3}
               value={agentData.greeting || ""}
               onChange={(e) => setAgentData({ ...agentData, greeting: e.target.value })}
@@ -711,6 +791,10 @@ export function Step6PromptInstructions({
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-1">
                 <Plus className="w-3 h-3 text-[var(--color-primary)]" />
                 Add Dynamic Variable
+                <InfoTooltip
+                  content="Click to insert at your cursor position. Dynamic variables automatically resolve to your real company and agent info."
+                  position="top"
+                />
               </span>
               <button
                 type="button"
@@ -723,38 +807,46 @@ export function Step6PromptInstructions({
 
             <div className="flex flex-wrap gap-1.5">
               {[
-                { label: "Caller Name", token: "{{caller_name}}" },
-                { label: "Company Name", token: "{{company_name}}" },
-                { label: "Current Time", token: "{{current_time}}" },
-                { label: "Agent Name", token: "{{agent_name}}" }
+                { label: "Company Name", token: "{{company_name}}", preview: resolvedCompanyName },
+                { label: "Agent Name", token: "{{agent_name}}", preview: resolvedAgentName },
+                { label: "Caller Name", token: "{{caller_name}}", preview: "Caller" },
+                { label: "Current Time", token: "{{current_time}}", preview: "Now" }
               ].map((v) => (
                 <button
                   key={v.token}
                   type="button"
                   onClick={() => insertVariableIntoGreeting(v.token)}
-                  className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                  title={`Insert ${v.token} (Resolves to: "${v.preview}")`}
+                  className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1 group"
                 >
                   <Plus className="w-2.5 h-2.5 text-[var(--color-primary)]" />
                   <span>{v.label}</span>
+                  <span className="text-[9px] text-[var(--color-muted)] group-hover:text-[var(--color-primary)]/80 font-sans">
+                    ({v.preview})
+                  </span>
                 </button>
               ))}
 
               {showMoreVariables && (
                 <>
                   {[
-                    { label: "Agent Role", token: "{{agent_role}}" },
-                    { label: "Phone Number", token: "{{caller_phone}}" },
-                    { label: "Operating Hours", token: "{{operating_hours}}" },
-                    { label: "Main Office", token: "{{office_location}}" }
+                    { label: "Agent Role", token: "{{agent_role}}", preview: resolvedAgentRole },
+                    { label: "Phone Number", token: "{{caller_phone}}", preview: businessProfile?.phone || "Phone" },
+                    { label: "Operating Hours", token: "{{operating_hours}}", preview: "Business Hours" },
+                    { label: "Main Office", token: "{{office_location}}", preview: businessProfile?.city || "Office" }
                   ].map((v) => (
                     <button
                       key={v.token}
                       type="button"
                       onClick={() => insertVariableIntoGreeting(v.token)}
-                      className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1 animate-fade-in"
+                      title={`Insert ${v.token} (Resolves to: "${v.preview}")`}
+                      className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1 group animate-fade-in"
                     >
                       <Plus className="w-2.5 h-2.5 text-[var(--color-primary)]" />
                       <span>{v.label}</span>
+                      <span className="text-[9px] text-[var(--color-muted)] group-hover:text-[var(--color-primary)]/80 font-sans">
+                        ({v.preview})
+                      </span>
                     </button>
                   ))}
                 </>
@@ -762,14 +854,14 @@ export function Step6PromptInstructions({
             </div>
           </div>
 
-          {/* Caller Experience Preview Card */}
+          {/* Caller Experience Preview Card with Dynamic Variable Resolution */}
           <div className="p-3 bg-[var(--color-surface-muted)]/70 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-[var(--color-heading)] uppercase tracking-wider flex items-center gap-1.5">
                 <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                <span>Caller Experience Preview</span>
+                <span>Caller Experience Spoken Preview</span>
                 <InfoTooltip
-                  content="Listen to how the caller experiences the opening greeting with your active voice."
+                  content="Listen to how the caller experiences the opening greeting with your active voice, including resolved variables."
                   position="top"
                 />
               </span>
@@ -791,9 +883,17 @@ export function Step6PromptInstructions({
                 )}
               </button>
             </div>
-            <p className="text-xs text-[var(--color-heading)] italic leading-relaxed">
-              "{agentData.greeting || "No greeting configured yet."}"
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-[var(--color-heading)] italic leading-relaxed">
+                "{resolvePreviewText(agentData.greeting || "No greeting configured yet.")}"
+              </p>
+              {agentData.greeting && agentData.greeting.includes("{{") && (
+                <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-primary)] font-medium pt-0.5">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Dynamic variables live resolved to your profile (e.g. {resolvedCompanyName})</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -873,9 +973,79 @@ export function Step6PromptInstructions({
           </div>
         )}
 
+        {/* Dynamic Variable Chips for System Prompt Editor */}
+        <div className="space-y-1.5 pb-0.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)] flex items-center gap-1">
+              <Plus className="w-3 h-3 text-[var(--color-primary)]" />
+              Insert Dynamic Variable into Prompt
+              <InfoTooltip
+                content="Insert dynamic variables into your prompt instructions. At runtime and during calls, these are automatically replaced with your business and agent details."
+                position="top"
+              />
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowPromptVariables(!showPromptVariables)}
+              className="text-[10px] font-semibold text-[var(--color-primary)] hover:underline cursor-pointer"
+            >
+              {showPromptVariables ? "Fewer Variables" : "+ More Variables"}
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { label: "Company Name", token: "{{company_name}}", preview: resolvedCompanyName },
+              { label: "Agent Name", token: "{{agent_name}}", preview: resolvedAgentName },
+              { label: "Agent Role", token: "{{agent_role}}", preview: resolvedAgentRole },
+              { label: "Current Time", token: "{{current_time}}", preview: "Now" }
+            ].map((v) => (
+              <button
+                key={v.token}
+                type="button"
+                onClick={() => insertVariableIntoPrompt(v.token)}
+                title={`Insert ${v.token} (Resolves to: "${v.preview}")`}
+                className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1 group"
+              >
+                <Plus className="w-2.5 h-2.5 text-[var(--color-primary)]" />
+                <span>{v.label}</span>
+                <span className="text-[9px] text-[var(--color-muted)] group-hover:text-[var(--color-primary)]/80 font-sans">
+                  ({v.preview})
+                </span>
+              </button>
+            ))}
+
+            {showPromptVariables && (
+              <>
+                {[
+                  { label: "Caller Name", token: "{{caller_name}}", preview: "Caller" },
+                  { label: "Phone Number", token: "{{caller_phone}}", preview: businessProfile?.phone || "Phone" },
+                  { label: "Operating Hours", token: "{{operating_hours}}", preview: "Business Hours" },
+                  { label: "Main Office", token: "{{office_location}}", preview: businessProfile?.city || "Office" }
+                ].map((v) => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => insertVariableIntoPrompt(v.token)}
+                    title={`Insert ${v.token} (Resolves to: "${v.preview}")`}
+                    className="px-2 py-1 text-[11px] font-mono bg-[var(--color-surface-muted)] hover:bg-[var(--color-primary)]/10 text-[var(--color-heading)] hover:text-[var(--color-primary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer shadow-2xs flex items-center gap-1 group animate-fade-in"
+                  >
+                    <Plus className="w-2.5 h-2.5 text-[var(--color-primary)]" />
+                    <span>{v.label}</span>
+                    <span className="text-[9px] text-[var(--color-muted)] group-hover:text-[var(--color-primary)]/80 font-sans">
+                      ({v.preview})
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+
         {/* The Main Prompt Editor Textarea */}
         <div className="space-y-1.5">
           <textarea
+            ref={promptTextareaRef}
             rows={isExpandedEditor ? 22 : 12}
             value={agentData.system_prompt || ""}
             onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
@@ -912,9 +1082,7 @@ export function Step6PromptInstructions({
               </h3>
             </div>
           </div>
-          <Badge variant="neutral" size="sm" className="text-[10px] font-semibold">
-            AI Co-Pilot
-          </Badge>
+
         </div>
 
         {/* Natural Language Refinement Input */}

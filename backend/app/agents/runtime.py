@@ -117,9 +117,17 @@ class AgentRuntimeBuilder:
             provider=speak_provider
         )
 
-        # 5. Combined Agent Config with Greeting
+        # 5. Combined Agent Config with Greeting (Resolved for dynamic variables)
+        resolved_greeting = None
+        if config.greeting and config.greeting.strip():
+            resolved_greeting = VoicePromptBuilder.resolve_dynamic_variables(
+                config.greeting.strip(),
+                config=config,
+                business_profile=business_profile
+            )
+
         agent_config = DeepgramAgentConfig(
-            greeting=config.greeting if config.greeting else None,
+            greeting=resolved_greeting,
             listen=listen_config,
             think=think_config,
             speak=speak_config

@@ -132,6 +132,49 @@ export function Step2RoleConversation({
   const [isAddingService, setIsAddingService] = useState(false);
   const [savingService, setSavingService] = useState(false);
 
+  // Custom Skills State
+  const [isAddingCustomSkill, setIsAddingCustomSkill] = useState(false);
+  const [newCustomSkillName, setNewCustomSkillName] = useState("");
+  const [newCustomSkillDesc, setNewCustomSkillDesc] = useState("");
+
+  // Built-in capability IDs set for reference
+  const builtinCapIds = new Set(AVAILABLE_CAPABILITIES.map((c) => c.id));
+  const customSkillsList = currentCaps.filter((c) => !builtinCapIds.has(c));
+
+  const handleAddCustomSkill = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = newCustomSkillName.trim();
+    if (!trimmedName) return;
+
+    if (currentCaps.includes(trimmedName)) {
+      toast.error("This skill is already enabled");
+      return;
+    }
+
+    const updated = [...currentCaps, trimmedName];
+    setAgentData((prev) => ({
+      ...prev,
+      skills: updated,
+      // If a description was provided, also note it in custom_knowledge for prompt alignment
+      custom_knowledge: newCustomSkillDesc.trim()
+        ? (prev.custom_knowledge ? `${prev.custom_knowledge}\n- [Skill: ${trimmedName}] ${newCustomSkillDesc.trim()}` : `- [Skill: ${trimmedName}] ${newCustomSkillDesc.trim()}`)
+        : prev.custom_knowledge
+    }));
+
+    toast.success(`Custom skill "${trimmedName}" added`);
+    setNewCustomSkillName("");
+    setNewCustomSkillDesc("");
+    setIsAddingCustomSkill(false);
+  };
+
+  const handleRemoveCustomSkill = (skillToRemove: string) => {
+    setAgentData((prev) => ({
+      ...prev,
+      skills: (prev.skills || []).filter((s) => s !== skillToRemove)
+    }));
+    toast.success(`Removed "${skillToRemove}"`);
+  };
+
   // New Service Form State
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDesc, setNewServiceDesc] = useState("");
@@ -415,30 +458,122 @@ export function Step2RoleConversation({
               : "border border-[var(--color-border)] focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)]/60"
           }`}
         />
-        <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1">
-          <Info className="w-3 h-3 shrink-0 text-[var(--color-muted)]" />
-          <span>Keep this concise and clear. This directly steers the agent's conversational focus during calls.</span>
-        </p>
       </div>
 
       {/* 3. Conversational Capabilities & Skills */}
       <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider flex items-center gap-1.5">
               <span>Conversational Capabilities &amp; Skills</span>
               <InfoTooltip
-                content="Enable or disable specific conversational capabilities such as lead qualification, appointment booking, or human escalation."
+                content="Enable pre-configured telephony capabilities or define custom conversational skills tailored to your exact business workflow."
                 position="top"
               />
             </h3>
           </div>
-          <Badge variant="neutral" size="sm" className="text-[10px] font-semibold">
-            {currentCaps.length} of {AVAILABLE_CAPABILITIES.length} Active
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="neutral" size="sm" className="text-[10px] font-semibold">
+              {currentCaps.length} Active {customSkillsList.length > 0 ? `(${customSkillsList.length} custom)` : ""}
+            </Badge>
+            {!isAddingCustomSkill && (
+              <button
+                type="button"
+                onClick={() => setIsAddingCustomSkill(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-[var(--color-surface)] text-[var(--color-primary)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] hover:border-[var(--color-primary)]/60 hover:bg-[var(--color-primary-light)]/20 transition-all shadow-2xs"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add Custom Skill</span>
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Inline Add Custom Skill Form */}
+        {isAddingCustomSkill && (
+          <form
+            onSubmit={handleAddCustomSkill}
+            className="p-3.5 bg-[var(--color-surface-muted)]/70 border border-[var(--color-primary)]/40 rounded-xl space-y-3 animate-fade-in shadow-2xs"
+          >
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-[var(--color-heading)]">Add Custom Agent Skill</h4>
+                  <p className="text-[11px] text-[var(--color-muted)]">Define what this custom capability allows the agent to handle during calls.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingCustomSkill(false);
+                  setNewCustomSkillName("");
+                  setNewCustomSkillDesc("");
+                }}
+                className="text-[var(--color-muted)] hover:text-[var(--color-heading)] p-1 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[var(--color-heading)]">
+                  Skill Title <span className="text-[var(--color-danger)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCustomSkillName}
+                  onChange={(e) => setNewCustomSkillName(e.target.value)}
+                  placeholder="e.g. Check Order Status, Verify KYC, Offer Special Discount"
+                  className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-[var(--color-heading)]">
+                  Execution Instruction <span className="text-[10px] text-[var(--color-muted)] font-normal">(Optional guidance)</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCustomSkillDesc}
+                  onChange={(e) => setNewCustomSkillDesc(e.target.value)}
+                  placeholder="e.g. Ask for 6-digit order ID and look up delivery ETA"
+                  className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingCustomSkill(false);
+                  setNewCustomSkillName("");
+                  setNewCustomSkillDesc("");
+                }}
+                className="px-3 py-1 text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!newCustomSkillName.trim()}
+                className="px-3.5 py-1 text-xs font-semibold bg-[var(--color-primary)] text-white rounded-[var(--radius-main,0.375rem)] hover:bg-[var(--color-primary-hover)] disabled:opacity-50 transition-colors shadow-2xs flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Save Skill</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Capabilities Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {/* 1. Standard Built-in Capabilities */}
           {AVAILABLE_CAPABILITIES.map((cap) => {
             const isEnabled = currentCaps.includes(cap.id);
             const IconComp = CAPABILITY_ICONS[cap.id] || Sparkles;
@@ -487,8 +622,77 @@ export function Step2RoleConversation({
               </div>
             );
           })}
+
+          {/* 2. Custom User-Defined Capabilities */}
+          {customSkillsList.map((skillName) => {
+            const isEnabled = currentCaps.includes(skillName);
+
+            return (
+              <div
+                key={`custom-${skillName}`}
+                onClick={() => toggleCapability(skillName)}
+                className={`p-3 rounded-[var(--radius-main,0.5rem)] border transition-all cursor-pointer flex flex-col justify-between gap-2.5 select-none text-left relative ${
+                  isEnabled
+                    ? "bg-gradient-to-br from-[var(--color-primary)]/[0.06] to-transparent border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/30"
+                    : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className={`w-7 h-7 rounded-[var(--radius-main,0.375rem)] flex items-center justify-center shrink-0 transition-colors ${
+                        isEnabled
+                          ? "bg-[var(--color-primary)] text-white shadow-2xs"
+                          : "bg-[var(--color-surface-muted)] text-[var(--color-primary)] border border-[var(--color-border)]"
+                      }`}
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-semibold text-[var(--color-heading)] leading-snug truncate">
+                          {skillName}
+                        </h4>
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)] uppercase tracking-wider">
+                          Custom
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      title="Delete custom skill"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveCustomSkill(skillName);
+                      }}
+                      className="text-[var(--color-muted)] hover:text-[var(--color-danger)] p-0.5 rounded transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <div
+                      className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                        isEnabled
+                          ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                          : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface)]"
+                      }`}
+                    >
+                      {isEnabled && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[var(--color-muted)] leading-relaxed line-clamp-2">
+                  Custom conversational capability added specifically for this agent.
+                </p>
+              </div>
+            );
+          })}
         </div>
       </div>
+
 
       {/* 4. Organization Business Knowledge Base */}
       <div className="pt-2">

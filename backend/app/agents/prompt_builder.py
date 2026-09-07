@@ -14,6 +14,86 @@ class VoicePromptBuilder:
     """Builds human-grade, voice-specific system prompts from an AgentConfiguration."""
 
     @staticmethod
+    def resolve_dynamic_variables(
+        text: str,
+        config: AgentConfiguration,
+        business_profile: Optional[Union[dict, Any]] = None
+    ) -> str:
+        """
+        Substitutes dynamic template variables (e.g. {{company_name}}, {{agent_name}}, {{agent_role}}, etc.)
+        with real values from the business profile or agent configuration.
+        """
+        if not text:
+            return ""
+
+        profile_dict = business_profile
+        if hasattr(business_profile, "model_dump"):
+            profile_dict = business_profile.model_dump(mode="json")
+        elif hasattr(business_profile, "dict"):
+            profile_dict = business_profile.dict()
+
+        if not isinstance(profile_dict, dict):
+            profile_dict = {}
+
+        company_name = (
+            profile_dict.get("company_name")
+            or getattr(config, "company_name", None)
+            or config.name
+            or "our company"
+        ).strip()
+
+        agent_name = (config.name or "Alex").strip()
+        # Clean persona name if it ends with "Agent" etc.
+        spoken_agent_name = agent_name
+        for suffix in [" Agent", " Assistant", " Bot", " AI", " Specialist", " Representative"]:
+            if spoken_agent_name.endswith(suffix):
+                spoken_agent_name = spoken_agent_name[:-len(suffix)].strip()
+                if not spoken_agent_name:
+                    spoken_agent_name = "Alex"
+                break
+
+        agent_role = (config.role or "Representative").strip()
+        agent_objective = (config.objective or config.description or "assist you today").strip()
+
+        # Location
+        addr_parts = [
+            profile_dict.get("address", ""),
+            profile_dict.get("city", ""),
+            profile_dict.get("state", ""),
+            profile_dict.get("country", "")
+        ]
+        full_address = ", ".join([p.strip() for p in addr_parts if p and p.strip()]) or "our office"
+
+        # Hours
+        hours_data = profile_dict.get("operating_hours", {})
+        if isinstance(hours_data, dict):
+            hours_str = f"{hours_data.get('days', 'Monday - Saturday')} {hours_data.get('hours', '9:00 AM - 7:00 PM')}"
+        else:
+            hours_str = "Monday - Saturday 9:00 AM - 7:00 PM"
+
+        caller_phone = profile_dict.get("phone", "")
+        
+        # Replacement mapping
+        replacements = {
+            "{{company_name}}": company_name,
+            "{{agent_name}}": spoken_agent_name,
+            "{{agent_role}}": agent_role,
+            "{{agent_objective}}": agent_objective,
+            "{{caller_name}}": "the caller",
+            "{{caller_phone}}": caller_phone or "the caller's phone number",
+            "{{operating_hours}}": hours_str,
+            "{{office_location}}": full_address,
+            "{{current_time}}": "the current time"
+        }
+
+        result = text
+        for token, val in replacements.items():
+            result = result.replace(token, val)
+
+        return result
+
+
+    @staticmethod
     def _build_personality_instructions(config: AgentConfiguration) -> List[str]:
         p = config.personality
         directives = []
@@ -677,10 +757,12 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             personality_directives = VoicePromptBuilder._build_personality_instructions(config)
             personality_text = "\n".join(f"- {d}" for d in personality_directives[:4])
 
-            # Pre-trained Capabilities
+            # Capabilities & Custom Skills
             skills_directives = []
             if config.skills:
-                skills_directives.append("CAPABILITIES: " + ", ".join(config.skills))
+                skills_directives.append("[AUTHORIZED CALL CAPABILITIES & ACTIONS]")
+                for sk in config.skills:
+                    skills_directives.append(f"- {sk}: Fully authorized to execute this capability during calls when relevant.")
             skills_text = "\n".join(skills_directives) if skills_directives else ""
 
             parts = [
@@ -703,5 +785,12 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             ]
 
         compiled_prompt = "\n\n".join([p.strip() for p in parts if p and p.strip()])
-        return compiled_prompt.strip()
+        # Resolve any dynamic variables like {{company_name}}, {{agent_name}}, {{agent_role}}, etc.
+        resolved_prompt = VoicePromptBuilder.resolve_dynamic_variables(
+            compiled_prompt,
+            config=config,
+            business_profile=business_profile
+        )
+        return resolved_prompt.strip()
+
 
