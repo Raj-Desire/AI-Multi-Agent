@@ -72,15 +72,34 @@ class VoicePromptBuilder:
             hours_str = "Monday - Saturday 9:00 AM - 7:00 PM"
 
         caller_phone = profile_dict.get("phone", "")
-        
+        prospect_name = ""
+        prospect_phone = ""
+        prospect_company = ""
+        direction = "inbound"
+
+        if hasattr(config, "_call_direction"):
+            direction = getattr(config, "_call_direction", "inbound")
+
+        if hasattr(config, "_prospect_data") and isinstance(getattr(config, "_prospect_data"), dict):
+            pdata = getattr(config, "_prospect_data")
+            prospect_name = pdata.get("name") or pdata.get("prospect_name") or ""
+            prospect_phone = pdata.get("phone") or pdata.get("phone_number") or ""
+            prospect_company = pdata.get("company") or pdata.get("company_name") or ""
+
+        # Human-like caller greeting resolution: if prospect name is known use it, else polite neutral fallback
+        caller_name_resolved = prospect_name if prospect_name else ("there" if "Hi {{caller_name}}" in text or "Hello {{caller_name}}" in text else "")
+        caller_name_clean = caller_name_resolved.strip()
+
         # Replacement mapping
         replacements = {
             "{{company_name}}": company_name,
             "{{agent_name}}": spoken_agent_name,
             "{{agent_role}}": agent_role,
             "{{agent_objective}}": agent_objective,
-            "{{caller_name}}": "the caller",
-            "{{caller_phone}}": caller_phone or "the caller's phone number",
+            "{{caller_name}}": caller_name_clean or "there",
+            "{{prospect_name}}": prospect_name or "there",
+            "{{prospect_company}}": prospect_company or "your team",
+            "{{caller_phone}}": prospect_phone or caller_phone or "your phone number",
             "{{operating_hours}}": hours_str,
             "{{office_location}}": full_address,
             "{{current_time}}": "the current time"
@@ -89,6 +108,11 @@ class VoicePromptBuilder:
         result = text
         for token, val in replacements.items():
             result = result.replace(token, val)
+
+        # Clean double spaces or awkward punctuation from empty dynamic substitutions
+        import re
+        result = re.sub(r"\s+", " ", result)
+        result = result.replace(" ,", ",").replace(" ?", "?").replace(" !", "!").replace(" .", ".").strip()
 
         return result
 
@@ -643,13 +667,22 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             if w and p:
                 lines.append(f"- {w} -> Speak phonetically as \"{p}\"")
 
+        articulation_guidelines = (
+            "\nENTITY ARTICULATION & DIGIT GROUPING RULES (MANDATORY):\n"
+            "- PHONE NUMBERS: Never speak a phone number as billions or millions. Speak digit by digit in natural human cadence (e.g., '9 8 7 6 5, 4 3 2 1 0').\n"
+            "- CURRENCIES & AMOUNTS: Spell out amounts clearly (e.g., say '1.5 crore rupees' or '50 thousand rupees', not raw symbols like '₹1.5Cr').\n"
+            "- UNITS & DIMENSIONS: Speak full words for dimensions and units (e.g., say 'square feet', not 'sq ft'; say '2 B-H-K', not '2bhk').\n"
+            "- CLEAN SPOKEN TEXT: NEVER output asterisks, hashtags, or markdown tables. Speak pure natural conversational text."
+        )
+
         if not lines:
-            return ""
+            return f"[MANDATORY PHONETIC PRONUNCIATION & SPOKEN OVERRIDES]{articulation_guidelines}"
 
         return (
             "[MANDATORY PHONETIC PRONUNCIATION & SPOKEN OVERRIDES]\n"
             "When mentioning any of the following names, cities, acronyms, or specialized terminology, you MUST speak their phonetic representation so the voice synthesizer articulates them with flawless, human-grade clarity:\n"
-            + "\n".join(lines[:25])
+            + "\n".join(lines[:30])
+            + articulation_guidelines
         )
 
     @staticmethod
@@ -660,9 +693,11 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             return ""
 
         return (
-            "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION]\n"
-            "- BRIEF USER INTERRUPTIONS: If the caller interrupts with brief filler words ('Wait', 'Sorry', 'Go on', 'Nevermind', 'Continue') or a short clarifying sound, NEVER restart your previous answer or greeting from the beginning.\n"
-            "- SEAMLESS RECOVERY: Acknowledge in 2-3 words (e.g., 'Right, as I was saying...', 'Sure thing — so...') and resume directly from the specific unsaid point with concise clarity."
+            "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION (MANDATORY)]\n"
+            "- AVOID RESTARTING: If the caller interrupts with brief acknowledgments, questions, or filler words ('Wait', 'Sorry', 'Go on', 'Continue', 'Yes', 'Okay'), NEVER restart your previous answer or greeting from the beginning.\n"
+            "- DIRECT RESOLUTION FIRST: If the caller asked a clarifying question or expressed an objection during the interruption, answer that question or objection first in 1 concise sentence.\n"
+            "- NATURAL BRIDGING: If the caller's interruption was a momentary acknowledgment or brief pause, bridge gracefully using natural conversational transitions (e.g., 'Right, as I was saying...', 'Sure thing — so as I mentioned...', 'Got it — coming back to that...') and conclude the unsaid thought concisely.\n"
+            "- NEVER DUMP TEXT: Even after an interruption, keep your resumed answer strictly under 2 sentences."
         )
 
     @staticmethod
@@ -733,7 +768,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
 1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Never deliver robotic monologues or dump paragraphs.
-2. SINGLE QUESTION CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally.
+2. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions (do not ask 'What is your name and what can I help you with?'). If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
 3. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
 4. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team to see if a quick chat is worth your time!") and smoothly steer back to the topic.
 5. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.

@@ -253,6 +253,7 @@ export interface AgentListenConfig {
 export interface AgentRuntimeSettings {
   barge_in_enabled: boolean;
   interruption_sensitivity: number;
+  turn_delay_ms?: number;
   silence_timeout: number;
   silence_reprompt_message?: string;
   silence_hangup_delay?: number;
@@ -262,6 +263,7 @@ export interface AgentRuntimeSettings {
   retry_attempts?: number;
   auto_hangup_on_completion?: boolean;
   conversational_fillers_enabled?: boolean;
+  filler_delay_seconds?: number;
   filler_phrases?: string[];
   backchanneling_enabled?: boolean;
   backchannel_interval_seconds?: number;

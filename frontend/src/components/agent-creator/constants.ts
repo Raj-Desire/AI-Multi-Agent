@@ -688,16 +688,42 @@ export const CREATOR_STEPS = [
 ];
 
 export const DEFAULT_PRONUNCIATION_RULES = [
+  // General spoken clarity
   { word: "Schedule", phonetic: "sked-jool", category: "general" },
   { word: "Status", phonetic: "stay-tuhs", category: "general" },
   { word: "Route", phonetic: "root", category: "general" },
   { word: "Suite", phonetic: "sweet", category: "general" },
   { word: "Data", phonetic: "day-tuh", category: "general" },
+  
+  // Telephony & Business acronyms
   { word: "B2B", phonetic: "B-to-B", category: "acronyms" },
+  { word: "B2C", phonetic: "B-to-C", category: "acronyms" },
   { word: "FAQ", phonetic: "F-A-Q", category: "acronyms" },
   { word: "API", phonetic: "A-P-I", category: "acronyms" },
   { word: "VIP", phonetic: "V-I-P", category: "acronyms" },
-  { word: "CRM", phonetic: "C-R-M", category: "acronyms" }
+  { word: "CRM", phonetic: "C-R-M", category: "acronyms" },
+  { word: "IVR", phonetic: "I-V-R", category: "acronyms" },
+  { word: "SLA", phonetic: "S-L-A", category: "acronyms" },
+  { word: "OTP", phonetic: "O-T-P", category: "acronyms" },
+  { word: "SMS", phonetic: "S-M-S", category: "acronyms" },
+  { word: "GST", phonetic: "G-S-T", category: "acronyms" },
+  
+  // Indian cities and proper nouns
+  { word: "Ahmedabad", phonetic: "Ahm-da-baad", category: "indian_places" },
+  { word: "Bengaluru", phonetic: "Beng-guh-loo-roo", category: "indian_places" },
+  { word: "Bangalore", phonetic: "Bang-guh-lore", category: "indian_places" },
+  { word: "Pune", phonetic: "Poo-nay", category: "indian_places" },
+  { word: "Jaipur", phonetic: "Jye-poor", category: "indian_places" },
+  { word: "Kolkata", phonetic: "Kohl-kaa-tah", category: "indian_places" },
+  { word: "Hyderabad", phonetic: "Hye-der-uh-baad", category: "indian_places" },
+  { word: "Chennai", phonetic: "Chen-nye", category: "indian_places" },
+  { word: "Gurgaon", phonetic: "Goor-gao", category: "indian_places" },
+  { word: "Gurugram", phonetic: "Goo-roo-grahm", category: "indian_places" },
+  
+  // Real Estate & Business units
+  { word: "Sq. Ft.", phonetic: "square feet", category: "general" },
+  { word: "Sqft", phonetic: "square feet", category: "general" },
+  { word: "BHK", phonetic: "B-H-K", category: "acronyms" }
 ];
 
 
@@ -798,10 +824,10 @@ export function getInitialAgentData(): AgentConfig {
       provider: "deepgram",
       model: "nova-3",
       language: "en",
-      endpointing: 900,
-      endpointing_mode: "adaptive",
-      dictation_endpointing: 1400,
-      rapid_endpointing: 500
+      endpointing: 550,
+      endpointing_mode: "balanced",
+      dictation_endpointing: 900,
+      rapid_endpointing: 450
     },
     llm: {
       provider: "open_ai",
@@ -812,6 +838,7 @@ export function getInitialAgentData(): AgentConfig {
     runtime: {
       barge_in_enabled: true,
       interruption_sensitivity: 0.8,
+      turn_delay_ms: 250,
       silence_timeout: 5,
       silence_reprompt_message: "Are you still there? I'm here if you have any questions.",
       silence_hangup_delay: 5,
@@ -821,19 +848,22 @@ export function getInitialAgentData(): AgentConfig {
       retry_attempts: 2,
       auto_hangup_on_completion: true,
       conversational_fillers_enabled: true,
+      filler_delay_seconds: 0.95,
       filler_phrases: [
-        "Got it, let me check that for you...",
-        "Understood, give me one moment...",
-        "Sure thing, looking into that right now...",
-        "Let me see..."
+        "Let me check that for you...",
+        "Got it, one moment please...",
+        "Understood, looking into that right now...",
+        "Sure thing, let me pull that up...",
+        "Alright, let me see..."
       ],
       backchanneling_enabled: true,
-      backchannel_interval_seconds: 4.5,
+      backchannel_interval_seconds: 4.0,
       backchannel_phrases: [
-        "Mhm",
         "Right",
-        "I understand",
-        "Yeah"
+        "Mhm",
+        "Understood",
+        "I see",
+        "Okay"
       ],
       ambient_noise_filtering: true,
       barge_in_min_speech_duration_ms: 220,
