@@ -358,6 +358,8 @@ export interface AgentConfig {
   closing_message?: string;
   system_prompt?: string | null;
   include_business_knowledge?: boolean;
+  knowledge_mode?: 'auto' | 'specific' | 'disabled';
+  attached_document_ids?: string[];
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
   few_shot_examples?: FewShotExample[];
@@ -965,3 +967,39 @@ export interface LeadActionRequest {
   tags?: string[];
   assigned_owner?: string;
 }
+
+export interface KnowledgeDocument {
+  id: string;
+  organization_id: string;
+  filename: string;
+  file_type: 'pdf' | 'docx' | 'txt';
+  file_size_bytes: number;
+  title: string;
+  category: string;
+  description?: string | null;
+  total_chunks: number;
+  total_characters: number;
+  status: 'indexed' | 'indexing' | 'failed';
+  error_message?: string | null;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  category: string;
+  content: string;
+  similarity_score: number;
+  chunk_index: number;
+}
+
+export interface KnowledgeSearchResponse {
+  query: string;
+  results: KnowledgeSearchResult[];
+  latency_ms: number;
+  total_results: number;
+}
+

@@ -20,6 +20,7 @@ from app.api.v1.business_profile import router as business_profile_router
 from app.api.v1.prospects import router as prospects_router
 from app.api.v1.campaigns import router as campaigns_router
 from app.api.v1.lead_intelligence import router as lead_intelligence_router
+from app.api.v1.knowledge import router as knowledge_router
 from app.voice.gateway import router as gateway_router
 from app.core.cosmos import init_cosmos_db
 from app.services.campaign_dialer import campaign_dialer_engine
@@ -74,6 +75,7 @@ app.include_router(voice_router, prefix="/api/v1")
 app.include_router(prospects_router, prefix="/api/v1")
 app.include_router(campaigns_router, prefix="/api/v1")
 app.include_router(lead_intelligence_router, prefix="/api/v1")
+app.include_router(knowledge_router, prefix="/api/v1")
 app.include_router(gateway_router, prefix="/api/v1")
 
 

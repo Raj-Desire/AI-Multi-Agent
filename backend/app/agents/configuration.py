@@ -305,6 +305,8 @@ class AgentConfiguration(BaseModel):
     closing_message: Optional[str] = "Thank you for speaking with us today. Have a great day!"
     system_prompt: Optional[str] = None
     include_business_knowledge: bool = True
+    knowledge_mode: str = "auto"  # "auto" | "specific" | "disabled"
+    attached_document_ids: List[str] = Field(default_factory=list)
     custom_knowledge: Optional[str] = None
 
     # Phonetic Pronunciation Dictionaries

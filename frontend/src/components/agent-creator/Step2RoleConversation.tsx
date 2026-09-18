@@ -29,7 +29,7 @@ import {
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AVAILABLE_CAPABILITIES } from "./constants";
-import { AgentConfig, CompanyBusinessProfile, BusinessServiceItem, AgentServiceItem } from "../../types";
+import { AgentConfig, CompanyBusinessProfile, BusinessServiceItem, AgentServiceItem, KnowledgeDocument } from "../../types";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
 
@@ -180,9 +180,65 @@ export function Step2RoleConversation({
   const [newServiceDesc, setNewServiceDesc] = useState("");
   const [newServicePricing, setNewServicePricing] = useState("");
 
+  // Documents Library & Scoped RAG State
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+
   useEffect(() => {
     fetchBusinessProfile();
+    fetchKnowledgeDocuments();
   }, []);
+
+  const fetchKnowledgeDocuments = async () => {
+    try {
+      setLoadingDocs(true);
+      const docs = await fetchApi<KnowledgeDocument[]>("/knowledge/documents");
+      if (Array.isArray(docs)) {
+        setDocuments(docs);
+      }
+    } catch (err) {
+      console.warn("Could not fetch knowledge documents for step 2:", err);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const handleKnowledgeModeChange = (mode: 'auto' | 'specific' | 'disabled') => {
+    setAgentData((prev) => ({
+      ...prev,
+      knowledge_mode: mode,
+      // If switching to disabled, also set include_business_knowledge appropriately
+      include_business_knowledge: mode !== 'disabled'
+    }));
+  };
+
+  const toggleDocumentSelection = (docId: string) => {
+    const current = agentData.attached_document_ids || [];
+    const updated = current.includes(docId)
+      ? current.filter((id) => id !== docId)
+      : [...current, docId];
+    setAgentData((prev) => ({
+      ...prev,
+      knowledge_mode: 'specific',
+      attached_document_ids: updated
+    }));
+  };
+
+  const selectAllDocuments = () => {
+    setAgentData((prev) => ({
+      ...prev,
+      knowledge_mode: 'specific',
+      attached_document_ids: documents.map((d) => d.id)
+    }));
+  };
+
+  const deselectAllDocuments = () => {
+    setAgentData((prev) => ({
+      ...prev,
+      knowledge_mode: 'specific',
+      attached_document_ids: []
+    }));
+  };
 
   const fetchBusinessProfile = async () => {
     try {
@@ -899,6 +955,178 @@ export function Step2RoleConversation({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Attached Knowledge Documents (Scoped RAG) */}
+          {(agentData.include_business_knowledge ?? true) && (
+            <div className="p-3.5 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[var(--color-primary)]" />
+                  <div>
+                    <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                      <span>Attached Knowledge Documents (Vector RAG)</span>
+                      <InfoTooltip
+                        content="Select specific uploaded documents (e.g. Hotel Menu, Clinic FAQs, Real Estate Brochure) to isolate the agent's knowledge search and prevent cross-brand confusion."
+                        position="top"
+                      />
+                    </h4>
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      Control which document files this agent queries during live conversations.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-[var(--color-surface)] p-1 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)]">
+                  <button
+                    type="button"
+                    onClick={() => handleKnowledgeModeChange("auto")}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer ${
+                      (agentData.knowledge_mode || "auto") === "auto"
+                        ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
+                        : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                    }`}
+                  >
+                    Auto (All Docs)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKnowledgeModeChange("specific")}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer ${
+                      agentData.knowledge_mode === "specific"
+                        ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
+                        : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                    }`}
+                  >
+                    Specific Documents
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleKnowledgeModeChange("disabled")}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-[var(--radius-main,0.25rem)] transition-all cursor-pointer ${
+                      agentData.knowledge_mode === "disabled"
+                        ? "bg-[var(--color-danger)] text-white shadow-2xs font-semibold"
+                        : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                    }`}
+                  >
+                    Disabled
+                  </button>
+                </div>
+              </div>
+
+              {/* Mode Description Banner */}
+              {agentData.knowledge_mode === "disabled" ? (
+                <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+                  <div className="flex items-center gap-2">
+                    <Info className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                    <span>
+                      <strong className="text-[var(--color-heading)]">Disabled Mode:</strong> This agent will not query any indexed documents or global company knowledge.
+                    </span>
+                  </div>
+                </div>
+              ) : (agentData.knowledge_mode || "auto") === "auto" ? (
+                <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                    <span>
+                      <strong className="text-[var(--color-heading)]">Auto Mode:</strong> The agent automatically searches across all indexed documents ({documents.length} available) in your organization.
+                    </span>
+                  </div>
+                  <Badge variant="neutral" size="sm" className="text-[10px]">
+                    {documents.length} Docs Indexed
+                  </Badge>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--color-muted)]">
+                      Select the specific documents to attach to this agent:
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={selectAllDocuments}
+                        className="text-[10px] font-medium text-[var(--color-primary)] hover:underline cursor-pointer"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-[10px] text-[var(--color-muted)]">•</span>
+                      <button
+                        type="button"
+                        onClick={deselectAllDocuments}
+                        className="text-[10px] font-medium text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:underline cursor-pointer"
+                      >
+                        Clear Selection
+                      </button>
+                      <Badge variant="neutral" size="sm" className="text-[10px] ml-1">
+                        {(agentData.attached_document_ids || []).length} of {documents.length} Selected
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {loadingDocs ? (
+                    <div className="p-6 text-center">
+                      <Loader2 className="w-4 h-4 animate-spin text-[var(--color-primary)] mx-auto" />
+                      <span className="text-xs text-[var(--color-muted)] mt-2 block">Loading document library...</span>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-center space-y-1">
+                      <FileText className="w-5 h-5 text-[var(--color-muted)] mx-auto opacity-50" />
+                      <p className="text-xs font-medium text-[var(--color-heading)]">No indexed documents found</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">
+                        Upload PDFs, manuals, or rate cards in <strong className="text-[var(--color-heading)]">Business Profile &gt; Documents &amp; RAG</strong> to attach them here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {documents.map((doc) => {
+                        const isAttached = (agentData.attached_document_ids || []).includes(doc.id);
+                        return (
+                          <div
+                            key={doc.id}
+                            onClick={() => toggleDocumentSelection(doc.id)}
+                            className={`p-2.5 px-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between gap-2 select-none ${
+                              isAttached
+                                ? "bg-[var(--color-surface)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/40 font-semibold"
+                                : "bg-[var(--color-surface)] border-[var(--color-border)] opacity-75 hover:opacity-100 hover:border-[var(--color-border-strong,var(--color-border))]"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                  isAttached
+                                    ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                                    : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface-muted)]"
+                                }`}
+                              >
+                                {isAttached && <Check className="w-3 h-3 stroke-[2.5]" />}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <h5 className="text-xs font-bold text-[var(--color-heading)] truncate">
+                                    {doc.title || doc.filename}
+                                  </h5>
+                                  <span className="text-[9px] uppercase px-1 py-0.2 bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] rounded shrink-0">
+                                    {doc.file_type}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-[var(--color-muted)] truncate">
+                                  {doc.category || "General"} • {doc.total_chunks} chunks
+                                </p>
+                              </div>
+                            </div>
+
+                            <Badge variant={isAttached ? "primary" : "neutral"} size="sm" className="text-[9px] shrink-0">
+                              {isAttached ? "Attached" : "Excluded"}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -55,10 +55,16 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
     }
   }
 
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string> || {}),
   };
+
+  if (isFormData) {
+    delete headers["Content-Type"];
+  }
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
@@ -84,7 +90,13 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
       }
       
       if (!res.ok) {
-        throw new Error(json.detail || json.error?.message || "API request failed");
+        let errDetail = json.detail || json.error?.message || json.message;
+        if (Array.isArray(errDetail)) {
+          errDetail = errDetail.map((e: any) => e.msg || JSON.stringify(e)).join(", ");
+        } else if (typeof errDetail === "object" && errDetail !== null) {
+          errDetail = JSON.stringify(errDetail);
+        }
+        throw new Error(errDetail || `API request failed with status ${res.status}`);
       }
 
       const resultData = json.success !== undefined ? json.data : json;

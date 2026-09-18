@@ -532,38 +532,38 @@ export const DEFAULT_CONVERSATION_FLOWS = [
 
 export const AURA_VOICES = [
   // Aura Voices (English)
-  { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales." },
-  { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups." },
-  { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking." },
-  { id: "aura-stella-en", name: "Stella", language: "en", gender: "Female", style: "Friendly & Clear", description: "Upbeat, energetic, and articulate. Perfect for reminders and sales hooks." },
-  { id: "aura-arcas-en", name: "Arcas", language: "en", gender: "Male", style: "Conversational & Grounded", description: "Conversational, relatable, and steady. Suited for customer care & surveys." },
-  { id: "aura-athena-en", name: "Athena", language: "en", gender: "Female", style: "Authoritative & Clear", description: "Clear, crisp, and direct. Suited for technical support and billing." },
-  { id: "aura-hera-en", name: "Hera", language: "en", gender: "Female", style: "Confident & Polished", description: "Confident, executive, and engaging. Great for corporate consultation." },
-  { id: "aura-perseus-en", name: "Perseus", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead generation." },
-  { id: "aura-angus-en", name: "Angus", language: "en", gender: "Male", style: "Deep & Formal", description: "Deep, formal, and trustworthy. Suited for healthcare and legal reminders." },
-  { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates." },
-  { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice." },
+  { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-stella-en", name: "Stella", language: "en", gender: "Female", style: "Friendly & Clear", description: "Upbeat, energetic, and articulate. Perfect for reminders and sales hooks.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-arcas-en", name: "Arcas", language: "en", gender: "Male", style: "Conversational & Grounded", description: "Conversational, relatable, and steady. Suited for customer care & surveys.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-athena-en", name: "Athena", language: "en", gender: "Female", style: "Authoritative & Clear", description: "Clear, crisp, and direct. Suited for technical support and billing.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-hera-en", name: "Hera", language: "en", gender: "Female", style: "Confident & Polished", description: "Confident, executive, and engaging. Great for corporate consultation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-perseus-en", name: "Perseus", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead generation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-angus-en", name: "Angus", language: "en", gender: "Male", style: "Deep & Formal", description: "Deep, formal, and trustworthy. Suited for healthcare and legal reminders.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
 
   // Aura-2 Multilingual Voices
-  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Next-gen expressive conversational female voice." },
-  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Expressive conversational female voice." },
-  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Dynamic conversational male voice." },
-  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice." },
-  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Natural Spanish male voice." },
-  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Natural German female voice." },
-  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Natural French female voice." },
-  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice." },
-  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice." }
+  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Next-gen expressive conversational female voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Expressive conversational female voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Dynamic conversational male voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice.", sampleText: "¡Hola! Soy tu asistente de voz con inteligencia artificial. ¿En qué puedo ayudarte hoy?" },
+  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Natural Spanish male voice.", sampleText: "¡Hola! Soy tu asistente de voz con inteligencia artificial. ¿En qué puedo ayudarte hoy?" },
+  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Natural German female voice.", sampleText: "Hallo! Ich bin Ihre KI-Sprachassistentin. Wie kann ich Ihnen heute helfen?" },
+  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Natural French female voice.", sampleText: "Bonjour ! Je suis votre assistante vocale avec intelligence artificielle. Comment puis-je vous aider aujourd'hui ?" },
+  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice.", sampleText: "Ciao! Sono il tuo assistente vocale intelligente. Come posso aiutarti oggi?" },
+  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice.", sampleText: "こんにちは！AI音声アシスタントです。本日はどのようなご用件でしょうか？" }
 ];
 
 export const SUPPORTED_LANGUAGES = [
-  { code: "en", label: "English (US / Global Standard)", native: "English" },
-  { code: "es", label: "Spanish (Español)", native: "Español" },
-  { code: "fr", label: "French (Français)", native: "Français" },
-  { code: "de", label: "German (Deutsch)", native: "Deutsch" },
-  { code: "it", label: "Italian (Italiano)", native: "Italiano" },
-  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands" },
-  { code: "ja", label: "Japanese (日本語)", native: "日本語" }
+  { code: "en", label: "English (US / Global Standard)", native: "English", defaultVoice: "aura-asteria-en" },
+  { code: "es", label: "Spanish (Español)", native: "Español", defaultVoice: "aura-2-agustina-es" },
+  { code: "fr", label: "French (Français)", native: "Français", defaultVoice: "aura-2-agathe-fr" },
+  { code: "de", label: "German (Deutsch)", native: "Deutsch", defaultVoice: "aura-2-aurelia-de" },
+  { code: "it", label: "Italian (Italiano)", native: "Italiano", defaultVoice: "aura-2-cesare-it" },
+  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands", defaultVoice: "aura-2-thalia-en" },
+  { code: "ja", label: "Japanese (日本語)", native: "日本語", defaultVoice: "aura-2-ama-ja" }
 ];
 
 export const LLM_MODELS = [

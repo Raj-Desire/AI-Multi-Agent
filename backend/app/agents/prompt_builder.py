@@ -279,10 +279,14 @@ class VoicePromptBuilder:
             )
 
     @staticmethod
-    def _build_business_knowledge_section(config: AgentConfiguration, business_profile: Optional[Union[dict, Any]] = None) -> str:
-        """Constructs human-grade, spoken telephony business facts with custom prompt overrides."""
+    def _build_business_knowledge_section(
+        config: AgentConfiguration,
+        business_profile: Optional[Union[dict, Any]] = None,
+        vector_rag_context: Optional[str] = None
+    ) -> str:
+        """Constructs human-grade, spoken telephony business facts with custom prompt overrides and dynamic vector RAG snippets."""
         include_bk = config.include_business_knowledge if config.include_business_knowledge is not None else True
-        if not include_bk and not config.custom_knowledge:
+        if not include_bk and not config.custom_knowledge and not vector_rag_context:
             return ""
 
         sections = []
@@ -294,8 +298,53 @@ class VoicePromptBuilder:
         elif hasattr(business_profile, "dict"):
             profile_dict = business_profile.dict()
 
-        # 1. Organization Knowledge Base (if enabled)
-        if include_bk and isinstance(profile_dict, dict):
+        # 1. Attached Specific Knowledge Documents (HIGHEST FACTUAL PRIORITY)
+        attached_docs_context = []
+        if config.attached_document_ids and len(config.attached_document_ids) > 0:
+            try:
+                from app.repositories.knowledge_repository import knowledge_repository
+                org_id = getattr(config, "organization_id", "global") or "global"
+                attached_chunks = knowledge_repository.get_chunks_for_document_ids_sync(
+                    org_id=org_id,
+                    document_ids=config.attached_document_ids,
+                    max_chunks_per_doc=5
+                )
+                if attached_chunks:
+                    doc_titles_seen = set()
+                    for chk in attached_chunks:
+                        d_meta = knowledge_repository.get_document_by_id_sync(org_id, chk.document_id)
+                        d_name = d_meta.title if d_meta else "Knowledge Document"
+                        doc_titles_seen.add(d_name)
+                        attached_docs_context.append(f"[{d_name} - Excerpt]: {chk.content}")
+
+                    if attached_docs_context:
+                        doc_names_str = ", ".join(doc_titles_seen)
+                        sections.append(
+                            f"[ATTACHED SPECIFIC KNOWLEDGE DOCUMENTS & DOMAIN TRUTH (Source: {doc_names_str})]\n"
+                            f"- The following verified facts are extracted from the specific document(s) attached to this agent. These facts take ABSOLUTE HIGHEST PRECEDENCE over any general organization details:\n"
+                            + "\n\n".join(attached_docs_context)
+                        )
+            except Exception as e:
+                print(f"[VoicePromptBuilder] Warning loading attached document chunks: {e}")
+
+        # 2. Dynamic Vector RAG Grounding Passages (if retrieved during active turn)
+        if vector_rag_context and vector_rag_context.strip():
+            sections.append(
+                f"[RELEVANT DOCUMENT EXCERPTS & VERIFIED KNOWLEDGE (RAG)]\n"
+                f"- The following verified excerpts were retrieved from indexed organization documentation:\n"
+                f"{vector_rag_context.strip()}"
+            )
+
+        # 3. Agent-Specific Custom Knowledge & Parameter Overrides (HIGH PRIORITY)
+        if config.custom_knowledge and config.custom_knowledge.strip():
+            sections.append(
+                f"[AGENT-SPECIFIC CUSTOM KNOWLEDGE & PRIORITY OVERRIDES]\n"
+                f"- The following instructions and facts are specific to this agent and OVERRIDE any default company facts below whenever there is a conflict:\n"
+                f"{config.custom_knowledge.strip()}"
+            )
+
+        # 4. Organization Knowledge Base (if enabled and NOT disabled)
+        if include_bk and config.knowledge_mode != "disabled" and isinstance(profile_dict, dict):
             name = profile_dict.get("company_name") or config.name or "our company"
             tagline = profile_dict.get("tagline", "")
             intro = profile_dict.get("company_introduction", "")
@@ -316,7 +365,7 @@ class VoicePromptBuilder:
             faqs = profile_dict.get("faqs", [])
             notes = profile_dict.get("additional_notes", "")
 
-            lines = [f"[ORGANIZATION BUSINESS KNOWLEDGE BASE (You represent '{name}')]"]
+            lines = [f"[GENERAL ORGANIZATION / HOLDING COMPANY FACTS (Company: '{name}')]"]
             if tagline:
                 lines.append(f"- Company Tagline: {tagline}")
             if intro:
@@ -340,7 +389,7 @@ class VoicePromptBuilder:
                 elif hasattr(hours, "days"):
                     lines.append(f"- Operating Hours: {hours.days}, {hours.hours} ({hours.timezone}). Closed on {hours.closed_on}.")
 
-            # Extract services: prioritize agent's explicitly selected services if present, otherwise fallback to business profile services
+            # Extract services: only if not already superseded by specific attached documents
             srv_strs = []
             selected_agent_services = [s for s in (config.services or []) if (isinstance(s, dict) and s.get("enabled", True)) or (hasattr(s, "enabled") and getattr(s, "enabled", True))]
             
@@ -363,7 +412,7 @@ class VoicePromptBuilder:
                         srv_strs.append(srv_line)
                     elif isinstance(s, str) and s.strip():
                         srv_strs.append(s.strip())
-            elif services:
+            elif services and not attached_docs_context:
                 for s in services:
                     if isinstance(s, dict) and s.get("enabled", True):
                         name_val = s.get("name", "")
@@ -384,7 +433,7 @@ class VoicePromptBuilder:
                         srv_strs.append(s.strip())
 
             if srv_strs:
-                lines.append(f"- Company Services & Solutions Offered:\n  * " + "\n  * ".join(srv_strs))
+                lines.append(f"- General Services & Solutions Offered:\n  * " + "\n  * ".join(srv_strs))
 
             if faqs:
                 faq_strs = []
@@ -408,26 +457,26 @@ class VoicePromptBuilder:
             if len(lines) > 1:
                 sections.append("\n".join(lines))
 
-        # 2. Agent-Specific Custom Knowledge & Parameter Overrides (HIGHEST PRIORITY)
-        if config.custom_knowledge and config.custom_knowledge.strip():
-            sections.append(
-                f"[AGENT-SPECIFIC CUSTOM KNOWLEDGE & PRIORITY OVERRIDES]\n"
-                f"- The following instructions and facts are specific to this agent and OVERRIDE any default company facts above whenever there is a conflict:\n"
-                f"{config.custom_knowledge.strip()}"
-            )
-
         if not sections:
             return ""
 
         return (
             "[VERIFIED SPOKEN KNOWLEDGE BASE & TELEPHONY FACTS]\n"
             + "\n\n".join(sections)
-            + "\n\nCRITICAL SPOKEN KNOWLEDGE & FAQ GROUNDING RULES (MANDATORY):\n"
-            "- EXACT FACT FIDELITY: When the customer asks about your company name, services, products, pricing, phone number, email, website, office location/address, operating hours, or FAQs, YOU MUST CITE AND USE ONLY THE VERIFIED FACTS LISTED ABOVE.\n"
-            "- SEMANTIC INTENT MATCHING: Recognize caller questions regardless of phrasing (e.g., 'where are you located', 'what's your address', 'head office', 'office location' all match the Head Office Location; 'how do I call you', 'phone number', 'contact number' match Contact Phone Number).\n"
-            "- FACTUAL CONFIDENCE: Never claim you do not know or lack information if the fact is present in this knowledge base.\n"
-            "- OVERRIDE PRIORITY: If a custom detail is specified in [AGENT-SPECIFIC CUSTOM KNOWLEDGE], ALWAYS speak that custom detail instead of the general company default.\n"
-            "- ZERO HALLUCINATION: Never invent, guess, or hallucinate phone numbers, emails, addresses, discounts, or services outside of this verified knowledge base."
+            + "\n\nCRITICAL SPOKEN KNOWLEDGE, ENTITY DISTINCTION & GROUNDING RULES (MANDATORY):\n"
+            "- ENTITY & PROPERTY NAME DISTINCTION:\n"
+            "  * If the caller asks for the name of the resort, hotel, property, clinic, product, or specific location, ALWAYS provide the exact property/product name mentioned in [ATTACHED SPECIFIC KNOWLEDGE DOCUMENTS] or [AGENT-SPECIFIC CUSTOM KNOWLEDGE].\n"
+            "  * NEVER confuse or substitute the holding organization/parent company name with the specific resort, hotel, clinic, or product name.\n"
+            "- EXACT FACT FIDELITY: When the customer asks about available rooms, packages, services, pricing, amenities, check-in times, or policies, cite and use the verified details from the attached knowledge documents above.\n"
+            "- COMPOUND REQUIREMENT & PREFERENCE HANDLING:\n"
+            "  * If the caller provides multi-part criteria (e.g., party size, number of couples/guests, budget constraints, room preference vs ocean view), acknowledge all elements directly in your next response without getting stuck or pausing.\n"
+            "  * Instantly match their criteria against the attached knowledge base (e.g. recommend 2 budget/standard rooms or a multi-bedroom family suite for 2 couples seeking affordable rates) and state the exact rates and features.\n"
+            "- DYNAMIC CUSTOMER QUALIFICATION & CONSULTATIVE DISCOVERY:\n"
+            "  * When a customer asks a broad or multi-option question (e.g. 'Which type of room is available and what is the cost?'), do NOT dump all options in a long list.\n"
+            "  * Deliver a concise 1-sentence overview of the top options with starting prices, then immediately follow up with ONE natural, consultative qualifying question tailored to their needs (e.g., 'We offer our Standard King Suite from $250 and Deluxe Villas from $450 per night. How many guests will be joining you, and which dates are you planning?').\n"
+            "  * Once the caller shares their preferences, dynamically recommend the exact best-fitting option from the knowledge base and offer to proceed with booking.\n"
+            "- SEMANTIC INTENT MATCHING: Recognize caller questions regardless of phrasing, accents, or slight conversational hesitations.\n"
+            "- ZERO HALLUCINATION: Never invent, guess, or hallucinate prices, discounts, rooms, or features outside of this verified knowledge base."
         )
 
     @staticmethod

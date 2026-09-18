@@ -153,7 +153,7 @@ export function Sidebar({
       items: [
         {
           id: "business_profile",
-          label: "Company Knowledge",
+          label: "Org Knowledge",
           icon: Building2,
           visible: true,
           badge: "Brain",

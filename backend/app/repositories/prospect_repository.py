@@ -122,23 +122,32 @@ class ProspectRepository:
         sort_order: str = "desc"
     ) -> Tuple[List[Prospect], int]:
         def _sync_list():
-            container = get_prospects_container()
-            all_prospects_dict: Dict[str, Prospect] = {
-                p.id: p for p in self._memory_store.values() if p.organization_id == organization_id
-            }
+            now_ts = time.time()
+            all_prospects: List[Prospect] = []
+            if organization_id in _PROSPECT_CACHE:
+                cached_data, cached_time = _PROSPECT_CACHE[organization_id]
+                if now_ts - cached_time < PROSPECT_CACHE_TTL_SECONDS:
+                    all_prospects = cached_data
 
-            if container:
-                query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
-                params = [{"name": "@organization_id", "value": organization_id}]
-                try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                    for item in items:
-                        p = Prospect.model_validate(item)
-                        all_prospects_dict[p.id] = p
-                except Exception as e:
-                    print(f"[ProspectRepository Error] list_by_org: {e}")
+            if not all_prospects:
+                container = get_prospects_container()
+                all_prospects_dict: Dict[str, Prospect] = {
+                    p.id: p for p in self._memory_store.values() if p.organization_id == organization_id
+                }
 
-            all_prospects = list(all_prospects_dict.values())
+                if container:
+                    query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
+                    params = [{"name": "@organization_id", "value": organization_id}]
+                    try:
+                        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                        for item in items:
+                            p = Prospect.model_validate(item)
+                            all_prospects_dict[p.id] = p
+                    except Exception as e:
+                        print(f"[ProspectRepository Error] list_by_org: {e}")
+
+                all_prospects = list(all_prospects_dict.values())
+                _PROSPECT_CACHE[organization_id] = (all_prospects, now_ts)
 
             # In-memory filtering for flexible, rich querying
             filtered = all_prospects
