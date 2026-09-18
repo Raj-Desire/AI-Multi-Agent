@@ -278,6 +278,9 @@ export interface AgentGuardrails {
   restricted_actions: string[];
   disabled_restrictions?: string[];
   escalation_rules: string[];
+  human_transfer_enabled?: boolean;
+  human_transfer_phone_number?: string;
+  human_transfer_whisper_message?: string;
 }
 
 export interface BusinessServiceItem {

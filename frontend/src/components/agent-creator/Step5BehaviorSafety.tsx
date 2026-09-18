@@ -945,6 +945,87 @@ export function Step5BehaviorSafety({
                   ))
                 )}
               </div>
+
+              {/* Live Human Transfer Routing Destination Settings */}
+              <div className="mt-3 p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="text-xs font-bold text-[var(--color-heading)]">Live Human Forwarding Target</span>
+                    <Badge variant="success" size="sm" className="text-[10px]">TwiML &lt;Dial&gt;</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-[var(--color-muted)]">Enable Mid-Call Transfer</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={agentData.guardrails?.human_transfer_enabled ?? true}
+                      onClick={() =>
+                        setAgentData({
+                          ...agentData,
+                          guardrails: {
+                            ...agentData.guardrails!,
+                            human_transfer_enabled: !(agentData.guardrails?.human_transfer_enabled ?? true)
+                          }
+                        })
+                      }
+                      className={`w-7 h-4 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                        (agentData.guardrails?.human_transfer_enabled ?? true) ? "bg-emerald-500" : "bg-[var(--color-border)]"
+                      }`}
+                    >
+                      <div
+                        className={`bg-white w-3 h-3 rounded-full shadow-xs transform transition-transform ${
+                          (agentData.guardrails?.human_transfer_enabled ?? true) ? "translate-x-3" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[var(--color-muted)] mb-1">
+                      Destination Phone Number (+E.164)
+                    </label>
+                    <input
+                      type="tel"
+                      value={agentData.guardrails?.human_transfer_phone_number || ""}
+                      onChange={(e) =>
+                        setAgentData({
+                          ...agentData,
+                          guardrails: {
+                            ...agentData.guardrails!,
+                            human_transfer_phone_number: e.target.value
+                          }
+                        })
+                      }
+                      placeholder="+1 (555) 234-5678 (Leave empty for default org number)"
+                      className="w-full h-8 px-2.5 text-xs font-mono bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-[var(--color-muted)] mb-1">
+                      Spoken Transition Message
+                    </label>
+                    <input
+                      type="text"
+                      value={agentData.guardrails?.human_transfer_whisper_message || ""}
+                      onChange={(e) =>
+                        setAgentData({
+                          ...agentData,
+                          guardrails: {
+                            ...agentData.guardrails!,
+                            human_transfer_whisper_message: e.target.value
+                          }
+                        })
+                      }
+                      placeholder="Please hold while we transfer you to a human specialist."
+                      className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

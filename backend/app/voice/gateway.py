@@ -274,6 +274,30 @@ async def voice_stream_websocket(websocket: WebSocket):
                 content,
                 turn_latency_ms=turn_latency
             )
+            # Check for live human transfer cues in Assistant speech
+            lower_content = content.lower()
+            transfer_target = getattr(agent_config.guardrails, "human_transfer_phone_number", None) if (agent_config and agent_config.guardrails and getattr(agent_config.guardrails, "human_transfer_enabled", True)) else None
+            
+            # Fallback to Twilio config default forward number if no agent-specific transfer number configured
+            if not transfer_target and session and session.organization_id:
+                try:
+                    tw_cfg_target = await twilio_repo.get_by_org(session.organization_id)
+                    if tw_cfg_target and tw_cfg_target.inbound_forward_global_number:
+                        transfer_target = tw_cfg_target.inbound_forward_global_number
+                except Exception:
+                    pass
+
+            is_transfer_announcement = any(k in lower_content for k in [
+                "transferring you to", "transfer you to", "connect you with a human",
+                "connect you to a human", "transferring to our team", "transferring your call",
+                "handing you over to", "connecting you to our specialist", "hold while i transfer"
+            ])
+
+            if is_transfer_announcement and transfer_target and not is_concluding_call:
+                logger.info(f"[VoiceGateway] Assistant transfer announcement detected: '{content[:60]}...'. Initiating live call transfer to {transfer_target}.")
+                asyncio.create_task(transfer_call_to_human(destination_phone=transfer_target))
+                return
+
             from app.api.v1.voice import detect_conversation_conclusion
             if detect_conversation_conclusion(content):
                 lower_content = content.lower()
@@ -287,6 +311,50 @@ async def voice_stream_websocket(websocket: WebSocket):
                 is_concluding_call = True
                 has_reprompted_silence = True
                 asyncio.create_task(asyncio.sleep(hangup_delay)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+
+    async def transfer_call_to_human(destination_phone: str, whisper_msg: Optional[str] = None):
+        """Transfers the live Twilio call to a human phone number and concludes AI stream."""
+        nonlocal session, call_ended_event, is_concluding_call
+        if is_concluding_call:
+            return
+        is_concluding_call = True
+        call_ended_event.set()
+        logger.info(f"[VoiceGateway] Executing live human call transfer to {destination_phone} for call {session.twilio_call_sid if session else 'unknown'}...")
+        
+        # Inject spoken transition announcement before transfer
+        transition_text = whisper_msg or (agent_config.guardrails.human_transfer_whisper_message if agent_config and agent_config.guardrails else None) or "Please hold while we transfer you to a human specialist."
+        norm_transfer_text = PronunciationNormalizer.normalize(transition_text, getattr(agent_config, "pronunciation_rules", None))
+        try:
+            if deepgram_client and deepgram_client.is_ready:
+                await deepgram_client.inject_agent_message(norm_transfer_text, behavior="interrupt")
+        except Exception:
+            pass
+
+        await asyncio.sleep(2.0)  # Allow speech playback to complete
+        
+        try:
+            if session and session.twilio_call_sid and session.organization_id:
+                success = await twilio_service.transfer_call(
+                    org_id=session.organization_id,
+                    call_sid=session.twilio_call_sid,
+                    destination_phone=destination_phone,
+                    caller_id=session.phone_number,
+                    whisper_message=None  # Already announced by AI
+                )
+                if success:
+                    session.outcome = "TRANSFERRED_TO_HUMAN"
+                    session.business_outcome = "Transferred to Human Specialist"
+                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded.")
+                else:
+                    logger.error(f"[VoiceGateway] Live call transfer to {destination_phone} failed.")
+        except Exception as transfer_err:
+            logger.error(f"[VoiceGateway] Error during call transfer: {transfer_err}")
+
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close()
+        except Exception:
+            pass
 
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""

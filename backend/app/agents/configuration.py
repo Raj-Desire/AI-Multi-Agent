@@ -235,6 +235,9 @@ class AgentGuardrails(BaseModel):
         "AI model cannot answer or inquiry is outside scope of capabilities",
         "Complex request requiring privileged account access"
     ])
+    human_transfer_enabled: bool = True
+    human_transfer_phone_number: Optional[str] = None
+    human_transfer_whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
 
 
 class AgentServiceItem(BaseModel):

@@ -401,3 +401,40 @@ class TwilioService:
             print(f"[TwilioService] Error ending call {call_sid}: {e}")
             return False
 
+    async def transfer_call(
+        self,
+        org_id: str,
+        call_sid: str,
+        destination_phone: str,
+        caller_id: Optional[str] = None,
+        whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
+    ) -> bool:
+        """
+        Transfers an in-flight Twilio call dynamically to a live human representative or team using TwiML <Dial>.
+        """
+        cfg = await self.repo.get_by_org(org_id)
+        if not cfg or not cfg.account_sid or not cfg.encrypted_auth_token:
+            return False
+        real_auth = decrypt_token(cfg.encrypted_auth_token)
+
+        caller_num = caller_id or (cfg.phone_number.split(",")[0].strip() if cfg.phone_number else None)
+        caller_id_attr = f' callerId="{caller_num}"' if caller_num else ""
+        whisper_twiml = f'<Say>{whisper_message}</Say>' if whisper_message else ""
+
+        transfer_twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {whisper_twiml}
+    <Dial{caller_id_attr}>{destination_phone}</Dial>
+</Response>"""
+
+        def _sync_transfer():
+            client = Client(cfg.account_sid, real_auth)
+            client.calls(call_sid).update(twiml=transfer_twiml)
+            return True
+
+        try:
+            return await asyncio.to_thread(_sync_transfer)
+        except Exception as e:
+            print(f"[TwilioService] Error transferring call {call_sid} to {destination_phone}: {e}")
+            return False
+
