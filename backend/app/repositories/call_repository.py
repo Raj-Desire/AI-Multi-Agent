@@ -221,5 +221,68 @@ class CallRepository:
                     print(f"[CallRepository Error] save: {e}")
             _invalidate_calls_cache(call.organization_id)
             return call
-
         return await asyncio.to_thread(_sync_save)
+
+    async def list_all_calls(self, limit: int = 5000) -> List[Call]:
+        """Lists calls across all tenant organizations for SuperAdmin platform usage and cost tracking."""
+        cache_key = f"__all_calls__:{limit}"
+        cached = _CALLS_CACHE.get(cache_key)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < CALLS_CACHE_TTL_SECONDS:
+                return data
+            del _CALLS_CACHE[cache_key]
+
+        def _sync_list_all():
+            container = get_calls_container()
+            if not container:
+                return list(self._memory_store.values())
+
+            query = f"SELECT TOP {limit} * FROM c ORDER BY c.created_at DESC"
+            try:
+                items = list(container.query_items(query=query, enable_cross_partition_query=True))
+                calls = []
+                for item in items:
+                    created_dt = datetime.fromisoformat(item["created_at"]) if isinstance(item.get("created_at"), str) else datetime.now(timezone.utc)
+                    updated_dt = datetime.fromisoformat(item["updated_at"]) if isinstance(item.get("updated_at"), str) else datetime.now(timezone.utc)
+                    calls.append(Call(
+                        id=item["id"],
+                        organization_id=item.get("organization_id", "unknown"),
+                        user_id=item.get("user_id", ""),
+                        prospect_id=item.get("prospect_id"),
+                        campaign_id=item.get("campaign_id"),
+                        twilio_configuration_id=item.get("twilio_configuration_id", ""),
+                        call_sid=item.get("call_sid"),
+                        from_number=item.get("from_number", ""),
+                        to_number=item.get("to_number", ""),
+                        duration=int(item.get("duration", 0)),
+                        prompt=item.get("prompt"),
+                        status=item.get("status", "initiated"),
+                        agent_id=item.get("agent_id"),
+                        agent_version=item.get("agent_version", 1),
+                        agent_name=item.get("agent_name"),
+                        agent_scope=item.get("agent_scope"),
+                        agent_config_snapshot=item.get("agent_config_snapshot"),
+                        transcript=item.get("transcript"),
+                        outcome=item.get("outcome"),
+                        summary=item.get("summary"),
+                        key_insights=item.get("key_insights"),
+                        intent=item.get("intent"),
+                        sentiment=item.get("sentiment"),
+                        lead_score=item.get("lead_score"),
+                        interest_level=item.get("interest_level"),
+                        classification=item.get("classification"),
+                        callback_datetime=item.get("callback_datetime"),
+                        analytics=item.get("analytics"),
+                        latency_metrics=item.get("latency_metrics"),
+                        error_information=item.get("error_information"),
+                        created_at=created_dt,
+                        updated_at=updated_dt
+                    ))
+                _CALLS_CACHE[cache_key] = (calls, time.time())
+                return calls
+            except Exception as e:
+                print(f"[CallRepository Error] list_all_calls: {e}")
+                return list(self._memory_store.values())
+
+        return await asyncio.to_thread(_sync_list_all)

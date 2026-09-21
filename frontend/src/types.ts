@@ -39,6 +39,57 @@ export interface PlatformOverviewMetrics {
   total_accounts: number;
 }
 
+export interface OrgCostUsage {
+  organization_id: string;
+  org_name: string;
+  is_active: boolean;
+  total_calls: number;
+  completed_calls: number;
+  failed_calls: number;
+  duration_seconds: number;
+  billed_minutes: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  tts_characters: number;
+  telephony_cost: number;
+  stt_cost: number;
+  llm_cost: number;
+  tts_cost: number;
+  total_cost: number;
+  suggested_billed: number;
+  margin: number;
+}
+
+export interface PlatformCostSummary {
+  total_organizations: number;
+  total_calls: number;
+  total_duration_minutes: number;
+  total_tokens: number;
+  total_infrastructure_cost: number;
+  suggested_client_revenue: number;
+  projected_gross_profit: number;
+  gross_margin_percentage: number;
+  cost_by_service: {
+    telephony: number;
+    stt: number;
+    llm: number;
+    tts: number;
+  };
+  pricing_rates: {
+    telephony_per_min: number;
+    stt_per_min: number;
+    tts_per_1k_chars: number;
+    markup_multiplier: number;
+  };
+}
+
+export interface SuperAdminCostTelemetryResponse {
+  time_range: string;
+  summary: PlatformCostSummary;
+  organizations: OrgCostUsage[];
+}
+
 export interface TwilioConfig {
   account_sid: string;
   auth_token_masked: string;
@@ -253,6 +304,7 @@ export interface AgentListenConfig {
 export interface AgentRuntimeSettings {
   barge_in_enabled: boolean;
   interruption_sensitivity: number;
+  turn_delay_ms?: number;
   silence_timeout: number;
   silence_reprompt_message?: string;
   silence_hangup_delay?: number;
@@ -262,6 +314,7 @@ export interface AgentRuntimeSettings {
   retry_attempts?: number;
   auto_hangup_on_completion?: boolean;
   conversational_fillers_enabled?: boolean;
+  filler_delay_seconds?: number;
   filler_phrases?: string[];
   backchanneling_enabled?: boolean;
   backchannel_interval_seconds?: number;
@@ -276,6 +329,9 @@ export interface AgentGuardrails {
   restricted_actions: string[];
   disabled_restrictions?: string[];
   escalation_rules: string[];
+  human_transfer_enabled?: boolean;
+  human_transfer_phone_number?: string;
+  human_transfer_whisper_message?: string;
 }
 
 export interface BusinessServiceItem {
@@ -353,6 +409,8 @@ export interface AgentConfig {
   closing_message?: string;
   system_prompt?: string | null;
   include_business_knowledge?: boolean;
+  knowledge_mode?: 'auto' | 'specific' | 'disabled';
+  attached_document_ids?: string[];
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
   few_shot_examples?: FewShotExample[];
@@ -960,3 +1018,39 @@ export interface LeadActionRequest {
   tags?: string[];
   assigned_owner?: string;
 }
+
+export interface KnowledgeDocument {
+  id: string;
+  organization_id: string;
+  filename: string;
+  file_type: 'pdf' | 'docx' | 'txt';
+  file_size_bytes: number;
+  title: string;
+  category: string;
+  description?: string | null;
+  total_chunks: number;
+  total_characters: number;
+  status: 'indexed' | 'indexing' | 'failed';
+  error_message?: string | null;
+  uploaded_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  category: string;
+  content: string;
+  similarity_score: number;
+  chunk_index: number;
+}
+
+export interface KnowledgeSearchResponse {
+  query: string;
+  results: KnowledgeSearchResult[];
+  latency_ms: number;
+  total_results: number;
+}
+

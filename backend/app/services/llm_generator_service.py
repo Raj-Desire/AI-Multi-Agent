@@ -215,9 +215,12 @@ You MUST structure the generated system_prompt into these comprehensive, battle-
 
 GREETING GENERATION RULES:
 Generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective:
-- 'Direct & Warm': A warm opening stating who is calling and the call context.
-- 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description and asking a conversational opening question.
-- 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow.
+- SINGLE QUESTION CADENCE: Every greeting MUST contain at most ONE single opening question. NEVER produce double questions (e.g. do NOT say 'Who am I speaking with and how can I help you?' or 'What is your account number and what seems to be the problem?').
+- WARM INTRODUCTORY OPENERS:
+  * 'Direct & Warm': A warm opening stating who is calling and the call context with a single crisp question.
+  * 'Engaging Hook & Discovery': An engaging hook directly referencing the specific purpose/description and asking ONE conversational opening question.
+  * 'Consultative & Professional': A consultative, polite opening offering expert assistance based on the role and business workflow with ONE clear question.
+- CONTEXT AWARENESS: If outbound, never ask 'How can I help you today?'; state reason for outreach. If inbound, welcome the caller warmly and ask how to direct or assist.
 
 {lang_note}.
 

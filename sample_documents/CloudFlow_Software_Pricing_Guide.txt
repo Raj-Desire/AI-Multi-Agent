@@ -1,0 +1,23 @@
+# CLOUDFLOW AI - ENTERPRISE SOFTWARE PRICING & SUBSCRIPTION GUIDE
+
+## 1. SUBSCRIPTION TIERS & MONTHLY PRICING
+- Starter Plan ($49/month or $470/year): Includes up to 5 team members, 1,000 monthly voice minutes, standard CRM integration, and 99.5% uptime SLA.
+- Professional Plan ($149/month or $1,430/year): Includes up to 25 team members, 5,000 monthly voice minutes, custom webhook automations, AI lead scoring, and priority email support.
+- Enterprise Plan ($499/month billed annually): Unlimited team seats, 25,000 monthly voice minutes, dedicated Azure Cosmos DB vector database, custom LLM fine-tuning, 99.99% uptime SLA, and 24/7 dedicated account manager.
+
+## 2. TELEPHONY ADD-ONS & OVERAGE CHARGES
+- Inbound & Outbound Voice Minutes: $0.025 per additional minute beyond plan allotment.
+- Dedicated Local Phone Numbers: $3.00 per number per month.
+- Toll-Free Phone Numbers (1-800 / 1-888): $5.00 per number per month with $0.035/minute usage rate.
+- Twilio BYOC (Bring Your Own Carrier): Fully supported on Professional and Enterprise plans with zero platform markup.
+
+## 3. SECURITY & COMPLIANCE
+- SOC2 Type II Certified and ISO 27001 Compliant.
+- HIPAA Compliant: Business Associate Agreements (BAA) signed for healthcare clients on Enterprise plans.
+- Data Encryption: All audio streams and transcript embeddings encrypted with AES-256 at rest and TLS 1.3 in transit.
+- Multi-Tenant Isolation: Every tenant's vector database partitions and customer prospect lists are cryptographically isolated.
+
+## 4. REFUNDS, BILLING & TRIAL POLICY
+- 14-Day Free Trial: Includes $20 in voice calling credits and 3 agent configurations with no credit card required.
+- Cancellation Terms: Subscriptions can be cancelled at any time from the Organization Admin billing settings. Service remains active until the end of the current billing cycle.
+- Refund Policy: Pro-rated refunds are granted within 7 days of annual renewals if usage has not exceeded 100 minutes.

@@ -65,16 +65,42 @@ class FewShotExample(BaseModel):
 
 def get_default_pronunciation_rules() -> List[PronunciationRule]:
     return [
+        # General spoken clarity
         PronunciationRule(word="Schedule", phonetic="sked-jool", category="general"),
         PronunciationRule(word="Status", phonetic="stay-tuhs", category="general"),
         PronunciationRule(word="Route", phonetic="root", category="general"),
         PronunciationRule(word="Suite", phonetic="sweet", category="general"),
         PronunciationRule(word="Data", phonetic="day-tuh", category="general"),
+        
+        # Telephony & Business acronyms
         PronunciationRule(word="B2B", phonetic="B-to-B", category="acronyms"),
+        PronunciationRule(word="B2C", phonetic="B-to-C", category="acronyms"),
         PronunciationRule(word="FAQ", phonetic="F-A-Q", category="acronyms"),
         PronunciationRule(word="API", phonetic="A-P-I", category="acronyms"),
         PronunciationRule(word="VIP", phonetic="V-I-P", category="acronyms"),
         PronunciationRule(word="CRM", phonetic="C-R-M", category="acronyms"),
+        PronunciationRule(word="IVR", phonetic="I-V-R", category="acronyms"),
+        PronunciationRule(word="SLA", phonetic="S-L-A", category="acronyms"),
+        PronunciationRule(word="OTP", phonetic="O-T-P", category="acronyms"),
+        PronunciationRule(word="SMS", phonetic="S-M-S", category="acronyms"),
+        PronunciationRule(word="GST", phonetic="G-S-T", category="acronyms"),
+        
+        # Indian cities and proper nouns
+        PronunciationRule(word="Ahmedabad", phonetic="Ahm-da-baad", category="indian_places"),
+        PronunciationRule(word="Bengaluru", phonetic="Beng-guh-loo-roo", category="indian_places"),
+        PronunciationRule(word="Bangalore", phonetic="Bang-guh-lore", category="indian_places"),
+        PronunciationRule(word="Pune", phonetic="Poo-nay", category="indian_places"),
+        PronunciationRule(word="Jaipur", phonetic="Jye-poor", category="indian_places"),
+        PronunciationRule(word="Kolkata", phonetic="Kohl-kaa-tah", category="indian_places"),
+        PronunciationRule(word="Hyderabad", phonetic="Hye-der-uh-baad", category="indian_places"),
+        PronunciationRule(word="Chennai", phonetic="Chen-nye", category="indian_places"),
+        PronunciationRule(word="Gurgaon", phonetic="Goor-gao", category="indian_places"),
+        PronunciationRule(word="Gurugram", phonetic="Goo-roo-grahm", category="indian_places"),
+        
+        # Real Estate & Business units
+        PronunciationRule(word="Sq. Ft.", phonetic="square feet", category="general"),
+        PronunciationRule(word="Sqft", phonetic="square feet", category="general"),
+        PronunciationRule(word="BHK", phonetic="B-H-K", category="acronyms"),
     ]
 
 
@@ -139,10 +165,10 @@ class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
-    endpointing: int = 400  # Fast sub-second human turn-taking endpointing (ms)
-    endpointing_mode: str = "rapid"  # "rapid" (350ms) | "balanced" (450ms) | "dictation" (900ms) | "adaptive" (400ms)
+    endpointing: int = 550  # Natural human turn-taking endpointing (ms) preventing premature cutoffs
+    endpointing_mode: str = "balanced"  # "rapid" (450ms) | "balanced" (550ms) | "dictation" (900ms) | "adaptive" (550ms)
     dictation_endpointing: int = 900
-    rapid_endpointing: int = 350
+    rapid_endpointing: int = 450
     eot_threshold: Optional[float] = None
     eager_eot: bool = True
     keyterms: List[str] = Field(default_factory=list)
@@ -151,6 +177,7 @@ class ListenProviderConfig(BaseModel):
 class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
+    turn_delay_ms: int = Field(default=250, description="Natural conversational acoustic delay before speech synthesis output begins (ms)")
     silence_timeout: int = 5  # Seconds of silence before asking reprompt message
     silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
     silence_hangup_delay: int = 5  # Seconds after reprompt before concluding and hanging up
@@ -162,21 +189,24 @@ class AgentRuntimeSettings(BaseModel):
 
     # Conversational Fillers & Natural Thinking Sounds
     conversational_fillers_enabled: bool = True
+    filler_delay_seconds: float = 0.95  # Calibrated delay (950ms) before injecting thoughtful conversational filler
     filler_phrases: List[str] = Field(default_factory=lambda: [
-        "Got it, let me check that for you...",
-        "Understood, give me one moment...",
-        "Sure thing, looking into that right now...",
-        "Let me see..."
+        "Let me check that for you...",
+        "Got it, one moment please...",
+        "Understood, looking into that right now...",
+        "Sure thing, let me pull that up...",
+        "Alright, let me see..."
     ])
 
-    # Active Backchanneling
+    # Active Backchanneling (subtle listening cues during caller monologues)
     backchanneling_enabled: bool = True
-    backchannel_interval_seconds: float = 4.5
+    backchannel_interval_seconds: float = 4.0
     backchannel_phrases: List[str] = Field(default_factory=lambda: [
-        "Mhm",
         "Right",
-        "I understand",
-        "Yeah"
+        "Mhm",
+        "Understood",
+        "I see",
+        "Okay"
     ])
 
     # Advanced Interruption & Ambient Audio Filtering
@@ -205,6 +235,9 @@ class AgentGuardrails(BaseModel):
         "AI model cannot answer or inquiry is outside scope of capabilities",
         "Complex request requiring privileged account access"
     ])
+    human_transfer_enabled: bool = True
+    human_transfer_phone_number: Optional[str] = None
+    human_transfer_whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
 
 
 class AgentServiceItem(BaseModel):
@@ -272,6 +305,8 @@ class AgentConfiguration(BaseModel):
     closing_message: Optional[str] = "Thank you for speaking with us today. Have a great day!"
     system_prompt: Optional[str] = None
     include_business_knowledge: bool = True
+    knowledge_mode: str = "auto"  # "auto" | "specific" | "disabled"
+    attached_document_ids: List[str] = Field(default_factory=list)
     custom_knowledge: Optional[str] = None
 
     # Phonetic Pronunciation Dictionaries

@@ -94,6 +94,18 @@ async def voice_stream_websocket(websocket: WebSocket):
             # 8000 bytes of mu-law @ 8000Hz = 1.0 second of audio (1 byte = 0.125ms)
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
+
+            # Natural human conversational turn delay: If transitioning from silence/user turn,
+            # introduce calibrated conversational pause (turn_delay_ms) before outbound audio burst
+            if not is_agent_speaking and user_spoke and outbound_chunk_counter > 0:
+                runtime = agent_config.runtime if agent_config else None
+                delay_ms = getattr(runtime, "turn_delay_ms", 250) if runtime else 250
+                if delay_ms > 0:
+                    delay_s = min(delay_ms / 1000.0, 0.45)
+                    await asyncio.sleep(delay_s)
+                    if is_interrupted or not websocket:
+                        return
+
             if last_agent_speech_done_time < now:
                 last_agent_speech_done_time = now + audio_duration
             else:
@@ -166,19 +178,22 @@ async def voice_stream_websocket(websocket: WebSocket):
         if runtime and getattr(runtime, "conversational_fillers_enabled", True):
             async def _delayed_filler():
                 try:
-                    await asyncio.sleep(1.20)
+                    filler_delay = getattr(runtime, "filler_delay_seconds", 0.95) or 0.95
+                    await asyncio.sleep(filler_delay)
                     if is_user_speaking or is_agent_speaking or is_concluding_call or is_interrupted:
                         return
                     phrases = getattr(runtime, "filler_phrases", None) or [
-                        "Got it, let me check that for you...",
-                        "Understood, give me one moment...",
-                        "Sure thing, looking into that right now..."
+                        "Let me check that for you...",
+                        "Got it, one moment please...",
+                        "Understood, looking into that right now...",
+                        "Sure thing, let me pull that up...",
+                        "Alright, let me see..."
                     ]
                     import random
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
                     if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
-                        logger.info(f"[VoiceGateway] Agent thinking threshold reached. Injecting filler: '{norm_filler}'")
+                        logger.info(f"[VoiceGateway] Agent thinking threshold ({filler_delay}s) reached. Injecting filler: '{norm_filler}'")
                         await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
                 except asyncio.CancelledError:
                     pass
@@ -259,6 +274,30 @@ async def voice_stream_websocket(websocket: WebSocket):
                 content,
                 turn_latency_ms=turn_latency
             )
+            # Check for live human transfer cues in Assistant speech
+            lower_content = content.lower()
+            transfer_target = getattr(agent_config.guardrails, "human_transfer_phone_number", None) if (agent_config and agent_config.guardrails and getattr(agent_config.guardrails, "human_transfer_enabled", True)) else None
+            
+            # Fallback to Twilio config default forward number if no agent-specific transfer number configured
+            if not transfer_target and session and session.organization_id:
+                try:
+                    tw_cfg_target = await twilio_repo.get_by_org(session.organization_id)
+                    if tw_cfg_target and tw_cfg_target.inbound_forward_global_number:
+                        transfer_target = tw_cfg_target.inbound_forward_global_number
+                except Exception:
+                    pass
+
+            is_transfer_announcement = any(k in lower_content for k in [
+                "transferring you to", "transfer you to", "connect you with a human",
+                "connect you to a human", "transferring to our team", "transferring your call",
+                "handing you over to", "connecting you to our specialist", "hold while i transfer"
+            ])
+
+            if is_transfer_announcement and transfer_target and not is_concluding_call:
+                logger.info(f"[VoiceGateway] Assistant transfer announcement detected: '{content[:60]}...'. Initiating live call transfer to {transfer_target}.")
+                asyncio.create_task(transfer_call_to_human(destination_phone=transfer_target))
+                return
+
             from app.api.v1.voice import detect_conversation_conclusion
             if detect_conversation_conclusion(content):
                 lower_content = content.lower()
@@ -272,6 +311,50 @@ async def voice_stream_websocket(websocket: WebSocket):
                 is_concluding_call = True
                 has_reprompted_silence = True
                 asyncio.create_task(asyncio.sleep(hangup_delay)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+
+    async def transfer_call_to_human(destination_phone: str, whisper_msg: Optional[str] = None):
+        """Transfers the live Twilio call to a human phone number and concludes AI stream."""
+        nonlocal session, call_ended_event, is_concluding_call
+        if is_concluding_call:
+            return
+        is_concluding_call = True
+        call_ended_event.set()
+        logger.info(f"[VoiceGateway] Executing live human call transfer to {destination_phone} for call {session.twilio_call_sid if session else 'unknown'}...")
+        
+        # Inject spoken transition announcement before transfer
+        transition_text = whisper_msg or (agent_config.guardrails.human_transfer_whisper_message if agent_config and agent_config.guardrails else None) or "Please hold while we transfer you to a human specialist."
+        norm_transfer_text = PronunciationNormalizer.normalize(transition_text, getattr(agent_config, "pronunciation_rules", None))
+        try:
+            if deepgram_client and deepgram_client.is_ready:
+                await deepgram_client.inject_agent_message(norm_transfer_text, behavior="interrupt")
+        except Exception:
+            pass
+
+        await asyncio.sleep(2.0)  # Allow speech playback to complete
+        
+        try:
+            if session and session.twilio_call_sid and session.organization_id:
+                success = await twilio_service.transfer_call(
+                    org_id=session.organization_id,
+                    call_sid=session.twilio_call_sid,
+                    destination_phone=destination_phone,
+                    caller_id=session.phone_number,
+                    whisper_message=None  # Already announced by AI
+                )
+                if success:
+                    session.outcome = "TRANSFERRED_TO_HUMAN"
+                    session.business_outcome = "Transferred to Human Specialist"
+                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded.")
+                else:
+                    logger.error(f"[VoiceGateway] Live call transfer to {destination_phone} failed.")
+        except Exception as transfer_err:
+            logger.error(f"[VoiceGateway] Error during call transfer: {transfer_err}")
+
+        try:
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close()
+        except Exception:
+            pass
 
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""
@@ -321,9 +404,23 @@ async def voice_stream_websocket(websocket: WebSocket):
                 else:
                     is_agent_speaking = False
 
-                # Active Monologue Tracking (ensure agent waits patiently for complete utterance)
+                # Active Monologue Tracking & Active Backchanneling (subtle listening cues during caller monologues)
                 if is_user_speaking:
-                    pass
+                    if runtime and getattr(runtime, "backchanneling_enabled", True) and not is_concluding_call and not is_agent_speaking:
+                        bc_interval = getattr(runtime, "backchannel_interval_seconds", 4.0) or 4.0
+                        user_speech_duration = now - user_speech_start_time
+                        since_last_bc = now - last_backchannel_time
+                        if user_speech_duration >= bc_interval and since_last_bc >= bc_interval:
+                            bc_phrases = getattr(runtime, "backchannel_phrases", None) or [
+                                "Right", "Mhm", "Understood", "I see", "Okay"
+                            ]
+                            import random
+                            bc_word = random.choice(bc_phrases)
+                            norm_bc = PronunciationNormalizer.normalize(bc_word, getattr(agent_config, "pronunciation_rules", None))
+                            if deepgram_client and deepgram_client.is_ready:
+                                logger.info(f"[VoiceGateway] Caller monologue active ({user_speech_duration:.1f}s). Injecting backchannel cue: '{norm_bc}'")
+                                await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
+                                last_backchannel_time = now
 
                 # 1. Dynamic Maximum Call Duration Check
                 if elapsed_call_time >= active_limit and not is_concluding_call:
@@ -454,6 +551,27 @@ async def voice_stream_websocket(websocket: WebSocket):
                 last_user_speech_time = time.time()
                 last_agent_speech_done_time = time.time()
 
+                # Resolve prospect details (if campaign or prospect_id provided) for dynamic greeting personalization
+                prospect_data = None
+                p_id = session.prospect_id if session else custom_params.get("prospect_id")
+                c_id = session.campaign_id if session else custom_params.get("campaign_id")
+                if p_id and c_id and org_id:
+                    try:
+                        from app.repositories.campaign_repository import CampaignRepository
+                        camp_repo = CampaignRepository()
+                        member = await camp_repo.get_by_campaign_and_prospect(c_id, p_id)
+                        if member:
+                            prospect_data = {
+                                "name": getattr(member, "prospect_name", "") or "",
+                                "phone": getattr(member, "phone_number", "") or ""
+                            }
+                    except Exception as p_err:
+                        logger.debug(f"[VoiceGateway] Notice fetching prospect details for greeting: {p_err}")
+
+                # Attach runtime call context onto agent_config object for dynamic variable resolution
+                agent_config._call_direction = direction
+                agent_config._prospect_data = prospect_data or {}
+
                 # 2. Build Deepgram Settings via AgentRuntimeBuilder (with Business Profile Knowledge Base)
                 from app.repositories.business_profile_repository import BusinessProfileRepository
                 business_profile = await BusinessProfileRepository.get_profile(org_id)
@@ -486,10 +604,12 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 # Execute official handshake (Welcome -> Settings -> SettingsApplied -> Inject Greeting)
                 try:
+                    # Use the fully resolved greeting (with dynamic variables like {{company_name}} and {{caller_name}} replaced)
+                    raw_greeting = deepgram_settings.agent.greeting if deepgram_settings and deepgram_settings.agent and deepgram_settings.agent.greeting else agent_config.greeting
                     norm_greeting = PronunciationNormalizer.normalize(
-                        agent_config.greeting,
+                        raw_greeting,
                         getattr(agent_config, "pronunciation_rules", None)
-                    ) if agent_config.greeting else None
+                    ) if raw_greeting else None
                     await deepgram_client.connect_and_configure(
                         settings=deepgram_settings,
                         greeting=norm_greeting

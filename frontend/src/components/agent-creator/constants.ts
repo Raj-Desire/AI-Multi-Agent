@@ -532,38 +532,38 @@ export const DEFAULT_CONVERSATION_FLOWS = [
 
 export const AURA_VOICES = [
   // Aura Voices (English)
-  { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales." },
-  { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups." },
-  { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking." },
-  { id: "aura-stella-en", name: "Stella", language: "en", gender: "Female", style: "Friendly & Clear", description: "Upbeat, energetic, and articulate. Perfect for reminders and sales hooks." },
-  { id: "aura-arcas-en", name: "Arcas", language: "en", gender: "Male", style: "Conversational & Grounded", description: "Conversational, relatable, and steady. Suited for customer care & surveys." },
-  { id: "aura-athena-en", name: "Athena", language: "en", gender: "Female", style: "Authoritative & Clear", description: "Clear, crisp, and direct. Suited for technical support and billing." },
-  { id: "aura-hera-en", name: "Hera", language: "en", gender: "Female", style: "Confident & Polished", description: "Confident, executive, and engaging. Great for corporate consultation." },
-  { id: "aura-perseus-en", name: "Perseus", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead generation." },
-  { id: "aura-angus-en", name: "Angus", language: "en", gender: "Male", style: "Deep & Formal", description: "Deep, formal, and trustworthy. Suited for healthcare and legal reminders." },
-  { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates." },
-  { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice." },
+  { id: "aura-orion-en", name: "Orion", language: "en", gender: "Male", style: "Calm & Professional", description: "Calm, smooth, measured, and authoritative. Ideal for business & sales.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-luna-en", name: "Luna", language: "en", gender: "Female", style: "Calm & Relaxed", description: "Calm, relaxed, and polished. Excellent for customer support and follow-ups.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-asteria-en", name: "Asteria", language: "en", gender: "Female", style: "Warm & Natural", description: "Warm, natural, and friendly. Great for general reception and booking.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-stella-en", name: "Stella", language: "en", gender: "Female", style: "Friendly & Clear", description: "Upbeat, energetic, and articulate. Perfect for reminders and sales hooks.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-arcas-en", name: "Arcas", language: "en", gender: "Male", style: "Conversational & Grounded", description: "Conversational, relatable, and steady. Suited for customer care & surveys.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-athena-en", name: "Athena", language: "en", gender: "Female", style: "Authoritative & Clear", description: "Clear, crisp, and direct. Suited for technical support and billing.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-hera-en", name: "Hera", language: "en", gender: "Female", style: "Confident & Polished", description: "Confident, executive, and engaging. Great for corporate consultation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-perseus-en", name: "Perseus", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead generation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-angus-en", name: "Angus", language: "en", gender: "Male", style: "Deep & Formal", description: "Deep, formal, and trustworthy. Suited for healthcare and legal reminders.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-helios-en", name: "Helios", language: "en", gender: "Male", style: "Direct & Crisp", description: "Direct, fast-paced, and concise. Ideal for logistics and delivery updates.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-zeus-en", name: "Zeus", language: "en", gender: "Male", style: "Deep & Resonant", description: "Deep, resonant, commanding voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
 
   // Aura-2 Multilingual Voices
-  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Next-gen expressive conversational female voice." },
-  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Expressive conversational female voice." },
-  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Dynamic conversational male voice." },
-  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice." },
-  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Natural Spanish male voice." },
-  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Natural German female voice." },
-  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Natural French female voice." },
-  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice." },
-  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice." }
+  { id: "aura-2-thalia-en", name: "Thalia (Aura-2)", language: "en", gender: "Female", style: "Ultra-Natural & Warm", description: "Next-gen expressive conversational female voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-andromeda-en", name: "Andromeda (Aura-2)", language: "en", gender: "Female", style: "Expressive & Conversational", description: "Expressive conversational female voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-apollo-en", name: "Apollo (Aura-2)", language: "en", gender: "Male", style: "Expressive & Dynamic", description: "Dynamic conversational male voice.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice.", sampleText: "¡Hola! Soy tu asistente de voz con inteligencia artificial. ¿En qué puedo ayudarte hoy?" },
+  { id: "aura-2-javier-es", name: "Javier (Spanish)", language: "es", gender: "Male", style: "Native Spanish • Professional", description: "Natural Spanish male voice.", sampleText: "¡Hola! Soy tu asistente de voz con inteligencia artificial. ¿En qué puedo ayudarte hoy?" },
+  { id: "aura-2-aurelia-de", name: "Aurelia (German)", language: "de", gender: "Female", style: "Native German • Clear", description: "Natural German female voice.", sampleText: "Hallo! Ich bin Ihre KI-Sprachassistentin. Wie kann ich Ihnen heute helfen?" },
+  { id: "aura-2-agathe-fr", name: "Agathe (French)", language: "fr", gender: "Female", style: "Native French • Warm", description: "Natural French female voice.", sampleText: "Bonjour ! Je suis votre assistante vocale avec intelligence artificielle. Comment puis-je vous aider aujourd'hui ?" },
+  { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice.", sampleText: "Ciao! Sono il tuo assistente vocale intelligente. Come posso aiutarti oggi?" },
+  { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice.", sampleText: "こんにちは！AI音声アシスタントです。本日はどのようなご用件でしょうか？" }
 ];
 
 export const SUPPORTED_LANGUAGES = [
-  { code: "en", label: "English (US / Global Standard)", native: "English" },
-  { code: "es", label: "Spanish (Español)", native: "Español" },
-  { code: "fr", label: "French (Français)", native: "Français" },
-  { code: "de", label: "German (Deutsch)", native: "Deutsch" },
-  { code: "it", label: "Italian (Italiano)", native: "Italiano" },
-  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands" },
-  { code: "ja", label: "Japanese (日本語)", native: "日本語" }
+  { code: "en", label: "English (US / Global Standard)", native: "English", defaultVoice: "aura-asteria-en" },
+  { code: "es", label: "Spanish (Español)", native: "Español", defaultVoice: "aura-2-agustina-es" },
+  { code: "fr", label: "French (Français)", native: "Français", defaultVoice: "aura-2-agathe-fr" },
+  { code: "de", label: "German (Deutsch)", native: "Deutsch", defaultVoice: "aura-2-aurelia-de" },
+  { code: "it", label: "Italian (Italiano)", native: "Italiano", defaultVoice: "aura-2-cesare-it" },
+  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands", defaultVoice: "aura-2-thalia-en" },
+  { code: "ja", label: "Japanese (日本語)", native: "日本語", defaultVoice: "aura-2-ama-ja" }
 ];
 
 export const LLM_MODELS = [
@@ -688,16 +688,42 @@ export const CREATOR_STEPS = [
 ];
 
 export const DEFAULT_PRONUNCIATION_RULES = [
+  // General spoken clarity
   { word: "Schedule", phonetic: "sked-jool", category: "general" },
   { word: "Status", phonetic: "stay-tuhs", category: "general" },
   { word: "Route", phonetic: "root", category: "general" },
   { word: "Suite", phonetic: "sweet", category: "general" },
   { word: "Data", phonetic: "day-tuh", category: "general" },
+  
+  // Telephony & Business acronyms
   { word: "B2B", phonetic: "B-to-B", category: "acronyms" },
+  { word: "B2C", phonetic: "B-to-C", category: "acronyms" },
   { word: "FAQ", phonetic: "F-A-Q", category: "acronyms" },
   { word: "API", phonetic: "A-P-I", category: "acronyms" },
   { word: "VIP", phonetic: "V-I-P", category: "acronyms" },
-  { word: "CRM", phonetic: "C-R-M", category: "acronyms" }
+  { word: "CRM", phonetic: "C-R-M", category: "acronyms" },
+  { word: "IVR", phonetic: "I-V-R", category: "acronyms" },
+  { word: "SLA", phonetic: "S-L-A", category: "acronyms" },
+  { word: "OTP", phonetic: "O-T-P", category: "acronyms" },
+  { word: "SMS", phonetic: "S-M-S", category: "acronyms" },
+  { word: "GST", phonetic: "G-S-T", category: "acronyms" },
+  
+  // Indian cities and proper nouns
+  { word: "Ahmedabad", phonetic: "Ahm-da-baad", category: "indian_places" },
+  { word: "Bengaluru", phonetic: "Beng-guh-loo-roo", category: "indian_places" },
+  { word: "Bangalore", phonetic: "Bang-guh-lore", category: "indian_places" },
+  { word: "Pune", phonetic: "Poo-nay", category: "indian_places" },
+  { word: "Jaipur", phonetic: "Jye-poor", category: "indian_places" },
+  { word: "Kolkata", phonetic: "Kohl-kaa-tah", category: "indian_places" },
+  { word: "Hyderabad", phonetic: "Hye-der-uh-baad", category: "indian_places" },
+  { word: "Chennai", phonetic: "Chen-nye", category: "indian_places" },
+  { word: "Gurgaon", phonetic: "Goor-gao", category: "indian_places" },
+  { word: "Gurugram", phonetic: "Goo-roo-grahm", category: "indian_places" },
+  
+  // Real Estate & Business units
+  { word: "Sq. Ft.", phonetic: "square feet", category: "general" },
+  { word: "Sqft", phonetic: "square feet", category: "general" },
+  { word: "BHK", phonetic: "B-H-K", category: "acronyms" }
 ];
 
 
@@ -798,10 +824,10 @@ export function getInitialAgentData(): AgentConfig {
       provider: "deepgram",
       model: "nova-3",
       language: "en",
-      endpointing: 900,
-      endpointing_mode: "adaptive",
-      dictation_endpointing: 1400,
-      rapid_endpointing: 500
+      endpointing: 550,
+      endpointing_mode: "balanced",
+      dictation_endpointing: 900,
+      rapid_endpointing: 450
     },
     llm: {
       provider: "open_ai",
@@ -812,6 +838,7 @@ export function getInitialAgentData(): AgentConfig {
     runtime: {
       barge_in_enabled: true,
       interruption_sensitivity: 0.8,
+      turn_delay_ms: 250,
       silence_timeout: 5,
       silence_reprompt_message: "Are you still there? I'm here if you have any questions.",
       silence_hangup_delay: 5,
@@ -821,19 +848,22 @@ export function getInitialAgentData(): AgentConfig {
       retry_attempts: 2,
       auto_hangup_on_completion: true,
       conversational_fillers_enabled: true,
+      filler_delay_seconds: 0.95,
       filler_phrases: [
-        "Got it, let me check that for you...",
-        "Understood, give me one moment...",
-        "Sure thing, looking into that right now...",
-        "Let me see..."
+        "Let me check that for you...",
+        "Got it, one moment please...",
+        "Understood, looking into that right now...",
+        "Sure thing, let me pull that up...",
+        "Alright, let me see..."
       ],
       backchanneling_enabled: true,
-      backchannel_interval_seconds: 4.5,
+      backchannel_interval_seconds: 4.0,
       backchannel_phrases: [
-        "Mhm",
         "Right",
-        "I understand",
-        "Yeah"
+        "Mhm",
+        "Understood",
+        "I see",
+        "Okay"
       ],
       ambient_noise_filtering: true,
       barge_in_min_speech_duration_ms: 220,

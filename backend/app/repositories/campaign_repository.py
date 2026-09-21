@@ -134,6 +134,12 @@ class CampaignRepository:
     async def list_active_campaigns(self) -> List[Campaign]:
         """Returns all campaigns that are currently RUNNING or SCHEDULED across all tenants for dialer polling."""
         def _sync_active():
+            now_ts = time.time()
+            if "__active_campaigns__" in _CAMPAIGN_CACHE:
+                cached_list, cached_time = _CAMPAIGN_CACHE["__active_campaigns__"]
+                if now_ts - cached_time < CAMPAIGN_CACHE_TTL_SECONDS:
+                    return cached_list
+
             container = get_campaigns_container()
             all_dict: Dict[str, Campaign] = {
                 c.id: c for c in self._memory_store.values()
@@ -150,13 +156,17 @@ class CampaignRepository:
                 except Exception as e:
                     print(f"[CampaignRepository Error] list_active_campaigns: {e}")
 
-            return list(all_dict.values())
+            active_list = list(all_dict.values())
+            _CAMPAIGN_CACHE["__active_campaigns__"] = (active_list, now_ts)
+            return active_list
 
         return await asyncio.to_thread(_sync_active)
 
     async def save(self, campaign: Campaign) -> Campaign:
         def _sync_save():
             self._memory_store[campaign.id] = campaign
+            _invalidate_campaign_cache(campaign.organization_id)
+            _invalidate_campaign_cache("__active_campaigns__")
             container = get_campaigns_container()
             if container:
                 try:
@@ -164,7 +174,6 @@ class CampaignRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[CampaignRepository Error] save: {e}")
-            _invalidate_campaign_cache(campaign.organization_id)
             return campaign
 
         return await asyncio.to_thread(_sync_save)
@@ -173,6 +182,8 @@ class CampaignRepository:
         def _sync_delete():
             if campaign_id in self._memory_store:
                 del self._memory_store[campaign_id]
+            _invalidate_campaign_cache(organization_id)
+            _invalidate_campaign_cache("__active_campaigns__")
             container = get_campaigns_container()
             if container:
                 try:
@@ -183,6 +194,24 @@ class CampaignRepository:
             return True
 
         return await asyncio.to_thread(_sync_delete)
+
+
+_CAMPAIGN_MEMBERS_CACHE: Dict[str, Tuple[List[CampaignMember], float]] = {}
+CAMPAIGN_MEMBERS_CACHE_TTL_SECONDS = 5.0
+
+_CAMPAIGN_IN_FLIGHT_CACHE: Dict[str, Tuple[int, float]] = {}
+CAMPAIGN_IN_FLIGHT_CACHE_TTL_SECONDS = 3.0
+
+
+def _invalidate_campaign_members_cache(campaign_id: Optional[str] = None):
+    if campaign_id:
+        if campaign_id in _CAMPAIGN_MEMBERS_CACHE:
+            del _CAMPAIGN_MEMBERS_CACHE[campaign_id]
+        if campaign_id in _CAMPAIGN_IN_FLIGHT_CACHE:
+            del _CAMPAIGN_IN_FLIGHT_CACHE[campaign_id]
+    else:
+        _CAMPAIGN_MEMBERS_CACHE.clear()
+        _CAMPAIGN_IN_FLIGHT_CACHE.clear()
 
 
 class CampaignMemberRepository:
@@ -257,27 +286,7 @@ class CampaignMemberRepository:
         page_size: int = 25
     ) -> Tuple[List[CampaignMember], int]:
         def _sync_list():
-            container = get_campaign_members_container()
-            all_dict: Dict[str, CampaignMember] = {
-                m.id: m for m in self._memory_store.values()
-                if m.campaign_id == campaign_id and (m.organization_id == organization_id or organization_id == "global")
-            }
-
-            if container:
-                query = "SELECT * FROM c WHERE c.campaign_id = @campaign_id AND c.organization_id = @organization_id"
-                params = [
-                    {"name": "@campaign_id", "value": campaign_id},
-                    {"name": "@organization_id", "value": organization_id}
-                ]
-                try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                    for item in items:
-                        m = CampaignMember.model_validate(item)
-                        all_dict[m.id] = m
-                except Exception as e:
-                    print(f"[CampaignMemberRepository Error] list_by_campaign: {e}")
-
-            all_members = list(all_dict.values())
+            all_members = self._get_cached_or_queried_members(campaign_id, organization_id)
 
             filtered = all_members
             if status and status.strip() and status.lower() != "all":
@@ -303,48 +312,58 @@ class CampaignMemberRepository:
 
         return await asyncio.to_thread(_sync_list)
 
-    async def get_all_by_campaign(self, campaign_id: str) -> List[CampaignMember]:
-        def _sync_all():
-            container = get_campaign_members_container()
-            all_dict: Dict[str, CampaignMember] = {
-                m.id: m for m in self._memory_store.values() if m.campaign_id == campaign_id
-            }
+    def _get_cached_or_queried_members(self, campaign_id: str, organization_id: Optional[str] = None) -> List[CampaignMember]:
+        now_ts = time.time()
+        if campaign_id in _CAMPAIGN_MEMBERS_CACHE:
+            cached_list, cached_time = _CAMPAIGN_MEMBERS_CACHE[campaign_id]
+            if now_ts - cached_time < CAMPAIGN_MEMBERS_CACHE_TTL_SECONDS:
+                if organization_id and organization_id != "global":
+                    return [m for m in cached_list if m.organization_id == organization_id]
+                return cached_list
 
-            if container:
+        container = get_campaign_members_container()
+        all_dict: Dict[str, CampaignMember] = {
+            m.id: m for m in self._memory_store.values()
+            if m.campaign_id == campaign_id
+        }
+
+        if container:
+            if organization_id and organization_id != "global":
+                query = "SELECT * FROM c WHERE c.campaign_id = @campaign_id AND c.organization_id = @organization_id"
+                params = [
+                    {"name": "@campaign_id", "value": campaign_id},
+                    {"name": "@organization_id", "value": organization_id}
+                ]
+            else:
                 query = "SELECT * FROM c WHERE c.campaign_id = @campaign_id"
                 params = [{"name": "@campaign_id", "value": campaign_id}]
-                try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                    for item in items:
-                        m = CampaignMember.model_validate(item)
-                        all_dict[m.id] = m
-                except Exception as e:
-                    print(f"[CampaignMemberRepository Error] get_all_by_campaign: {e}")
+            try:
+                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                for item in items:
+                    m = CampaignMember.model_validate(item)
+                    all_dict[m.id] = m
+                    self._memory_store[m.id] = m
+            except Exception as e:
+                print(f"[CampaignMemberRepository Error] _get_cached_or_queried_members: {e}")
 
-            return list(all_dict.values())
+        members_list = list(all_dict.values())
+        _CAMPAIGN_MEMBERS_CACHE[campaign_id] = (members_list, now_ts)
+        return members_list
+
+    async def get_all_by_campaign(self, campaign_id: str) -> List[CampaignMember]:
+        def _sync_all():
+            return self._get_cached_or_queried_members(campaign_id)
 
         return await asyncio.to_thread(_sync_all)
 
     async def get_next_eligible_members(self, campaign_id: str, limit: int = 10) -> List[CampaignMember]:
         """
         Retrieves members in QUEUED status or RETRYING status whose next_attempt_at has arrived.
+        Uses in-memory store and cached results to prevent hammering the database on idle loops.
         """
         def _sync_eligible():
             now = datetime.now(timezone.utc)
-            all_members = [m for m in self._memory_store.values() if m.campaign_id == campaign_id]
-
-            container = get_campaign_members_container()
-            if container:
-                query = "SELECT * FROM c WHERE c.campaign_id = @campaign_id AND c.status IN ('queued', 'retrying')"
-                params = [{"name": "@campaign_id", "value": campaign_id}]
-                try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                    for item in items:
-                        m = CampaignMember.model_validate(item)
-                        self._memory_store[m.id] = m
-                except Exception as e:
-                    print(f"[CampaignMemberRepository Error] get_next_eligible_members: {e}")
-                all_members = [m for m in self._memory_store.values() if m.campaign_id == campaign_id]
+            all_members = self._get_cached_or_queried_members(campaign_id)
 
             eligible = []
             for m in all_members:
@@ -357,7 +376,6 @@ class CampaignMemberRepository:
                         if next_dt <= now:
                             eligible.append(m)
 
-            # Sort queued first, then earlier next_attempt_at
             def _sort_key(x: CampaignMember):
                 if not x.next_attempt_at:
                     return datetime.min.replace(tzinfo=timezone.utc)
@@ -370,18 +388,25 @@ class CampaignMemberRepository:
 
     async def count_in_flight_calls(self, campaign_id: str) -> int:
         def _sync_count():
-            container = get_campaign_members_container()
-            in_mem = sum(1 for m in self._memory_store.values() if m.campaign_id == campaign_id and str(getattr(m.status, "value", m.status)).lower() == "calling")
+            now_ts = time.time()
+            if campaign_id in _CAMPAIGN_IN_FLIGHT_CACHE:
+                cached_cnt, cached_time = _CAMPAIGN_IN_FLIGHT_CACHE[campaign_id]
+                if now_ts - cached_time < CAMPAIGN_IN_FLIGHT_CACHE_TTL_SECONDS:
+                    return cached_cnt
 
+            in_mem = sum(1 for m in self._memory_store.values() if m.campaign_id == campaign_id and str(getattr(m.status, "value", m.status)).lower() == "calling")
+            container = get_campaign_members_container()
             if container:
                 query = "SELECT VALUE COUNT(1) FROM c WHERE c.campaign_id = @campaign_id AND c.status = 'calling'"
                 params = [{"name": "@campaign_id", "value": campaign_id}]
                 try:
                     items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                     if items:
-                        return int(items[0])
+                        in_mem = int(items[0])
                 except Exception:
                     pass
+
+            _CAMPAIGN_IN_FLIGHT_CACHE[campaign_id] = (in_mem, now_ts)
             return in_mem
 
         return await asyncio.to_thread(_sync_count)

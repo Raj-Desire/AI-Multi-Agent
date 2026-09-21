@@ -166,13 +166,15 @@ export function Step3VoiceLanguage({
   }, [audioElement]);
 
   // Prefetch voice sample audio into memory for instantaneous (0ms) playback on click
-  const prefetchVoiceSample = async (voiceId: string): Promise<string | undefined> => {
-    if (audioBlobCacheRef.current.has(voiceId)) return audioBlobCacheRef.current.get(voiceId);
-
+  const prefetchVoiceSample = async (voiceId: string, customText?: string): Promise<string | undefined> => {
     const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
     const sampleText =
+      customText ||
       (voiceObj as any)?.sampleText ||
       `Hello! I am your AI voice agent. How can I help you today?`;
+
+    const cacheKey = `${voiceId}:${sampleText}`;
+    if (audioBlobCacheRef.current.has(cacheKey)) return audioBlobCacheRef.current.get(cacheKey);
 
     try {
       const token = localStorage.getItem("desire_token");
@@ -195,7 +197,7 @@ export function Step3VoiceLanguage({
 
       const blob = await response.blob();
       const audioUrl = URL.createObjectURL(blob);
-      audioBlobCacheRef.current.set(voiceId, audioUrl);
+      audioBlobCacheRef.current.set(cacheKey, audioUrl);
       return audioUrl;
     } catch {
       return undefined;
@@ -204,7 +206,7 @@ export function Step3VoiceLanguage({
 
   // Pre-warm active voice and common voices in the background
   useEffect(() => {
-    const popularVoices = [selectedVoiceId, "aura-2-thalia-en", "aura-orion-en", "aura-luna-en", "aura-asteria-en"];
+    const popularVoices = [selectedVoiceId, "aura-2-thalia-en", "aura-orion-en", "aura-luna-en", "aura-asteria-en", "aura-2-agustina-es", "aura-2-agathe-fr", "aura-2-aurelia-de"];
     popularVoices.forEach((vId) => {
       prefetchVoiceSample(vId);
     });
@@ -221,7 +223,7 @@ export function Step3VoiceLanguage({
     setPlayingVoiceId(null);
   };
 
-  const playVoiceSample = async (voiceId: string) => {
+  const playVoiceSample = async (voiceId: string, customText?: string) => {
     if (playingVoiceId === voiceId) {
       stopCurrentAudio();
       return;
@@ -232,9 +234,16 @@ export function Step3VoiceLanguage({
     setAudioError(null);
 
     try {
-      let audioUrl = audioBlobCacheRef.current.get(voiceId);
+      const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+      const sampleText =
+        customText ||
+        (voiceObj as any)?.sampleText ||
+        `Hello! I am your AI voice agent. How can I help you today?`;
+
+      const cacheKey = `${voiceId}:${sampleText}`;
+      let audioUrl = audioBlobCacheRef.current.get(cacheKey);
       if (!audioUrl) {
-        audioUrl = await prefetchVoiceSample(voiceId);
+        audioUrl = await prefetchVoiceSample(voiceId, sampleText);
       }
 
       if (!audioUrl) {
@@ -293,10 +302,29 @@ export function Step3VoiceLanguage({
   };
 
   const handleLanguageChange = (lang: string) => {
+    // 1. Find matching native voice for the selected language
+    const currentVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId);
+    let targetVoiceId = selectedVoiceId;
+
+    // If current voice does not support the newly selected language, automatically switch to the native voice
+    if (currentVoiceObj?.language !== lang) {
+      const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
+      const nativeVoice = AURA_VOICES.find((v) => v.language === lang);
+      targetVoiceId = (langConfig as any)?.defaultVoice || nativeVoice?.id || "aura-2-thalia-en";
+    }
+
+    // 2. Stop any currently playing preview
+    stopCurrentAudio();
+
+    // 3. Clear audio cache to avoid stale language previews
+    audioBlobCacheRef.current.clear();
+
+    // 4. Update Agent configuration with synchronized voice and listen language
     setAgentData((prev) => ({
       ...prev,
       voice: {
         ...prev.voice,
+        voice: targetVoiceId,
         language: lang
       },
       listen: {
@@ -306,6 +334,9 @@ export function Step3VoiceLanguage({
         language: lang
       }
     }));
+
+    // 5. Pre-warm preview for newly selected voice in the target language
+    prefetchVoiceSample(targetVoiceId);
   };
 
   // Custom Dropdown State
