@@ -5,7 +5,9 @@ import uuid
 from app.repositories.user_repository import UserRepository
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.platform_rules_repository import PlatformRulesRepository
+from app.repositories.call_repository import CallRepository
 from app.services.twilio_service import TwilioService
+from app.services.cost_calculator import CostCalculatorService
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
 from app.schemas.platform_rules import VoiceRulesResponse, UpdateVoiceRulesPayload
 from app.core.dependencies import require_superadmin, TenantContext
@@ -14,6 +16,7 @@ router = APIRouter(prefix="/superadmin", tags=["Superadmin Management"])
 
 twilio_repo = TwilioRepository()
 twilio_service = TwilioService(twilio_repo)
+call_repo = CallRepository()
 
 
 class CreateOrganizationPayload(BaseModel):
@@ -382,4 +385,48 @@ async def reset_platform_voice_rules(_: Dict[str, Any] = Depends(require_superad
     """Resets all platform voice rules to recommended defaults."""
     reset_data = await PlatformRulesRepository.reset_to_defaults()
     return VoiceRulesResponse(**reset_data)
+
+
+# ---------------------------------------------------------------------------
+# Multi-Tenant Cost, Token & Infrastructure Telemetry (SuperAdmin Only)
+# ---------------------------------------------------------------------------
+
+@router.get("/usage-cost-breakdown")
+async def get_platform_usage_and_cost(
+    time_range: str = Query("all", description="Time range: 'all', 'today', '7d', '30d'"),
+    markup: float = Query(2.5, description="Client pricing markup multiplier (default 2.5x)"),
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    SuperAdmin exclusive telemetry calculating total telephony, STT, TTS, and LLM token usage
+    across all tenant organizations, alongside billable margins and cost per organization.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    all_calls = await call_repo.list_all_calls(limit=10000)
+    all_orgs = await UserRepository.list_organizations()
+
+    # Filter calls by time_range
+    now = datetime.now(timezone.utc)
+    filtered_calls = all_calls
+
+    if time_range == "today":
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        filtered_calls = [c for c in all_calls if c.created_at and c.created_at >= start_date]
+    elif time_range == "7d":
+        start_date = now - timedelta(days=7)
+        filtered_calls = [c for c in all_calls if c.created_at and c.created_at >= start_date]
+    elif time_range == "30d":
+        start_date = now - timedelta(days=30)
+        filtered_calls = [c for c in all_calls if c.created_at and c.created_at >= start_date]
+
+    telemetry = CostCalculatorService.aggregate_organization_usage(
+        calls=filtered_calls,
+        organizations=all_orgs,
+        markup_multiplier=max(1.0, markup)
+    )
+
+    telemetry["time_range"] = time_range
+    return telemetry
+
 

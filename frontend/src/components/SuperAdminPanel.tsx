@@ -14,7 +14,8 @@ import {
   User,
   Shield,
   Layers,
-  Sparkles
+  Sparkles,
+  DollarSign
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -26,6 +27,7 @@ import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
 import { Tabs } from "./ui/Tabs";
 import { SuperAdminVoiceRulesTab } from "./SuperAdminVoiceRulesTab";
+import { SuperAdminUsageCostTab } from "./SuperAdminUsageCostTab";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -408,6 +410,7 @@ export const SuperAdminPanel: React.FC = () => {
         tabs={[
           { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
           { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
+          { id: "cost_tracking", label: "Usage & Cost Tracking", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> },
           { id: "voice_rules", label: "AI Voice Rules & Intelligence", icon: <Sparkles className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
@@ -484,7 +487,12 @@ export const SuperAdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: AI Voice Rules & Intelligence */}
+      {/* TAB 3: Usage & Cost Tracking (SuperAdmin Only) */}
+      {activeTab === "cost_tracking" && (
+        <SuperAdminUsageCostTab />
+      )}
+
+      {/* TAB 4: AI Voice Rules & Intelligence */}
       {activeTab === "voice_rules" && (
         <SuperAdminVoiceRulesTab />
       )}

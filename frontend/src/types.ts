@@ -39,6 +39,57 @@ export interface PlatformOverviewMetrics {
   total_accounts: number;
 }
 
+export interface OrgCostUsage {
+  organization_id: string;
+  org_name: string;
+  is_active: boolean;
+  total_calls: number;
+  completed_calls: number;
+  failed_calls: number;
+  duration_seconds: number;
+  billed_minutes: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  tts_characters: number;
+  telephony_cost: number;
+  stt_cost: number;
+  llm_cost: number;
+  tts_cost: number;
+  total_cost: number;
+  suggested_billed: number;
+  margin: number;
+}
+
+export interface PlatformCostSummary {
+  total_organizations: number;
+  total_calls: number;
+  total_duration_minutes: number;
+  total_tokens: number;
+  total_infrastructure_cost: number;
+  suggested_client_revenue: number;
+  projected_gross_profit: number;
+  gross_margin_percentage: number;
+  cost_by_service: {
+    telephony: number;
+    stt: number;
+    llm: number;
+    tts: number;
+  };
+  pricing_rates: {
+    telephony_per_min: number;
+    stt_per_min: number;
+    tts_per_1k_chars: number;
+    markup_multiplier: number;
+  };
+}
+
+export interface SuperAdminCostTelemetryResponse {
+  time_range: string;
+  summary: PlatformCostSummary;
+  organizations: OrgCostUsage[];
+}
+
 export interface TwilioConfig {
   account_sid: string;
   auth_token_masked: string;
