@@ -52,6 +52,7 @@ from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.runtime import AgentRuntimeBuilder
+from app.agents.orchestrator import AgentOrchestrator
 import time
 import re
 
@@ -193,8 +194,92 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         except Exception:
             pass
 
+    # Multi-Agent Orchestrator state
+    orchestrator: Optional[AgentOrchestrator] = None
+    handoff_in_progress: bool = False
+    live_transcript_turns: List[Dict[str, str]] = []
+    turn_counter: int = 0
+
+    async def _preview_evaluate_and_route(user_transcript: str):
+        """
+        Evaluates user transcript against orchestrator routing rules in browser preview stream.
+        If a specialist intent matches, hot-swaps the LLM prompt mid-call without dropping WebSocket.
+        """
+        nonlocal orchestrator, handoff_in_progress, agent_config, deepgram_client
+        nonlocal live_transcript_turns, turn_counter
+
+        if not orchestrator or not deepgram_client or not deepgram_client.is_ready:
+            return
+
+        try:
+            handoff_in_progress = True
+
+            decision = orchestrator.evaluate_intent(user_transcript, turn_number=turn_counter)
+            if not decision.should_route:
+                handoff_in_progress = False
+                return
+
+            logger.info(
+                f"[Orchestrator:Preview] Routing triggered: target='{decision.target_agent_id}' "
+                f"| keyword='{decision.matched_keyword}' | reason='{decision.reason}'"
+            )
+
+            all_entity_keywords: list = []
+            for child_cfg in orchestrator.get_all_child_agents().values():
+                if child_cfg.agent_entity_scope:
+                    all_entity_keywords.append(child_cfg.agent_entity_scope)
+
+            context = AgentOrchestrator.extract_context_from_transcript(
+                live_transcript_turns,
+                entity_keywords=all_entity_keywords if all_entity_keywords else None
+            )
+            context.detected_intent = decision.matched_keyword or decision.reason
+            context.from_agent_id = orchestrator.get_current_agent_id()
+
+            new_prompt, transition_intro = await orchestrator.build_handoff_payload(decision, context)
+
+            # Inject transition intro only if non-empty (silent handoff otherwise)
+            norm_intro = PronunciationNormalizer.normalize(
+                transition_intro,
+                getattr(agent_config, "pronunciation_rules", None)
+            ) if transition_intro else ""
+            if norm_intro.strip():
+                await deepgram_client.inject_agent_message(norm_intro, behavior="interrupt")
+                logger.info(f"[Orchestrator:Preview] Injected transition intro: '{norm_intro[:60]}'")
+                await asyncio.sleep(0.35)
+            else:
+                logger.info("[Orchestrator:Preview] Silent handoff enabled. Hot-swapping prompt directly.")
+
+            await deepgram_client.update_prompt(new_prompt)
+            logger.info(
+                f"[Orchestrator:Preview] UpdatePrompt sent for specialist "
+                f"'{decision.target_agent_id}'. Handoff complete."
+            )
+
+            specialist_cfg = orchestrator.get_child_agent(decision.target_agent_id)
+            if specialist_cfg:
+                agent_config = specialist_cfg
+
+            # Notify frontend preview UI of the specialist handoff
+            try:
+                await websocket.send_json({
+                    "type": "agent_handoff",
+                    "target_agent_id": decision.target_agent_id,
+                    "target_agent_name": decision.target_agent_name,
+                    "keyword": decision.matched_keyword,
+                    "reason": decision.reason,
+                })
+            except Exception:
+                pass
+
+        except Exception as route_err:
+            logger.error(f"[Orchestrator:Preview] Routing error: {route_err}")
+        finally:
+            handoff_in_progress = False
+
     async def handle_dg_transcript(role: str, content: str):
         nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
+        nonlocal live_transcript_turns, turn_counter, orchestrator, handoff_in_progress, is_concluding_call
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
@@ -202,8 +287,15 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             last_user_speech_time = time.time()
             is_user_speaking = False
             has_reprompted_silence = False
+            turn_counter += 1
+            live_transcript_turns.append({"role": "user", "content": content})
+
+            # Multi-Agent Orchestrator evaluation on each user turn
+            if orchestrator and not handoff_in_progress and not is_concluding_call:
+                asyncio.create_task(_preview_evaluate_and_route(content))
         else:
             is_agent_speaking = True
+            live_transcript_turns.append({"role": "assistant", "content": content})
 
         try:
             await websocket.send_json({
@@ -364,6 +456,40 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
                     if deepgram_client:
                         await deepgram_client.close()
+                        deepgram_client = None
+
+                    # ── Multi-Agent Orchestrator Initialization for Browser Preview ──
+                    orchestrator = None
+                    handoff_in_progress = False
+                    live_transcript_turns.clear()
+                    turn_counter = 0
+
+                    if agent_config.is_orchestrator and agent_config.orchestrator_config:
+                        try:
+                            child_ids = agent_config.orchestrator_config.child_agent_ids
+                            child_map: dict = {}
+                            effective_org = target_org_id or "global"
+                            for cid in child_ids:
+                                try:
+                                    c_cfg = await agent_repo.get_by_id(effective_org, cid)
+                                    if c_cfg:
+                                        child_map[cid] = c_cfg
+                                        logger.info(f"[Orchestrator:Preview] Loaded child agent '{cid}' → '{c_cfg.name}'")
+                                except Exception as c_err:
+                                    logger.warning(f"[Orchestrator:Preview] Could not load child agent '{cid}': {c_err}")
+
+                            if child_map:
+                                orchestrator = AgentOrchestrator(
+                                    orchestrator_config=agent_config,
+                                    child_agents=child_map,
+                                    business_profile=business_profile or {},
+                                )
+                                logger.info(
+                                    f"[Orchestrator:Preview] Orchestrator active with {len(child_map)} child agents."
+                                )
+                        except Exception as orch_e:
+                            logger.error(f"[Orchestrator:Preview] Failed to initialize orchestrator: {orch_e}")
+                    # ──────────────────────────────────────────────────────────────────
 
                     # Reset state
                     call_start_time = time.time()

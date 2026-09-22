@@ -19,6 +19,7 @@ from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEven
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
 from app.agents.runtime import AgentRuntimeBuilder
+from app.agents.orchestrator import AgentOrchestrator, HandoffContext
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
 from app.services.twilio_service import TwilioService
@@ -71,6 +72,12 @@ async def voice_stream_websocket(websocket: WebSocket):
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
     barge_in_debounce_task: Optional[asyncio.Task] = None
+
+    # Multi-Agent Orchestrator runtime state
+    orchestrator: Optional[AgentOrchestrator] = None
+    live_transcript_turns: list = []  # [{"role": str, "content": str}]
+    handoff_in_progress: bool = False
+    turn_counter: int = 0
 
     # Outbound audio metrics
     outbound_chunk_counter: int = 0
@@ -224,6 +231,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     async def handle_transcript(role: str, content: str):
         """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
         nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke
+        nonlocal orchestrator, live_transcript_turns, handoff_in_progress, turn_counter
         if not session:
             return
 
@@ -236,7 +244,14 @@ async def voice_stream_websocket(websocket: WebSocket):
             is_user_speaking = False
             user_spoke = True
             has_reprompted_silence = False
+            live_transcript_turns.append({"role": "user", "content": content})
+            turn_counter += 1
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
+
+            # ── Multi-Agent Orchestrator: Intent Evaluation ──────────────────
+            if orchestrator and not handoff_in_progress and not is_concluding_call:
+                asyncio.create_task(_evaluate_and_route(content))
+            # ─────────────────────────────────────────────────────────────────
 
             # Smart IVR & Answering Machine Detection (AMD)
             if not is_concluding_call:
@@ -269,6 +284,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     logger.error(f"[VoiceGateway] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
+            live_transcript_turns.append({"role": "assistant", "content": content})
             await call_session_service.record_agent_transcript(
                 session,
                 content,
@@ -355,6 +371,96 @@ async def voice_stream_websocket(websocket: WebSocket):
                 await websocket.close()
         except Exception:
             pass
+
+    async def _evaluate_and_route(user_transcript: str):
+        """
+        Multi-Agent Orchestrator: evaluates user intent and performs a seamless
+        mid-call agent hot-swap using UpdatePrompt + InjectAgentMessage.
+        No WebSocket is dropped; only the LLM prompt and voice intro change.
+        """
+        nonlocal orchestrator, handoff_in_progress, agent_config, deepgram_client
+        nonlocal session, live_transcript_turns, turn_counter
+
+        if not orchestrator or not deepgram_client or not deepgram_client.is_ready:
+            return
+
+        try:
+            handoff_in_progress = True
+
+            # 1. Evaluate intent
+            decision = orchestrator.evaluate_intent(user_transcript, turn_number=turn_counter)
+            if not decision.should_route:
+                logger.debug(f"[Orchestrator:Gateway] No routing needed. Reason: {decision.reason}")
+                handoff_in_progress = False
+                return
+
+            logger.info(
+                f"[Orchestrator:Gateway] Routing decision: "
+                f"target='{decision.target_agent_id}' | "
+                f"keyword='{decision.matched_keyword}' | reason='{decision.reason}'"
+            )
+
+            # 2. Extract conversation context from transcript history
+            all_entity_keywords: list = []
+            for child_cfg in orchestrator.get_all_child_agents().values():
+                if child_cfg.agent_entity_scope:
+                    all_entity_keywords.append(child_cfg.agent_entity_scope)
+
+            context = AgentOrchestrator.extract_context_from_transcript(
+                live_transcript_turns,
+                entity_keywords=all_entity_keywords if all_entity_keywords else None
+            )
+            context.detected_intent = decision.matched_keyword or decision.reason
+            context.from_agent_id = orchestrator.get_current_agent_id()
+
+            # 3. Build new specialist prompt + warm intro
+            new_prompt, transition_intro = await orchestrator.build_handoff_payload(decision, context)
+
+            # 4. Inject transition intro only if non-empty (silent handoff otherwise)
+            norm_intro = PronunciationNormalizer.normalize(
+                transition_intro,
+                getattr(agent_config, "pronunciation_rules", None)
+            ) if transition_intro else ""
+            if norm_intro.strip():
+                await deepgram_client.inject_agent_message(norm_intro, behavior="interrupt")
+                logger.info(f"[Orchestrator:Gateway] Injected transition intro: '{norm_intro[:60]}'")
+                # Small buffer to allow intro TTS to begin rendering before prompt swap
+                await asyncio.sleep(0.35)
+            else:
+                logger.info("[Orchestrator:Gateway] Silent handoff enabled. Hot-swapping prompt directly.")
+
+            # 6. Hot-swap the LLM prompt (UpdatePrompt — no WebSocket disconnect)
+            await deepgram_client.update_prompt(new_prompt)
+            logger.info(
+                f"[Orchestrator:Gateway] UpdatePrompt sent for specialist "
+                f"'{decision.target_agent_id}'. Handoff complete."
+            )
+
+            # 7. Update active agent_config reference for lifecycle features
+            specialist_cfg = orchestrator.get_child_agent(decision.target_agent_id)
+            if specialist_cfg:
+                agent_config = specialist_cfg
+
+            # 8. Telemetry event
+            if session:
+                await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                    event_type="AgentHandoff",
+                    call_session_id=session.call_session_id,
+                    organization_id=session.organization_id,
+                    agent_id=decision.target_agent_id,
+                    twilio_call_sid=session.twilio_call_sid,
+                    payload={
+                        "from_agent": context.from_agent_id,
+                        "to_agent": decision.target_agent_id,
+                        "keyword": decision.matched_keyword,
+                        "reason": decision.reason,
+                    }
+                ))
+
+        except Exception as route_err:
+            logger.error(f"[Orchestrator:Gateway] Routing error: {route_err}")
+        finally:
+            handoff_in_progress = False
 
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""
@@ -576,6 +682,35 @@ async def voice_stream_websocket(websocket: WebSocket):
                 from app.repositories.business_profile_repository import BusinessProfileRepository
                 business_profile = await BusinessProfileRepository.get_profile(org_id)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config, business_profile=business_profile)
+
+                # ── Multi-Agent Orchestrator Initialization ────────────────────────
+                if agent_config.is_orchestrator and agent_config.orchestrator_config:
+                    try:
+                        child_agent_ids = agent_config.orchestrator_config.child_agent_ids
+                        child_agents_map: dict = {}
+                        for child_id in child_agent_ids:
+                            try:
+                                child_cfg = await agent_service.get_agent_by_id(ctx, child_id)
+                                child_agents_map[child_id] = child_cfg
+                                logger.info(f"[Orchestrator:Gateway] Loaded child agent '{child_id}' → '{child_cfg.name}'")
+                            except Exception as child_err:
+                                logger.warning(f"[Orchestrator:Gateway] Could not load child agent '{child_id}': {child_err}")
+
+                        if child_agents_map:
+                            orchestrator = AgentOrchestrator(
+                                orchestrator_config=agent_config,
+                                child_agents=child_agents_map,
+                                business_profile=business_profile or {},
+                            )
+                            logger.info(
+                                f"[Orchestrator:Gateway] Orchestrator active with "
+                                f"{len(child_agents_map)} child agents: {list(child_agents_map.keys())}"
+                            )
+                        else:
+                            logger.warning("[Orchestrator:Gateway] No child agents loaded. Orchestrator inactive.")
+                    except Exception as orch_err:
+                        logger.error(f"[Orchestrator:Gateway] Failed to initialize orchestrator: {orch_err}")
+                # ──────────────────────────────────────────────────────────────────
 
                 # Override with custom prompt if specified for this test call session
                 if session and session.custom_prompt:

@@ -414,6 +414,27 @@ export interface AgentConfig {
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
   few_shot_examples?: FewShotExample[];
+  // Multi-Agent Orchestrator fields
+  is_orchestrator?: boolean;
+  orchestrator_config?: {
+    child_agent_ids: string[];
+    routing_strategy: 'intent' | 'sequential' | 'round_robin';
+    intent_routing_rules: Array<{
+      intent_keywords: string[];
+      target_agent_id: string;
+      target_agent_name: string;
+      priority: number;
+      transition_intro?: string;
+      confidence_threshold?: number;
+    }>;
+    fallback_agent_id?: string;
+    suppress_child_greeting?: boolean;
+    handoff_summary_enabled?: boolean;
+    shared_context_fields?: string[];
+    auto_return_to_orchestrator?: boolean;
+  };
+  parent_orchestrator_id?: string;
+  agent_entity_scope?: string;
   created_at?: string;
   updated_at?: string;
 }

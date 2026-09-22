@@ -394,6 +394,35 @@ export function Step2RoleConversation({
         </div>
       </div>
 
+      {/* Agent Entity Scope — shown only for specialist agents inside an orchestrator setup */}
+      {!(agentData as any).is_orchestrator && (
+        <div className="p-3 bg-[var(--color-primary-light)]/20 border border-[var(--color-primary)]/25 rounded-lg space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+            <label className="text-xs font-bold text-[var(--color-heading)]">
+              Knowledge Entity Scope
+            </label>
+            <InfoTooltip
+              content="Optional. Set a scope identifier for this agent (e.g., 'Ocean Grand Hotel', 'Skyline Suites'). When used inside a Multi-Agent Orchestrator, this isolates the agent's knowledge base to only its own property — preventing cross-agent data bleed."
+              position="top"
+            />
+            <span className="text-[10px] text-[var(--color-primary)] font-medium px-1.5 py-0.5 rounded-full bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20">
+              For Orchestrator Handoffs
+            </span>
+          </div>
+          <input
+            type="text"
+            value={(agentData as any).agent_entity_scope || ""}
+            onChange={(e) => setAgentData((prev) => ({ ...prev, agent_entity_scope: e.target.value || undefined } as any))}
+            placeholder='e.g., "Ocean Grand Hotel", "Skyline Suites", "VIP Support Team"'
+            className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+          />
+          <p className="text-[10px] text-[var(--color-muted)]">
+            Leave blank if this is a standalone agent not used in an orchestrator.
+          </p>
+        </div>
+      )}
+
       {/* 2. Primary Agent Objective Form Block */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2.5 relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">

@@ -626,19 +626,17 @@ class VoicePromptBuilder:
 {working_hours_rule}
 
 MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
-1. ACCURATE CURRENT TIME COMPARISON (FUTURE VS PAST):
-   - Current time is {time_str}.
-   - Compare requested time carefully: Any time that is LATER than {time_str} today (for example, if current time is {time_str} and caller requests a later time today like {time_str.replace('19', '30').replace('14', '30')}) is in the FUTURE and CAN be booked today if within operating hours.
-   - ONLY reject a requested time as "already passed" if that specific hour/minute is strictly BEFORE {time_str} today.
+1. ACCURATE CURRENT DATE & TIME COMPARISON (FUTURE VS PAST):
+   - Today's date is {date_str} and current time is {time_str}.
+   - YEAR ASSUMPTION: If the caller mentions a month and day without specifying a year (e.g., "September 21" or "October 15"), ALWAYS compare against today's date ({date_str}). If that month/day has already passed in the current year, assume they mean the NEXT upcoming occurrence of that date or today's date if requested today. NEVER dismiss future dates or state they have passed unless the full date (month, day, AND year) is strictly in the calendar past.
+   - Any time that is later than {time_str} today is in the FUTURE and can be accommodated if within operating hours.
 2. OPERATING HOURS COMPLIANCE:
    - Always verify that the requested time falls within official operating hours ({h_hours if business_profile else '9:00 AM - 7:00 PM'}).
-   - If a requested time is outside working hours (or on a closed day), politely decline and suggest options within {h_hours if business_profile else '9:00 AM - 7:00 PM'}.
+   - If a requested time is outside working hours (or on a closed day), politely suggest options within {h_hours if business_profile else '9:00 AM - 7:00 PM'}.
 3. CROSS-TIMEZONE REASONING & CLARITY:
    - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly.
-   - Clarify or confirm both times if relevant (e.g., "5:00 PM UK time is 10:30 PM our time (IST). Since our office closes at 7:00 PM IST, could we schedule for 1:30 PM UK time / 7:00 PM IST instead?").
 4. MANDATORY EXACT DATE CONFIRMATION:
-   - NEVER confirm an appointment with just a day name (do NOT say just "Monday").
-   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1] if upcoming_days else ''}" or "Do you mean today, {day_name} ({date_str}), or next {day_name} ({upcoming_days[-1].split(': ')[1] if upcoming_days else ''})?")."""
+   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1] if upcoming_days else ''}")."""
 
 
     @staticmethod
@@ -662,13 +660,13 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 "  * If not interested: Acknowledge politely: 'No problem at all. Thank you for your time today. Have a great day!' and conclude.\n"
                 "  * If free / asking what this is about: Proceed to Step 3.\n"
                 "- Step 3 (Needs Discovery): Ask ONE single concise question to understand their requirements. Keep responses under 20 words.\n"
-                "- Step 4 (Call to Action): Propose a short 10-15 minute chat with a specialist next week and confirm their details."
+                "- Step 4 (Call to Action): Answer their inquiry directly using your domain knowledge. If they want a detailed consultation, propose a short 10-15 minute chat."
             )
         elif is_followup:
             return (
-                "[FOLLOW-UP CALL RULES]\n"
-                "- You are following up on a recent service/request. Inquire if everything went smoothly and resolve any remaining questions.\n"
-                "- Keep responses concise and ask only one question at a time."
+                "[INBOUND / CUSTOMER INQUIRY & FOLLOW-UP RULES]\n"
+                "- You are speaking with a customer. ALWAYS directly answer their questions about pricing, subscriptions, services, and bookings immediately.\n"
+                "- NEVER deflect questions by offering to schedule a call if you can answer them. Give the factual answer directly."
             )
         else:
             return f"[ROLE OBJECTIVE]\n- Embody a {config.role}: {config.objective}"
@@ -738,9 +736,6 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
     def _build_interruption_resumption_directives(config: AgentConfiguration) -> str:
         """Injects directives on handling brief interruptions and resuming seamlessly."""
         runtime = getattr(config, "runtime", None)
-        if runtime and not getattr(runtime, "graceful_resumption_enabled", True):
-            return ""
-
         return (
             "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION (MANDATORY)]\n"
             "- AVOID RESTARTING: If the caller interrupts with brief acknowledgments, questions, or filler words ('Wait', 'Sorry', 'Go on', 'Continue', 'Yes', 'Okay'), NEVER restart your previous answer or greeting from the beginning.\n"
@@ -772,29 +767,29 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         if not examples:
             return ""
 
-        lines = ["[GOLDEN CONVERSATION EXAMPLES (FEW-SHOT ROLE-PLAY)]", "Follow the concise, empathetic spoken style demonstrated below:"]
-        for i, eg in enumerate(examples[:2], 1):
-            title = getattr(eg, "title", f"Example {i}")
-            lines.append(f"\n### {title}:")
-            dialogue = getattr(eg, "dialogue", [])
-            for turn in dialogue:
-                role = "Caller" if getattr(turn, "role", "") == "user" else "Assistant"
-                content = getattr(turn, "content", "")
-                lines.append(f"{role}: \"{content}\"")
+        formatted_dialogues = []
+        for idx, ex in enumerate(examples[:2], start=1):
+            turns = []
+            for t in ex.dialogue:
+                role_label = "Caller" if t.role == "user" else "Assistant"
+                turns.append(f"  {role_label}: \"{t.content}\"")
+            dialogue_str = "\n".join(turns)
+            formatted_dialogues.append(f"Example #{idx} ({ex.title}):\n{dialogue_str}")
 
-        return "\n".join(lines)
+        return (
+            "[FEW-SHOT TELEPHONY DIALOGUE REFERENCE (GOLDEN HUMAN PATTERNS)]\n"
+            + "\n\n".join(formatted_dialogues)
+        )
 
     @staticmethod
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
-        platform_rules: Optional[List[Dict[str, Any]]] = None
+        platform_rules: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """
-        Generates the complete, compiled spoken system prompt combining identity,
-        mission, length enforcement, personality profile, language directives,
-        temporal grounding, business profile knowledge, platform voice rules, and telephony audio rules.
-        Kept strictly within Deepgram prompt token limits.
+        Synthesizes the dynamic system prompt with business knowledge, calendar context,
+        acoustic directives, few-shot examples, and strict telephony guardrails.
         """
         if platform_rules is None:
             try:
@@ -815,14 +810,15 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
         # Spoken telephony behavioral rules
-        telephony_rules = """[CRITICAL SPOKEN TELEPHONY & BEHAVIORAL RULES]
-1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Never deliver robotic monologues or dump paragraphs.
-2. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions (do not ask 'What is your name and what can I help you with?'). If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
-3. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
-4. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team to see if a quick chat is worth your time!") and smoothly steer back to the topic.
-5. HUMAN ESCALATION & TRANSFER: If the caller explicitly requests to speak with a human representative, manager, or live agent, warmly comply without resistance: "I understand completely. Please hold while I transfer you to our specialist right away." This seamlessly activates live call routing.
-6. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.
-7. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
+        telephony_rules = """[CRITICAL SPOKEN TELEPHONY & DIRECT ANSWERING RULES]
+1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Deliver facts immediately without unnecessary introductory fluff.
+2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller!
+3. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions. If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
+4. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
+5. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team!") and smoothly continue answering their inquiry.
+6. HUMAN ESCALATION & EXPLICIT TRANSFER: ONLY if the caller EXPLICITLY demands to speak to an actual live human person or supervisor (e.g., "Transfer me to a live human right now", "I want to talk to a real person"): "I understand completely. Please hold while I transfer you to our live team." Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
+7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.
+8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
 
         # If custom system_prompt is provided, prioritize it directly to avoid truncation
         if config.system_prompt and config.system_prompt.strip():

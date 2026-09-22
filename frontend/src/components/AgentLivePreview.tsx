@@ -170,6 +170,16 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             clearAudioQueue();
           } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
             setIsUserSpeaking(false);
+          } else if (data.type === "agent_handoff") {
+            console.info(`[VoicePlayground] Swapped to specialist: ${data.target_agent_name} (${data.target_agent_id})`);
+            setTranscriptMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `⚡ Swapped to specialist: ${data.target_agent_name || data.target_agent_id}`,
+                turn_latency_ms: 0,
+              },
+            ]);
           } else if (data.type === "call_concluded") {
             // In Live Playground mode, do NOT auto-stop session — keep session listening continuously until user clicks Stop
             console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");
