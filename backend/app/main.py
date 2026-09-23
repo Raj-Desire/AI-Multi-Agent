@@ -21,6 +21,7 @@ from app.api.v1.prospects import router as prospects_router
 from app.api.v1.campaigns import router as campaigns_router
 from app.api.v1.lead_intelligence import router as lead_intelligence_router
 from app.api.v1.knowledge import router as knowledge_router
+from app.api.v1.think_proxy import router as think_proxy_router
 from app.voice.gateway import router as gateway_router
 from app.core.cosmos import init_cosmos_db
 from app.services.campaign_dialer import campaign_dialer_engine
@@ -39,6 +40,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Main Startup Error] Campaign dialer start failed: {e}")
 
+    # Check concurrency warning for in-process think proxy registry
+    think_proxy_flag = os.getenv("ORCHESTRATOR_THINK_PROXY", "false").lower() in ("true", "1", "yes")
+    workers_str = os.getenv("WEB_CONCURRENCY") or os.getenv("WORKERS") or "1"
+    try:
+        concurrency = int(workers_str)
+    except ValueError:
+        concurrency = 1
+    if think_proxy_flag and concurrency > 1:
+        print(
+            f"[Startup Warning] ORCHESTRATOR_THINK_PROXY is enabled with multi-worker concurrency ({concurrency} workers). "
+            f"The Think Proxy call registry is in-process and requires a single worker or routing requests to the process that holds the call."
+        )
+
     yield
 
     # Graceful shutdown of dialer worker
@@ -46,6 +60,13 @@ async def lifespan(app: FastAPI):
         await campaign_dialer_engine.stop()
     except Exception as e:
         print(f"[Main Shutdown Error] Campaign dialer stop failed: {e}")
+
+    # Close shared think proxy HTTP client
+    try:
+        from app.api.v1.think_proxy import close_shared_http_client
+        await close_shared_http_client()
+    except Exception as e:
+        print(f"[Main Shutdown] Think proxy client cleanup: {e}")
 
 app = FastAPI(
     title="AI Voice Platform API",
@@ -77,6 +98,7 @@ app.include_router(campaigns_router, prefix="/api/v1")
 app.include_router(lead_intelligence_router, prefix="/api/v1")
 app.include_router(knowledge_router, prefix="/api/v1")
 app.include_router(gateway_router, prefix="/api/v1")
+app.include_router(think_proxy_router, prefix="/api/v1")
 
 
 from fastapi.responses import Response

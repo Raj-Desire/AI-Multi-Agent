@@ -16,6 +16,8 @@ class DeepgramEventType:
     AGENT_AUDIO_DONE = "AgentAudioDone"
     FUNCTION_CALL_REQUEST = "FunctionCallRequest"
     LATENCY_REPORT = "LatencyReport"
+    PROMPT_UPDATED = "PromptUpdated"
+    THINK_UPDATED = "ThinkUpdated"
     WARNING = "Warning"
     ERROR = "Error"
 

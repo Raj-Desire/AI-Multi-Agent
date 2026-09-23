@@ -60,6 +60,8 @@ class DeepgramVoiceAgentClient:
         self._receive_task: Optional[asyncio.Task] = None
         self._welcome_event = asyncio.Event()
         self._settings_applied_event = asyncio.Event()
+        self._prompt_updated_event = asyncio.Event()
+        self._closed_event = asyncio.Event()
         self._is_connected = False
         self._is_ready = False
         self._session_id: Optional[str] = None
@@ -180,16 +182,59 @@ class DeepgramVoiceAgentClient:
         except Exception as e:
             logger.error(f"Error injecting agent message: {e}")
 
-    async def update_prompt(self, prompt: str):
-        """Swaps the LLM prompt mid-conversation without disconnecting."""
+    async def update_prompt(self, prompt: str) -> bool:
+        """Sends UpdatePrompt to Deepgram mid-conversation. Returns True if sent successfully, raises on error."""
         if not self.is_ready or not self._ws:
-            return
+            logger.warning("[Deepgram] Cannot update prompt: client is not connected or ready.")
+            return False
         payload = {"type": "UpdatePrompt", "prompt": prompt}
         try:
             await self._ws.send(json.dumps(payload))
             logger.info("Sent UpdatePrompt to Deepgram.")
+            return True
         except Exception as e:
-            logger.error(f"Error updating prompt: {e}")
+            logger.error(f"Error updating prompt on Deepgram: {e}")
+            raise
+
+    async def update_prompt_and_wait_ack(self, prompt: str, timeout: float = 1.0) -> bool:
+        """
+        Sends UpdatePrompt to Voice Engine and waits for the PromptUpdated acknowledgement event.
+        Returns True if acknowledged within timeout, False on timeout, socket failure, or if closed while waiting.
+        """
+        if not self.is_ready or not self._ws or self._closed_event.is_set():
+            logger.warning("[VoiceEngine] Cannot update prompt: client is not connected or ready.")
+            return False
+
+        self._prompt_updated_event.clear()
+        try:
+            await self.update_prompt(prompt)
+        except Exception as e:
+            logger.error(f"[VoiceEngine] Failed to dispatch UpdatePrompt: {e}")
+            return False
+
+        ack_task = asyncio.create_task(self._prompt_updated_event.wait())
+        close_task = asyncio.create_task(self._closed_event.wait())
+        try:
+            done, pending = await asyncio.wait(
+                [ack_task, close_task],
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            for t in pending:
+                t.cancel()
+
+            if ack_task in done and self._prompt_updated_event.is_set() and self._is_connected:
+                logger.info("[VoiceEngine] PromptUpdated acknowledgement confirmed.")
+                return True
+            else:
+                logger.warning("[VoiceEngine] Client closed or cancelled while waiting for PromptUpdated acknowledgement.")
+                return False
+        except asyncio.TimeoutError:
+            logger.warning(f"[VoiceEngine] Timed out waiting {timeout}s for PromptUpdated acknowledgement.")
+            return False
+        except Exception as e:
+            logger.warning(f"[VoiceEngine] Error waiting for PromptUpdated acknowledgement: {e}")
+            return False
 
     async def send_keep_alive(self):
         """Sends KeepAlive to keep long-running sessions active."""
@@ -235,6 +280,15 @@ class DeepgramVoiceAgentClient:
                 elif event_type == DeepgramEventType.SETTINGS_APPLIED:
                     self._settings_applied_event.set()
                     logger.info("Deepgram SettingsApplied received.")
+
+                elif event_type in (
+                    DeepgramEventType.PROMPT_UPDATED,
+                    DeepgramEventType.THINK_UPDATED,
+                    "PromptUpdated",
+                    "ThinkUpdated",
+                ):
+                    self._prompt_updated_event.set()
+                    logger.info(f"Deepgram {event_type} acknowledgement received.")
 
                 elif event_type == DeepgramEventType.CONVERSATION_TEXT:
                     role = data.get("role", "assistant")
@@ -285,6 +339,10 @@ class DeepgramVoiceAgentClient:
         """Cleanly closes WebSocket connection and stops listener tasks."""
         self._is_connected = False
         self._is_ready = False
+        self._closed_event.set()
+        self._welcome_event.set()
+        self._settings_applied_event.set()
+        # Note: Do not set _prompt_updated_event on close, so update_prompt_and_wait_ack returns False
         if self._receive_task:
             self._receive_task.cancel()
             try:
@@ -299,4 +357,4 @@ class DeepgramVoiceAgentClient:
             except Exception:
                 pass
             self._ws = None
-        logger.info("Deepgram Voice Agent client closed cleanly.")
+        logger.info("Voice Agent client closed cleanly.")

@@ -435,6 +435,13 @@ export interface AgentConfig {
   };
   parent_orchestrator_id?: string;
   agent_entity_scope?: string;
+  /** This agent's own hours/timezone; overrides the organization business profile */
+  operating_hours?: {
+    days?: string;
+    hours?: string;
+    timezone?: string;
+    closed_on?: string;
+  };
   created_at?: string;
   updated_at?: string;
 }

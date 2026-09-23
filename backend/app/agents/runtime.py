@@ -17,6 +17,7 @@ from app.providers.deepgram.configuration import (
     DeepgramListenProvider,
     DeepgramThinkConfig,
     DeepgramThinkProvider,
+    DeepgramThinkEndpoint,
     DeepgramSpeakConfig,
     DeepgramSpeakProvider
 )
@@ -30,7 +31,10 @@ class AgentRuntimeBuilder:
         config: AgentConfiguration,
         business_profile: Optional[Dict[str, Any]] = None,
         audio_profile: str = "telephony",
-        platform_rules: Optional[Any] = None
+        platform_rules: Optional[Any] = None,
+        extra_keyterms: Optional[List[str]] = None,
+        think_endpoint: Optional[str] = None,
+        think_api_key: Optional[str] = None,
     ) -> DeepgramSettingsConfiguration:
         # Build optimized spoken prompt with optional business knowledge base and active platform rules
         system_prompt = VoicePromptBuilder.build_prompt(
@@ -74,13 +78,20 @@ class AgentRuntimeBuilder:
             # Natural conversational default: 680ms preventing premature mid-sentence cutoffs during multi-clause speech
             listen_endpointing = min(getattr(config.listen, "endpointing", 680) or 680, 850)
 
-        # Merge keyterms from listen config and pronunciation rules for recognition boosting
+        # Merge keyterms from listen config, router high-weight terms, and pronunciation rules
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
+        if extra_keyterms:
+            for kt in extra_keyterms:
+                if kt and kt.strip() and kt.strip() not in combined_keyterms:
+                    combined_keyterms.append(kt.strip())
         if getattr(config, "pronunciation_rules", None):
             for rule in config.pronunciation_rules:
                 w = getattr(rule, "word", "") if hasattr(rule, "word") else (rule.get("word", "") if isinstance(rule, dict) else "")
                 if w and w.strip() and w.strip() not in combined_keyterms:
                     combined_keyterms.append(w.strip())
+
+        # Cap to Deepgram recommended maximum of 100 keyterms
+        combined_keyterms = combined_keyterms[:100]
 
         listen_provider = DeepgramListenProvider(
             type="deepgram",
@@ -99,10 +110,18 @@ class AgentRuntimeBuilder:
         think_provider = DeepgramThinkProvider(
             type=config.llm.provider or "open_ai",
             model=config.llm.model or "gpt-4o-mini",
-            temperature=think_temp
+            temperature=think_temp,
         )
+        think_endpoint_obj = None
+        if think_endpoint:
+            ep_headers = {}
+            if think_api_key:
+                ep_headers["Authorization"] = f"Bearer {think_api_key}"
+            think_endpoint_obj = DeepgramThinkEndpoint(url=think_endpoint, headers=ep_headers)
+
         think_config = DeepgramThinkConfig(
             provider=think_provider,
+            endpoint=think_endpoint_obj,
             prompt=system_prompt,
             functions=[]
         )

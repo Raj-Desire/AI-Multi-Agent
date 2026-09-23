@@ -240,9 +240,21 @@ class AgentGuardrails(BaseModel):
     human_transfer_whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
 
 
+class AgentOperatingHours(BaseModel):
+    """
+    This agent's own business schedule. Overrides the organization business profile hours
+    and timezone, e.g. for a specialist that represents a clinic or resort in another city.
+    """
+    days: Optional[str] = None       # "Monday - Friday"
+    hours: Optional[str] = None      # "8:00 AM - 6:00 PM" (free text allowed: "Sat 9 AM - 2 PM")
+    timezone: Optional[str] = None   # IANA preferred: "America/Chicago", "Asia/Kolkata"
+    closed_on: Optional[str] = None  # "Sunday"
+
+
 class AgentServiceItem(BaseModel):
     name: str
     description: str = ""
+    price: Optional[str] = None
     enabled: bool = True
     priority: int = 1
 
@@ -306,6 +318,35 @@ class OrchestratorConfig(BaseModel):
         default=False,
         description="After child agent task completes, route back to orchestrator for next intent"
     )
+    # Phase 2 Precision Intent Routing Parameters
+    switch_margin: float = Field(
+        default=0.25,
+        description="Minimum score difference required for challenger agent to beat the currently active agent"
+    )
+    min_score: float = Field(
+        default=0.35,
+        description="Minimum absolute score required to trigger an intent handoff"
+    )
+    min_dwell_turns: int = Field(
+        default=1,
+        description="Minimum turns with newly active specialist before permitting a handoff"
+    )
+    pingpong_window: int = Field(
+        default=3,
+        description="Window of turns to prevent immediate A->B->A bouncing"
+    )
+    pingpong_override_threshold: float = Field(
+        default=1.5,
+        description="Score required to override the ping-pong bounce guard"
+    )
+    max_handoffs_per_call: int = Field(
+        default=5,
+        description="Maximum total handoffs allowed in a single call"
+    )
+    think_proxy_enabled: bool = Field(
+        default=False,
+        description="Route inside LLM think request path via custom proxy instead of mid-call UpdatePrompt"
+    )
 
 
 class AgentConfiguration(BaseModel):
@@ -343,6 +384,19 @@ class AgentConfiguration(BaseModel):
     agent_entity_scope: Optional[str] = Field(
         default=None,
         description="Entity/property this agent is scoped to (e.g. hotel name, brand). Used to prevent cross-contamination."
+    )
+    intent_keywords: List[str] = Field(
+        default_factory=list,
+        description="Explicit routing trigger keywords or phrases for this agent"
+    )
+    example_utterances: List[str] = Field(
+        default_factory=list,
+        description="Representative user phrases or utterances for routing to this agent"
+    )
+    operating_hours: Optional[AgentOperatingHours] = Field(
+        default=None,
+        description="This agent's own hours and timezone. When unset, they are read from the agent's knowledge "
+                    "('Hours:' line, location); the organization profile applies only to agents without an entity scope."
     )
     # ─────────────────────────────────────────────────────────────────────────
 

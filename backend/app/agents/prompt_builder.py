@@ -65,11 +65,8 @@ class VoicePromptBuilder:
         full_address = ", ".join([p.strip() for p in addr_parts if p and p.strip()]) or "our office"
 
         # Hours
-        hours_data = profile_dict.get("operating_hours", {})
-        if isinstance(hours_data, dict):
-            hours_str = f"{hours_data.get('days', 'Monday - Saturday')} {hours_data.get('hours', '9:00 AM - 7:00 PM')}"
-        else:
-            hours_str = "Monday - Saturday 9:00 AM - 7:00 PM"
+        from app.agents.schedule import resolve_agent_schedule
+        hours_str = resolve_agent_schedule(config, business_profile).hours_text or "our listed hours"
 
         caller_phone = profile_dict.get("phone", "")
         prospect_name = ""
@@ -385,9 +382,18 @@ class VoicePromptBuilder:
                     h_str = hours.get("hours", "9:00 AM - 7:00 PM")
                     tz = hours.get("timezone", "IST")
                     closed = hours.get("closed_on", "Sunday")
+                else:
+                    days, h_str, tz, closed = hours.days, hours.hours, hours.timezone, hours.closed_on
+                from app.agents.schedule import resolve_agent_schedule
+                agent_schedule = resolve_agent_schedule(config, business_profile)
+                if agent_schedule.is_organization or agent_schedule.source == "none" and not config.agent_entity_scope:
                     lines.append(f"- Operating Hours: {days}, {h_str} ({tz}). Closed on {closed}.")
-                elif hasattr(hours, "days"):
-                    lines.append(f"- Operating Hours: {hours.days}, {hours.hours} ({hours.timezone}). Closed on {hours.closed_on}.")
+                else:
+                    # A specialist for another business must not schedule by the head office's clock
+                    lines.append(
+                        f"- Head Office Hours (parent company only, NOT {agent_schedule.business_name}'s hours; "
+                        f"never use them for appointments): {days}, {h_str} ({tz})."
+                    )
 
             # Extract services: only if not already superseded by specific attached documents
             srv_strs = []
@@ -497,130 +503,65 @@ class VoicePromptBuilder:
         return "[PLATFORM VOICE DIRECTIVES]\n" + "\n".join(directives[:4])
 
     @staticmethod
-    def _build_temporal_context(business_profile: Optional[Union[dict, Any]] = None) -> str:
-        """Constructs live real-time temporal anchoring and strict date/time reasoning rules for calendar scheduling."""
-        try:
-            from zoneinfo import ZoneInfo
-        except ImportError:
-            ZoneInfo = None
+    def _build_temporal_context(
+        business_profile: Optional[Union[dict, Any]] = None,
+        config: Optional[AgentConfiguration] = None,
+    ) -> str:
+        """
+        Live calendar anchoring and scheduling rules in the timezone and hours of the agent
+        currently speaking (its own schedule overrides the organization profile; see
+        app.agents.schedule.resolve_agent_schedule).
+        """
+        from datetime import timedelta
+        from app.agents.schedule import resolve_agent_schedule
 
-        tz_str_label = "Asia/Kolkata (IST, UTC+05:30)"
-        
-        # Determine local timezone from business profile if available, default to Asia/Kolkata
-        if business_profile:
-            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
-            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
-            profile_tz = hours.get("timezone", "") if isinstance(hours, dict) else getattr(hours, "timezone", "")
-            if profile_tz and str(profile_tz).strip():
-                tz_str_label = str(profile_tz).strip()
-
-        # Extract IANA timezone key dynamically
-        iana_key = "Asia/Kolkata"
-        tz_upper = tz_str_label.upper()
-
-        if ZoneInfo:
-            # 1. Direct match if tz_str_label is already a standard IANA key (e.g. "Europe/London", "America/New_York", "Asia/Kolkata")
-            try:
-                ZoneInfo(tz_str_label)
-                iana_key = tz_str_label
-            except Exception:
-                # 2. Check for IANA key inside parentheses or string (e.g. "Kolkata (GMT+05:30) - Asia/Kolkata")
-                import re
-                match = re.search(r'([A-Za-z_]+/[A-Za-z_]+)', tz_str_label)
-                if match:
-                    try:
-                        ZoneInfo(match.group(1))
-                        iana_key = match.group(1)
-                    except Exception:
-                        pass
-                
-                # 3. Explicit abbreviation & country mapping (check specific abbreviations before generic UTC)
-                if iana_key == "Asia/Kolkata":
-                    if "IST" in tz_upper or "INDIA" in tz_upper or "KOLKATA" in tz_upper or "+5:30" in tz_str_label or "+05:30" in tz_str_label:
-                        iana_key = "Asia/Kolkata"
-                    elif "LONDON" in tz_upper or "UNITED KINGDOM" in tz_upper or "BST" in tz_upper or "GMT" in tz_upper:
-                        iana_key = "Europe/London"
-                    elif "NEW_YORK" in tz_upper or "NEW YORK" in tz_upper or "EST" in tz_upper or "EDT" in tz_upper or "-05:00" in tz_str_label:
-                        iana_key = "America/New_York"
-                    elif "CHICAGO" in tz_upper or "CST" in tz_upper or "CDT" in tz_upper or "-06:00" in tz_str_label:
-                        iana_key = "America/Chicago"
-                    elif "DENVER" in tz_upper or "MST" in tz_upper or "MDT" in tz_upper or "-07:00" in tz_str_label:
-                        iana_key = "America/Denver"
-                    elif "LOS_ANGELES" in tz_upper or "LOS ANGELES" in tz_upper or "PST" in tz_upper or "PDT" in tz_upper or "-08:00" in tz_str_label:
-                        iana_key = "America/Los_Angeles"
-                    elif "DUBAI" in tz_upper or "GST" in tz_upper or "UAE" in tz_upper or "+04:00" in tz_str_label:
-                        iana_key = "Asia/Dubai"
-                    elif "SINGAPORE" in tz_upper or "SGT" in tz_upper or "MALAYSIA" in tz_upper or "+08:00" in tz_str_label:
-                        iana_key = "Asia/Singapore"
-                    elif "SYDNEY" in tz_upper or "AEST" in tz_upper or "AEDT" in tz_upper or "AUSTRALIA" in tz_upper or "+10:00" in tz_str_label:
-                        iana_key = "Australia/Sydney"
-                    elif "PARIS" in tz_upper or "CET" in tz_upper or "CEST" in tz_upper or "FRANCE" in tz_upper or "GERMANY" in tz_upper:
-                        iana_key = "Europe/Paris"
-                    elif "TOKYO" in tz_upper or "JST" in tz_upper or "JAPAN" in tz_upper or "+09:00" in tz_str_label:
-                        iana_key = "Asia/Tokyo"
-                    elif tz_upper.strip() == "UTC" or "(UTC+00:00)" in tz_str_label:
-                        iana_key = "UTC"
-
-        target_tz = None
-        if ZoneInfo:
-            try:
-                target_tz = ZoneInfo(iana_key)
-            except Exception:
-                target_tz = None
-
-        if target_tz:
-            now = datetime.now(target_tz)
-        else:
-            from datetime import timedelta, timezone as dt_tz
-            now = datetime.now(dt_tz(timedelta(hours=5, minutes=30)))
-
+        schedule = resolve_agent_schedule(config, business_profile)
+        now = schedule.now()
         day_name = now.strftime("%A")
         date_str = now.strftime("%B %d, %Y")
         time_str = now.strftime("%I:%M %p")
-        
-        # Build upcoming 7 days mapping with exact Day + Date for zero-ambiguity scheduling
-        from datetime import timedelta
-        upcoming_days = []
-        for i in range(1, 8):
-            future_dt = now + timedelta(days=i)
-            upcoming_days.append(f"{future_dt.strftime('%A')}: {future_dt.strftime('%B %d')}")
+
+        upcoming_days = [
+            f"{(now + timedelta(days=i)).strftime('%A')}: {(now + timedelta(days=i)).strftime('%B %d')}"
+            for i in range(1, 8)
+        ]
         upcoming_map_str = "; ".join(upcoming_days)
 
-        # Compute major world clock references to empower AI to seamlessly compare caller time vs company time
+        # World clocks let the agent compare a caller's stated timezone with the business clock
         world_clocks = []
-        if ZoneInfo:
+        try:
+            from zoneinfo import ZoneInfo
             for city_label, z_key, tz_abbr in [
                 ("United Kingdom (UK)", "Europe/London", "GMT/BST"),
                 ("United States (US Eastern)", "America/New_York", "EST/EDT"),
+                ("United States (US Central)", "America/Chicago", "CST/CDT"),
                 ("United States (US Pacific)", "America/Los_Angeles", "PST/PDT"),
                 ("UAE / Gulf", "Asia/Dubai", "GST"),
-                ("India", "Asia/Kolkata", "IST")
+                ("India", "Asia/Kolkata", "IST"),
             ]:
-                if z_key != iana_key:
-                    try:
-                        w_dt = datetime.now(ZoneInfo(z_key))
-                        world_clocks.append(f"{city_label} ({tz_abbr}): {w_dt.strftime('%I:%M %p')}")
-                    except Exception:
-                        pass
-        world_clocks_str = "; ".join(world_clocks) if world_clocks else ""
+                if z_key != schedule.iana:
+                    world_clocks.append(f"{city_label} ({tz_abbr}): {datetime.now(ZoneInfo(z_key)).strftime('%I:%M %p')}")
+        except Exception:
+            pass
+        world_clocks_str = "; ".join(world_clocks)
 
-        # Extract business operating hours if available
-        working_hours_rule = ""
-        if business_profile:
-            p_dict = business_profile if isinstance(business_profile, dict) else (business_profile.model_dump() if hasattr(business_profile, "model_dump") else {})
-            hours = p_dict.get("operating_hours", {}) if isinstance(p_dict, dict) else {}
-            h_days = hours.get("days", "Monday - Saturday") if isinstance(hours, dict) else getattr(hours, "days", "Monday - Saturday")
-            h_hours = hours.get("hours", "9:00 AM - 7:00 PM") if isinstance(hours, dict) else getattr(hours, "hours", "9:00 AM - 7:00 PM")
-            h_closed = hours.get("closed_on", "Sunday") if isinstance(hours, dict) else getattr(hours, "closed_on", "Sunday")
-            working_hours_rule = f"""- STRICT OPERATING HOURS BOUNDARY:
-  * Official Working Days: {h_days}
-  * Official Working Hours: {h_hours} ({iana_key} / {tz_str_label})
-  * Closed Days: {h_closed}
-  * BOUNDARY ENFORCEMENT: ONLY book appointments within {h_hours} ({h_days}). NEVER schedule or confirm an appointment before opening time or after closing time, or on {h_closed}. If a caller requests an appointment outside these operating hours (e.g. before opening, after closing, or late night), politely explain our working hours ({h_hours}) and propose available slots within those hours."""
+        business = schedule.business_name
+        hours_text = schedule.hours_sentence()
+        if schedule.hours_text:
+            working_hours_rule = f"""- STRICT OPERATING HOURS BOUNDARY FOR {business.upper()}:
+  * Hours: {schedule.hours_text} (all times in {schedule.timezone_label})
+  * BOUNDARY ENFORCEMENT: ONLY book appointments inside these hours for the requested day. Check the requested day AND time against the hours for THAT day (hours can differ by weekday). If a requested time is outside them or on a closed day, say the actual hours for that day and offer the nearest slots inside them. Never quote any other organization's hours."""
+            compliance_rule = f"""2. OPERATING HOURS COMPLIANCE:
+   - Verify every requested day and time against {business}'s hours: {schedule.hours_text}.
+   - Compare times correctly (e.g. 6 PM is before 7 PM, and equal to a 6 PM closing time, which means it is NOT bookable)."""
+        else:
+            working_hours_rule = f"- OPERATING HOURS FOR {business.upper()}: {hours_text}"
+            compliance_rule = f"""2. OPERATING HOURS COMPLIANCE:
+   - {business} has no fixed office-hours limit listed. Do not refuse a time because of office hours; follow the facts you have."""
 
         return f"""[REAL-TIME CALENDAR, MULTI-TIMEZONE REASONING & STRICT SCHEDULING RULES]
-- ORGANIZATION TIMEZONE: {iana_key} ({tz_str_label})
-- CURRENT MOMENT AT HEADQUARTERS: Today is {day_name}, {date_str} at {time_str} ({tz_str_label}).
+- BUSINESS TIMEZONE FOR {business.upper()}: {schedule.timezone_label}. All appointment times you offer or confirm are in this timezone.
+- CURRENT MOMENT AT {business.upper()}: Today is {day_name}, {date_str} at {time_str} ({schedule.iana}).
 {f"- LIVE WORLD REFERENCE TIMES: {world_clocks_str}." if world_clocks_str else ""}
 - UPCOMING 7 DAYS CALENDAR DATES: {upcoming_map_str}.
 {working_hours_rule}
@@ -630,13 +571,11 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
    - Today's date is {date_str} and current time is {time_str}.
    - YEAR ASSUMPTION: If the caller mentions a month and day without specifying a year (e.g., "September 21" or "October 15"), ALWAYS compare against today's date ({date_str}). If that month/day has already passed in the current year, assume they mean the NEXT upcoming occurrence of that date or today's date if requested today. NEVER dismiss future dates or state they have passed unless the full date (month, day, AND year) is strictly in the calendar past.
    - Any time that is later than {time_str} today is in the FUTURE and can be accommodated if within operating hours.
-2. OPERATING HOURS COMPLIANCE:
-   - Always verify that the requested time falls within official operating hours ({h_hours if business_profile else '9:00 AM - 7:00 PM'}).
-   - If a requested time is outside working hours (or on a closed day), politely suggest options within {h_hours if business_profile else '9:00 AM - 7:00 PM'}.
+{compliance_rule}
 3. CROSS-TIMEZONE REASONING & CLARITY:
-   - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly.
+   - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly, and state the equivalent time at {business}.
 4. MANDATORY EXACT DATE CONFIRMATION:
-   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1] if upcoming_days else ''}")."""
+   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1]}")."""
 
 
     @staticmethod
@@ -685,7 +624,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "[NATURAL CONVERSATIONAL FILLERS & SPOKEN ACOUSTICS]\n"
             "- HUMAN THINKING CUES: When retrieving details, computing dates/times, or answering complex inquiries, seamlessly begin with natural thinking acknowledgments (e.g., "
             f"{phrases_example}). This mimics natural human conversational cadence and avoids stiff silence.\n"
-            "- MICRO-ACKNOWLEDGMENTS: Begin conversational turns with warm, natural micro-acknowledgments ('Got it', 'Sure thing', 'Understood', 'Makes sense') before delivering the answer.\n"
+            "- MICRO-ACKNOWLEDGMENTS: Use a short acknowledgment ('Got it', 'Sure', 'Makes sense') only occasionally, never on two turns in a row, and never as a separate sentence before a direct answer. When the caller asks a question, start with the answer itself.\n"
             "- NATURAL CONTRACTIONS: Use spoken contractions ('I\\'ll', 'we\\'re', 'it\\'s', 'don\\'t') instead of rigid written phrasing ('I will', 'we are', 'it is')."
         )
 
@@ -717,7 +656,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         articulation_guidelines = (
             "\nENTITY ARTICULATION & DIGIT GROUPING RULES (MANDATORY):\n"
             "- PHONE NUMBERS: Never speak a phone number as billions or millions. Speak digit by digit in natural human cadence (e.g., '9 8 7 6 5, 4 3 2 1 0').\n"
-            "- CURRENCIES & AMOUNTS: Spell out amounts clearly (e.g., say '1.5 crore rupees' or '50 thousand rupees', not raw symbols like '₹1.5Cr').\n"
+            "- CURRENCIES & AMOUNTS: Spell out amounts clearly, in the SAME currency your facts use (e.g., '$280/night' is spoken as '280 dollars per night'; '₹1.5Cr' as '1.5 crore rupees'). Never convert or estimate a price in another currency.\n"
             "- UNITS & DIMENSIONS: Speak full words for dimensions and units (e.g., say 'square feet', not 'sq ft'; say '2 B-H-K', not '2bhk').\n"
             "- CLEAN SPOKEN TEXT: NEVER output asterisks, hashtags, or markdown tables. Speak pure natural conversational text."
         )
@@ -736,6 +675,8 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
     def _build_interruption_resumption_directives(config: AgentConfiguration) -> str:
         """Injects directives on handling brief interruptions and resuming seamlessly."""
         runtime = getattr(config, "runtime", None)
+        if runtime and not getattr(runtime, "graceful_resumption_enabled", True):
+            return ""
         return (
             "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION (MANDATORY)]\n"
             "- AVOID RESTARTING: If the caller interrupts with brief acknowledgments, questions, or filler words ('Wait', 'Sorry', 'Go on', 'Continue', 'Yes', 'Okay'), NEVER restart your previous answer or greeting from the beginning.\n"
@@ -798,7 +739,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             except Exception:
                 platform_rules = []
 
-        temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile)
+        temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile, config)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
@@ -812,12 +753,12 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & DIRECT ANSWERING RULES]
 1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Deliver facts immediately without unnecessary introductory fluff.
-2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller!
+2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller! If a price or detail is NOT written in your facts, never guess or estimate it; say you'll check that detail and ask one short follow-up question instead. Never send the caller to an email address, website or another team unless that exact contact is in your facts.
 3. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions. If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
-4. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Validate their key points with natural micro-acknowledgments ("I understand", "That makes sense", "Absolutely", "I see", "Thanks for sharing") and deliver a direct, perfectly tailored response addressing their core points.
+4. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Briefly reflect their key point in your own words when it helps; short acknowledgments like "I understand" or "That makes sense" are fine occasionally, but never the same stock phrase every turn and deliver a direct, tailored response addressing their core points.
 5. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team!") and smoothly continue answering their inquiry.
-6. HUMAN ESCALATION & EXPLICIT TRANSFER: ONLY if the caller EXPLICITLY demands to speak to an actual live human person or supervisor (e.g., "Transfer me to a live human right now", "I want to talk to a real person"): "I understand completely. Please hold while I transfer you to our live team." Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
-7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets). Speak plain natural text only.
+6. HUMAN ESCALATION & TRANSFER: ONLY if the caller EXPLICITLY demands to speak to an actual live human person or supervisor (e.g., "Transfer me to a live human right now", "I want to talk to a real person"): "I understand completely. Please hold while I transfer you to our specialist right away." Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
+7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
 8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
 
         # If custom system_prompt is provided, prioritize it directly to avoid truncation

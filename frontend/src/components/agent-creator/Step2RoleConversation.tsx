@@ -423,6 +423,53 @@ export function Step2RoleConversation({
         </div>
       )}
 
+      {/* Agent Business Hours & Timezone — overrides the organization business profile */}
+      {!(agentData as any).is_orchestrator && (
+        <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg space-y-2">
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs font-bold text-[var(--color-heading)]">
+              Business Hours &amp; Timezone
+            </label>
+            <InfoTooltip
+              content="Optional. The hours and timezone this agent books appointments in (e.g. a clinic in Austin uses America/Chicago). Overrides the organization business profile. If left blank, the agent reads an 'Hours:' line and location from its own knowledge; a scoped specialist never falls back to the head office hours."
+              position="top"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {([
+              ["days", "Operating Days", "e.g., Monday - Friday"],
+              ["hours", "Working Hours", "e.g., 8:00 AM - 6:00 PM, Sat 9 AM - 2 PM"],
+              ["timezone", "Timezone", "e.g., America/Chicago"],
+              ["closed_on", "Closed On", "e.g., Sunday"],
+            ] as const).map(([field, label, placeholder]) => (
+              <div key={field} className="space-y-1">
+                <span className="text-[10px] font-semibold text-[var(--color-muted)]">{label}</span>
+                <input
+                  type="text"
+                  list={field === "timezone" ? "agent-timezone-options" : undefined}
+                  value={(agentData as any).operating_hours?.[field] || ""}
+                  onChange={(e) =>
+                    setAgentData((prev) => {
+                      const next = { ...((prev as any).operating_hours || {}), [field]: e.target.value || undefined };
+                      const hasValue = Object.values(next).some(Boolean);
+                      return { ...prev, operating_hours: hasValue ? next : undefined } as any;
+                    })
+                  }
+                  placeholder={placeholder}
+                  className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+                />
+              </div>
+            ))}
+          </div>
+          <datalist id="agent-timezone-options">
+            {["Asia/Kolkata", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+              "Europe/London", "Europe/Paris", "Asia/Dubai", "Asia/Singapore", "Australia/Sydney", "Asia/Tokyo"].map((tz) => (
+              <option key={tz} value={tz} />
+            ))}
+          </datalist>
+        </div>
+      )}
+
       {/* 2. Primary Agent Objective Form Block */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2.5 relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
