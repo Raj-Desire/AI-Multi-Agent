@@ -608,8 +608,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     except Exception as tw_err:
                         logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
 
-                from app.repositories.business_profile_repository import BusinessProfileRepository
-                business_profile = await BusinessProfileRepository.get_profile(org_id)
+                business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                     agent_config,
                     business_profile=business_profile,

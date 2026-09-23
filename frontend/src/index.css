@@ -82,6 +82,13 @@
 /* Global Form Elements Theme Consistency */
 select, input, textarea {
   color-scheme: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus, input:focus, textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px var(--color-primary-ring) !important;
+  outline: none !important;
 }
 
 select option, select optgroup {
@@ -913,22 +920,7 @@ body {
   animation: shakeField 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-/* Production-grade Soft Professional Field Glow */
-@keyframes softFieldGlow {
-  0% {
-    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
-  }
-  25% {
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12), 0 2px 6px rgba(79, 70, 229, 0.06);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
-  }
-}
 
-.animate-soft-highlight {
-  animation: softFieldGlow 2.2s ease-out forwards;
-}
 
 /* Equalizer Waveform Animations for Voice Previews */
 @keyframes waveBar1 {

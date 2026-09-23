@@ -248,6 +248,7 @@ export interface AgentPersonality {
 export interface AgentServiceItem {
   name: string;
   description: string;
+  price?: string;
   enabled: boolean;
   priority: number;
 }
@@ -355,28 +356,6 @@ export interface CompanyFAQItem {
   enabled: boolean;
 }
 
-export interface CompanyBusinessProfile {
-  id?: string;
-  organization_id: string;
-  company_name: string;
-  tagline?: string;
-  company_introduction: string;
-  email: string;
-  phone: string;
-  website?: string;
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  operating_hours: BusinessHours;
-  services: BusinessServiceItem[];
-  faqs: CompanyFAQItem[];
-  allow_user_edits?: boolean;
-  additional_notes?: string;
-  updated_at?: string;
-  updated_by?: string;
-}
-
 export interface AgentConfig {
   agent_id: string;
   organization_id: string;
@@ -436,6 +415,12 @@ export interface AgentConfig {
   parent_orchestrator_id?: string;
   agent_entity_scope?: string;
   /** This agent's own hours/timezone; overrides the organization business profile */
+  /** Business details this agent represents (per agent; no organization profile) */
+  company_name?: string;
+  company_phone?: string;
+  company_email?: string;
+  company_website?: string;
+  office_address?: string;
   operating_hours?: {
     days?: string;
     hours?: string;

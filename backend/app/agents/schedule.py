@@ -9,9 +9,9 @@ scheduling must belong to the agent currently speaking, never silently the organ
 Precedence:
   1. Explicit `AgentConfiguration.operating_hours` fields
   2. The agent's own knowledge text ("Hours: ..." line; timezone inferred from its location)
-  3. The organization business profile, ONLY for agents not scoped to another business
-     (`agent_entity_scope` unset). A scoped specialist without listed hours gets no
-     office-hours restriction instead of inheriting the head office's hours.
+  3. An explicitly passed business profile (legacy/tests; there is no organization-wide
+     profile any more), ONLY for agents not scoped to another business. Otherwise the agent
+     gets no office-hours restriction rather than someone else's hours.
 """
 
 import re
@@ -172,7 +172,10 @@ def resolve_agent_schedule(config: Any = None, business_profile: Any = None) -> 
         return AgentSchedule(company or "our company", org_hours, _label(org_iana, org_tz_raw or DEFAULT_TZ_LABEL), org_iana,
                              "organization" if org_hours else "none")
 
-    business_name = (getattr(config, "agent_entity_scope", None) or company or getattr(config, "name", "") or "our company").strip()
+    business_name = (
+        getattr(config, "agent_entity_scope", None) or getattr(config, "company_name", None)
+        or company or getattr(config, "name", "") or "our company"
+    ).strip()
     scoped = bool(getattr(config, "agent_entity_scope", None))
 
     explicit = getattr(config, "operating_hours", None)
@@ -190,6 +193,7 @@ def resolve_agent_schedule(config: Any = None, business_profile: Any = None) -> 
     location_text = " ".join(
         t for t in (
             getattr(config, "agent_entity_scope", None),
+            getattr(config, "office_address", None),
             getattr(config, "description", None),
             own_text[:2500],
         ) if t
@@ -201,7 +205,7 @@ def resolve_agent_schedule(config: Any = None, business_profile: Any = None) -> 
     if exp_hours or exp_days:
         parts = [p for p in (exp_days, exp_hours) if p]
         hours_text = ", ".join(parts) + "."
-        if exp_closed:
+        if exp_closed and exp_closed.strip().lower() not in ("none", "no", "-"):
             hours_text += f" Closed on {exp_closed}."
         source = "agent"
     else:

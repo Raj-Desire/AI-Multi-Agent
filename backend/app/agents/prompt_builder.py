@@ -14,6 +14,37 @@ class VoicePromptBuilder:
     """Builds human-grade, voice-specific system prompts from an AgentConfiguration."""
 
     @staticmethod
+    def agent_business_profile(
+        config: AgentConfiguration,
+        business_profile: Optional[Union[dict, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Business details for prompts, taken from the agent itself (company name, phone,
+        email, website, address). An explicitly passed profile dict is only a fallback for
+        fields the agent leaves empty; there is no organization-wide business profile.
+        """
+        base: Dict[str, Any] = {}
+        if hasattr(business_profile, "model_dump"):
+            base = business_profile.model_dump(mode="json")
+        elif isinstance(business_profile, dict):
+            base = dict(business_profile)
+        agent_fields = {
+            "company_name": getattr(config, "company_name", None) or getattr(config, "agent_entity_scope", None),
+            "phone": getattr(config, "company_phone", None),
+            "email": getattr(config, "company_email", None),
+            "website": getattr(config, "company_website", None),
+            "address": getattr(config, "office_address", None),
+        }
+        for key, val in agent_fields.items():
+            if val and str(val).strip():
+                base[key] = str(val).strip()
+                if key == "address":
+                    base.pop("city", None)
+                    base.pop("state", None)
+                    base.pop("country", None)
+        return base
+
+    @staticmethod
     def resolve_dynamic_variables(
         text: str,
         config: AgentConfiguration,
@@ -26,14 +57,7 @@ class VoicePromptBuilder:
         if not text:
             return ""
 
-        profile_dict = business_profile
-        if hasattr(business_profile, "model_dump"):
-            profile_dict = business_profile.model_dump(mode="json")
-        elif hasattr(business_profile, "dict"):
-            profile_dict = business_profile.dict()
-
-        if not isinstance(profile_dict, dict):
-            profile_dict = {}
+        profile_dict = VoicePromptBuilder.agent_business_profile(config, business_profile)
 
         company_name = (
             profile_dict.get("company_name")
@@ -282,18 +306,8 @@ class VoicePromptBuilder:
         vector_rag_context: Optional[str] = None
     ) -> str:
         """Constructs human-grade, spoken telephony business facts with custom prompt overrides and dynamic vector RAG snippets."""
-        include_bk = config.include_business_knowledge if config.include_business_knowledge is not None else True
-        if not include_bk and not config.custom_knowledge and not vector_rag_context:
-            return ""
-
         sections = []
-
-        # Convert Pydantic object if needed
-        profile_dict = business_profile
-        if hasattr(business_profile, "model_dump"):
-            profile_dict = business_profile.model_dump(mode="json")
-        elif hasattr(business_profile, "dict"):
-            profile_dict = business_profile.dict()
+        profile_dict = VoicePromptBuilder.agent_business_profile(config, business_profile)
 
         # 1. Attached Specific Knowledge Documents (HIGHEST FACTUAL PRIORITY)
         attached_docs_context = []
@@ -340,128 +354,38 @@ class VoicePromptBuilder:
                 f"{config.custom_knowledge.strip()}"
             )
 
-        # 4. Organization Knowledge Base (if enabled and NOT disabled)
-        if include_bk and config.knowledge_mode != "disabled" and isinstance(profile_dict, dict):
-            name = profile_dict.get("company_name") or config.name or "our company"
-            tagline = profile_dict.get("tagline", "")
-            intro = profile_dict.get("company_introduction", "")
-            phone = profile_dict.get("phone", "")
-            email = profile_dict.get("email", "")
-            website = profile_dict.get("website", "")
-            
-            addr_parts = [
-                profile_dict.get("address", ""),
-                profile_dict.get("city", ""),
-                profile_dict.get("state", ""),
-                profile_dict.get("country", "")
-            ]
-            full_address = ", ".join([p.strip() for p in addr_parts if p and p.strip()])
+        # 4. This agent's business details and services (set during agent creation)
+        lines = []
+        name = profile_dict.get("company_name")
+        if name:
+            lines.append(f"- Business Name: {name}")
+        for label, key in (("Contact Phone Number", "phone"), ("Contact Email", "email"), ("Website", "website")):
+            if profile_dict.get(key):
+                lines.append(f"- {label}: {profile_dict[key]}")
+        addr_parts = [profile_dict.get(k, "") for k in ("address", "city", "state", "country")]
+        full_address = ", ".join(p.strip() for p in addr_parts if p and str(p).strip())
+        if full_address:
+            lines.append(f"- Address: {full_address}")
 
-            hours = profile_dict.get("operating_hours", {})
-            services = profile_dict.get("services", [])
-            faqs = profile_dict.get("faqs", [])
-            notes = profile_dict.get("additional_notes", "")
+        srv_strs = []
+        for srv in (config.services or []):
+            if isinstance(srv, str):
+                if srv.strip():
+                    srv_strs.append(srv.strip())
+                continue
+            get = srv.get if isinstance(srv, dict) else (lambda k, d=None, _s=srv: getattr(_s, k, d))
+            if not get("enabled", True) or not get("name", ""):
+                continue
+            srv_line = f"{get('name', '')}: {get('description', '') or ''}".strip(": ")
+            price_val = get("price", None) or get("pricing", None)
+            if price_val:
+                srv_line += f" (Price: {price_val})"
+            srv_strs.append(srv_line)
+        if srv_strs:
+            lines.append("- Services & Products Offered:" + "\n" + "  * " + ("\n" + "  * ").join(srv_strs))
 
-            lines = [f"[GENERAL ORGANIZATION / HOLDING COMPANY FACTS (Company: '{name}')]"]
-            if tagline:
-                lines.append(f"- Company Tagline: {tagline}")
-            if intro:
-                lines.append(f"- Company Overview: {intro}")
-            if phone:
-                lines.append(f"- Contact Phone Number: {phone}")
-            if email:
-                lines.append(f"- Support / Inquiries Email: {email}")
-            if website:
-                lines.append(f"- Official Website: {website}")
-            if full_address:
-                lines.append(f"- Head Office Location / Address: {full_address}")
-            
-            if hours:
-                if isinstance(hours, dict):
-                    days = hours.get("days", "Monday - Saturday")
-                    h_str = hours.get("hours", "9:00 AM - 7:00 PM")
-                    tz = hours.get("timezone", "IST")
-                    closed = hours.get("closed_on", "Sunday")
-                else:
-                    days, h_str, tz, closed = hours.days, hours.hours, hours.timezone, hours.closed_on
-                from app.agents.schedule import resolve_agent_schedule
-                agent_schedule = resolve_agent_schedule(config, business_profile)
-                if agent_schedule.is_organization or agent_schedule.source == "none" and not config.agent_entity_scope:
-                    lines.append(f"- Operating Hours: {days}, {h_str} ({tz}). Closed on {closed}.")
-                else:
-                    # A specialist for another business must not schedule by the head office's clock
-                    lines.append(
-                        f"- Head Office Hours (parent company only, NOT {agent_schedule.business_name}'s hours; "
-                        f"never use them for appointments): {days}, {h_str} ({tz})."
-                    )
-
-            # Extract services: only if not already superseded by specific attached documents
-            srv_strs = []
-            selected_agent_services = [s for s in (config.services or []) if (isinstance(s, dict) and s.get("enabled", True)) or (hasattr(s, "enabled") and getattr(s, "enabled", True))]
-            
-            if selected_agent_services:
-                for s in selected_agent_services:
-                    if isinstance(s, dict):
-                        name_val = s.get("name", "")
-                        desc_val = s.get("description", "")
-                        price_val = s.get("pricing", "")
-                        srv_line = f"{name_val}: {desc_val}".strip(": ")
-                        if price_val:
-                            srv_line += f" (Pricing: {price_val})"
-                        srv_strs.append(srv_line)
-                    elif hasattr(s, "name"):
-                        desc_val = getattr(s, "description", "")
-                        price_val = getattr(s, "pricing", None)
-                        srv_line = f"{s.name}: {desc_val}".strip(": ")
-                        if price_val:
-                            srv_line += f" (Pricing: {price_val})"
-                        srv_strs.append(srv_line)
-                    elif isinstance(s, str) and s.strip():
-                        srv_strs.append(s.strip())
-            elif services and not attached_docs_context:
-                for s in services:
-                    if isinstance(s, dict) and s.get("enabled", True):
-                        name_val = s.get("name", "")
-                        desc_val = s.get("description", "")
-                        price_val = s.get("pricing", "")
-                        srv_line = f"{name_val}: {desc_val}".strip(": ")
-                        if price_val:
-                            srv_line += f" (Pricing: {price_val})"
-                        srv_strs.append(srv_line)
-                    elif hasattr(s, "name") and getattr(s, "enabled", True):
-                        desc_val = getattr(s, "description", "")
-                        price_val = getattr(s, "pricing", None)
-                        srv_line = f"{s.name}: {desc_val}".strip(": ")
-                        if price_val:
-                            srv_line += f" (Pricing: {price_val})"
-                        srv_strs.append(srv_line)
-                    elif isinstance(s, str) and s.strip():
-                        srv_strs.append(s.strip())
-
-            if srv_strs:
-                lines.append(f"- General Services & Solutions Offered:\n  * " + "\n  * ".join(srv_strs))
-
-            if faqs:
-                faq_strs = []
-                for f in faqs:
-                    if isinstance(f, dict) and f.get("enabled", True):
-                        q_val = f.get("question", "").strip()
-                        a_val = f.get("answer", "").strip()
-                        if q_val and a_val:
-                            faq_strs.append(f"Q: {q_val} -> A: {a_val}")
-                    elif hasattr(f, "question") and getattr(f, "enabled", True):
-                        q_val = getattr(f, "question", "").strip()
-                        a_val = getattr(f, "answer", "").strip()
-                        if q_val and a_val:
-                            faq_strs.append(f"Q: {q_val} -> A: {a_val}")
-                if faq_strs:
-                    lines.append(f"- Verified Company FAQs & Exact Spoken Answers:\n  * " + "\n  * ".join(faq_strs))
-
-            if notes and notes.strip():
-                lines.append(f"- Additional Business Guidelines: {notes.strip()}")
-
-            if len(lines) > 1:
-                sections.append("\n".join(lines))
+        if lines:
+            sections.append("[BUSINESS DETAILS & SERVICES]" + "\n" + "\n".join(lines))
 
         if not sections:
             return ""

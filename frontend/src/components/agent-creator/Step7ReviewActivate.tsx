@@ -126,9 +126,9 @@ export function Step7ReviewActivate({
               <p className="text-[var(--color-text)] font-medium leading-relaxed">{agentData.objective}</p>
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]">
-              <span className="text-[var(--color-muted)]">Company Knowledge:</span>
-              <Badge variant={agentData.include_business_knowledge ? "success" : "neutral"} size="sm">
-                {agentData.include_business_knowledge ? "Connected" : "Disabled"}
+              <span className="text-[var(--color-muted)]">Knowledge Documents:</span>
+              <Badge variant={(agentData.attached_document_ids?.length || 0) > 0 ? "success" : "neutral"} size="sm">
+                {(agentData.attached_document_ids?.length || 0) > 0 ? `${agentData.attached_document_ids?.length} attached` : "None attached"}
               </Badge>
             </div>
             <div>

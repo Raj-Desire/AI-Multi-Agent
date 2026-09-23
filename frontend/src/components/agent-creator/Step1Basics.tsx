@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Sparkles, Check, Info, Bot, Compass, Plus, Layers, Sliders, ArrowRight, Network, GitBranch, Cpu, X, AlertTriangle } from "lucide-react";
+import { Sparkles, Check, Info, Bot, Compass, Plus, Layers, Sliders, ArrowRight, Network, GitBranch, Cpu, X, AlertTriangle, Search, Users } from "lucide-react";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
 import { AgentConfig } from "../../types";
@@ -44,7 +44,6 @@ export function Step1Basics({
   const [customRoleName, setCustomRoleName] = useState(agentData.role || "");
   const [customHelpScope, setCustomHelpScope] = useState("");
   const [customSuccessCriteria, setCustomSuccessCriteria] = useState("");
-  const [isCustomHighlighted, setIsCustomHighlighted] = useState(false);
   const [shakeTriggerKey, setShakeTriggerKey] = useState(0);
 
   // Orchestrator state
@@ -62,14 +61,10 @@ export function Step1Basics({
   const [newRuleKeywords, setNewRuleKeywords] = useState("");
   const [newRuleAgentId, setNewRuleAgentId] = useState("");
   const [newRuleIntro, setNewRuleIntro] = useState("");
+  const [childSearchQuery, setChildSearchQuery] = useState("");
 
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const descInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const highlightTimeoutRef = useRef<any>(null);
-
-  useEffect(() => {
-    return () => { if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current); };
-  }, []);
 
   useEffect(() => {
     if (selectedPurposeId === "custom" && agentData.role && !customRoleName) {
@@ -143,9 +138,6 @@ export function Step1Basics({
         greeting: prev.greeting || "Hello, thank you for calling. How can I help you today?",
         is_orchestrator: false,
       } as any));
-      setIsCustomHighlighted(true);
-      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
-      highlightTimeoutRef.current = setTimeout(() => setIsCustomHighlighted(false), 1800);
       setTimeout(() => nameInputRef.current?.focus(), 80);
     } else {
       const fallbackPreset =
@@ -162,7 +154,6 @@ export function Step1Basics({
     if (purpose.id === "custom") {
       setAgentData((prev) => ({ ...prev, name: "", description: "", role: "", objective: "", is_orchestrator: false } as any));
     } else {
-      setIsCustomHighlighted(false);
       setAgentData((prev) => ({
         ...prev,
         name: `${purpose.title} Agent`,
@@ -337,7 +328,7 @@ export function Step1Basics({
 
       {/* ─── MODE B: CUSTOM AGENT ───────────────────────────────────────── */}
       {isCustomMode && (
-        <div className={`p-4 bg-[var(--color-surface)] border rounded-xl space-y-4 animate-fade-in transition-all duration-300 ${isCustomHighlighted ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/15 shadow-sm" : "border-[var(--color-border)] shadow-2xs"}`}>
+        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-4 animate-fade-in shadow-2xs">
           <div className="flex items-center gap-2 border-b border-[var(--color-border)] pb-2.5">
             <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
               <Sparkles className="w-4 h-4" />
@@ -395,50 +386,151 @@ export function Step1Basics({
           </div>
 
           {/* Child Agent Selector */}
-          <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-3">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
+          <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-3.5 shadow-2xs">
+            {/* Header with counts and bulk actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-[var(--color-border)]">
               <div className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-[var(--color-primary)]" />
+                <div className="w-7 h-7 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                  <GitBranch className="w-4 h-4" />
+                </div>
                 <div>
-                  <h3 className="text-xs font-bold text-[var(--color-heading)]">Child Specialist Agents</h3>
-                  <p className="text-[11px] text-[var(--color-muted)]">Select agents this orchestrator can delegate to</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-bold text-[var(--color-heading)]">Child Specialist Agents</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                      {selectedChildIds.length} of {availableAgents.length} Active
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--color-muted)]">Select child agents that the supervisor can seamlessly delegate calls to</p>
                 </div>
               </div>
-              <span className="text-[11px] font-semibold text-[var(--color-primary)]">{selectedChildIds.length} selected</span>
+
+              {availableAgents.length > 0 && (
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = availableAgents.map((a) => a.agent_id);
+                      setSelectedChildIds(allIds);
+                    }}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-[var(--color-surface-muted)] text-[var(--color-heading)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)] border border-[var(--color-border)] transition-colors cursor-pointer"
+                  >
+                    Select All
+                  </button>
+                  {selectedChildIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedChildIds([]);
+                        setIntentRules([]);
+                      }}
+                      className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-danger)] border border-[var(--color-border)] transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Quick Search Filter */}
+            {availableAgents.length > 4 && (
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-[var(--color-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={childSearchQuery}
+                  onChange={(e) => setChildSearchQuery(e.target.value)}
+                  placeholder="Search agents by name, role, or entity scope..."
+                  className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+                />
+                {childSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setChildSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-[var(--color-heading)] p-0.5 rounded"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {loadingAgents ? (
-              <div className="text-xs text-[var(--color-muted)] py-4 text-center flex items-center justify-center gap-2">
-                <div className="w-3 h-3 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
-                Loading your agents...
+              <div className="text-xs text-[var(--color-muted)] py-8 text-center flex flex-col items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+                <span>Loading available specialist agents...</span>
               </div>
             ) : availableAgents.length === 0 ? (
-              <div className="text-xs text-[var(--color-muted)] py-4 text-center flex items-center justify-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                No agents found. Create specialist agents first, then return here.
+              <div className="text-xs text-[var(--color-muted)] py-6 text-center flex flex-col items-center justify-center gap-2 border border-dashed border-[var(--color-border)] rounded-xl bg-[var(--color-surface-muted)]/40 p-4">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                <span className="font-semibold text-[var(--color-heading)]">No specialist agents found</span>
+                <span>Create specialist child agents first, then return here to configure the orchestrator.</span>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {availableAgents.map((agent) => {
-                  const isSelected = selectedChildIds.includes(agent.agent_id);
-                  return (
-                    <div key={agent.agent_id} onClick={() => toggleChildAgent(agent.agent_id)} className={`p-3 rounded-lg border cursor-pointer transition-all select-none ${isSelected ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30" : "border-[var(--color-border)] bg-[var(--color-surface-muted)] hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-primary)]/5"}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-[var(--color-heading)] truncate">{agent.name}</p>
-                          <p className="text-[10px] text-[var(--color-muted)] truncate">{agent.role || agent.agent_id}</p>
-                          {agent.agent_entity_scope && (
-                            <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium">
-                              Scope: {agent.agent_entity_scope}
-                            </span>
-                          )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[460px] overflow-y-auto pr-0.5 scrollbar-thin">
+                {availableAgents
+                  .filter((agent) => {
+                    if (!childSearchQuery.trim()) return true;
+                    const q = childSearchQuery.toLowerCase();
+                    return (
+                      agent.name.toLowerCase().includes(q) ||
+                      (agent.role || "").toLowerCase().includes(q) ||
+                      (agent.agent_entity_scope || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .map((agent) => {
+                    const isSelected = selectedChildIds.includes(agent.agent_id);
+                    return (
+                      <div
+                        key={agent.agent_id}
+                        onClick={() => toggleChildAgent(agent.agent_id)}
+                        className={`group p-2.5 rounded-xl border transition-all cursor-pointer select-none flex items-center justify-between gap-2 text-left relative ${
+                          isSelected
+                            ? "bg-[var(--color-primary-light)]/25 border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/40"
+                            : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)]/40 hover:bg-[var(--color-surface-muted)]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs transition-colors ${
+                              isSelected
+                                ? "bg-[var(--color-primary)] text-white shadow-2xs"
+                                : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] group-hover:text-[var(--color-primary)]"
+                            }`}
+                          >
+                            <Bot className="w-4 h-4" />
+                          </div>
+
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="text-xs font-bold text-[var(--color-heading)] truncate">
+                                {agent.name}
+                              </h4>
+                              {agent.agent_entity_scope && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium shrink-0 truncate max-w-[130px]">
+                                  {agent.agent_entity_scope}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[var(--color-muted)] truncate">
+                              {agent.role || "Specialist Agent"}
+                            </p>
+                          </div>
                         </div>
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all ${isSelected ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white" : "border-[var(--color-border)] text-transparent"}`}>
-                          <Check className="w-3 h-3 stroke-[2.5]" />
+
+                        {/* Interactive Selection Checkbox */}
+                        <div
+                          className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 border transition-all ${
+                            isSelected
+                              ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white shadow-2xs"
+                              : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface)] group-hover:border-[var(--color-primary)]/60"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -588,16 +680,18 @@ export function Step1Basics({
             value={agentData.name}
             onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
             placeholder={isOrchestratorMode ? "e.g., Hotel Concierge Hub, Front Desk Supervisor" : isCustomMode ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
-            className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-300 ${
+            className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-200 ${
               isNameInvalid
-                ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 animate-shake"
-                : isOrchestratorMode
-                ? "border border-[var(--color-primary)]/40 focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15"
-                : isCustomHighlighted
-                ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 animate-soft-highlight"
-                : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+                ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30 bg-[var(--color-primary-light)]/15 animate-shake"
+                : "border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15"
             }`}
           />
+          {isNameInvalid && (
+            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
+              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+              <span>Please enter an agent name before proceeding to the next step.</span>
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -615,16 +709,18 @@ export function Step1Basics({
             value={agentData.description || ""}
             onChange={(e) => setAgentData({ ...agentData, description: e.target.value })}
             placeholder={isOrchestratorMode ? "e.g., Routes hotel callers to the right specialist — Ocean Grand or Skyline — based on their request." : isCustomMode ? "e.g., Handles custom customer inquiries and routes escalated requests." : "e.g., Follows up with existing customers about pending inquiries, orders, or feedback."}
-            className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none shadow-2xs resize-none transition-all duration-300 ${
+            className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none shadow-2xs resize-none transition-all duration-200 ${
               isDescInvalid
-                ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 animate-shake"
-                : isOrchestratorMode
-                ? "border border-[var(--color-primary)]/40 focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15"
-                : isCustomHighlighted
-                ? "border-[var(--color-primary)]/40 ring-2 ring-[var(--color-primary)]/15 animate-soft-highlight"
-                : "border border-[var(--color-border)] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+                ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30 bg-[var(--color-primary-light)]/15 animate-shake"
+                : "border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15"
             }`}
           />
+          {isDescInvalid && (
+            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
+              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+              <span>Please provide a brief description of what this agent handles.</span>
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -18,7 +18,6 @@ COSMOS_CONTAINER_TWILIO = os.getenv("COSMOS_CONTAINER_TWILIO", "twilio_configs")
 COSMOS_CONTAINER_CALLS = os.getenv("COSMOS_CONTAINER_CALLS", "calls")
 COSMOS_CONTAINER_THEMES = os.getenv("COSMOS_CONTAINER_THEMES", "theme_configs")
 COSMOS_CONTAINER_AGENTS = os.getenv("COSMOS_CONTAINER_AGENTS", "agents")
-COSMOS_CONTAINER_PROFILES = os.getenv("COSMOS_CONTAINER_PROFILES", "business_profiles")
 COSMOS_CONTAINER_PROSPECTS = os.getenv("COSMOS_CONTAINER_PROSPECTS", "prospects")
 COSMOS_CONTAINER_CAMPAIGNS = os.getenv("COSMOS_CONTAINER_CAMPAIGNS", "campaigns")
 COSMOS_CONTAINER_CAMPAIGN_MEMBERS = os.getenv("COSMOS_CONTAINER_CAMPAIGN_MEMBERS", "campaign_members")
@@ -36,7 +35,6 @@ _twilio_container = None
 _calls_container = None
 _themes_container = None
 _agents_container = None
-_profiles_container = None
 _prospects_container = None
 _campaigns_container = None
 _campaign_members_container = None
@@ -141,20 +139,6 @@ def get_agents_container():
         print(f"[CosmosDB Error] Failed to get agents container: {e}")
         return None
 
-def get_business_profiles_container():
-    global _profiles_container
-    if _profiles_container is not None:
-        return _profiles_container
-    db = get_database()
-    if not db:
-        return None
-    try:
-        _profiles_container = db.get_container_client(COSMOS_CONTAINER_PROFILES)
-        return _profiles_container
-    except Exception as e:
-        print(f"[CosmosDB Error] Failed to get business_profiles container: {e}")
-        return None
-
 def get_prospects_container():
     global _prospects_container
     if _prospects_container is not None:
@@ -241,7 +225,7 @@ def get_knowledge_chunks_container():
 
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
-    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _profiles_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container
+    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container
     client = get_cosmos_client()
     if not client:
         print("[CosmosDB Warning] Cosmos client unavailable during startup.")
@@ -255,7 +239,6 @@ def init_cosmos_db():
         _calls_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CALLS, partition_key=PartitionKey(path="/user_id"))
         _themes_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_THEMES, partition_key=PartitionKey(path="/organization_id"))
         _agents_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_AGENTS, partition_key=PartitionKey(path="/organization_id"))
-        _profiles_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_PROFILES, partition_key=PartitionKey(path="/organization_id"))
         _prospects_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_PROSPECTS, partition_key=PartitionKey(path="/organization_id"))
         _campaigns_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CAMPAIGNS, partition_key=PartitionKey(path="/organization_id"))
         _campaign_members_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CAMPAIGN_MEMBERS, partition_key=PartitionKey(path="/organization_id"))

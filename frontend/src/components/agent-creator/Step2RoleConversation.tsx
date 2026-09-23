@@ -28,8 +28,9 @@ import {
 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
+import { BusinessHoursPicker } from "./BusinessHoursPicker";
 import { AVAILABLE_CAPABILITIES } from "./constants";
-import { AgentConfig, CompanyBusinessProfile, BusinessServiceItem, AgentServiceItem, KnowledgeDocument } from "../../types";
+import { AgentConfig, BusinessServiceItem, AgentServiceItem, KnowledgeDocument } from "../../types";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
 
@@ -127,10 +128,7 @@ export function Step2RoleConversation({
     setShowSamplePopover(false);
   };
 
-  const [kbProfile, setKbProfile] = useState<CompanyBusinessProfile | null>(null);
-  const [loadingKb, setLoadingKb] = useState(false);
   const [isAddingService, setIsAddingService] = useState(false);
-  const [savingService, setSavingService] = useState(false);
 
   // Custom Skills State
   const [isAddingCustomSkill, setIsAddingCustomSkill] = useState(false);
@@ -175,17 +173,11 @@ export function Step2RoleConversation({
     toast.success(`Removed "${skillToRemove}"`);
   };
 
-  // New Service Form State
-  const [newServiceName, setNewServiceName] = useState("");
-  const [newServiceDesc, setNewServiceDesc] = useState("");
-  const [newServicePricing, setNewServicePricing] = useState("");
-
   // Documents Library & Scoped RAG State
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
   useEffect(() => {
-    fetchBusinessProfile();
     fetchKnowledgeDocuments();
   }, []);
 
@@ -240,141 +232,12 @@ export function Step2RoleConversation({
     }));
   };
 
-  const fetchBusinessProfile = async () => {
-    try {
-      setLoadingKb(true);
-      const res = await fetchApi<CompanyBusinessProfile>("/business-profile");
-      if (res) {
-        setKbProfile(res);
-        // If agent doesn't have services set yet, auto-select all enabled services by default
-        if (!agentData.services || agentData.services.length === 0) {
-          const defaultServices: AgentServiceItem[] = (res.services || [])
-            .filter((s) => s.enabled)
-            .map((s, idx) => ({
-              name: s.name,
-              description: s.description || "",
-              enabled: true,
-              priority: idx + 1
-            }));
-          setAgentData((prev) => ({ ...prev, services: defaultServices }));
-        }
-      }
-    } catch (err) {
-      console.warn("Could not fetch business profile for step 2:", err);
-    } finally {
-      setLoadingKb(false);
-    }
-  };
-
   const toggleCapability = (capId: string) => {
     const updated = currentCaps.includes(capId)
       ? currentCaps.filter((c) => c !== capId)
       : [...currentCaps, capId];
     setAgentData((prev) => ({ ...prev, skills: updated }));
   };
-
-  const isServiceSelected = (serviceName: string) => {
-    return (agentData.services || []).some((s) => s.name === serviceName && s.enabled !== false);
-  };
-
-  const toggleServiceSelection = (service: BusinessServiceItem) => {
-    const currentServices = agentData.services || [];
-    const exists = currentServices.find((s) => s.name === service.name);
-
-    let updated: AgentServiceItem[];
-    if (exists) {
-      // Toggle enabled state
-      updated = currentServices.map((s) =>
-        s.name === service.name ? { ...s, enabled: !s.enabled } : s
-      );
-    } else {
-      // Add as enabled
-      updated = [
-        ...currentServices,
-        {
-          name: service.name,
-          description: service.description || "",
-          enabled: true,
-          priority: currentServices.length + 1
-        }
-      ];
-    }
-    setAgentData((prev) => ({ ...prev, services: updated }));
-  };
-
-  const handleAddNewService = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newServiceName.trim()) return;
-
-    try {
-      setSavingService(true);
-      const newServiceItem: BusinessServiceItem = {
-        name: newServiceName.trim(),
-        description: newServiceDesc.trim(),
-        pricing: newServicePricing.trim(),
-        enabled: true
-      };
-
-      const existingServices = kbProfile?.services || [];
-      const updatedServices = [...existingServices, newServiceItem];
-
-      // Update backend
-      let updatedProfile: CompanyBusinessProfile | null = null;
-      try {
-        updatedProfile = await fetchApi<CompanyBusinessProfile>("/business-profile", {
-          method: "POST",
-          body: JSON.stringify({
-            ...(kbProfile || {}),
-            organization_id: kbProfile?.organization_id || "default",
-            company_name: kbProfile?.company_name || "My Company",
-            services: updatedServices
-          })
-        });
-      } catch (saveErr: any) {
-        console.warn("Could not save service to organization profile:", saveErr);
-      }
-
-      if (updatedProfile) {
-        setKbProfile(updatedProfile);
-        toast.success(`Service "${newServiceName.trim()}" added to Organization Knowledge.`);
-      } else {
-        // Fallback local update if org-level update is read-only
-        setKbProfile((prev) => prev ? { ...prev, services: updatedServices } : {
-          organization_id: "default",
-          company_name: "My Company",
-          services: updatedServices
-        } as any);
-        toast.success(`Service "${newServiceName.trim()}" added to this agent.`);
-      }
-
-      // Also add and enable for current agent
-      const currentAgentServices = agentData.services || [];
-      setAgentData((prev) => ({
-        ...prev,
-        services: [
-          ...currentAgentServices,
-          {
-            name: newServiceItem.name,
-            description: newServiceItem.description || "",
-            enabled: true,
-            priority: currentAgentServices.length + 1
-          }
-        ]
-      }));
-
-      setNewServiceName("");
-      setNewServiceDesc("");
-      setNewServicePricing("");
-      setIsAddingService(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to add service.");
-    } finally {
-      setSavingService(false);
-    }
-  };
-
-  const allKbServices = kbProfile?.services || [];
-  const selectedCount = allKbServices.filter((s) => isServiceSelected(s.name)).length;
 
   return (
     <div className="space-y-6 text-left">
@@ -394,80 +257,82 @@ export function Step2RoleConversation({
         </div>
       </div>
 
-      {/* Agent Entity Scope — shown only for specialist agents inside an orchestrator setup */}
-      {!(agentData as any).is_orchestrator && (
-        <div className="p-3 bg-[var(--color-primary-light)]/20 border border-[var(--color-primary)]/25 rounded-lg space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <Tag className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-            <label className="text-xs font-bold text-[var(--color-heading)]">
-              Knowledge Entity Scope
-            </label>
-            <InfoTooltip
-              content="Optional. Set a scope identifier for this agent (e.g., 'Ocean Grand Hotel', 'Skyline Suites'). When used inside a Multi-Agent Orchestrator, this isolates the agent's knowledge base to only its own property — preventing cross-agent data bleed."
-              position="top"
-            />
-            <span className="text-[10px] text-[var(--color-primary)] font-medium px-1.5 py-0.5 rounded-full bg-[var(--color-primary-light)] border border-[var(--color-primary)]/20">
-              For Orchestrator Handoffs
-            </span>
-          </div>
-          <input
-            type="text"
-            value={(agentData as any).agent_entity_scope || ""}
-            onChange={(e) => setAgentData((prev) => ({ ...prev, agent_entity_scope: e.target.value || undefined } as any))}
-            placeholder='e.g., "Ocean Grand Hotel", "Skyline Suites", "VIP Support Team"'
-            className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+      {/* Business Details: what this agent represents; used in greetings ({{company_name}}) and answers */}
+      <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg space-y-2">
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs font-bold text-[var(--color-heading)]">Business Details</label>
+          <InfoTooltip
+            content="Optional. The business this agent speaks for. The name is used in greetings ({{company_name}}); phone, email, website and address are given to callers who ask."
+            position="top"
           />
-          <p className="text-[10px] text-[var(--color-muted)]">
-            Leave blank if this is a standalone agent not used in an orchestrator.
-          </p>
         </div>
-      )}
+        <div className="space-y-2">
+          {/* Row 1: Business Name, Phone, Email (3 columns) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-[var(--color-muted)]">Business Name</span>
+              <input
+                type="text"
+                value={(agentData as any).company_name || ""}
+                onChange={(e) => setAgentData((prev) => ({ ...prev, company_name: e.target.value || undefined } as any))}
+                placeholder="e.g., Apex Dental & Wellness Clinic"
+                className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+              />
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-[var(--color-muted)]">Phone</span>
+              <input
+                type="tel"
+                value={(agentData as any).company_phone || ""}
+                onChange={(e) => setAgentData((prev) => ({ ...prev, company_phone: e.target.value || undefined } as any))}
+                placeholder="e.g., +1 512 555 0199"
+                className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+              />
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-[var(--color-muted)]">Email</span>
+              <input
+                type="email"
+                value={(agentData as any).company_email || ""}
+                onChange={(e) => setAgentData((prev) => ({ ...prev, company_email: e.target.value || undefined } as any))}
+                placeholder="e.g., hello@apexdental.com"
+                className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+              />
+            </div>
+          </div>
 
-      {/* Agent Business Hours & Timezone — overrides the organization business profile */}
-      {!(agentData as any).is_orchestrator && (
-        <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg space-y-2">
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs font-bold text-[var(--color-heading)]">
-              Business Hours &amp; Timezone
-            </label>
-            <InfoTooltip
-              content="Optional. The hours and timezone this agent books appointments in (e.g. a clinic in Austin uses America/Chicago). Overrides the organization business profile. If left blank, the agent reads an 'Hours:' line and location from its own knowledge; a scoped specialist never falls back to the head office hours."
-              position="top"
-            />
+          {/* Row 2: Website & Address (2 columns) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-[var(--color-muted)]">Website</span>
+              <input
+                type="text"
+                value={(agentData as any).company_website || ""}
+                onChange={(e) => setAgentData((prev) => ({ ...prev, company_website: e.target.value || undefined } as any))}
+                placeholder="e.g., apexdental.com"
+                className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+              />
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-[var(--color-muted)]">Address</span>
+              <input
+                type="text"
+                value={(agentData as any).office_address || ""}
+                onChange={(e) => setAgentData((prev) => ({ ...prev, office_address: e.target.value || undefined } as any))}
+                placeholder="e.g., 450 Medical Center Blvd, Suite 300, Austin, TX 78701"
+                className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
+              />
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {([
-              ["days", "Operating Days", "e.g., Monday - Friday"],
-              ["hours", "Working Hours", "e.g., 8:00 AM - 6:00 PM, Sat 9 AM - 2 PM"],
-              ["timezone", "Timezone", "e.g., America/Chicago"],
-              ["closed_on", "Closed On", "e.g., Sunday"],
-            ] as const).map(([field, label, placeholder]) => (
-              <div key={field} className="space-y-1">
-                <span className="text-[10px] font-semibold text-[var(--color-muted)]">{label}</span>
-                <input
-                  type="text"
-                  list={field === "timezone" ? "agent-timezone-options" : undefined}
-                  value={(agentData as any).operating_hours?.[field] || ""}
-                  onChange={(e) =>
-                    setAgentData((prev) => {
-                      const next = { ...((prev as any).operating_hours || {}), [field]: e.target.value || undefined };
-                      const hasValue = Object.values(next).some(Boolean);
-                      return { ...prev, operating_hours: hasValue ? next : undefined } as any;
-                    })
-                  }
-                  placeholder={placeholder}
-                  className="w-full h-8 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-1 focus:ring-[var(--color-primary)]/20 transition-all"
-                />
-              </div>
-            ))}
-          </div>
-          <datalist id="agent-timezone-options">
-            {["Asia/Kolkata", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
-              "Europe/London", "Europe/Paris", "Asia/Dubai", "Asia/Singapore", "Australia/Sydney", "Asia/Tokyo"].map((tz) => (
-              <option key={tz} value={tz} />
-            ))}
-          </datalist>
         </div>
+      </div>
+
+      {/* Agent Business Hours & Timezone — this agent's own schedule */}
+      {!(agentData as any).is_orchestrator && (
+        <BusinessHoursPicker
+          value={(agentData as any).operating_hours}
+          onChange={(operating_hours) => setAgentData((prev) => ({ ...prev, operating_hours } as any))}
+        />
       )}
 
       {/* 2. Primary Agent Objective Form Block */}
@@ -584,12 +449,18 @@ export function Step2RoleConversation({
           value={agentData.objective || ""}
           onChange={(e) => setAgentData({ ...agentData, objective: e.target.value })}
           placeholder="e.g. Qualify inbound buyer leads, answer company FAQs, and schedule consultation calls with our sales team."
-          className={`w-full p-3 text-xs bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none transition-all resize-none leading-relaxed ${
+          className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none transition-all resize-none leading-relaxed ${
             isObjectiveInvalid
-              ? "border-rose-400 dark:border-rose-500/70 ring-2 ring-rose-400/20 dark:ring-rose-500/20 bg-rose-500/[0.015] animate-shake"
+              ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30 bg-[var(--color-primary-light)]/15 animate-shake"
               : "border border-[var(--color-border)] focus:ring-2 focus:ring-[var(--color-primary)]/15 focus:border-[var(--color-primary)]/60"
           }`}
         />
+        {isObjectiveInvalid && (
+          <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-1">
+            <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+            <span>Please define the primary objective before proceeding.</span>
+          </p>
+        )}
       </div>
 
       {/* 3. Conversational Capabilities & Skills */}
@@ -826,218 +697,27 @@ export function Step2RoleConversation({
       </div>
 
 
-      {/* 4. Organization Business Knowledge Base */}
+      {/* 4. Agent Services & Knowledge (per agent; there is no organization-wide profile) */}
       <div className="pt-2">
         <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-4">
-          {/* Section Header with Include in Calls toggle */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[var(--color-border)]">
-            <div className="flex items-start sm:items-center gap-2.5">
-              <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                  <span>Organization Business Knowledge</span>
-                  <InfoTooltip
-                    content="Connect your company's global profile, operating hours, address, and service catalog directly to the agent's knowledge base."
-                    position="top"
-                  />
-                </h3>
-              </div>
+          <div className="flex items-start sm:items-center gap-2.5 pb-3 border-b border-[var(--color-border)]">
+            <div className="w-8 h-8 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <Building2 className="w-4 h-4" />
             </div>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none bg-[var(--color-surface-muted)] px-3 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] shrink-0 self-start sm:self-auto">
-              <input
-                type="checkbox"
-                checked={agentData.include_business_knowledge ?? true}
-                onChange={(e) =>
-                  setAgentData({
-                    ...agentData,
-                    include_business_knowledge: e.target.checked
-                  })
-                }
-                className="w-4 h-4 accent-[var(--color-primary)] cursor-pointer"
-              />
-              <span className="text-xs font-medium text-[var(--color-heading)]">
-                Include in Calls
-              </span>
-            </label>
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                <span>Knowledge Base Documents</span>
+                <InfoTooltip
+                  content="Attach specific documents from your Knowledge Base that this agent can search and reference during phone calls."
+                  position="top"
+                />
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Attach documents from your Knowledge Base for domain-specific grounding during live calls.
+              </p>
+            </div>
           </div>
-
-          <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
-            When enabled, the agent automatically inherits your company profile, business operating hours, office address, and contact details from the organization knowledge base.
-          </p>
-
-          {/* Available Knowledge / Services */}
-          {(agentData.include_business_knowledge ?? true) && (
-            <div className="p-3.5 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-[var(--color-primary)]" />
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                      <span>Available Knowledge &amp; Services</span>
-                      <InfoTooltip
-                        content="Select which specific products, pricing plans, or service offerings the agent is permitted to discuss."
-                        position="top"
-                      />
-                    </h4>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Badge variant="neutral" size="sm" className="text-[10px]">
-                    {selectedCount} of {allKbServices.length} Selected
-                  </Badge>
-                  {!isAddingService && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingService(true)}
-                      className="px-2.5 py-1 text-[11px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded-[var(--radius-main,0.25rem)] flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      <Plus className="w-3 h-3 stroke-[2.5]" />
-                      <span>Add Service</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Inline Add Service Form */}
-              {isAddingService && (
-                <form
-                  onSubmit={handleAddNewService}
-                  className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.375rem)] space-y-3 animate-fade-in"
-                >
-                  <div className="flex items-center justify-between pb-1.5 border-b border-[var(--color-border)]">
-                    <span className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                      Add Service to Organization Knowledge Base
-                    </span>
-                    <span className="text-[10px] text-[var(--color-muted)]">
-                      Saved globally &amp; enabled for this agent
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-semibold text-[var(--color-heading)]">
-                        Service Name <span className="text-[var(--color-danger)]">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={newServiceName}
-                        onChange={(e) => setNewServiceName(e.target.value)}
-                        placeholder="e.g. AI Voice Receptionist, SharePoint Migration"
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-semibold text-[var(--color-heading)]">
-                        Pricing / Detail (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={newServicePricing}
-                        onChange={(e) => setNewServicePricing(e.target.value)}
-                        placeholder="e.g. Starting at $99/mo, Free Consultation"
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="block text-[11px] font-semibold text-[var(--color-heading)]">
-                        Service Description
-                      </label>
-                      <input
-                        type="text"
-                        value={newServiceDesc}
-                        onChange={(e) => setNewServiceDesc(e.target.value)}
-                        placeholder="e.g. Automated phone call handling, inquiry screening, and instant calendar routing."
-                        className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingService(false)}
-                      className="px-2.5 py-1 text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] rounded cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={savingService || !newServiceName.trim()}
-                      className="px-3 py-1 text-xs font-semibold bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] rounded cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {savingService ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 stroke-[2.5]" />}
-                      <span>Save &amp; Add</span>
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {loadingKb ? (
-                <div className="py-4 flex items-center justify-center text-xs text-[var(--color-muted)] gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-primary)]" />
-                  <span>Loading organization services...</span>
-                </div>
-              ) : allKbServices.length === 0 ? (
-                <div className="p-3 text-center text-xs text-[var(--color-muted)] bg-[var(--color-surface)] rounded border border-dashed border-[var(--color-border)]">
-                  No services configured in your business knowledge base yet. Click "+ Add Service" to create one.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {allKbServices.map((service, idx) => {
-                    const isSelected = isServiceSelected(service.name);
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => toggleServiceSelection(service)}
-                        className={`p-2.5 px-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex items-center justify-between gap-2 text-left relative select-none ${
-                          isSelected
-                            ? "bg-[var(--color-surface)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/40 font-semibold"
-                            : "bg-[var(--color-surface)] border-[var(--color-border)] opacity-75 hover:opacity-100 hover:border-[var(--color-border-strong,var(--color-border))]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected
-                                ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                                : "border-[var(--color-border-strong,var(--color-border))] bg-[var(--color-surface-muted)]"
-                            }`}
-                          >
-                            {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
-                          </div>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <h4 className="text-xs font-bold text-[var(--color-heading)] leading-snug truncate">
-                              {service.name}
-                            </h4>
-                            {service.description && (
-                              <InfoTooltip content={service.description} position="top" />
-                            )}
-                          </div>
-                        </div>
-
-                        {service.pricing && (
-                          <span className="text-[10px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded shrink-0">
-                            {service.pricing}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Attached Knowledge Documents (Scoped RAG) */}
-          {(agentData.include_business_knowledge ?? true) && (
             <div className="p-3.5 bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -1153,7 +833,7 @@ export function Step2RoleConversation({
                       <FileText className="w-5 h-5 text-[var(--color-muted)] mx-auto opacity-50" />
                       <p className="text-xs font-medium text-[var(--color-heading)]">No indexed documents found</p>
                       <p className="text-[11px] text-[var(--color-muted)]">
-                        Upload PDFs, manuals, or rate cards in <strong className="text-[var(--color-heading)]">Business Profile &gt; Documents &amp; RAG</strong> to attach them here.
+                        Upload PDFs, manuals, or rate cards in <strong className="text-[var(--color-heading)]">Knowledge Base</strong> to attach them here.
                       </p>
                     </div>
                   ) : (
@@ -1206,7 +886,6 @@ export function Step2RoleConversation({
                 </div>
               )}
             </div>
-          )}
         </div>
       </div>
 

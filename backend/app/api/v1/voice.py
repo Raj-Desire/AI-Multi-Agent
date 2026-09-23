@@ -370,12 +370,11 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                             greeting="Hello! I am ready to test."
                         )
 
-                    from app.repositories.business_profile_repository import BusinessProfileRepository
                     from app.repositories.platform_rules_repository import PlatformRulesRepository
                     target_org_id = agent_config.organization_id
                     if not target_org_id or target_org_id == "default":
                         target_org_id = "org_platform_root"
-                    business_profile = await BusinessProfileRepository.get_profile(target_org_id)
+                    business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                     cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
                     deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                         agent_config,

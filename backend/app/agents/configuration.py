@@ -393,6 +393,12 @@ class AgentConfiguration(BaseModel):
         default_factory=list,
         description="Representative user phrases or utterances for routing to this agent"
     )
+    # Business details this agent represents (replaces the removed organization business profile)
+    company_name: Optional[str] = Field(default=None, description="Business name spoken in greetings and {{company_name}}")
+    company_phone: Optional[str] = Field(default=None, description="Business contact phone")
+    company_email: Optional[str] = Field(default=None, description="Business contact email")
+    company_website: Optional[str] = Field(default=None, description="Business website")
+    office_address: Optional[str] = Field(default=None, description="Business address, used for {{office_location}} and directions")
     operating_hours: Optional[AgentOperatingHours] = Field(
         default=None,
         description="This agent's own hours and timezone. When unset, they are read from the agent's knowledge "

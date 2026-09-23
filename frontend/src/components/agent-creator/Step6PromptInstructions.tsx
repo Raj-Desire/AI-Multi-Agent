@@ -34,7 +34,7 @@ import {
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
-import { AgentConfig, CompanyBusinessProfile } from "../../types";
+import { AgentConfig } from "../../types";
 import { AURA_VOICES } from "./constants";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
@@ -72,8 +72,12 @@ export function Step6PromptInstructions({
   const [showGuide, setShowGuide] = useState(false);
   const [pendingDiff, setPendingDiff] = useState<PromptDiffPreview | null>(null);
 
-  // Business Profile for resolving {{company_name}} and other variables
-  const [businessProfile, setBusinessProfile] = useState<CompanyBusinessProfile | null>(null);
+  // Business details for resolving {{company_name}} and other variables come from this agent
+  const businessProfile = {
+    company_name: agentData.company_name,
+    phone: agentData.company_phone,
+    city: agentData.office_address,
+  };
 
   // Textarea DOM refs for inserting variables precisely at cursor position
   const greetingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -83,21 +87,6 @@ export function Step6PromptInstructions({
   const [isPlayingGreeting, setIsPlayingGreeting] = useState(false);
   const [playingGreetingText, setPlayingGreetingText] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Fetch organization business profile to get live company name
-  useEffect(() => {
-    async function loadBusinessProfile() {
-      try {
-        const profile = await fetchApi<CompanyBusinessProfile>("/business-profile");
-        if (profile) {
-          setBusinessProfile(profile);
-        }
-      } catch (err) {
-        console.warn("Could not fetch business profile in Step 6:", err);
-      }
-    }
-    loadBusinessProfile();
-  }, []);
 
   // Clean up audio on unmount
   useEffect(() => {
@@ -642,7 +631,7 @@ export function Step6PromptInstructions({
             <div className="min-w-0">
               <span className="text-[9px] text-[var(--color-muted)] block uppercase font-bold">Knowledge</span>
               <span className="text-xs font-semibold text-[var(--color-heading)] truncate block">
-                {agentData.include_business_knowledge ? "Connected" : "Custom"}
+                {(agentData.attached_document_ids?.length || 0) > 0 ? `${agentData.attached_document_ids?.length} Docs` : (agentData.services?.length || 0) > 0 ? "Services" : "Custom"}
               </span>
             </div>
           </div>
