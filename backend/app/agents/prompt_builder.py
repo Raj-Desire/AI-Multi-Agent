@@ -647,6 +647,42 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         )
 
     @staticmethod
+    def _build_workflow_stages_section(config: AgentConfiguration) -> str:
+        """Translates structured conversational workflow canvas nodes & branches into clear telephone guidelines."""
+        stages = getattr(config, "workflow_stages", None) or []
+        if not stages:
+            return ""
+
+        def _get_val(obj: Any, key: str, default: Any = None):
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        sorted_stages = sorted(stages, key=lambda s: _get_val(s, "order", 0) or 0)
+        lines = ["[STRUCTURED CONVERSATIONAL WORKFLOW & STAGE TRANSITIONS]"]
+        for idx, stage in enumerate(sorted_stages, start=1):
+            title = _get_val(stage, "title", f"Stage {idx}") or f"Stage {idx}"
+            stype = _get_val(stage, "stage_type", "custom") or "custom"
+            instruction = _get_val(stage, "instruction", "") or ""
+            branches = _get_val(stage, "branches", []) or []
+            key_pts = _get_val(stage, "key_points", []) or []
+
+            lines.append(f"STAGE {idx}: {title.upper()} (Type: {stype.capitalize()})")
+            if instruction:
+                lines.append(f"  - Directive: {instruction.strip()}")
+            if key_pts:
+                lines.append("  - Key Points: " + "; ".join([str(kp).strip() for kp in key_pts if kp]))
+            if branches:
+                for b in branches:
+                    cond = _get_val(b, "condition_label", "Condition") or "Condition"
+                    target = _get_val(b, "target_stage_id", "Next Stage") or "Next Stage"
+                    kw = _get_val(b, "keywords", []) or []
+                    kw_str = f" (Triggers: {', '.join(kw)})" if kw else ""
+                    lines.append(f"  - Transition: If {cond}{kw_str} -> Advance to {target}")
+
+        return "\n".join(lines)
+
+    @staticmethod
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
@@ -685,11 +721,14 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
 8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
 
+        workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
+
         # If custom system_prompt is provided, prioritize it directly to avoid truncation
         if config.system_prompt and config.system_prompt.strip():
             parts = [
                 temporal_rule,
                 config.system_prompt.strip(),
+                workflow_stages_rule,
                 knowledge_section,
                 acoustics_rule,
                 turn_taking_rule,
@@ -717,6 +756,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 language_rule,
                 role_directives,
                 f"PRIMARY GOAL: {config.objective}",
+                workflow_stages_rule,
                 knowledge_section,
                 f"STYLE: {config.communication_style}\n{personality_text}",
                 skills_text,

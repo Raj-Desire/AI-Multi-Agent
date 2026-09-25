@@ -289,6 +289,75 @@ export interface PronunciationRule {
   category?: 'indian_places' | 'acronyms' | 'brand' | 'custom' | string;
 }
 
+export interface WorkflowBranch {
+  condition_label: string;
+  target_stage_id: string;
+  keywords?: string[];
+  description?: string;
+}
+
+export interface WorkflowStageNode {
+  id: string;
+  title: string;
+  stage_type: 'greeting' | 'discovery' | 'qualification' | 'knowledge' | 'objection' | 'action' | 'closing' | 'escalation' | 'custom' | string;
+  instruction: string;
+  required_variables?: string[];
+  key_points?: string[];
+  branches?: WorkflowBranch[];
+  order: number;
+  is_terminal?: boolean;
+}
+
+export interface PromptVersionSnapshot {
+  id: string;
+  agent_id: string;
+  organization_id: string;
+  version: number;
+  system_prompt?: string | null;
+  greeting?: string | null;
+  role?: string | null;
+  objective?: string | null;
+  workflow_stages?: WorkflowStageNode[];
+  summary_of_changes?: string;
+  created_at: string;
+  created_by?: string | null;
+}
+
+export interface PromptTestCase {
+  id: string;
+  name: string;
+  caller_utterance: string;
+  expected_intent?: string;
+  required_keywords?: string[];
+  forbidden_keywords?: string[];
+  max_sentences?: number;
+  expected_sentiment?: string;
+  description?: string;
+}
+
+export interface TestCaseAssertionResult {
+  test_case_id: string;
+  name: string;
+  passed: boolean;
+  caller_utterance: string;
+  simulated_response: string;
+  sentence_count: number;
+  max_sentences_allowed: number;
+  missing_required_keywords: string[];
+  found_forbidden_keywords: string[];
+  latency_ms: number;
+  failure_reasons: string[];
+}
+
+export interface RegressionTestRunResponse {
+  total_tests: number;
+  passed_tests: number;
+  failed_tests: number;
+  pass_rate_percent: number;
+  average_latency_ms: number;
+  results: TestCaseAssertionResult[];
+}
+
 export interface AgentListenConfig {
   provider: string;
   model: string;
@@ -393,6 +462,7 @@ export interface AgentConfig {
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
   few_shot_examples?: FewShotExample[];
+  workflow_stages?: WorkflowStageNode[];
   // Multi-Agent Orchestrator fields
   is_orchestrator?: boolean;
   orchestrator_config?: {

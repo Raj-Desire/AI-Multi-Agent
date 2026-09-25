@@ -544,14 +544,34 @@ export function Step1Basics({
                 <p className="text-[11px] text-[var(--color-muted)]">How the orchestrator decides which specialist to use</p>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[
-                { id: "intent", label: "Intent Keywords", desc: "Routes based on what caller says" },
-                { id: "sequential", label: "Sequential Flow", desc: "Follows predefined agent order" },
-                { id: "round_robin", label: "Round Robin", desc: "Cycles through agents evenly" },
+                {
+                  id: "intent",
+                  label: "Intent Keywords",
+                  desc: "Routes dynamically based on what caller says",
+                  tooltip: "Caller-Driven Routing: Real-time speech analysis detects key intent keywords (e.g., 'billing', 'support', 'booking') to automatically hand off the caller to the specialized agent for that subject."
+                },
+                {
+                  id: "round_robin",
+                  label: "Round Robin",
+                  desc: "Cycles through agents evenly",
+                  tooltip: "Equal Distribution: Distributes calls in rotational order across all selected agents. Ideal for sales or intake teams where leads need to be distributed evenly without bias."
+                },
               ].map((opt) => (
-                <div key={opt.id} onClick={() => setRoutingStrategy(opt.id)} className={`p-2.5 rounded-lg border cursor-pointer transition-all select-none ${routingStrategy === opt.id ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30" : "border-[var(--color-border)] hover:border-[var(--color-primary)]/40"}`}>
-                  <p className="text-xs font-bold text-[var(--color-heading)]">{opt.label}</p>
+                <div
+                  key={opt.id}
+                  onClick={() => setRoutingStrategy(opt.id)}
+                  className={`p-2.5 rounded-lg border cursor-pointer transition-all select-none ${
+                    routingStrategy === opt.id
+                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30"
+                      : "border-[var(--color-border)] hover:border-[var(--color-primary)]/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-xs font-bold text-[var(--color-heading)]">{opt.label}</p>
+                    <InfoTooltip content={opt.tooltip} position="top" size={13} />
+                  </div>
                   <p className="text-[10px] text-[var(--color-muted)] mt-0.5">{opt.desc}</p>
                 </div>
               ))}

@@ -446,17 +446,23 @@ async def voice_stream_websocket(websocket: WebSocket):
                                 await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
                                 last_backchannel_time = now
 
-                # 1. Dynamic Maximum Call Duration Check
-                if elapsed_call_time >= active_limit and not is_concluding_call:
-                    # If customer is speaking, allow current turn to finish
+                # 1. Smart Minute-Boundary Protection Check (conclude at selected_duration - 5s to avoid rolling into next billed minute)
+                # e.g., 1 min (60s) -> triggers conclusion at 55s, 3 min (180s) -> triggers conclusion at 175s, 5 min (300s) -> triggers at 295s
+                conclude_threshold = max(10, active_limit - 5) if active_limit >= 20 else active_limit
+                if elapsed_call_time >= conclude_threshold and not is_concluding_call:
+                    # If customer is actively speaking, allow current turn to finish naturally
                     if is_user_speaking:
                         continue
 
                     norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
-                    logger.info(f"[VoiceGateway] Dynamic call duration ({active_limit}s, user_spoke={user_spoke}) reached. Speaking conclusion message.")
+                    logger.info(
+                        f"[VoiceGateway] Smart Minute-Boundary Protection triggered: elapsed={elapsed_call_time:.1f}s, "
+                        f"threshold={conclude_threshold}s (limit={active_limit}s, user_spoke={user_spoke}). Speaking conclusion message."
+                    )
                     is_concluding_call = True
                     await deepgram_client.inject_agent_message(norm_conclusion)
-                    asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                    # Allow 3.5s for audio playback, then hangup before the minute boundary
+                    asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                     break
 
                 # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)

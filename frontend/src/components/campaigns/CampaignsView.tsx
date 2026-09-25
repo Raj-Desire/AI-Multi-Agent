@@ -10,6 +10,7 @@ import { LoadingState } from "../ui/LoadingState";
 import { CampaignCreateWizardView } from "./CampaignCreateWizardView";
 import { CampaignDetailView } from "./CampaignDetailView";
 import { toast } from "sonner";
+import { Modal } from "../ui/Modal";
 import {
   Megaphone,
   Plus,
@@ -26,7 +27,8 @@ import {
   Clock,
   CheckCircle2,
   PhoneCall,
-  Activity
+  Activity,
+  AlertTriangle
 } from "lucide-react";
 
 interface CampaignsViewProps {
@@ -130,28 +132,69 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
     }
   };
 
-  const handleStopCampaign = async (campaign: Campaign, e: React.MouseEvent) => {
+  // Confirmation Modals State
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText: string;
+    confirmVariant: "danger" | "primary" | "secondary";
+    onConfirm: () => Promise<void> | void;
+    isLoading?: boolean;
+  }>({
+    isOpen: false,
+    title: "",
+    description: "",
+    confirmText: "Confirm",
+    confirmVariant: "danger",
+    onConfirm: () => {},
+    isLoading: false,
+  });
+
+  const handleStopCampaign = (campaign: Campaign, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Are you sure you want to stop campaign "${campaign.name}"?`)) return;
-    try {
-      await fetchApi(`/campaigns/${campaign.id}/stop`, { method: "POST" });
-      toast.warning(`Campaign "${campaign.name}" stopped.`);
-      loadCampaigns(true);
-    } catch (err: any) {
-      toast.error("Failed to stop: " + err.message);
-    }
+    setConfirmModalConfig({
+      isOpen: true,
+      title: "Stop Campaign",
+      description: `Are you sure you want to stop campaign "${campaign.name}"? Active calls will finish, but no new calls will be placed.`,
+      confirmText: "Stop Campaign",
+      confirmVariant: "danger",
+      onConfirm: async () => {
+        setConfirmModalConfig((prev) => ({ ...prev, isLoading: true }));
+        try {
+          await fetchApi(`/campaigns/${campaign.id}/stop`, { method: "POST" });
+          toast.warning(`Campaign "${campaign.name}" stopped.`);
+          loadCampaigns(true);
+          setConfirmModalConfig((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+        } catch (err: any) {
+          toast.error("Failed to stop: " + err.message);
+          setConfirmModalConfig((prev) => ({ ...prev, isLoading: false }));
+        }
+      },
+    });
   };
 
-  const handleDeleteCampaign = async (campaign: Campaign, e: React.MouseEvent) => {
+  const handleDeleteCampaign = (campaign: Campaign, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Delete campaign "${campaign.name}" and all its queue records?`)) return;
-    try {
-      await fetchApi(`/campaigns/${campaign.id}`, { method: "DELETE" });
-      toast.success(`Campaign "${campaign.name}" deleted.`);
-      loadCampaigns(true);
-    } catch (err: any) {
-      toast.error("Failed to delete: " + err.message);
-    }
+    setConfirmModalConfig({
+      isOpen: true,
+      title: "Delete Campaign",
+      description: `Are you sure you want to delete campaign "${campaign.name}" and all its queue records? This action cannot be undone.`,
+      confirmText: "Delete Campaign",
+      confirmVariant: "danger",
+      onConfirm: async () => {
+        setConfirmModalConfig((prev) => ({ ...prev, isLoading: true }));
+        try {
+          await fetchApi(`/campaigns/${campaign.id}`, { method: "DELETE" });
+          toast.success(`Campaign "${campaign.name}" deleted.`);
+          loadCampaigns(true);
+          setConfirmModalConfig((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+        } catch (err: any) {
+          toast.error("Failed to delete: " + err.message);
+          setConfirmModalConfig((prev) => ({ ...prev, isLoading: false }));
+        }
+      },
+    });
   };
 
   // If a detail view is active
@@ -601,6 +644,53 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
           </div>
         </div>
       )}
+
+      {/* Productive Confirmation Modal */}
+      <Modal
+        isOpen={confirmModalConfig.isOpen}
+        onClose={() => {
+          if (!confirmModalConfig.isLoading) {
+            setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }));
+          }
+        }}
+        title={confirmModalConfig.title}
+        maxWidth="sm"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
+            <div className="p-2 rounded-md bg-rose-500/20 text-rose-500 shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-[var(--color-heading)] text-sm">
+                {confirmModalConfig.title}
+              </p>
+              <p className="text-[var(--color-muted)] leading-relaxed text-xs">
+                {confirmModalConfig.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={confirmModalConfig.isLoading}
+              onClick={() => setConfirmModalConfig((prev) => ({ ...prev, isOpen: false }))}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={confirmModalConfig.confirmVariant}
+              size="sm"
+              isLoading={confirmModalConfig.isLoading}
+              onClick={() => confirmModalConfig.onConfirm()}
+            >
+              {confirmModalConfig.confirmText}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

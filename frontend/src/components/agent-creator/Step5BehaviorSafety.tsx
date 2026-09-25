@@ -594,15 +594,21 @@ export function Step5BehaviorSafety({
                 })}
               </div>
 
-              <div className="p-2.5 bg-[var(--color-surface-muted)]/70 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] text-[11px] text-[var(--color-muted)] space-y-0.5">
+              <div className="p-2.5 bg-[var(--color-surface-muted)]/70 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] text-[11px] text-[var(--color-muted)] space-y-1">
                 <div className="flex items-center justify-between font-medium">
-                  <span>Current limit:</span>
+                  <span>Selected limit:</span>
                   <span className="font-bold text-[var(--color-heading)] font-mono">
-                    {Math.round(currentDurationSeconds / 60)} minutes ({currentDurationSeconds}s)
+                    {Math.round(currentDurationSeconds / 60)} min ({currentDurationSeconds}s)
                   </span>
                 </div>
-                <p className="text-[10px] text-[var(--color-muted)]">
-                  The call will end politely when this limit is reached.
+                <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-medium">
+                  <span>Smart Conclusion:</span>
+                  <span className="font-bold font-mono">
+                    At {Math.max(10, currentDurationSeconds - 5)}s (Saves +1 minute overage)
+                  </span>
+                </div>
+                <p className="text-[10px] text-[var(--color-muted)] pt-0.5 border-t border-[var(--color-border)]/60">
+                  ⚡ <strong>Twilio Cost Optimizer:</strong> Initiates conclusion 5s before minute boundaries to prevent rolling into next billed minute.
                 </p>
               </div>
             </div>

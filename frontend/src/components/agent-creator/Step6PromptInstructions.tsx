@@ -29,7 +29,10 @@ import {
   Building,
   Calendar,
   Layers,
-  Sparkle
+  Sparkle,
+  GitBranch,
+  History,
+  FileCheck
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -38,6 +41,9 @@ import { AgentConfig } from "../../types";
 import { AURA_VOICES } from "./constants";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
+import { ConversationalWorkflowCanvas } from "./ConversationalWorkflowCanvas";
+import { PromptVersionHistoryModal } from "./PromptVersionHistoryModal";
+import { PromptRegressionTester } from "./PromptRegressionTester";
 
 interface Step6PromptInstructionsProps {
   agentData: AgentConfig;
@@ -71,6 +77,8 @@ export function Step6PromptInstructions({
   const [showPromptVariables, setShowPromptVariables] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [pendingDiff, setPendingDiff] = useState<PromptDiffPreview | null>(null);
+  const [activePromptTab, setActivePromptTab] = useState<"script" | "canvas" | "regression">("script");
+  const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
 
   // Business details for resolving {{company_name}} and other variables come from this agent
   const businessProfile = {
@@ -517,7 +525,18 @@ export function Step6PromptInstructions({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowVersionHistoryModal(true)}
+            leftIcon={<History className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
+            className="cursor-pointer text-xs h-8 px-2.5 font-semibold"
+          >
+            Version History (v{agentData.version || 1})
+          </Button>
+
           <Button
             type="button"
             variant="outline"
@@ -554,9 +573,71 @@ export function Step6PromptInstructions({
         </div>
       </div>
 
-      {/* SECTION 2: Compact Agent Context Summary Bar */}
-      <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2 select-none">
-        <div className="flex items-center justify-between">
+      {/* Sub-Navigation Tabs: Prompt Script | Visual Workflow Canvas | Regression Tester */}
+      <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs select-none overflow-x-auto">
+        {[
+          { id: "script", label: "Prompt Script & Greetings", icon: FileText },
+          { id: "canvas", label: "Visual Workflow Canvas", icon: GitBranch },
+          { id: "regression", label: "Prompt Regression Tester", icon: FileCheck }
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activePromptTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActivePromptTab(tab.id as any)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-[var(--radius-main,0.375rem)] transition-all cursor-pointer whitespace-nowrap ${
+                isActive
+                  ? "bg-[var(--color-primary)] text-white shadow-xs"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Visual Workflow Canvas View */}
+      {activePromptTab === "canvas" && (
+        <ConversationalWorkflowCanvas
+          agentData={agentData}
+          setAgentData={setAgentData}
+          onSyncToPrompt={() => {
+            const stages = agentData.workflow_stages || [];
+            if (stages.length === 0) {
+              toast.info("No custom workflow stages to sync.");
+              return;
+            }
+            const compiledStages = stages
+              .map((s, idx) => `STAGE ${idx + 1}: ${s.title.toUpperCase()}\n- Directive: ${s.instruction}${s.branches && s.branches.length > 0 ? "\n- Branches: " + s.branches.map(b => `If ${b.condition_label} -> Go to ${b.target_stage_id}`).join("; ") : ""}`)
+              .join("\n\n");
+            
+            const currentPrompt = agentData.system_prompt || "";
+            const updated = currentPrompt.includes("[STRUCTURED CONVERSATIONAL WORKFLOW & STAGE TRANSITIONS]")
+              ? currentPrompt.replace(/\[STRUCTURED CONVERSATIONAL WORKFLOW & STAGE TRANSITIONS\][\s\S]*?(?=\n\n\[|$)/, `[STRUCTURED CONVERSATIONAL WORKFLOW & STAGE TRANSITIONS]\n${compiledStages}`)
+              : `${currentPrompt}\n\n[STRUCTURED CONVERSATIONAL WORKFLOW & STAGE TRANSITIONS]\n${compiledStages}`;
+            
+            setAgentData({ ...agentData, system_prompt: updated });
+            toast.success("Synchronized Workflow Canvas stages into System Prompt!");
+            setActivePromptTab("script");
+          }}
+        />
+      )}
+
+      {/* In-Browser Prompt Regression Tester View */}
+      {activePromptTab === "regression" && (
+        <PromptRegressionTester agentData={agentData} />
+      )}
+
+      {/* Prompt Script & AI Generator View */}
+      {activePromptTab === "script" && (
+        <>
+          {/* SECTION 2: Compact Agent Context Summary Bar */}
+          <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2 select-none">
+            <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)] flex items-center gap-1.5">
             <Sliders className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span>Agent Context Summary</span>
@@ -1191,6 +1272,18 @@ export function Step6PromptInstructions({
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {/* Prompt Version History Modal */}
+      <PromptVersionHistoryModal
+        agentData={agentData}
+        isOpen={showVersionHistoryModal}
+        onClose={() => setShowVersionHistoryModal(false)}
+        onRollbackComplete={(restored) => {
+          setAgentData(restored);
+        }}
+      />
     </div>
   );
 }

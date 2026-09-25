@@ -9,6 +9,7 @@ import {
 } from "../../types";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/LoadingState";
+import { Modal } from "../ui/Modal";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -25,6 +26,7 @@ import {
   Sliders,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   PhoneForwarded,
   ShieldCheck,
   UserX,
@@ -228,15 +230,20 @@ export function CampaignDetailView({
     }
   };
 
-  const handleStop = async () => {
-    if (!window.confirm("Are you sure you want to stop this campaign? Active calls will finish, but no new calls will be placed.")) {
-      return;
-    }
+  // Confirmation modal state
+  const [showStopConfirmModal, setShowStopConfirmModal] = useState<boolean>(false);
+
+  const handleStop = () => {
+    setShowStopConfirmModal(true);
+  };
+
+  const confirmStopCampaign = async () => {
     setIsActionLoading(true);
     try {
       const updated = await fetchApi<Campaign>(`/campaigns/${campaignId}/stop`, { method: "POST" });
       setCampaign(updated);
       toast.warning(`Campaign "${updated.name}" has been stopped.`);
+      setShowStopConfirmModal(false);
       loadCampaignData(true);
     } catch (err: any) {
       toast.error("Failed to stop campaign: " + err.message);
@@ -1194,6 +1201,53 @@ export function CampaignDetailView({
         onClose={() => setIsDrawerOpen(false)}
         onRefreshParent={() => loadCampaignData(true)}
       />
+
+      {/* Productive Stop Confirmation Modal */}
+      <Modal
+        isOpen={showStopConfirmModal}
+        onClose={() => {
+          if (!isActionLoading) {
+            setShowStopConfirmModal(false);
+          }
+        }}
+        title="Stop Campaign"
+        maxWidth="sm"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-3">
+            <div className="p-2 rounded-md bg-rose-500/20 text-rose-500 shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-[var(--color-heading)] text-sm">
+                Stop Campaign "{campaign?.name}"?
+              </p>
+              <p className="text-[var(--color-muted)] leading-relaxed text-xs">
+                Are you sure you want to stop this campaign? Active calls will finish, but no new calls will be placed.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isActionLoading}
+              onClick={() => setShowStopConfirmModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={isActionLoading}
+              onClick={confirmStopCampaign}
+            >
+              Stop Campaign
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

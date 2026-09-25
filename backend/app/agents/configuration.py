@@ -63,6 +63,53 @@ class FewShotExample(BaseModel):
     dialogue: List[FewShotTurn]
 
 
+class WorkflowBranch(BaseModel):
+    condition_label: str
+    target_stage_id: str
+    keywords: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+
+
+class WorkflowStageNode(BaseModel):
+    id: str
+    title: str
+    stage_type: str = "custom"  # "greeting" | "discovery" | "qualification" | "knowledge" | "objection" | "action" | "closing" | "escalation" | "custom"
+    instruction: str
+    required_variables: List[str] = Field(default_factory=list)
+    key_points: List[str] = Field(default_factory=list)
+    branches: List[WorkflowBranch] = Field(default_factory=list)
+    order: int = 0
+    is_terminal: bool = False
+
+
+class PromptVersionSnapshot(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    agent_id: str
+    organization_id: str
+    version: int
+    system_prompt: Optional[str] = None
+    greeting: Optional[str] = None
+    role: Optional[str] = None
+    objective: Optional[str] = None
+    workflow_stages: List[WorkflowStageNode] = Field(default_factory=list)
+    summary_of_changes: Optional[str] = "Configuration update"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: Optional[str] = None
+
+
+class PromptTestCase(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    caller_utterance: str
+    expected_intent: Optional[str] = None
+    required_keywords: List[str] = Field(default_factory=list)
+    forbidden_keywords: List[str] = Field(default_factory=list)
+    max_sentences: int = 2
+    expected_sentiment: Optional[str] = None  # "positive" | "neutral" | "helpful"
+    description: Optional[str] = None
+
+
+
 def get_default_pronunciation_rules() -> List[PronunciationRule]:
     return [
         # General spoken clarity
@@ -455,6 +502,9 @@ class AgentConfiguration(BaseModel):
 
     # Dynamic Few-Shot Role-Play Dialogues
     few_shot_examples: List[FewShotExample] = Field(default_factory=list)
+
+    # Conversational Workflow Canvas Stages & Decision Branches
+    workflow_stages: List[WorkflowStageNode] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

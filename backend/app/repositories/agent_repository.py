@@ -11,8 +11,8 @@ from typing import Optional, List, Dict, Any, Tuple
 import uuid
 import copy
 
-from app.agents.configuration import AgentConfiguration, get_default_platform_agents, get_default_receptionist_agent
-from app.core.cosmos import get_agents_container
+from app.agents.configuration import AgentConfiguration, get_default_platform_agents, get_default_receptionist_agent, PromptVersionSnapshot
+from app.core.cosmos import get_agents_container, get_agent_versions_container
 
 
 # In-memory agent list cache with TTL for fast load times (<1ms)
@@ -34,6 +34,8 @@ class AgentRepository:
     def __init__(self):
         # In-memory store fallback: { "organization_id": { "agent_id": AgentConfiguration } }
         self._memory_store: Dict[str, Dict[str, AgentConfiguration]] = {}
+        # In-memory version history: { "organization_id": { "agent_id": [PromptVersionSnapshot] } }
+        self._version_store: Dict[str, Dict[str, List[PromptVersionSnapshot]]] = {}
         self._seed_global_defaults()
 
     def _seed_global_defaults(self):
@@ -180,13 +182,39 @@ class AgentRepository:
             "default_agents": default_agents
         }
 
-    async def save(self, config: AgentConfiguration) -> AgentConfiguration:
-        """Saves or updates an agent configuration document."""
+    async def save(self, config: AgentConfiguration, change_summary: Optional[str] = None, created_by: Optional[str] = None) -> AgentConfiguration:
+        """Saves or updates an agent configuration document and records a snapshot version."""
         def _sync_save():
             org_key = config.organization_id or "global"
             if org_key not in self._memory_store:
                 self._memory_store[org_key] = {}
             self._memory_store[org_key][config.agent_id] = config
+
+            # Record snapshot
+            snapshot = PromptVersionSnapshot(
+                id=f"{org_key}_{config.agent_id}_v{config.version}",
+                agent_id=config.agent_id,
+                organization_id=org_key,
+                version=config.version,
+                system_prompt=config.system_prompt,
+                greeting=config.greeting,
+                role=config.role,
+                objective=config.objective,
+                workflow_stages=getattr(config, "workflow_stages", []) or [],
+                summary_of_changes=change_summary or f"Version {config.version} update",
+                created_at=datetime.now(timezone.utc),
+                created_by=created_by or getattr(config, "updated_by", None)
+            )
+
+            if org_key not in self._version_store:
+                self._version_store[org_key] = {}
+            if config.agent_id not in self._version_store[org_key]:
+                self._version_store[org_key][config.agent_id] = []
+            
+            # Avoid duplicate snapshot for same version
+            existing_vers = [v for v in self._version_store[org_key][config.agent_id] if v.version == config.version]
+            if not existing_vers:
+                self._version_store[org_key][config.agent_id].append(snapshot)
 
             container = get_agents_container()
             if container:
@@ -196,6 +224,15 @@ class AgentRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[AgentRepository Warning] Cosmos DB save failed for {config.agent_id}: {e}")
+
+            v_container = get_agent_versions_container()
+            if v_container:
+                try:
+                    v_doc = snapshot.model_dump(mode="json")
+                    v_container.upsert_item(body=v_doc)
+                except Exception as e:
+                    print(f"[AgentRepository Warning] Cosmos DB version save failed for {config.agent_id} v{config.version}: {e}")
+
             _invalidate_agent_cache(org_key)
             return config
 
@@ -206,7 +243,8 @@ class AgentRepository:
         agent_id: str,
         organization_id: str,
         updated_config: AgentConfiguration,
-        updated_by: Optional[str] = None
+        updated_by: Optional[str] = None,
+        change_summary: Optional[str] = None
     ) -> AgentConfiguration:
         """
         Updates an existing agent configuration and increments the version number.
@@ -217,7 +255,27 @@ class AgentRepository:
             # Fallback to saving new
             updated_config.agent_id = agent_id
             updated_config.organization_id = organization_id
-            return await self.save(updated_config)
+            return await self.save(updated_config, change_summary=change_summary, created_by=updated_by)
+
+        # Ensure base snapshot for v1 exists if not yet captured
+        if organization_id in self._version_store and agent_id in self._version_store[organization_id]:
+            has_base = any(v.version == existing.version for v in self._version_store[organization_id][agent_id])
+            if not has_base:
+                base_snap = PromptVersionSnapshot(
+                    id=f"{organization_id}_{agent_id}_v{existing.version}",
+                    agent_id=agent_id,
+                    organization_id=organization_id,
+                    version=existing.version,
+                    system_prompt=existing.system_prompt,
+                    greeting=existing.greeting,
+                    role=existing.role,
+                    objective=existing.objective,
+                    workflow_stages=getattr(existing, "workflow_stages", []) or [],
+                    summary_of_changes="Initial version snapshot",
+                    created_at=existing.created_at or datetime.now(timezone.utc),
+                    created_by=existing.created_by
+                )
+                self._version_store[organization_id][agent_id].append(base_snap)
 
         # Enforce version increment
         updated_config.agent_id = agent_id
@@ -230,7 +288,7 @@ class AgentRepository:
         if updated_by:
             updated_config.updated_by = updated_by
 
-        return await self.save(updated_config)
+        return await self.save(updated_config, change_summary=change_summary or f"Updated to version {updated_config.version}", created_by=updated_by)
 
     async def set_status(
         self,
@@ -321,3 +379,75 @@ class AgentRepository:
             return True
 
         return await asyncio.to_thread(_sync_delete)
+
+    async def list_versions(self, organization_id: str, agent_id: str) -> List[PromptVersionSnapshot]:
+        """Lists all recorded version snapshots for an agent in reverse chronological order."""
+        def _sync_list_versions():
+            # Check Cosmos DB
+            v_container = get_agent_versions_container()
+            if v_container:
+                query = "SELECT * FROM c WHERE (c.organization_id = @org_id OR c.organization_id = 'global') AND c.agent_id = @agent_id ORDER BY c.version DESC"
+                params = [
+                    {"name": "@org_id", "value": organization_id},
+                    {"name": "@agent_id", "value": agent_id}
+                ]
+                try:
+                    items = list(v_container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    if items:
+                        return [PromptVersionSnapshot.model_validate(it) for it in items]
+                except Exception as e:
+                    print(f"[AgentRepository Warning] list_versions Cosmos DB query failed: {e}")
+
+            # Fallback to memory
+            org_versions = self._version_store.get(organization_id, {}).get(agent_id, [])
+            if not org_versions and organization_id != "global":
+                org_versions = self._version_store.get("global", {}).get(agent_id, [])
+            return sorted(org_versions, key=lambda v: v.version, reverse=True)
+
+        return await asyncio.to_thread(_sync_list_versions)
+
+    async def get_version(self, organization_id: str, agent_id: str, version: int) -> Optional[PromptVersionSnapshot]:
+        """Fetches a specific historical version snapshot."""
+        versions = await self.list_versions(organization_id, agent_id)
+        for v in versions:
+            if v.version == version:
+                return v
+        return None
+
+    async def rollback_version(
+        self,
+        organization_id: str,
+        agent_id: str,
+        target_version: int,
+        rollback_by: Optional[str] = None
+    ) -> AgentConfiguration:
+        """
+        Rolls back an agent to a previous version's prompt, greeting, role, objective, and workflow.
+        Creates a new forward version increment while restoring the historical configuration.
+        """
+        target = await self.get_version(organization_id, agent_id, target_version)
+        if not target:
+            raise ValueError(f"Version {target_version} does not exist for agent {agent_id}")
+
+        current = await self.get_by_id(organization_id, agent_id)
+        if not current:
+            raise ValueError(f"Agent {agent_id} not found")
+
+        # Create updated config restoring historical prompt content
+        restored = current.model_copy(deep=True)
+        restored.system_prompt = target.system_prompt
+        restored.greeting = target.greeting or current.greeting
+        if target.role:
+            restored.role = target.role
+        if target.objective:
+            restored.objective = target.objective
+        if target.workflow_stages:
+            restored.workflow_stages = target.workflow_stages
+
+        return await self.update(
+            agent_id=agent_id,
+            organization_id=organization_id,
+            updated_config=restored,
+            updated_by=rollback_by,
+            change_summary=f"Rolled back to version {target_version}"
+        )
