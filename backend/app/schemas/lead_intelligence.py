@@ -192,3 +192,60 @@ class LeadActionRequest(BaseModel):
     note: Optional[str] = None
     tags: Optional[List[str]] = None
     assigned_owner: Optional[str] = None
+
+
+# -------------------------------------------------------------
+# Cohort Analytics Models
+# -------------------------------------------------------------
+class CohortStageMetrics(BaseModel):
+    interval_index: int  # 0 = initial period, 1 = +1 week/day, 2 = +2, etc.
+    interval_label: str  # e.g., "Week 0", "Week 1", "Day 0"
+    engaged_count: int = 0
+    engaged_pct: float = 0.0
+    qualified_count: int = 0
+    qualified_pct: float = 0.0
+    callback_count: int = 0
+    callback_pct: float = 0.0
+    converted_count: int = 0
+    converted_pct: float = 0.0
+
+
+class CohortGroup(BaseModel):
+    cohort_key: str  # YYYY-MM-DD or YYYY-WW or Month name
+    cohort_label: str  # Formatted display label (e.g. "Week of Sep 08")
+    initial_prospects: int = 0
+    stages: List[CohortStageMetrics] = Field(default_factory=list)
+
+
+class CohortAnalyticsResponse(BaseModel):
+    group_by: str  # "week" or "month" or "day"
+    total_cohorts: int = 0
+    total_tracked_prospects: int = 0
+    overall_qualification_rate: float = 0.0
+    overall_conversion_rate: float = 0.0
+    cohorts: List[CohortGroup] = Field(default_factory=list)
+
+
+# -------------------------------------------------------------
+# Custom Lead Qualification Rules Models
+# -------------------------------------------------------------
+class SignalRule(BaseModel):
+    id: str
+    phrase: str
+    weight: int = 10  # Score delta (+/-)
+    category: str = "buying_intent"  # "buying_intent", "decision_maker", "budget_approved", "objection", "negative"
+
+
+class LeadQualificationRules(BaseModel):
+    organization_id: str
+    qualification_threshold: int = 70
+    warm_threshold: int = 40
+    cold_threshold: int = 20
+    positive_signals: List[SignalRule] = Field(default_factory=list)
+    negative_signals: List[SignalRule] = Field(default_factory=list)
+    auto_qualify_on_budget_approval: bool = True
+    auto_tag_qualified_leads: bool = True
+    qualification_tag: str = "AI-Qualified"
+    updated_at: Optional[str] = None
+    updated_by: Optional[str] = None
+

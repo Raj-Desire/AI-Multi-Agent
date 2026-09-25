@@ -111,13 +111,13 @@ export function Sidebar({
           icon: PhoneCall,
           visible: true,
         },
-        // {
-        //   id: "lead_intelligence",
-        //   label: "Lead Intelligence",
-        //   icon: Sparkles,
-        //   visible: true,
-        //   badge: "New",
-        // },
+        {
+          id: "lead_intelligence",
+          label: "Lead Intelligence",
+          icon: Sparkles,
+          visible: true,
+          badge: "New",
+        },
         {
           id: "ai_dialer",
           label: "AI Agent Dialer",

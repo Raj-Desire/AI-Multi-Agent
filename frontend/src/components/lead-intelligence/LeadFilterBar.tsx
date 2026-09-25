@@ -8,7 +8,9 @@ import {
   PhoneForwarded,
   HelpCircle,
   PhoneOff,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Sliders,
+  FileSpreadsheet
 } from "lucide-react";
 import { Button } from "../ui/Button";
 
@@ -34,6 +36,8 @@ interface LeadFilterBarProps {
   agents: AgentLeadStat[];
   onExportCsv: () => void;
   isExporting: boolean;
+  onOpenExecutiveReport?: () => void;
+  onOpenRuleEditor?: () => void;
 }
 
 export function LeadFilterBar({
@@ -44,7 +48,10 @@ export function LeadFilterBar({
   agents,
   onExportCsv,
   isExporting,
+  onOpenExecutiveReport,
+  onOpenRuleEditor,
 }: LeadFilterBarProps) {
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [localSearch, setLocalSearch] = useState(filters.search);
 
@@ -66,12 +73,20 @@ export function LeadFilterBar({
   // Quick Preset Handlers
   const applyPreset = (preset: string) => {
     switch (preset) {
+      case "all_leads":
+        onFilterChange({
+          outcome: "all",
+          interestLevel: "all",
+          scoreRange: "all",
+          followUp: "all",
+        });
+        break;
       case "interested":
         onFilterChange({
           outcome: "Interested",
           interestLevel: "all",
           scoreRange: "all",
-          campaignId: "all",
+          followUp: "all",
         });
         break;
       case "callbacks":
@@ -83,8 +98,8 @@ export function LeadFilterBar({
         break;
       case "needs_followup":
         onFilterChange({
-          followUp: "needs_follow_up",
-          outcome: "all",
+          outcome: "Information Requested",
+          followUp: "all",
           interestLevel: "all",
         });
         break;
@@ -93,6 +108,7 @@ export function LeadFilterBar({
           outcome: "No Answer",
           interestLevel: "all",
           scoreRange: "all",
+          followUp: "all",
         });
         break;
       default:
@@ -199,7 +215,7 @@ export function LeadFilterBar({
           <button
             onClick={() => onResetFilters()}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer ${
-              activeChips.length === 0
+              filters.outcome === "all" && !filters.search && filters.interestLevel === "all" && filters.scoreRange === "all"
                 ? "bg-[var(--color-heading)] text-[var(--color-background)] font-semibold shadow-xs"
                 : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
@@ -208,36 +224,76 @@ export function LeadFilterBar({
           </button>
           <button
             onClick={() => applyPreset("interested")}
-            className="px-2.5 py-1 text-xs font-medium rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all cursor-pointer flex items-center gap-1"
+            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+              filters.outcome === "Interested"
+                ? "bg-emerald-500 text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-emerald-500/50 hover:bg-emerald-500/10"
+            }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
             <span>Interested</span>
           </button>
           <button
             onClick={() => applyPreset("callbacks")}
-            className="px-2.5 py-1 text-xs font-medium rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-purple-500/50 hover:bg-purple-500/10 transition-all cursor-pointer flex items-center gap-1"
+            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+              filters.outcome === "Callback Requested"
+                ? "bg-purple-500 text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-purple-500/50 hover:bg-purple-500/10"
+            }`}
           >
             <PhoneForwarded className="w-3.5 h-3.5 text-purple-500" />
             <span>Callbacks</span>
           </button>
           <button
             onClick={() => applyPreset("needs_followup")}
-            className="px-2.5 py-1 text-xs font-medium rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-blue-500/50 hover:bg-blue-500/10 transition-all cursor-pointer flex items-center gap-1"
+            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+              filters.outcome === "Information Requested"
+                ? "bg-blue-500 text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-blue-500/50 hover:bg-blue-500/10"
+            }`}
           >
             <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
             <span>Needs Follow-up</span>
           </button>
           <button
             onClick={() => applyPreset("no_answer")}
-            className="px-2.5 py-1 text-xs font-medium rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-slate-500/50 hover:bg-slate-500/10 transition-all cursor-pointer flex items-center gap-1"
+            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
+              filters.outcome === "No Answer"
+                ? "bg-slate-600 text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-slate-500/50 hover:bg-slate-500/10"
+            }`}
           >
             <PhoneOff className="w-3.5 h-3.5 text-slate-500" />
             <span>No Answer</span>
           </button>
         </div>
 
-        {/* Export CSV Action */}
-        <div className="shrink-0">
+        {/* Action Controls: Qualification Rules, Executive Summary Report, Export CSV */}
+        <div className="shrink-0 flex items-center gap-2">
+          {onOpenRuleEditor && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenRuleEditor}
+              leftIcon={<Sliders className="w-3.5 h-3.5 text-indigo-500" />}
+              className="cursor-pointer font-medium"
+            >
+              Qualification Rules
+            </Button>
+          )}
+
+          {onOpenExecutiveReport && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenExecutiveReport}
+              leftIcon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />}
+              className="cursor-pointer font-medium"
+            >
+              Executive Report (PDF/Excel)
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"

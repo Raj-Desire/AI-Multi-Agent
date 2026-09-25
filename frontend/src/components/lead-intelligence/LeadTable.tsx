@@ -27,6 +27,8 @@ interface LeadTableProps {
   onSelectLead: (lead: LeadListItem) => void;
   onResetFilters: () => void;
   onQuickCall?: (phoneNumber: string) => void;
+  qualificationThreshold?: number;
+  warmThreshold?: number;
 }
 
 export function LeadTable({
@@ -43,6 +45,8 @@ export function LeadTable({
   onSelectLead,
   onResetFilters,
   onQuickCall,
+  qualificationThreshold = 70,
+  warmThreshold = 40,
 }: LeadTableProps) {
   const getOutcomeBadge = (outcome: string) => {
     const o = outcome.toLowerCase();
@@ -79,9 +83,10 @@ export function LeadTable({
     );
   };
 
-  const getInterestBadge = (level: string, outcome: string) => {
+  const getInterestBadge = (level: string, outcome: string, score?: number) => {
     const l = (level || "").toLowerCase();
     const o = (outcome || "").toLowerCase();
+    const sc = score !== undefined ? score : null;
 
     if (o.includes("callback") || l.includes("callback")) {
       return (
@@ -90,14 +95,26 @@ export function LeadTable({
         </span>
       );
     }
-    if (o.includes("interested") || o.includes("information") || l.includes("interested") || l === "hot" || l === "warm") {
+
+    // High qualification / Hot: Score >= qualificationThreshold or explicit "Hot" or "Interested" with sufficient score
+    if ((sc !== null && sc >= qualificationThreshold) || (sc === null && (l === "hot" || l === "interested"))) {
       return (
         <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
           <span>Interested</span>
         </span>
       );
     }
-    // All other goes to No Answer
+
+    // Moderate engagement / Warm / Information requested: Score >= warmThreshold (e.g. >= 53)
+    if ((sc !== null && sc >= warmThreshold) || (sc === null && (l.includes("warm") || o.includes("information") || o.includes("asked")))) {
+      return (
+        <span className="inline-flex items-center text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+          <span>Warm Interested</span>
+        </span>
+      );
+    }
+
+    // Direct connect or score < warmThreshold -> Cold / No Answer
     return (
       <span className="inline-flex items-center text-[11px] text-[var(--color-muted)] font-medium">
         <span>No Answer</span>
@@ -107,8 +124,8 @@ export function LeadTable({
 
   const getScoreMeter = (score: number) => {
     let color = "bg-rose-500";
-    if (score >= 70) color = "bg-emerald-500";
-    else if (score >= 40) color = "bg-blue-500";
+    if (score >= qualificationThreshold) color = "bg-emerald-500";
+    else if (score >= warmThreshold) color = "bg-blue-500";
     else if (score > 0) color = "bg-amber-500";
     else color = "bg-[var(--color-border)]";
 
@@ -270,7 +287,7 @@ export function LeadTable({
                   <td className="py-3 px-3">{getOutcomeBadge(lead.business_outcome)}</td>
 
                   {/* Interest Level */}
-                  <td className="py-3 px-2">{getInterestBadge(lead.interest_level, lead.business_outcome)}</td>
+                  <td className="py-3 px-2">{getInterestBadge(lead.interest_level, lead.business_outcome, lead.lead_score)}</td>
 
                   {/* Lead Score */}
                   <td className="py-3 px-3">{getScoreMeter(lead.lead_score)}</td>

@@ -1102,6 +1102,57 @@ export interface LeadActionRequest {
   assigned_owner?: string;
 }
 
+export interface CohortStageMetrics {
+  interval_index: number;
+  interval_label: string;
+  engaged_count: number;
+  engaged_pct: number;
+  qualified_count: number;
+  qualified_pct: number;
+  callback_count: number;
+  callback_pct: number;
+  converted_count: number;
+  converted_pct: number;
+}
+
+export interface CohortGroup {
+  cohort_key: string;
+  cohort_label: string;
+  initial_prospects: number;
+  stages: CohortStageMetrics[];
+}
+
+export interface CohortAnalyticsResponse {
+  group_by: string;
+  total_cohorts: number;
+  total_tracked_prospects: number;
+  overall_qualification_rate: number;
+  overall_conversion_rate: number;
+  cohorts: CohortGroup[];
+}
+
+export interface SignalRule {
+  id: string;
+  phrase: string;
+  weight: number;
+  category: "buying_intent" | "decision_maker" | "budget_approved" | "objection" | "negative";
+}
+
+export interface LeadQualificationRules {
+  organization_id: string;
+  qualification_threshold: number;
+  warm_threshold: number;
+  cold_threshold: number;
+  positive_signals: SignalRule[];
+  negative_signals: SignalRule[];
+  auto_qualify_on_budget_approval: boolean;
+  auto_tag_qualified_leads: boolean;
+  qualification_tag: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+
 export interface KnowledgeDocument {
   id: string;
   organization_id: string;

@@ -22,6 +22,9 @@ import { AgentPerformanceSection } from "./AgentPerformanceSection";
 import { LeadTable } from "./LeadTable";
 import { CallbackRequestsView } from "./CallbackRequestsView";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
+import { LeadCohortAnalyticsSection } from "./LeadCohortAnalyticsSection";
+import { ExecutiveReportExportModal } from "./ExecutiveReportExportModal";
+import { LeadQualificationRuleEditorModal } from "./LeadQualificationRuleEditorModal";
 import {
   Sparkles,
   Flame,
@@ -58,8 +61,8 @@ const INITIAL_FILTERS: LeadFilterState = {
 export function LeadIntelligenceView() {
   const { user } = useAuth();
 
-  // Navigation View Tab: "leads" | "callbacks" | "analytics"
-  const [activeTab, setActiveTab] = useState<"leads" | "callbacks" | "analytics">("leads");
+  // Navigation View Tab: "all_leads" | "interested" | "callbacks" | "analytics" | "cohorts"
+  const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "analytics" | "cohorts">("all_leads");
 
   // Filter State
   const [filters, setFilters] = useState<LeadFilterState>(INITIAL_FILTERS);
@@ -101,9 +104,15 @@ export function LeadIntelligenceView() {
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
 
+  // Modal States
+  const [isExecutiveReportOpen, setIsExecutiveReportOpen] = useState<boolean>(false);
+  const [isRuleEditorOpen, setIsRuleEditorOpen] = useState<boolean>(false);
+  const [qualificationRules, setQualificationRules] = useState<any | null>(null);
+
   // Real-time WebSocket connection
   const wsRef = useRef<WebSocket | null>(null);
   const [isWsConnected, setIsWsConnected] = useState<boolean>(false);
+
 
   // -------------------------------------------------------------
   // Data Fetching
@@ -122,15 +131,17 @@ export function LeadIntelligenceView() {
 
       const queryStr = params.toString() ? `?${params.toString()}` : "";
 
-      const [sumRes, cmpRes, agRes] = await Promise.all([
+      const [sumRes, cmpRes, agRes, rulesRes] = await Promise.all([
         fetchApi<LeadKPISummary>(`/lead-intelligence/summary${queryStr}`).catch(() => null),
         fetchApi<CampaignLeadStat[]>(`/lead-intelligence/campaigns${queryStr}`).catch(() => []),
         fetchApi<AgentLeadStat[]>(`/lead-intelligence/agents${queryStr}`).catch(() => []),
+        fetchApi<any>("/lead-intelligence/qualification-rules").catch(() => null),
       ]);
 
       if (sumRes) setSummary(sumRes);
       if (Array.isArray(cmpRes)) setCampaigns(cmpRes);
       if (Array.isArray(agRes)) setAgents(agRes);
+      if (rulesRes) setQualificationRules(rulesRes);
     } catch (err) {
       console.error("Failed to load lead summary:", err);
     } finally {
@@ -201,7 +212,9 @@ export function LeadIntelligenceView() {
         params.set("max_score", "30");
       }
 
-      params.set("only_high_value", filters.outcome !== "all" ? "false" : "true");
+      // only_high_value is only enforced if the user is explicitly on the "interested" tab and hasn't selected another outcome
+      const isOnlyHighValue = activeTab === "interested" && filters.outcome === "all";
+      params.set("only_high_value", isOnlyHighValue ? "true" : "false");
 
       const res = await fetchApi<LeadListPaginationResponse>(`/lead-intelligence/leads?${params.toString()}`);
       if (res) {
@@ -230,6 +243,7 @@ export function LeadIntelligenceView() {
     filters.agentId,
     filters.prospectStatus,
     filters.followUp,
+    activeTab,
   ]);
 
   const loadCallbacks = useCallback(async () => {
@@ -260,9 +274,9 @@ export function LeadIntelligenceView() {
     loadSummary();
   }, [loadSummary]);
 
-  // Load Leads only when on 'leads' tab
+  // Load Leads when on 'all_leads' or 'interested' tab
   useEffect(() => {
-    if (activeTab === "leads") {
+    if (activeTab === "all_leads" || activeTab === "interested") {
       loadLeads();
     }
   }, [activeTab, loadLeads]);
@@ -285,7 +299,7 @@ export function LeadIntelligenceView() {
     setIsRefreshing(true);
     try {
       const promises: Promise<any>[] = [loadSummary()];
-      if (activeTab === "leads") promises.push(loadLeads());
+      if (activeTab === "all_leads" || activeTab === "interested") promises.push(loadLeads());
       if (activeTab === "analytics") promises.push(loadAnalyticsDetails());
       if (activeTab === "callbacks") promises.push(loadCallbacks());
       await Promise.all(promises);
@@ -391,17 +405,25 @@ export function LeadIntelligenceView() {
 
   const handleSelectOutcomeFilter = (outcome: string) => {
     handleFilterChange({ outcome });
-    if (activeTab !== "leads") setActiveTab("leads");
+    if (outcome === "Interested") {
+      setActiveTab("interested");
+    } else {
+      setActiveTab("all_leads");
+    }
   };
 
   const handleSelectCampaign = (campaignId: string) => {
     handleFilterChange({ campaignId });
-    if (activeTab !== "leads") setActiveTab("leads");
+    if (activeTab !== "all_leads" && activeTab !== "interested") {
+      setActiveTab("all_leads");
+    }
   };
 
   const handleSelectAgent = (agentId: string) => {
     handleFilterChange({ agentId });
-    if (activeTab !== "leads") setActiveTab("leads");
+    if (activeTab !== "all_leads" && activeTab !== "interested") {
+      setActiveTab("all_leads");
+    }
   };
 
   // -------------------------------------------------------------
@@ -498,15 +520,33 @@ export function LeadIntelligenceView() {
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pt-1">
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
           <button
-            onClick={() => setActiveTab("leads")}
+            onClick={() => {
+              setActiveTab("all_leads");
+              handleFilterChange({ outcome: "all" });
+            }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === "leads"
+              activeTab === "all_leads"
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>All Interested Leads ({leadsTotal})</span>
+            <span>All Leads ({summary?.total_leads ?? leadsTotal})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("interested");
+              handleFilterChange({ outcome: "Interested" });
+            }}
+            className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === "interested"
+                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Interested Leads ({summary?.interested ?? 0})</span>
           </button>
 
           <button
@@ -530,13 +570,25 @@ export function LeadIntelligenceView() {
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Campaign Analytics & Trends</span>
+            <span>Campaign Analytics &amp; Trends</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("cohorts")}
+            className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === "cohorts"
+                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Cohort Retention Matrix</span>
           </button>
         </div>
       </div>
 
-      {/* TAB 1: ALL INTERESTED LEADS */}
-      {activeTab === "leads" && (
+      {/* TAB 1 & TAB 2: LEADS (ALL LEADS & INTERESTED LEADS) */}
+      {(activeTab === "all_leads" || activeTab === "interested") && (
         <div className="space-y-4">
           {/* Filter Bar */}
           <LeadFilterBar
@@ -547,7 +599,10 @@ export function LeadIntelligenceView() {
             agents={agents}
             onExportCsv={handleExportCsv}
             isExporting={isExporting}
+            onOpenExecutiveReport={() => setIsExecutiveReportOpen(true)}
+            onOpenRuleEditor={() => setIsRuleEditorOpen(true)}
           />
+
 
           {/* Main Lead Table */}
           <LeadTable
@@ -573,6 +628,8 @@ export function LeadIntelligenceView() {
               setIsDrawerOpen(true);
             }}
             onResetFilters={handleResetFilters}
+            qualificationThreshold={qualificationRules?.qualification_threshold ?? 70}
+            warmThreshold={qualificationRules?.warm_threshold ?? 40}
           />
         </div>
       )}
@@ -634,6 +691,13 @@ export function LeadIntelligenceView() {
         </div>
       )}
 
+      {/* TAB 4: COHORT RETENTION & PROGRESSION MATRIX */}
+      {activeTab === "cohorts" && (
+        <div className="space-y-4">
+          <LeadCohortAnalyticsSection campaignId={filters.campaignId} />
+        </div>
+      )}
+
       {/* Lead Detail Drawer Modal */}
       <LeadDetailDrawer
         prospectId={selectedProspectId}
@@ -647,6 +711,27 @@ export function LeadIntelligenceView() {
           if (activeTab === "analytics") loadAnalyticsDetails();
           loadLeads();
           if (activeTab === "callbacks") loadCallbacks();
+        }}
+      />
+
+      {/* Executive Report Export Modal (PDF / Excel) */}
+      <ExecutiveReportExportModal
+        isOpen={isExecutiveReportOpen}
+        onClose={() => setIsExecutiveReportOpen(false)}
+        summary={summary}
+        campaigns={campaigns}
+        agents={agents}
+        leads={leads}
+        dateRangeLabel={summary?.period_label || filters.dateRange}
+      />
+
+      {/* Custom Lead Qualification Rule Editor Modal */}
+      <LeadQualificationRuleEditorModal
+        isOpen={isRuleEditorOpen}
+        onClose={() => setIsRuleEditorOpen(false)}
+        onRulesUpdated={() => {
+          loadSummary();
+          loadLeads();
         }}
       />
     </div>
