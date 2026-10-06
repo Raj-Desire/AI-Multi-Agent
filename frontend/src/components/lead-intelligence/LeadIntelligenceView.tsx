@@ -46,7 +46,7 @@ import { toast } from "sonner";
 
 const INITIAL_FILTERS: LeadFilterState = {
   search: "",
-  dateRange: "7d",
+  dateRange: "all",
   customStart: "",
   customEnd: "",
   campaignId: "all",
@@ -124,7 +124,7 @@ export function LeadIntelligenceView() {
     setIsLoadingSummary(true);
     try {
       const params = new URLSearchParams();
-      if (filters.dateRange !== "all") params.set("date_range", filters.dateRange);
+      params.set("date_range", filters.dateRange || "all");
       if (filters.customStart) params.set("custom_start", filters.customStart);
       if (filters.customEnd) params.set("custom_end", filters.customEnd);
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
@@ -153,7 +153,7 @@ export function LeadIntelligenceView() {
     setIsLoadingTrends(true);
     try {
       const params = new URLSearchParams();
-      if (filters.dateRange !== "all") params.set("date_range", filters.dateRange);
+      params.set("date_range", filters.dateRange || "all");
       if (filters.customStart) params.set("custom_start", filters.customStart);
       if (filters.customEnd) params.set("custom_end", filters.customEnd);
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
@@ -188,7 +188,7 @@ export function LeadIntelligenceView() {
       });
 
       if (filters.search.trim()) params.set("search", filters.search.trim());
-      if (filters.dateRange !== "all") params.set("date_range", filters.dateRange);
+      params.set("date_range", filters.dateRange || "all");
       if (filters.customStart) params.set("custom_start", filters.customStart);
       if (filters.customEnd) params.set("custom_end", filters.customEnd);
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
@@ -198,18 +198,15 @@ export function LeadIntelligenceView() {
       if (filters.prospectStatus !== "all") params.set("prospect_status", filters.prospectStatus);
       if (filters.followUp !== "all") params.set("follow_up", filters.followUp);
 
-      if (filters.scoreRange === "81_100") {
-        params.set("min_score", "81");
+      if (filters.scoreRange === "70_100" || filters.scoreRange === "81_100") {
+        params.set("min_score", "70");
         params.set("max_score", "100");
-      } else if (filters.scoreRange === "61_80") {
-        params.set("min_score", "61");
-        params.set("max_score", "80");
-      } else if (filters.scoreRange === "31_60") {
-        params.set("min_score", "31");
-        params.set("max_score", "60");
-      } else if (filters.scoreRange === "0_30") {
+      } else if (filters.scoreRange === "40_69" || filters.scoreRange === "61_80") {
+        params.set("min_score", "40");
+        params.set("max_score", "69");
+      } else if (filters.scoreRange === "0_39" || filters.scoreRange === "0_30" || filters.scoreRange === "31_60") {
         params.set("min_score", "0");
-        params.set("max_score", "30");
+        params.set("max_score", "39");
       }
 
       // only_high_value is only enforced if the user is explicitly on the "interested" tab and hasn't selected another outcome
@@ -443,6 +440,19 @@ export function LeadIntelligenceView() {
       if (filters.agentId !== "all") params.set("agent_id", filters.agentId);
       if (filters.prospectStatus !== "all") params.set("prospect_status", filters.prospectStatus);
       if (filters.followUp !== "all") params.set("follow_up", filters.followUp);
+      if (filters.scoreRange === "70_100" || filters.scoreRange === "81_100") {
+        params.set("min_score", "70");
+        params.set("max_score", "100");
+      } else if (filters.scoreRange === "40_69" || filters.scoreRange === "61_80") {
+        params.set("min_score", "40");
+        params.set("max_score", "69");
+      } else if (filters.scoreRange === "0_39" || filters.scoreRange === "0_30" || filters.scoreRange === "31_60") {
+        params.set("min_score", "0");
+        params.set("max_score", "39");
+      }
+
+      const isOnlyHighValue = activeTab === "interested" && filters.outcome === "all";
+      params.set("only_high_value", isOnlyHighValue ? "true" : "false");
 
       const resp = await fetch(`/api/v1/lead-intelligence/export?${params.toString()}`, {
         headers: getAuthHeaders(),
@@ -531,7 +541,7 @@ export function LeadIntelligenceView() {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>All Leads ({summary?.total_leads ?? leadsTotal})</span>
+            <span>All Leads ({summary && summary.total_leads > 0 ? summary.total_leads : leadsTotal})</span>
           </button>
 
           <button
@@ -722,6 +732,8 @@ export function LeadIntelligenceView() {
         campaigns={campaigns}
         agents={agents}
         leads={leads}
+        filters={filters}
+        activeTab={activeTab}
         dateRangeLabel={summary?.period_label || filters.dateRange}
       />
 

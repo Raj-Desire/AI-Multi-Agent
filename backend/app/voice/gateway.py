@@ -353,6 +353,12 @@ async def voice_stream_websocket(websocket: WebSocket):
 
         await asyncio.sleep(2.0)  # Allow speech playback to complete
         
+        # Extract configured fallback settings
+        gr = getattr(agent_config, "guardrails", None)
+        timeout_sec = getattr(gr, "human_transfer_timeout_seconds", 25) if gr else 25
+        fallback_act = getattr(gr, "human_transfer_fallback_action", "hangup") if gr else "hangup"
+        fallback_msg = getattr(gr, "human_transfer_fallback_message", "Our representatives are currently busy. We have logged your request and will follow up shortly.") if gr else None
+
         try:
             if session and session.twilio_call_sid and session.organization_id:
                 success = await twilio_service.transfer_call(
@@ -360,12 +366,15 @@ async def voice_stream_websocket(websocket: WebSocket):
                     call_sid=session.twilio_call_sid,
                     destination_phone=destination_phone,
                     caller_id=session.phone_number,
-                    whisper_message=None  # Already announced by AI
+                    whisper_message=None,  # Already announced by AI
+                    timeout_seconds=timeout_sec,
+                    fallback_action=fallback_act,
+                    fallback_message=fallback_msg
                 )
                 if success:
                     session.outcome = "TRANSFERRED_TO_HUMAN"
                     session.business_outcome = "Transferred to Human Specialist"
-                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded.")
+                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded (timeout={timeout_sec}s, fallback={fallback_act}).")
                 else:
                     logger.error(f"[VoiceGateway] Live call transfer to {destination_phone} failed.")
         except Exception as transfer_err:

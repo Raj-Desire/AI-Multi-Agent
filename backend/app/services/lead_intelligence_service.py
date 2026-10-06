@@ -133,7 +133,7 @@ def parse_date_range(
     All datetimes in UTC timezone.
     """
     now = datetime.now(timezone.utc)
-    preset = (date_range_preset or "7d").lower()
+    preset = (date_range_preset or "all").lower()
 
     if preset == "today":
         start = datetime(now.year, now.month, now.day, 0, 0, 0, tzinfo=timezone.utc)
@@ -191,6 +191,11 @@ def parse_date_range(
             prev_end = start
         return start, end, prev_start, prev_end, "Previous Month", "vs Month Prior"
 
+    elif preset in ["all", "all_time"]:
+        start = datetime.min.replace(tzinfo=timezone.utc)
+        end = datetime.max.replace(tzinfo=timezone.utc)
+        return start, end, None, None, "All Time", None
+
     elif preset == "custom" and custom_start and custom_end:
         try:
             start = datetime.fromisoformat(custom_start)
@@ -206,12 +211,10 @@ def parse_date_range(
         except Exception:
             pass
 
-    # Default fallback: last 7 days
-    start = now - timedelta(days=7)
-    end = now
-    prev_start = start - timedelta(days=7)
-    prev_end = start
-    return start, end, prev_start, prev_end, "Last 7 Days", "vs Previous 7 Days"
+    # Default fallback: All Time
+    start = datetime.min.replace(tzinfo=timezone.utc)
+    end = datetime.max.replace(tzinfo=timezone.utc)
+    return start, end, None, None, "All Time", None
 
 
 class LeadIntelligenceService:
@@ -300,7 +303,7 @@ class LeadIntelligenceService:
     async def get_summary_kpis(
         self,
         ctx: TenantContext,
-        date_range: Optional[str] = "7d",
+        date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
         campaign_id: Optional[str] = None
@@ -325,17 +328,11 @@ class LeadIntelligenceService:
 
         # Index latest call per unique prospect for current period
         latest_curr_by_prospect: Dict[str, Call] = {}
-        total_score = 0
-        scored_calls = 0
         total_duration = 0
 
         for c in curr_calls:
             dur = c.duration or 0
             total_duration += dur
-            score = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None) or 0
-            if score > 0:
-                total_score += score
-                scored_calls += 1
 
             p_key = c.prospect_id or c.to_number
             if not p_key:
@@ -354,9 +351,15 @@ class LeadIntelligenceService:
         curr_callback = 0
         curr_needs_follow_up = 0
         curr_no_answer = 0
+        total_score = 0
+        scored_calls = 0
 
         for p_key, c in latest_curr_by_prospect.items():
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
+            if sc is not None and sc > 0:
+                total_score += sc
+                scored_calls += 1
+
             outcome = normalize_outcome_bucket(
                 c.business_outcome or c.outcome,
                 score=sc,
@@ -441,13 +444,16 @@ class LeadIntelligenceService:
         self,
         ctx: TenantContext,
         metric: Optional[str] = "all",  # "all" | "interested" | "callback" | "follow_up" | "not_interested" | "no_answer"
-        date_range: Optional[str] = "7d",
+        date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
         campaign_id: Optional[str] = None
     ) -> LeadTrendsResponse:
         calls, _, _ = await self._get_all_org_data(ctx)
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
+        rules = await self.get_qualification_rules(ctx)
+        qual_thresh = rules.qualification_threshold
+        warm_thresh = rules.warm_threshold
 
         is_hourly = (date_range or "").lower() in ["today", "yesterday"]
         buckets: Dict[str, Dict[str, Any]] = {}
@@ -506,7 +512,13 @@ class LeadIntelligenceService:
                 }
 
             buckets[key]["total"] += 1
-            outcome = normalize_outcome_bucket(c.business_outcome or c.outcome)
+            sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
+            outcome = normalize_outcome_bucket(
+                c.business_outcome or c.outcome,
+                score=sc,
+                qualification_threshold=qual_thresh,
+                warm_threshold=warm_thresh
+            )
 
             if outcome == "Interested":
                 buckets[key]["interested"] += 1
@@ -543,13 +555,16 @@ class LeadIntelligenceService:
     async def get_outcome_distribution(
         self,
         ctx: TenantContext,
-        date_range: Optional[str] = "7d",
+        date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
         campaign_id: Optional[str] = None
     ) -> LeadOutcomeDistributionResponse:
         calls, _, _ = await self._get_all_org_data(ctx)
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
+        rules = await self.get_qualification_rules(ctx)
+        qual_thresh = rules.qualification_threshold
+        warm_thresh = rules.warm_threshold
 
         counts: Dict[str, int] = {
             "Interested": 0,
@@ -575,7 +590,13 @@ class LeadIntelligenceService:
 
         total = len(latest_by_prospect)
         for p_key, c in latest_by_prospect.items():
-            outcome = normalize_outcome_bucket(c.business_outcome or c.outcome)
+            sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
+            outcome = normalize_outcome_bucket(
+                c.business_outcome or c.outcome,
+                score=sc,
+                qualification_threshold=qual_thresh,
+                warm_threshold=warm_thresh
+            )
             if outcome in counts:
                 counts[outcome] += 1
             else:
@@ -612,12 +633,15 @@ class LeadIntelligenceService:
     async def get_campaign_performance(
         self,
         ctx: TenantContext,
-        date_range: Optional[str] = "7d",
+        date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None
     ) -> List[CampaignLeadStat]:
         calls, _, campaigns_dict = await self._get_all_org_data(ctx)
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
+        rules = await self.get_qualification_rules(ctx)
+        qual_thresh = rules.qualification_threshold
+        warm_thresh = rules.warm_threshold
 
         stats_map: Dict[str, Dict[str, Any]] = {}
 
@@ -662,7 +686,13 @@ class LeadIntelligenceService:
 
             entry = stats_map[cid]
             entry["total_calls"] += 1
-            outcome = normalize_outcome_bucket(c.business_outcome or c.outcome)
+            sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
+            outcome = normalize_outcome_bucket(
+                c.business_outcome or c.outcome,
+                score=sc,
+                qualification_threshold=qual_thresh,
+                warm_threshold=warm_thresh
+            )
 
             if is_high_value_outcome(outcome):
                 entry["total_leads"] += 1
@@ -688,36 +718,14 @@ class LeadIntelligenceService:
                     status=data["status"],
                     total_leads=data["total_leads"],
                     interested=data["interested"],
+                    warm_interested=data["needs_follow_up"],
                     callback_requested=data["callback"],
-                    needs_follow_up=data["needs_follow_up"],
-                    not_interested=data["not_interested"],
-                    no_answer=data["no_answer"],
+                    qualified=data["interested"],
+                    converted=0,
                     conversion_rate=conv_rate,
                     last_lead_at=data["last_lead_at"]
                 ))
 
-        result.sort(key=lambda x: x.total_leads, reverse=True)
-        return result
-
-        result: List[CampaignLeadStat] = []
-        for cid, data in stats_map.items():
-            if data["total_calls"] > 0 or data["total_leads"] > 0:
-                conv_rate = round((data["total_leads"] / data["total_calls"]) * 100, 1) if data["total_calls"] > 0 else 0.0
-                result.append(CampaignLeadStat(
-                    campaign_id=cid,
-                    campaign_name=data["name"],
-                    status=data["status"],
-                    total_leads=data["total_leads"],
-                    interested=data["interested"],
-                    warm_interested=data["warm"],
-                    callback_requested=data["callback"],
-                    qualified=data["qualified"],
-                    converted=data["converted"],
-                    conversion_rate=conv_rate,
-                    last_lead_at=data["last_lead_at"]
-                ))
-
-        # Sort campaigns by total valuable leads generated descending
         result.sort(key=lambda x: x.total_leads, reverse=True)
         return result
 
@@ -727,12 +735,15 @@ class LeadIntelligenceService:
     async def get_agent_performance(
         self,
         ctx: TenantContext,
-        date_range: Optional[str] = "7d",
+        date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None
     ) -> List[AgentLeadStat]:
         calls, _, _ = await self._get_all_org_data(ctx)
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
+        rules = await self.get_qualification_rules(ctx)
+        qual_thresh = rules.qualification_threshold
+        warm_thresh = rules.warm_threshold
 
         agents_map: Dict[str, Dict[str, Any]] = {}
 
@@ -757,13 +768,19 @@ class LeadIntelligenceService:
             entry = agents_map[agent_id]
             entry["total_calls"] += 1
 
-            outcome = normalize_outcome_bucket(c.business_outcome or c.outcome)
+            sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
+            outcome = normalize_outcome_bucket(
+                c.business_outcome or c.outcome,
+                score=sc,
+                qualification_threshold=qual_thresh,
+                warm_threshold=warm_thresh
+            )
             if outcome in ["Interested", "Highly Interested", "Warm Interested", "Qualified", "Converted", "Information Requested"]:
                 entry["interested"] += 1
             if outcome == "Callback Requested":
                 entry["callbacks"] += 1
 
-            score = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None) or 0
+            score = sc or 0
             if score > 0:
                 entry["total_score"] += score
                 entry["scored_calls"] += 1
@@ -1297,8 +1314,12 @@ class LeadIntelligenceService:
         max_score: Optional[int] = None,
         agent_id: Optional[str] = None,
         prospect_status: Optional[str] = None,
-        follow_up: Optional[str] = None
+        follow_up: Optional[str] = None,
+        only_high_value: Optional[bool] = None
     ) -> str:
+        # Determine whether to restrict to high value
+        resolved_only_high_value = only_high_value if only_high_value is not None else (False if (outcome and outcome != "all") else True)
+
         # Fetch matching leads without pagination limit (up to 50,000)
         res = await self.list_leads(
             ctx=ctx,
@@ -1314,7 +1335,7 @@ class LeadIntelligenceService:
             agent_id=agent_id,
             prospect_status=prospect_status,
             follow_up=follow_up,
-            only_high_value=False if outcome and outcome != "all" else True,
+            only_high_value=resolved_only_high_value,
             page=1,
             page_size=50000,
             sort_by="last_call_at",

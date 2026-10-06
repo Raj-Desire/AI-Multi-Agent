@@ -14,7 +14,11 @@ import {
   Loader2,
   Info,
   Layers,
-  FileCheck
+  FileCheck,
+  Mic,
+  Volume2,
+  Radio,
+  Sliders
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -22,6 +26,7 @@ import { InfoTooltip } from "../ui/Tooltip";
 import { PromptTestCase, TestCaseAssertionResult, RegressionTestRunResponse, AgentConfig } from "../../types";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
+import { AgentLivePreview } from "../AgentLivePreview";
 
 interface PromptRegressionTesterProps {
   agentData: AgentConfig;
@@ -80,6 +85,7 @@ export function PromptRegressionTester({ agentData, className = "" }: PromptRegr
   const [testCases, setTestCases] = useState<PromptTestCase[]>(PRESET_TEST_CASES);
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<RegressionTestRunResponse | null>(null);
+  const [testerMode, setTesterMode] = useState<"assertions" | "voice_mic">("assertions");
 
   // New Custom Test Case State
   const [isAddingCustom, setIsAddingCustom] = useState(false);
@@ -213,48 +219,103 @@ export function PromptRegressionTester({ agentData, className = "" }: PromptRegr
           <div className="flex items-center gap-2">
             <FileCheck className="w-4 h-4 text-[var(--color-primary)]" />
             <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider">
-              In-Browser Prompt Regression Tester
+              In-Browser Agent Tester & Regression Suite
             </h3>
             <Badge variant="primary" size="sm" className="text-[10px]">
               {testCases.length} Test Scenarios
             </Badge>
           </div>
           <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
-            Automatically execute multi-turn simulated callers against your active prompt to verify sentence limits, guardrails, and compliance.
+            Execute automated multi-turn compliance assertions or test real-time in-browser microphone audio without making a phone call.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setIsAddingCustom(!isAddingCustom)}
-            leftIcon={<Plus className="w-3.5 h-3.5" />}
-            className="cursor-pointer text-xs h-8 px-3"
-          >
-            Add Custom Test
-          </Button>
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Mode Switcher */}
+          <div className="flex items-center p-0.5 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-xs">
+            <button
+              type="button"
+              onClick={() => setTesterMode("assertions")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-main,0.25rem)] font-semibold transition-all cursor-pointer ${
+                testerMode === "assertions"
+                  ? "bg-[var(--color-surface)] text-[var(--color-heading)] shadow-2xs border border-[var(--color-border)]"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <span>Assertion Suite</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTesterMode("voice_mic")}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-main,0.25rem)] font-semibold transition-all cursor-pointer ${
+                testerMode === "voice_mic"
+                  ? "bg-emerald-500 text-white shadow-2xs font-bold"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+              }`}
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>Live Mic Voice Test</span>
+            </button>
+          </div>
 
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            disabled={isRunning}
-            onClick={handleRunAllTests}
-            leftIcon={
-              isRunning ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Play className="w-3.5 h-3.5 fill-current" />
-              )
-            }
-            className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
-          >
-            {isRunning ? "Running Suite..." : "Run All Regression Tests"}
-          </Button>
+          {testerMode === "assertions" && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAddingCustom(!isAddingCustom)}
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+                className="cursor-pointer text-xs h-8 px-3"
+              >
+                Add Test
+              </Button>
+
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={isRunning}
+                onClick={handleRunAllTests}
+                leftIcon={
+                  isRunning ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  )
+                }
+                className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
+              >
+                {isRunning ? "Running..." : "Run All Tests"}
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Voice Mode: Direct In-Browser Microphone & Telemetry Audio Simulator */}
+      {testerMode === "voice_mic" && (
+        <div className="space-y-3 animate-fade-in">
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-[var(--radius-main,0.5rem)] flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+              <span className="font-semibold">
+                In-Browser Audio WebSocket Active: Test your microphone, interruption barge-in, and spoken output with zero latency without placing a phone call.
+              </span>
+            </div>
+            <Badge variant="success" size="sm" className="font-mono text-[10px]">
+              Web Audio 24kHz HD
+            </Badge>
+          </div>
+
+          <AgentLivePreview agentConfig={agentData} />
+        </div>
+      )}
+
+      {/* Assertion Mode Content */}
+      {testerMode === "assertions" && (
+        <>
 
       {/* Regression Results Summary Scorecard */}
       {testResults && (
@@ -488,6 +549,8 @@ export function PromptRegressionTester({ agentData, className = "" }: PromptRegr
           );
         })}
       </div>
+        </>
+      )}
     </div>
   );
 }

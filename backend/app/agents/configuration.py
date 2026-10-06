@@ -285,6 +285,9 @@ class AgentGuardrails(BaseModel):
     human_transfer_enabled: bool = True
     human_transfer_phone_number: Optional[str] = None
     human_transfer_whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
+    human_transfer_timeout_seconds: int = 25
+    human_transfer_fallback_action: str = "hangup"  # "hangup" | "voicemail" | "re_engage"
+    human_transfer_fallback_message: Optional[str] = "Our representatives are currently busy. We have logged your request and will follow up shortly."
 
 
 class AgentOperatingHours(BaseModel):

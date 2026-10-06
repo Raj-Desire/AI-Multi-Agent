@@ -402,6 +402,9 @@ export interface AgentGuardrails {
   human_transfer_enabled?: boolean;
   human_transfer_phone_number?: string;
   human_transfer_whisper_message?: string;
+  human_transfer_timeout_seconds?: number;
+  human_transfer_fallback_action?: 'hangup' | 'voicemail' | 're_engage';
+  human_transfer_fallback_message?: string;
 }
 
 export interface BusinessServiceItem {

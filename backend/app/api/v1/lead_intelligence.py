@@ -31,7 +31,7 @@ def get_lead_service() -> LeadIntelligenceService:
 
 @router.get("/summary", response_model=ApiResponse[LeadKPISummary])
 async def get_summary_kpis(
-    date_range: Optional[str] = Query("7d", description="Preset: today, yesterday, 7d, 30d, this_month, last_month, custom"),
+    date_range: Optional[str] = Query("all", description="Preset: all, today, yesterday, 7d, 30d, this_month, last_month, custom"),
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
@@ -54,7 +54,7 @@ async def get_summary_kpis(
 @router.get("/trends", response_model=ApiResponse[LeadTrendsResponse])
 async def get_lead_trends(
     metric: Optional[str] = Query("all", description="Metric to plot: all, interested, warm, callback, qualified, converted"),
-    date_range: Optional[str] = Query("7d", description="Preset: today, yesterday, 7d, 30d, this_month, last_month, custom"),
+    date_range: Optional[str] = Query("all", description="Preset: all, today, yesterday, 7d, 30d, this_month, last_month, custom"),
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
@@ -77,7 +77,7 @@ async def get_lead_trends(
 
 @router.get("/distribution", response_model=ApiResponse[LeadOutcomeDistributionResponse])
 async def get_outcome_distribution(
-    date_range: Optional[str] = Query("7d", description="Preset: today, yesterday, 7d, 30d, this_month, last_month, custom"),
+    date_range: Optional[str] = Query("all", description="Preset: all, today, yesterday, 7d, 30d, this_month, last_month, custom"),
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
@@ -99,7 +99,7 @@ async def get_outcome_distribution(
 
 @router.get("/campaigns", response_model=ApiResponse[List[CampaignLeadStat]])
 async def get_campaign_performance(
-    date_range: Optional[str] = Query("7d", description="Preset: today, yesterday, 7d, 30d, this_month, last_month, custom"),
+    date_range: Optional[str] = Query("all", description="Preset: all, today, yesterday, 7d, 30d, this_month, last_month, custom"),
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     ctx: TenantContext = Depends(get_tenant_context),
@@ -119,7 +119,7 @@ async def get_campaign_performance(
 
 @router.get("/agents", response_model=ApiResponse[List[AgentLeadStat]])
 async def get_agent_performance(
-    date_range: Optional[str] = Query("7d", description="Preset: today, yesterday, 7d, 30d, this_month, last_month, custom"),
+    date_range: Optional[str] = Query("all", description="Preset: all, today, yesterday, 7d, 30d, this_month, last_month, custom"),
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     ctx: TenantContext = Depends(get_tenant_context),
@@ -249,6 +249,7 @@ async def export_leads_csv(
     agent_id: Optional[str] = Query(None),
     prospect_status: Optional[str] = Query(None),
     follow_up: Optional[str] = Query(None),
+    only_high_value: Optional[bool] = Query(None),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -268,7 +269,8 @@ async def export_leads_csv(
         max_score=max_score,
         agent_id=agent_id,
         prospect_status=prospect_status,
-        follow_up=follow_up
+        follow_up=follow_up,
+        only_high_value=only_high_value
     )
     filename = f"lead_intelligence_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
