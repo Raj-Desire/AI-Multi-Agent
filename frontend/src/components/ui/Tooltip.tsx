@@ -8,6 +8,7 @@ export interface TooltipProps {
   position?: "top" | "bottom" | "left" | "right";
   className?: string;
   delayMs?: number;
+  maxWidth?: number;
 }
 
 export const Tooltip: React.FC<TooltipProps> = ({
@@ -16,6 +17,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   position = "top",
   className = "",
   delayMs = 80,
+  maxWidth = 290,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -32,7 +34,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const calculatePosition = () => {
     if (!triggerRef.current) return;
     const triggerRect = triggerRef.current.getBoundingClientRect();
-    const tooltipWidth = 260; // Estimated standard tooltip width
+    const tooltipWidth = maxWidth; // Estimated/allocated tooltip width
     const tooltipHeight = 60;
     const padding = 16;
     const scrollY = window.scrollY;
@@ -134,10 +136,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
               top: position === "top" ? `${coords.top}px` : `${coords.top}px`,
               left: `${coords.left}px`,
               width: "max-content",
-              maxWidth: "280px",
+              maxWidth: `${maxWidth}px`,
               transform: position === "top" ? "translateY(-100%)" : "none",
             }}
-            className={`z-[9999] pointer-events-none px-3 py-2 text-[11px] leading-relaxed font-normal text-slate-100 bg-slate-900 dark:bg-slate-900 dark:text-slate-100 border border-slate-700/90 rounded-md shadow-2xl transition-all duration-150 ease-out ${
+            className={`z-[9999] pointer-events-none px-3 py-2 text-[11px] leading-relaxed font-normal text-[var(--color-text)] bg-[var(--color-surface-elevated)] border border-[var(--color-primary)] rounded-[var(--radius-main,0.375rem)] shadow-xl backdrop-blur-sm transition-all duration-150 ease-out ${
               isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
             }`}
           >
@@ -145,13 +147,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
             {position === "top" && (
               <span
                 style={{ left: `${coords.arrowLeft}px` }}
-                className="absolute top-full -translate-x-1/2 w-0 h-0 border-t-slate-900 border-x-transparent border-b-transparent border-t-4 border-x-4 border-b-0"
+                className="absolute top-full -translate-x-1/2 w-0 h-0 border-t-[var(--color-primary)] border-x-transparent border-b-transparent border-t-[5px] border-x-4 border-b-0"
               />
             )}
             {position === "bottom" && (
               <span
                 style={{ left: `${coords.arrowLeft}px` }}
-                className="absolute bottom-full -translate-x-1/2 w-0 h-0 border-b-slate-900 border-x-transparent border-t-transparent border-b-4 border-x-4 border-t-0"
+                className="absolute bottom-full -translate-x-1/2 w-0 h-0 border-b-[var(--color-primary)] border-x-transparent border-t-transparent border-b-[5px] border-x-4 border-b-0"
               />
             )}
           </div>,
@@ -167,6 +169,7 @@ export interface InfoTooltipProps {
   className?: string;
   iconClassName?: string;
   size?: number;
+  maxWidth?: number;
 }
 
 export const InfoTooltip: React.FC<InfoTooltipProps> = ({
@@ -175,11 +178,12 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({
   className = "",
   iconClassName = "text-[var(--color-muted)] hover:text-[var(--color-primary)]",
   size = 13,
+  maxWidth = 290,
 }) => {
   if (!content) return null;
 
   return (
-    <Tooltip content={content} position={position} className={className}>
+    <Tooltip content={content} position={position} className={className} maxWidth={maxWidth}>
       <span
         role="button"
         tabIndex={0}

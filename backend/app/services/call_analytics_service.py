@@ -368,6 +368,10 @@ JSON OUTPUT STRUCTURE:
             raw_outcome = "Callback Requested"
             interest_lvl = "Warm"
             final_score = max(min(final_score or 55, 68), 45)
+        elif "transfer" in norm:
+            raw_outcome = "Transferred to Specialist"
+            interest_lvl = "Warm"
+            final_score = max(min(final_score or 65, 80), 60)
         elif "asked" in norm or "information" in norm or "detail" in norm or "follow" in norm:
             raw_outcome = "Asked Details"
             interest_lvl = "Warm"

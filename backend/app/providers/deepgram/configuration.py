@@ -88,6 +88,13 @@ class DeepgramInjectAgentMessage(BaseModel):
     behavior: str = "default"  # "default" | "queue" | "interrupt"
 
 
+class DeepgramInjectUserMessage(BaseModel):
+    """Payload to simulate a user speech turn by injecting text directly into the conversation."""
+    type: str = "InjectUserMessage"
+    content: str
+
+
+
 class DeepgramUpdatePrompt(BaseModel):
     """Payload to update the agent's prompt mid-session."""
     type: str = "UpdatePrompt"

@@ -72,6 +72,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
     is_concluding_call: bool = False
+    is_transferred: bool = False
     is_interrupted: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
@@ -335,7 +336,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def transfer_call_to_human(destination_phone: str, whisper_msg: Optional[str] = None):
         """Transfers the live Twilio call to a human phone number and concludes AI stream."""
-        nonlocal session, call_ended_event, is_concluding_call
+        nonlocal session, call_ended_event, is_concluding_call, is_transferred
         if is_concluding_call:
             return
         is_concluding_call = True
@@ -372,6 +373,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     fallback_message=fallback_msg
                 )
                 if success:
+                    is_transferred = True
                     session.outcome = "TRANSFERRED_TO_HUMAN"
                     session.business_outcome = "Transferred to Human Specialist"
                     logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded (timeout={timeout_sec}s, fallback={fallback_act}).")
@@ -851,8 +853,8 @@ async def voice_stream_websocket(websocket: WebSocket):
             finally:
                 deepgram_client = None
 
-        # Proactively terminate Twilio phone call via REST API to ensure no billing or lingering phone line
-        if session and session.twilio_call_sid and session.organization_id:
+        # Proactively terminate Twilio phone call via REST API if not already transferred to a human specialist
+        if session and session.twilio_call_sid and session.organization_id and not is_transferred:
             try:
                 logger.info(f"[VoiceGateway] Ensuring Twilio call {session.twilio_call_sid} is terminated on stream disconnect...")
                 await twilio_service.end_call(session.organization_id, session.twilio_call_sid)

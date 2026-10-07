@@ -12,7 +12,11 @@ import time
 from typing import Optional, Callable, Dict, Any, Awaitable
 import websockets
 
-from app.providers.deepgram.configuration import DeepgramSettingsConfiguration, DeepgramInjectAgentMessage
+from app.providers.deepgram.configuration import (
+    DeepgramSettingsConfiguration,
+    DeepgramInjectAgentMessage,
+    DeepgramInjectUserMessage
+)
 from app.providers.deepgram.events import DeepgramEventType
 
 logger = logging.getLogger("deepgram.voice_agent")
@@ -181,6 +185,18 @@ class DeepgramVoiceAgentClient:
             logger.info(f"Injected agent greeting/message: {message[:40]}...")
         except Exception as e:
             logger.error(f"Error injecting agent message: {e}")
+
+    async def inject_user_message(self, content: str):
+        """Simulates a user text message turn (e.g. from chat sidebar or manual testing) to prompt the agent to respond."""
+        if not self.is_ready or not self._ws:
+            return
+        payload = DeepgramInjectUserMessage(content=content)
+        try:
+            await self._ws.send(payload.model_dump_json())
+            logger.info(f"Injected user message: {content[:40]}...")
+        except Exception as e:
+            logger.error(f"Error injecting user message: {e}")
+
 
     async def update_prompt(self, prompt: str) -> bool:
         """Sends UpdatePrompt to Deepgram mid-conversation. Returns True if sent successfully, raises on error."""

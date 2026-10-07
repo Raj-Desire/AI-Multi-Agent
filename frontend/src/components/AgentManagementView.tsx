@@ -884,79 +884,6 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
             </div>
           </div>
         </Modal>
-
-        {/* Live Test Call Drawer */}
-        <Drawer
-          isOpen={testModalOpen}
-          onClose={() => {
-            if (calling) hangupTestCall();
-            setTestModalOpen(false);
-          }}
-          title={`Live Test Call: ${testAgent?.name || "Agent"}`}
-          description="Verify spoken greeting, STT/LLM turns, voice synthesis, and latency live."
-          size="md"
-        >
-          {testAgent && (
-            <div className="space-y-4 text-left text-xs">
-              <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Voice:</span>
-                  <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Model:</span>
-                  <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.llm?.model}</span>
-                </div>
-              </div>
-
-              {!calling ? (
-                <div className="space-y-3 pt-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
-                      Your Phone Number (To receive call) <span className="text-[var(--color-danger)]">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      value={testPhoneNumber}
-                      onChange={(e) => setTestPhoneNumber(e.target.value)}
-                      placeholder="+1234567890"
-                      className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
-                    />
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={startTestCall}
-                    disabled={!testPhoneNumber.trim()}
-                    leftIcon={<PhoneCall className="w-4 h-4" />}
-                    className="w-full cursor-pointer"
-                  >
-                    Start Real Telephone Test Call
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3 pt-2">
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-[var(--radius-main,0.375rem)] flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Live Call Active</span>
-                    </div>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={hangupTestCall}
-                      disabled={hangingUp}
-                      leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
-                    >
-                      {hangingUp ? "Hanging up..." : "Hang Up"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </Drawer>
       </div>
     );
   }
@@ -1260,7 +1187,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
         size="md"
       >
         {selectedAgentDetail && (
-          <div className="space-y-5 text-left text-xs">
+          <div className="space-y-5 text-left text-xs pb-10">
             {/* Status & Scope Banner */}
             <div className="grid grid-cols-2 gap-3 p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)]">
               <div>
@@ -1344,6 +1271,109 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </Drawer>
+
+      {/* Live Test Call Drawer (Telephone & Direct Testing) */}
+      <Drawer
+        isOpen={testModalOpen}
+        onClose={() => {
+          if (calling) hangupTestCall();
+          setTestModalOpen(false);
+        }}
+        title={`Live Test Call: ${testAgent?.name || "Agent"}`}
+        description="Verify conversational turns, voice synthesis, prompts, or place a real telephone test call."
+        size="md"
+      >
+        {testAgent && (
+          <div className="space-y-4 text-left text-xs">
+            <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted)]">Voice:</span>
+                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice || "Aura"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--color-muted)]">Model:</span>
+                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.llm?.model || "Standard"}</span>
+              </div>
+            </div>
+
+            {/* In-Browser Mic Playground Quick Launch */}
+            <div className="p-3 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-[var(--radius-main,0.375rem)] space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-semibold text-xs text-[var(--color-heading)]">Browser Playground (Instant)</h4>
+                  <p className="text-[11px] text-[var(--color-muted)]">Test with your PC microphone and speaker without using phone credits.</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTestModalOpen(false);
+                  setPreviewDrawerAgent(testAgent);
+                }}
+                leftIcon={<Radio className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
+                className="w-full cursor-pointer font-medium"
+              >
+                Open In-Browser Live Preview
+              </Button>
+            </div>
+
+            {/* Real Telephone Test Section */}
+            <div className="pt-2 border-t border-[var(--color-border)] space-y-3">
+              <h4 className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
+                <PhoneCall className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Real Telephone Test Call
+              </h4>
+
+              {!calling ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--color-heading)] mb-1">
+                      Your Phone Number (To receive call) <span className="text-[var(--color-danger)]">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={testPhoneNumber}
+                      onChange={(e) => setTestPhoneNumber(e.target.value)}
+                      placeholder="+1234567890"
+                      className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
+                    />
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={startTestCall}
+                    disabled={!testPhoneNumber.trim()}
+                    leftIcon={<PhoneCall className="w-4 h-4" />}
+                    className="w-full cursor-pointer"
+                  >
+                    Start Real Telephone Test Call
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-[var(--radius-main,0.375rem)] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="font-semibold text-xs text-emerald-600 dark:text-emerald-400">Live Call Active</span>
+                    </div>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={hangupTestCall}
+                      disabled={hangingUp}
+                      leftIcon={<PhoneOff className="w-3.5 h-3.5" />}
+                    >
+                      {hangingUp ? "Hanging up..." : "Hang Up"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </Drawer>

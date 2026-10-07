@@ -62,6 +62,9 @@ def normalize_outcome_bucket(
     if "callback" in o:
         return "Callback Requested"
 
+    if "transfer" in o:
+        return "Transferred to Specialist"
+
     # Explicit opt-outs and failures are always Cold
     if any(k in o for k in ["not interested", "dnc", "do not", "busy", "failed", "unreachable"]):
         return "No Answer"
@@ -107,7 +110,7 @@ def normalize_interest_level(
         else:
             return "No Answer"  # Cold or Unqualified
 
-    if norm_o in ["Interested", "Qualified"]:
+    if norm_o in ["Interested", "Qualified", "Transferred to Specialist"]:
         return "Interested"
     if norm_o in ["Information Requested", "Asked Details", "Warm Interested"]:
         return "Warm Interested"
@@ -120,6 +123,7 @@ def is_high_value_outcome(outcome: str) -> bool:
         "Interested",
         "Callback Requested",
         "Information Requested",
+        "Transferred to Specialist",
     ]
 
 

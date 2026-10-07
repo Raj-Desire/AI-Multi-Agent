@@ -480,6 +480,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     has_reprompted_silence = False
                     call_ended_event.clear()
 
+                    async def handle_dg_error(err_str: str):
+                        logger.error(f"[VoicePreview] Voice engine reported error: {err_str}")
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Voice engine notice: {err_str}"
+                            })
+                        except Exception:
+                            pass
+
                     deepgram_client = DeepgramVoiceAgentClient(
                         on_audio=handle_dg_audio,
                         on_event=handle_dg_event,
@@ -487,7 +497,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         on_user_speaking=handle_dg_user_speaking,
                         on_agent_thinking=handle_dg_agent_thinking,
                         on_agent_speaking=handle_dg_agent_speaking,
-                        on_agent_audio_done=handle_dg_agent_audio_done
+                        on_agent_audio_done=handle_dg_agent_audio_done,
+                        on_error=handle_dg_error
                     )
 
                     # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
@@ -573,11 +584,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     if new_prompt and deepgram_client and deepgram_client.is_ready:
                         await deepgram_client.update_prompt(new_prompt)
 
-                # Inject specific speech text
+                # Inject manual user message (simulates user speech turn for typed input)
                 elif msg_type == "inject_text":
                     text = data.get("text")
                     if text and deepgram_client and deepgram_client.is_ready:
-                        await deepgram_client.inject_agent_message(text)
+                        await deepgram_client.inject_user_message(text)
+
 
                 # Heartbeat ping/pong
                 elif msg_type == "ping":

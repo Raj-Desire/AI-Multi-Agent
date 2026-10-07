@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, Check, Info, Bot, Compass, Plus, Layers, Sliders, ArrowRight, Network, GitBranch, Cpu, X, AlertTriangle, Search, Users } from "lucide-react";
-import { InfoTooltip } from "../ui/Tooltip";
+import { InfoTooltip, Tooltip } from "../ui/Tooltip";
 import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
 import { AgentConfig } from "../../types";
 import { fetchApi } from "../../api-client";
@@ -228,52 +228,135 @@ export function Step1Basics({
           </div>
 
           <div className="relative inline-flex p-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs self-start sm:self-auto shrink-0 select-none gap-0.5">
-            <button
-              type="button"
-              onClick={() => handleModeSwitch("prebuilt")}
-              className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                !isCustomMode && !isOrchestratorMode
-                  ? "bg-[var(--color-primary)] text-white shadow-xs"
-                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Prebuilt Role</span>
-              <span className={`text-[10px] px-1.5 rounded-full font-medium ${!isCustomMode && !isOrchestratorMode ? "bg-white/20 text-white" : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]"}`}>
-                {AGENT_PURPOSES.filter((p) => p.id !== "custom").length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleModeSwitch("custom")}
-              className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                isCustomMode
-                  ? "bg-[var(--color-primary)] text-white shadow-xs"
-                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Custom Agent</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleModeSwitch("orchestrator")}
-              className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
-                isOrchestratorMode
-                  ? "bg-[var(--color-primary)] text-white shadow-xs"
-                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-              }`}
-            >
-              <Network className="w-3.5 h-3.5" />
-              <span>Orchestrator</span>
-              {!isOrchestratorMode && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-bold">
-                  NEW
+            {/* Prebuilt Role Button */}
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => handleModeSwitch("prebuilt")}
+                className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                  !isCustomMode && !isOrchestratorMode
+                    ? "bg-[var(--color-primary)] text-white shadow-xs"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Prebuilt Role</span>
+                <span className={`text-[10px] px-1.5 rounded-full font-medium ${!isCustomMode && !isOrchestratorMode ? "bg-white/20 text-white" : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]"}`}>
+                  {AGENT_PURPOSES.filter((p) => p.id !== "custom").length}
                 </span>
-              )}
-            </button>
+              </button>
+
+              {/* Hover Popover */}
+              <div className="pointer-events-none absolute left-0 top-full mt-2 w-72 sm:w-80 p-3 bg-[var(--color-surface-elevated)] text-[var(--color-text)] rounded-xl shadow-xl border border-[var(--color-border-strong)] opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 ease-out z-50">
+                <div className="flex items-center gap-2 pb-2 border-b border-[var(--color-border)] mb-2">
+                  <div className="p-1.5 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[var(--color-heading)]">Prebuilt Role</h4>
+                    <p className="text-[10px] text-[var(--color-muted)]">Curated & Production-Ready</p>
+                  </div>
+                </div>
+                <div className="space-y-2 text-[11px] leading-relaxed">
+                  <p>
+                    <span className="font-semibold text-[var(--color-primary)]">What it does: </span>
+                    <span className="text-[var(--color-text)]">Instantly preconfigures battle-tested prompts, voice persona, parameters, and industry-standard workflows.</span>
+                  </p>
+                  <p className="text-[10px] text-[var(--color-muted)] pt-1.5 border-t border-[var(--color-border)]">
+                    <span className="font-semibold text-[var(--color-heading)]">Best for: </span>
+                    Customer Support, Sales Qualification, Appointment Booking, Receptionists.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Custom Agent Button */}
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => handleModeSwitch("custom")}
+                className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                  isCustomMode
+                    ? "bg-[var(--color-primary)] text-white shadow-xs"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Custom Agent</span>
+              </button>
+
+              {/* Hover Popover */}
+              <div className="pointer-events-none absolute -left-12 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 w-72 sm:w-80 p-3 bg-[var(--color-surface-elevated)] text-[var(--color-text)] rounded-xl shadow-xl border border-[var(--color-border-strong)] opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 ease-out z-50">
+                <div className="flex items-center gap-2 pb-2 border-b border-[var(--color-border)] mb-2">
+                  <div className="p-1.5 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-[var(--color-heading)]">Custom Agent</h4>
+                    <p className="text-[10px] text-[var(--color-muted)]">From Scratch / Tailored</p>
+                  </div>
+                </div>
+                <div className="space-y-2 text-[11px] leading-relaxed">
+                  <p>
+                    <span className="font-semibold text-[var(--color-primary)]">What it does: </span>
+                    <span className="text-[var(--color-text)]">Gives complete blank-canvas control over bespoke system prompts, tone of voice, tools, and custom business logic.</span>
+                  </p>
+                  <p className="text-[10px] text-[var(--color-muted)] pt-1.5 border-t border-[var(--color-border)]">
+                    <span className="font-semibold text-[var(--color-heading)]">Best for: </span>
+                    Proprietary workflows, specialized knowledge bases, internal APIs, or unique conversational styles.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Orchestrator Button */}
+            <div className="relative group">
+              <button
+                type="button"
+                onClick={() => handleModeSwitch("orchestrator")}
+                className={`relative z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 ${
+                  isOrchestratorMode
+                    ? "bg-[var(--color-primary)] text-white shadow-xs"
+                    : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                }`}
+              >
+                <Network className="w-3.5 h-3.5" />
+                <span>Orchestrator</span>
+                {!isOrchestratorMode && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-bold">
+                    NEW
+                  </span>
+                )}
+              </button>
+
+              {/* Hover Popover */}
+              <div className="pointer-events-none absolute right-0 top-full mt-2 w-72 sm:w-84 p-3 bg-[var(--color-surface-elevated)] text-[var(--color-text)] rounded-xl shadow-xl border border-[var(--color-border-strong)] opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 ease-out z-50">
+                <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)] mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
+                      <Network className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-[var(--color-heading)]">Multi-Agent Orchestrator</h4>
+                      <p className="text-[10px] text-[var(--color-muted)]">Supervisor &amp; Intent Routing</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                    SUPERVISOR
+                  </span>
+                </div>
+                <div className="space-y-2 text-[11px] leading-relaxed">
+                  <p>
+                    <span className="font-semibold text-[var(--color-primary)]">What it does: </span>
+                    <span className="text-[var(--color-text)]">Acts as an intelligent front-desk triage agent that dynamically transfers calls and sessions between specialized child agents.</span>
+                  </p>
+                  <p className="text-[10px] text-[var(--color-muted)] pt-1.5 border-t border-[var(--color-border)]">
+                    <span className="font-semibold text-[var(--color-heading)]">Best for: </span>
+                    Multi-department phone trees, complex support organizations, and multi-skill customer workflows.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -550,30 +633,82 @@ export function Step1Basics({
                   id: "intent",
                   label: "Intent Keywords",
                   desc: "Routes dynamically based on what caller says",
-                  tooltip: "Caller-Driven Routing: Real-time speech analysis detects key intent keywords (e.g., 'billing', 'support', 'booking') to automatically hand off the caller to the specialized agent for that subject."
+                  isRecommended: true,
+                  badge: "Recommended",
+                  tooltip: (
+                    <div className="space-y-1.5 py-0.5 text-left text-xs max-w-xs">
+                      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-1.5">
+                        <span className="font-semibold text-[var(--color-heading)]">
+                          Intent-Based Routing
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 font-bold rounded bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-text)] leading-relaxed">
+                        <strong>How it works:</strong> Real-time voice intelligence analyzes what the caller says (e.g. <em>"book an appointment"</em> or <em>"billing issue"</em>) and routes them straight to the matching specialist.
+                      </p>
+                      <div className="bg-[var(--color-surface-muted)] p-2 rounded text-[10px] border border-[var(--color-primary)]/20">
+                        <span className="font-semibold text-[var(--color-heading)] block mb-0.5 text-[var(--color-primary)]">Why recommended:</span>
+                        Ensures callers always reach the specialist trained for their specific inquiry, preventing misplaced transfers.
+                      </div>
+                    </div>
+                  )
                 },
                 {
                   id: "round_robin",
                   label: "Round Robin",
                   desc: "Cycles through agents evenly",
-                  tooltip: "Equal Distribution: Distributes calls in rotational order across all selected agents. Ideal for sales or intake teams where leads need to be distributed evenly without bias."
+                  isRecommended: false,
+                  tooltip: (
+                    <div className="space-y-1.5 py-0.5 text-left text-xs max-w-xs">
+                      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-1.5">
+                        <span className="font-semibold text-[var(--color-heading)]">
+                          Equal Distribution
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 font-medium rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]">
+                          Rotational
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-text)] leading-relaxed">
+                        <strong>How it works:</strong> Rotates incoming calls sequentially across agents in equal order (Agent 1 &rarr; Agent 2 &rarr; Agent 3 &rarr; Agent 1) regardless of the caller's specific intent.
+                      </p>
+                      <div className="bg-[var(--color-surface-muted)] p-2 rounded text-[10px] border border-[var(--color-border)]">
+                        <span className="font-semibold text-[var(--color-heading)] block mb-0.5">When to use:</span>
+                        Best when you have a pool of agents with identical roles (such as general sales reps) and want to balance call volume equally.
+                      </div>
+                    </div>
+                  )
                 },
               ].map((opt) => (
-                <div
+                <Tooltip
                   key={opt.id}
-                  onClick={() => setRoutingStrategy(opt.id)}
-                  className={`p-2.5 rounded-lg border cursor-pointer transition-all select-none ${
-                    routingStrategy === opt.id
-                      ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30"
-                      : "border-[var(--color-border)] hover:border-[var(--color-primary)]/40"
-                  }`}
+                  content={opt.tooltip}
+                  position="top"
+                  maxWidth={320}
+                  className="w-full block"
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <p className="text-xs font-bold text-[var(--color-heading)]">{opt.label}</p>
-                    <InfoTooltip content={opt.tooltip} position="top" size={13} />
+                  <div
+                    onClick={() => setRoutingStrategy(opt.id)}
+                    className={`w-full p-2.5 rounded-lg border cursor-pointer transition-all select-none relative ${
+                      routingStrategy === opt.id
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
+                        : "border-[var(--color-border)] hover:border-[var(--color-primary)]/60 hover:bg-[var(--color-surface-muted)]/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="text-xs font-bold text-[var(--color-heading)] truncate">{opt.label}</p>
+                        {opt.badge && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full font-semibold bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/30 shrink-0">
+                            {opt.badge}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[var(--color-muted)] mt-0.5">{opt.desc}</p>
                   </div>
-                  <p className="text-[10px] text-[var(--color-muted)] mt-0.5">{opt.desc}</p>
-                </div>
+                </Tooltip>
               ))}
             </div>
           </div>
