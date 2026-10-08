@@ -69,6 +69,23 @@ class RefinePromptResponse(BaseModel):
     summary_of_changes: Optional[str] = None
 
 
+class QuickDraftAgentRequest(BaseModel):
+    prompt: str
+
+
+class QuickDraftAgentResponse(BaseModel):
+    name: str
+    role: str
+    description: str
+    objective: str
+    greeting: str
+    agent_type: Optional[str] = "custom"
+    communication_style: Optional[str] = "Professional + Friendly"
+    response_length: Optional[str] = "short"
+    skills: Optional[List[str]] = Field(default_factory=list)
+    matched_preset_id: Optional[str] = "custom"
+
+
 @router.post("/generate-greetings", response_model=ApiResponse[GeneratedGreetingsResponse])
 async def generate_greetings(
     payload: GeneratePromptRequest,
@@ -185,6 +202,38 @@ async def refine_prompt(
     except Exception as e:
         print(f"[Refine Prompt Error] {e}")
         raise HTTPException(status_code=500, detail=f"Failed to refine prompt: {str(e)}")
+
+
+@router.post("/quick-draft", response_model=ApiResponse[QuickDraftAgentResponse])
+async def quick_draft(
+    payload: QuickDraftAgentRequest,
+    ctx: TenantContext = Depends(get_tenant_context)
+):
+    """
+    Takes a 1-sentence prompt describing an agent or business requirement
+    and uses the configured LLM to generate a rich, accurate agent profile draft.
+    """
+    prompt = (payload.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required to draft agent profile.")
+
+    try:
+        draft = await llm_service.quick_draft_agent(prompt)
+        return ApiResponse.ok(QuickDraftAgentResponse(
+            name=draft.get("name", "Voice Specialist"),
+            role=draft.get("role", "Specialist Assistant"),
+            description=draft.get("description", prompt),
+            objective=draft.get("objective", prompt),
+            greeting=draft.get("greeting", "Hello! How can I assist you today?"),
+            agent_type=draft.get("agent_type", "custom"),
+            communication_style=draft.get("communication_style", "Professional + Friendly"),
+            response_length=draft.get("response_length", "short"),
+            skills=draft.get("skills", []),
+            matched_preset_id=draft.get("matched_preset_id", "custom")
+        ))
+    except Exception as e:
+        print(f"[Quick Draft Error] {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to draft agent: {str(e)}")
 
 
 def get_agent_service() -> AgentService:

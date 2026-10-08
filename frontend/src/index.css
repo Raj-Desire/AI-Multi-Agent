@@ -4,6 +4,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure Tailwind default rings and outlines strictly use Theme Studio brand color instead of default blue */
+*, ::before, ::after {
+  --tw-ring-color: var(--color-primary-ring, rgba(79, 70, 229, 0.25));
+}
+
 :root {
   color-scheme: light;
   /* Dynamic Semantic Color Tokens */
@@ -87,8 +92,12 @@ select, input, textarea {
 
 select:focus, input:focus, textarea:focus {
   border-color: var(--color-primary) !important;
-  box-shadow: 0 0 0 2px var(--color-primary-ring) !important;
+  box-shadow: none !important;
   outline: none !important;
+}
+
+select:hover {
+  border-color: var(--color-border-strong, var(--color-border));
 }
 
 select option, select optgroup {
@@ -96,11 +105,24 @@ select option, select optgroup {
   color: var(--color-heading);
 }
 
+/* Ensure selected option in native selects uses primary brand color instead of Windows blue */
+select option:checked,
+select option:hover {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
 .dark select, 
 .dark select option, 
 .dark select optgroup {
   background-color: var(--color-surface);
   color: var(--color-heading);
+}
+
+.dark select option:checked,
+.dark select option:hover {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
 }
 
 html {

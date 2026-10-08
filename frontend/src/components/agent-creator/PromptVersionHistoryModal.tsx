@@ -185,7 +185,7 @@ export function PromptVersionHistoryModal({
                     onClick={() => setSelectedVersion(ver)}
                     className={`p-3 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
                       isSelected
-                        ? "bg-[var(--color-surface)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30 shadow-2xs"
+                        ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30 shadow-2xs font-semibold"
                         : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
                     }`}
                   >

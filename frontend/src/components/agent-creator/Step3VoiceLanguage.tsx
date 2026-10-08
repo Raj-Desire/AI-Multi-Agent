@@ -339,15 +339,22 @@ export function Step3VoiceLanguage({
     prefetchVoiceSample(targetVoiceId);
   };
 
-  // Custom Dropdown State
+  // Custom Voice Dropdown State
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
   const voiceDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Custom Language Dropdown State
+  const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+  const langDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (voiceDropdownRef.current && !voiceDropdownRef.current.contains(event.target as Node)) {
         setIsVoiceDropdownOpen(false);
+      }
+      if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
+        setIsLangDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -434,15 +441,15 @@ export function Step3VoiceLanguage({
             <button
               type="button"
               onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
-              className="w-full min-h-[42px] px-3.5 py-1.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2.5 focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 cursor-pointer select-none transition-all hover:border-[var(--color-border-strong,var(--color-border))]"
+              className={`w-full min-h-[42px] px-3.5 py-1.5 text-xs bg-[var(--color-surface-muted)] border rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2.5 focus:outline-none cursor-pointer select-none transition-all ${
+                isVoiceDropdownOpen
+                  ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-xs"
+                  : "border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+              }`}
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
                 {/* Voice Avatar Badge */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                  selectedVoiceObj.gender.toLowerCase() === "female"
-                    ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                }`}>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
                   {selectedVoiceObj.name[0]}
                 </div>
 
@@ -547,18 +554,14 @@ export function Step3VoiceLanguage({
                         >
                           {/* Left: Avatar + Name + Description */}
                           <div className="flex items-center gap-3 min-w-0 max-w-[280px] shrink-0">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-transform ${
-                              v.gender.toLowerCase() === "female"
-                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                                : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                            }`}>
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-transform bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
                               {v.name[0]}
                             </div>
                             <div className="min-w-0">
                               <div className="font-bold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
                                 <span>{v.name}</span>
                                 {v.id.startsWith("aura-2") && (
-                                  <span className="text-[9px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-light)]/30 px-1.5 py-0.2 rounded">
+                                   <span className="text-[9px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-light)]/30 px-1.5 py-0.2 rounded">
                                     Gen-2
                                   </span>
                                 )}
@@ -594,19 +597,9 @@ export function Step3VoiceLanguage({
                             </span>
                           </div>
 
-                          {/* Right: Soundwave Visualizer + Play Audio Button + Active Check */}
-                          <div className="flex items-center gap-2.5 shrink-0 ml-auto">
-                            {/* Animated Equalizer Waveform Bars when playing */}
-                            {isVoicePlaying && (
-                              <div className="flex items-end gap-0.5 h-4 px-1.5 py-0.5 bg-rose-500/10 border border-rose-500/30 rounded shrink-0">
-                                <span className="w-0.5 bg-rose-500 rounded-full animate-wave-1" />
-                                <span className="w-0.5 bg-rose-500 rounded-full animate-wave-2" />
-                                <span className="w-0.5 bg-rose-500 rounded-full animate-wave-3" />
-                                <span className="w-0.5 bg-rose-500 rounded-full animate-wave-4" />
-                              </div>
-                            )}
-
-                            {/* Inline Voice Test Audio Button */}
+                          {/* Right: Soundwave Visualizer / Play Button + Active Check with strictly fixed width to prevent any UI shifts */}
+                          <div className="flex items-center gap-2 shrink-0 ml-auto w-20 justify-end">
+                            {/* Inline Voice Test Audio Button with integrated visualizer */}
                             <button
                               type="button"
                               onMouseEnter={() => prefetchVoiceSample(v.id)}
@@ -614,19 +607,32 @@ export function Step3VoiceLanguage({
                                 e.stopPropagation();
                                 playVoiceSample(v.id);
                               }}
-                              className={`p-1.5 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                              className={`h-7 px-2 rounded-full border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                                 isVoicePlaying
-                                  ? "bg-rose-500 text-white border-rose-500 shadow-xs"
+                                  ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-xs"
                                   : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:shadow-2xs"
                               }`}
                               title={isVoicePlaying ? "Stop voice preview" : `Preview ${v.name} voice`}
                             >
-                              {isVoicePlaying ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current" />}
+                              {isVoicePlaying ? (
+                                <>
+                                  <div className="flex items-end gap-0.5 h-3">
+                                    <span className="w-0.5 bg-white rounded-full animate-wave-1" />
+                                    <span className="w-0.5 bg-white rounded-full animate-wave-2" />
+                                    <span className="w-0.5 bg-white rounded-full animate-wave-3" />
+                                  </div>
+                                  <Square className="w-2.5 h-2.5 fill-current" />
+                                </>
+                              ) : (
+                                <Play className="w-3 h-3 fill-current" />
+                              )}
                             </button>
 
-                            {/* Selection Checkmark */}
-                            <div className="w-4 flex items-center justify-center">
-                              {isSelected && <Check className="w-4 h-4 text-[var(--color-primary)] stroke-[2.5]" />}
+                            {/* Selection Checkmark container with fixed width */}
+                            <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                              {isSelected ? (
+                                <Check className="w-4 h-4 text-[var(--color-primary)] stroke-[2.5]" />
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -638,16 +644,18 @@ export function Step3VoiceLanguage({
             )}
           </div>
 
-          {/* Quick Preview Button */}
+          {/* Quick Preview Button with Fixed Width to prevent layout jumping */}
           <Button
             type="button"
-            variant={isPlayingSample ? "danger" : "primary"}
+            variant="primary"
             size="sm"
             onClick={handlePlaySample}
             leftIcon={isPlayingSample ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            className="cursor-pointer text-xs h-10 px-4 font-semibold shrink-0"
+            className={`cursor-pointer text-xs h-10 px-4 font-semibold shrink-0 min-w-[130px] justify-center transition-all ${
+              isPlayingSample ? "bg-[var(--color-primary-hover)] ring-2 ring-[var(--color-primary)]/30" : ""
+            }`}
           >
-            {isPlayingSample ? "Stop" : "Preview Voice"}
+            {isPlayingSample ? "Stop Preview" : "Preview Voice"}
           </Button>
         </div>
         {audioError && <p className="text-[10px] text-[var(--color-danger)] font-medium">{audioError}</p>}
@@ -708,17 +716,62 @@ export function Step3VoiceLanguage({
               position="top"
             />
           </div>
-          <select
-            value={agentData.voice?.language || "en"}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            className="w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
-          >
-            {SUPPORTED_LANGUAGES.map((lang) => (
-              <option key={lang.code} value={lang.code}>
-                {lang.label}
-              </option>
-            ))}
-          </select>
+          {/* Custom Themed Language Dropdown */}
+          <div className="relative" ref={langDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
+              className={`w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2 focus:outline-none cursor-pointer transition-all ${
+                isLangDropdownOpen
+                  ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-xs"
+                  : "border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
+              }`}
+            >
+              <div className="flex items-center gap-2 truncate">
+                <Globe className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                <span className="truncate">
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === (agentData.voice?.language || "en"))?.label || "English (US / Global Standard)"}
+                </span>
+              </div>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[var(--color-muted)] shrink-0 transition-transform duration-200 ${
+                  isLangDropdownOpen ? "rotate-180 text-[var(--color-primary)]" : ""
+                }`}
+              />
+            </button>
+
+            {isLangDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-xl z-50 max-h-56 overflow-y-auto p-1 space-y-0.5 animate-fade-in scrollbar-thin">
+                {SUPPORTED_LANGUAGES.map((lang) => {
+                  const isSelected = (agentData.voice?.language || "en") === lang.code;
+                  return (
+                    <div
+                      key={lang.code}
+                      onClick={() => {
+                        handleLanguageChange(lang.code);
+                        setIsLangDropdownOpen(false);
+                      }}
+                      className={`w-full px-2.5 py-1.5 rounded-[var(--radius-main,0.25rem)] text-xs flex items-center justify-between gap-2 cursor-pointer transition-all select-none ${
+                        isSelected
+                          ? "bg-[var(--color-primary)] text-white font-semibold shadow-2xs"
+                          : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="text-[10px] font-mono opacity-80 uppercase w-4 shrink-0">
+                          {lang.code}
+                        </span>
+                        <span className="truncate">{lang.label}</span>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-white stroke-[2.5] shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -769,7 +822,7 @@ export function Step3VoiceLanguage({
                         }
                       })}
                       className={`p-3 rounded-[var(--radius-main,0.375rem)] border transition-all cursor-pointer flex flex-col justify-between select-none ${isSelected
-                          ? "bg-[var(--color-primary-light)]/20 border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]"
+                          ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/30 font-semibold"
                           : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
                         }`}
                     >

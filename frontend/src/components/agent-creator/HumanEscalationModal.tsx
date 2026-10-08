@@ -322,7 +322,7 @@ export function HumanEscalationModal({
                         type="button"
                         onClick={() => updateGuardrails({ human_transfer_fallback_action: item.id as any })}
                         className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${isSelected
-                            ? "bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-heading)] ring-1 ring-[var(--color-primary)]/40 shadow-xs"
+                            ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] text-[var(--color-heading)] ring-1 ring-[var(--color-primary)]/30 shadow-xs font-semibold"
                             : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]"
                           }`}
                       >

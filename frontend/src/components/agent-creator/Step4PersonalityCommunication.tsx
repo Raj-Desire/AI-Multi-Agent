@@ -92,7 +92,11 @@ function CustomToneSelect({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] flex items-center justify-between gap-2 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] font-semibold cursor-pointer transition-all hover:bg-[var(--color-surface)]"
+        className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] flex items-center justify-between gap-2 focus:outline-none font-semibold cursor-pointer transition-all hover:bg-[var(--color-surface)] ${
+          isOpen
+            ? "border-[var(--color-primary)]"
+            : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+        }`}
       >
         <div className="flex items-center gap-2 truncate">
           <div
@@ -1382,7 +1386,7 @@ export function Step4PersonalityCommunication({
                   onClick={() => setAgentData({ ...agentData, response_length: len.id })}
                   className={`p-2.5 rounded-[var(--radius-main,0.375rem)] border flex flex-col justify-between gap-1.5 cursor-pointer transition-all select-none text-left relative ${
                     isSelected
-                      ? "bg-[var(--color-primary)]/[0.04] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/40 shadow-2xs"
+                      ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] shadow-2xs font-semibold"
                       : "bg-[var(--color-surface-muted)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]/80"
                   }`}
                 >

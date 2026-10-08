@@ -582,3 +582,82 @@ Rewrite and enhance the system prompt to seamlessly incorporate this requirement
             "suggested_greeting": None,
             "summary_of_changes": f"Added instruction: {user_instruction.strip()}"
         }
+
+    async def quick_draft_agent(self, prompt: str) -> Dict[str, Any]:
+        """
+        Takes a natural 1-sentence description from the user (e.g. 'After-hours emergency dental appointment scheduling for Austin Dental Clinic')
+        and uses the configured LLM to craft a comprehensive, highly accurate agent profile with name, role, description,
+        objective, spoken greeting, agent_type, suggested communication style, and relevant skill badges.
+        """
+        system_instruction = """You are an elite AI Voice Architecture Engineer specializing in real-time conversational telephony assistants.
+A user will provide a brief 1-sentence description of their business, use-case, or telephone agent goal.
+
+YOUR TASK:
+Analyze the user's sentence and generate a structured, highly professional, production-ready telephone voice agent configuration in JSON.
+
+STRICT GUIDELINES:
+1. Do NOT mention third-party vendor names or provider names. Keep everything brand-neutral.
+2. The agent 'name' should be clean, distinctive, and professional (e.g., "Austin Dental Emergency Coordinator", "Summit Real Estate Tour Guide", "Elevate Order Care Agent").
+3. The 'role' should be a precise title (e.g., "Emergency Triage & Dental Scheduling Specialist", "Luxury Property Tour Advisor").
+4. The 'description' must be a clear, rich 2-3 sentence overview of what the agent handles over the telephone.
+5. The 'objective' must clearly state the business goal, what info it collects, and the desired outcome of calls.
+6. The 'greeting' must be a natural, conversational opening line for telephone calls (under 25 words). Never ask multiple questions in the greeting.
+7. 'agent_type' must be chosen from: ["marketing", "follow_up", "query_solver", "reminder", "lead_qualification", "booking", "support", "custom"].
+8. 'communication_style' should be one of: ["Professional + Friendly", "Empathetic + Warm", "Consultative + Confident", "Direct + Efficient"].
+9. 'response_length' should be one of: ["short", "balanced", "detailed"] (default "short" for phone calls).
+10. 'skills' must be a list of 3 to 6 practical capabilities (e.g. ["emergency_triage", "calendar_booking", "sms_confirmation", "crm_logging"]).
+11. 'matched_preset_id' if the intent aligns with one of: ["sales", "follow_up", "query_solver", "appointment_reminder", "lead_qualification", "support", "custom"].
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "name": string,
+  "role": string,
+  "description": string,
+  "objective": string,
+  "greeting": string,
+  "agent_type": string,
+  "communication_style": string,
+  "response_length": string,
+  "skills": string[],
+  "matched_preset_id": string
+}"""
+
+        user_prompt = f"USER GOAL / BUSINESS REQUIREMENT:\n{prompt.strip()}"
+
+        json_text = None
+        if self.is_azure_configured():
+            try:
+                json_text = await self._call_azure_openai(system_instruction, user_prompt)
+            except Exception as e:
+                print(f"[LLMGenerator] Azure OpenAI exception in quick_draft: {e}")
+
+        if not json_text and self.is_openai_configured():
+            try:
+                json_text = await self._call_standard_openai(system_instruction, user_prompt)
+            except Exception as e:
+                print(f"[LLMGenerator] OpenAI API exception in quick_draft: {e}")
+
+        if json_text:
+            try:
+                data = json.loads(json_text)
+                if isinstance(data, dict) and data.get("name") and data.get("description"):
+                    return data
+            except Exception as e:
+                print(f"[LLMGenerator] JSON parse error in quick_draft: {e}")
+
+        # Intelligent deterministic fallback if LLMs are unreachable or offline
+        words = [w for w in prompt.strip().split() if w]
+        clean_title = " ".join([w.capitalize() for w in words[:4]]) if words else "Voice Specialist"
+        return {
+            "name": f"{clean_title} Assistant",
+            "role": "Specialist Voice Assistant",
+            "description": f"Dedicated voice assistant handling inbound telephone inquiries and automated workflows for {prompt.strip()}.",
+            "objective": f"Efficiently assist callers with {prompt.strip()} and provide clear, polite guidance.",
+            "greeting": f"Hello! Thank you for calling. How can I assist you today?",
+            "agent_type": "support",
+            "communication_style": "Professional + Friendly",
+            "response_length": "short",
+            "skills": ["inquiry_handling", "call_notes", "transfer_call"],
+            "matched_preset_id": "custom"
+        }
+

@@ -766,7 +766,7 @@ export function Step6PromptInstructions({
                   onClick={() => setAgentData({ ...agentData, greeting: opt.text })}
                   className={`p-3 rounded-[var(--radius-main,0.375rem)] border text-left cursor-pointer transition-all flex flex-col justify-between gap-2 select-none relative ${
                     isSelected
-                      ? "bg-[var(--color-primary)]/[0.05] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/40 shadow-2xs"
+                      ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/30 shadow-2xs font-semibold"
                       : "bg-[var(--color-surface-muted)]/50 border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]"
                   }`}
                 >

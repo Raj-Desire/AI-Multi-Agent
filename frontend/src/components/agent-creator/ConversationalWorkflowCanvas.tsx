@@ -309,10 +309,10 @@ export function ConversationalWorkflowCanvas({
           return (
             <div
               key={stage.id}
-              className={`p-3.5 bg-[var(--color-surface)] border rounded-[var(--radius-main,0.5rem)] transition-all shadow-2xs ${
+              className={`p-3.5 border rounded-[var(--radius-main,0.5rem)] transition-all shadow-2xs ${
                 isExpanded
-                  ? "border-[var(--color-primary)]/70 ring-1 ring-[var(--color-primary)]/20"
-                  : "border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
+                  ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/25"
+                  : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))]"
               }`}
             >
               {/* Stage Header */}

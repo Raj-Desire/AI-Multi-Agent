@@ -11,6 +11,9 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
+      ringColor: {
+        DEFAULT: 'var(--color-primary-ring)',
+      },
     },
   },
   plugins: [],

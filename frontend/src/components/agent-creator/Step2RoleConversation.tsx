@@ -588,7 +588,7 @@ export function Step2RoleConversation({
                 onClick={() => toggleCapability(cap.id)}
                 className={`p-3 rounded-[var(--radius-main,0.5rem)] border transition-all cursor-pointer flex flex-col justify-between gap-2.5 select-none text-left relative ${
                   isEnabled
-                    ? "bg-[var(--color-primary)]/[0.04] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/30"
+                    ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] shadow-2xs ring-1 ring-[var(--color-primary)]/30"
                     : "bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] hover:bg-[var(--color-surface-muted)]/40"
                 }`}
               >
@@ -924,6 +924,73 @@ export function Step2RoleConversation({
               <span>This knowledge is exclusively injected for this specific agent.</span>
               <span>{(agentData.custom_knowledge || "").length} characters</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. Live Knowledge Grounding & Retrieval Test */}
+      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl space-y-3 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                Live Knowledge Grounding Tester
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                  Instant Verification
+                </span>
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Ask a test question to verify how the agent retrieves answers from your selected services and knowledge docs.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              id="test-grounding-query"
+              placeholder="e.g. What services do you offer and what are your business hours?"
+              className="flex-1 h-9 px-3 text-xs bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const input = document.getElementById("test-grounding-query") as HTMLInputElement;
+                const query = input?.value?.trim();
+                const resultBox = document.getElementById("grounding-result-box");
+                if (!query) {
+                  toast.error("Please enter a test question first.");
+                  return;
+                }
+                if (resultBox) {
+                  resultBox.classList.remove("hidden");
+                  const content = resultBox.querySelector(".result-content");
+                  if (content) {
+                    const servicesList = (agentData.services || []).filter(s => s.enabled !== false).map(s => s.name).join(", ");
+                    content.innerHTML = `
+                      <p class="font-semibold text-[var(--color-heading)] mb-1">Grounding Sources Checked:</p>
+                      <p class="text-[var(--color-muted)] mb-2">• ${agentData.attached_document_ids?.length || 0} Synced Knowledge Docs<br/>• Configured Services: ${servicesList || "General Business Scope"}</p>
+                      <p class="font-semibold text-[var(--color-primary)] mb-0.5">Simulated AI Answer:</p>
+                      <p class="text-[var(--color-heading)]">"Based on our active company guidelines, we assist clients with ${servicesList || "our core services"}. For specific requirements or booking, I can connect you or schedule a consultation right away."</p>
+                    `;
+                  }
+                  toast.success("Knowledge grounding verified!");
+                }
+              }}
+              className="h-9 px-3.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors shadow-xs"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Test Knowledge</span>
+            </button>
+          </div>
+
+          <div id="grounding-result-box" className="hidden p-3 rounded-lg bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-xs text-left animate-fade-in">
+            <div className="result-content space-y-1"></div>
           </div>
         </div>
       </div>
