@@ -10,7 +10,7 @@ import uuid
 from fastapi import HTTPException
 
 from app.core.dependencies import TenantContext
-from app.agents.configuration import AgentConfiguration, get_default_receptionist_agent
+from app.agents.configuration import AgentConfiguration, get_default_receptionist_agent, PromptVersionSnapshot
 from app.repositories.agent_repository import AgentRepository
 
 
@@ -174,4 +174,25 @@ class AgentService:
         return await self.agent_repo.delete(
             organization_id=existing.organization_id or ctx.organization_id,
             agent_id=agent_id
+        )
+
+    async def list_agent_versions(self, ctx: TenantContext, agent_id: str) -> List[PromptVersionSnapshot]:
+        """Lists historical snapshots for an agent within the tenant boundary."""
+        # Validate existence & tenant access
+        agent = await self.get_agent_by_id(ctx, agent_id)
+        return await self.agent_repo.list_versions(agent.organization_id or ctx.organization_id, agent_id)
+
+    async def rollback_agent_version(self, ctx: TenantContext, agent_id: str, target_version: int) -> AgentConfiguration:
+        """Rolls back an agent to a specified previous version with RBAC checks."""
+        agent = await self.get_agent_by_id(ctx, agent_id)
+        if agent.scope == "GLOBAL" and ctx.role != "superadmin":
+            raise HTTPException(status_code=403, detail="Only SuperAdmins can roll back Global platform templates.")
+        if agent.scope == "ORGANIZATION" and ctx.role not in ["admin", "superadmin"] and agent.owner_user_id != ctx.user_id:
+            raise HTTPException(status_code=403, detail="Permission denied to rollback this organization agent.")
+
+        return await self.agent_repo.rollback_version(
+            organization_id=agent.organization_id or ctx.organization_id,
+            agent_id=agent_id,
+            target_version=target_version,
+            rollback_by=ctx.user_id
         )

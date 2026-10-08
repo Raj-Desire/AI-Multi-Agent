@@ -146,14 +146,23 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           } else if (data.type === "audio" && data.payload) {
             playIncomingHDLinearAudio(data.payload, data.sample_rate || 24000, data.encoding || "linear16");
           } else if (data.type === "transcript") {
-            setTranscriptMessages((prev) => [
-              ...prev,
-              {
-                role: data.role === "user" ? "user" : "assistant",
-                content: data.content,
-                turn_latency_ms: data.latency_ms,
-              },
-            ]);
+            setTranscriptMessages((prev) => {
+              // If backend sends back the user message that was already optimistically displayed, don't duplicate it
+              if (data.role === "user" && prev.length > 0) {
+                const last = prev[prev.length - 1];
+                if (last.role === "user" && last.content.trim() === (data.content || "").trim()) {
+                  return prev;
+                }
+              }
+              return [
+                ...prev,
+                {
+                  role: data.role === "user" ? "user" : "assistant",
+                  content: data.content,
+                  turn_latency_ms: data.latency_ms,
+                },
+              ];
+            });
             if (data.role === "assistant") {
               setIsAgentSpeaking(false);
               setLatestLatency((prev) => ({ ...prev, turn: data.latency_ms || prev.turn }));
@@ -170,6 +179,16 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             clearAudioQueue();
           } else if (data.event_type === "UserStoppedSpeaking" || data.type === "event" && data.event_type === "UserStoppedSpeaking") {
             setIsUserSpeaking(false);
+          } else if (data.type === "agent_handoff") {
+            console.info(`[VoicePlayground] Swapped to specialist: ${data.target_agent_name} (${data.target_agent_id})`);
+            setTranscriptMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `⚡ Swapped to specialist: ${data.target_agent_name || data.target_agent_id}`,
+                turn_latency_ms: 0,
+              },
+            ]);
           } else if (data.type === "call_concluded") {
             // In Live Playground mode, do NOT auto-stop session — keep session listening continuously until user clicks Stop
             console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");

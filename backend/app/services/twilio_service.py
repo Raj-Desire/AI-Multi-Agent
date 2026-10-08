@@ -407,10 +407,15 @@ class TwilioService:
         call_sid: str,
         destination_phone: str,
         caller_id: Optional[str] = None,
-        whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist."
+        whisper_message: Optional[str] = "Please hold while we transfer you to a human specialist.",
+        timeout_seconds: int = 25,
+        fallback_action: str = "hangup",
+        fallback_message: Optional[str] = "Our specialists are currently unavailable. We have noted your request and will follow up shortly.",
+        action_callback_url: Optional[str] = None
     ) -> bool:
         """
         Transfers an in-flight Twilio call dynamically to a live human representative or team using TwiML <Dial>.
+        Supports dial timeout and fallback handling if the human representative does not answer.
         """
         cfg = await self.repo.get_by_org(org_id)
         if not cfg or not cfg.account_sid or not cfg.encrypted_auth_token:
@@ -419,12 +424,28 @@ class TwilioService:
 
         caller_num = caller_id or (cfg.phone_number.split(",")[0].strip() if cfg.phone_number else None)
         caller_id_attr = f' callerId="{caller_num}"' if caller_num else ""
+        timeout_attr = f' timeout="{max(5, min(120, timeout_seconds))}"'
+        action_attr = f' action="{action_callback_url}"' if action_callback_url else ""
         whisper_twiml = f'<Say>{whisper_message}</Say>' if whisper_message else ""
+
+        # Post-dial fallback block executed if <Dial> is unanswered or busy
+        fallback_twiml = ""
+        if fallback_action == "hangup":
+            msg = fallback_message or "Thank you for calling. Goodbye."
+            fallback_twiml = f'<Say>{msg}</Say><Hangup/>'
+        elif fallback_action == "voicemail":
+            msg = fallback_message or "Please leave a voicemail after the tone."
+            fallback_twiml = f'<Say>{msg}</Say><Record maxLength="60" playBeep="true"/><Hangup/>'
+        else:
+            # Continue / re-engage message
+            msg = fallback_message or "Thank you for holding. We will follow up shortly."
+            fallback_twiml = f'<Say>{msg}</Say><Hangup/>'
 
         transfer_twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {whisper_twiml}
-    <Dial{caller_id_attr}>{destination_phone}</Dial>
+    <Dial{caller_id_attr}{timeout_attr}{action_attr}>{destination_phone}</Dial>
+    {fallback_twiml}
 </Response>"""
 
         def _sync_transfer():

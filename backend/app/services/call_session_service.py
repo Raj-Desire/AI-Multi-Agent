@@ -207,7 +207,11 @@ class CallSessionService:
         try:
             from app.services.call_analytics_service import CallAnalyticsService
             analytics_svc = CallAnalyticsService()
-            analytics_data = await analytics_svc.analyze_call_transcript(transcript_records)
+            analytics_data = await analytics_svc.analyze_call_transcript(
+                transcript_records,
+                call_duration=session.call_duration or 0,
+                call_status=final_status
+            )
             logger.info(
                 f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
                 f"Score={analytics_data.get('lead_score')}, Interest='{analytics_data.get('interest_level')}', "

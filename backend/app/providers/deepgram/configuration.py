@@ -42,8 +42,14 @@ class DeepgramThinkProvider(BaseModel):
     temperature: float = 0.7
 
 
+class DeepgramThinkEndpoint(BaseModel):
+    url: str
+    headers: Dict[str, str] = Field(default_factory=dict)
+
+
 class DeepgramThinkConfig(BaseModel):
     provider: DeepgramThinkProvider = Field(default_factory=DeepgramThinkProvider)
+    endpoint: Optional[DeepgramThinkEndpoint] = None
     prompt: str
     functions: List[Dict[str, Any]] = Field(default_factory=list)
 
@@ -80,6 +86,13 @@ class DeepgramInjectAgentMessage(BaseModel):
     type: str = "InjectAgentMessage"
     message: str
     behavior: str = "default"  # "default" | "queue" | "interrupt"
+
+
+class DeepgramInjectUserMessage(BaseModel):
+    """Payload to simulate a user speech turn by injecting text directly into the conversation."""
+    type: str = "InjectUserMessage"
+    content: str
+
 
 
 class DeepgramUpdatePrompt(BaseModel):

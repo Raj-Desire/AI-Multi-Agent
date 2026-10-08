@@ -248,6 +248,7 @@ export interface AgentPersonality {
 export interface AgentServiceItem {
   name: string;
   description: string;
+  price?: string;
   enabled: boolean;
   priority: number;
 }
@@ -286,6 +287,75 @@ export interface PronunciationRule {
   word: string;
   phonetic: string;
   category?: 'indian_places' | 'acronyms' | 'brand' | 'custom' | string;
+}
+
+export interface WorkflowBranch {
+  condition_label: string;
+  target_stage_id: string;
+  keywords?: string[];
+  description?: string;
+}
+
+export interface WorkflowStageNode {
+  id: string;
+  title: string;
+  stage_type: 'greeting' | 'discovery' | 'qualification' | 'knowledge' | 'objection' | 'action' | 'closing' | 'escalation' | 'custom' | string;
+  instruction: string;
+  required_variables?: string[];
+  key_points?: string[];
+  branches?: WorkflowBranch[];
+  order: number;
+  is_terminal?: boolean;
+}
+
+export interface PromptVersionSnapshot {
+  id: string;
+  agent_id: string;
+  organization_id: string;
+  version: number;
+  system_prompt?: string | null;
+  greeting?: string | null;
+  role?: string | null;
+  objective?: string | null;
+  workflow_stages?: WorkflowStageNode[];
+  summary_of_changes?: string;
+  created_at: string;
+  created_by?: string | null;
+}
+
+export interface PromptTestCase {
+  id: string;
+  name: string;
+  caller_utterance: string;
+  expected_intent?: string;
+  required_keywords?: string[];
+  forbidden_keywords?: string[];
+  max_sentences?: number;
+  expected_sentiment?: string;
+  description?: string;
+}
+
+export interface TestCaseAssertionResult {
+  test_case_id: string;
+  name: string;
+  passed: boolean;
+  caller_utterance: string;
+  simulated_response: string;
+  sentence_count: number;
+  max_sentences_allowed: number;
+  missing_required_keywords: string[];
+  found_forbidden_keywords: string[];
+  latency_ms: number;
+  failure_reasons: string[];
+}
+
+export interface RegressionTestRunResponse {
+  total_tests: number;
+  passed_tests: number;
+  failed_tests: number;
+  pass_rate_percent: number;
+  average_latency_ms: number;
+  results: TestCaseAssertionResult[];
 }
 
 export interface AgentListenConfig {
@@ -332,6 +402,9 @@ export interface AgentGuardrails {
   human_transfer_enabled?: boolean;
   human_transfer_phone_number?: string;
   human_transfer_whisper_message?: string;
+  human_transfer_timeout_seconds?: number;
+  human_transfer_fallback_action?: 'hangup' | 'voicemail' | 're_engage';
+  human_transfer_fallback_message?: string;
 }
 
 export interface BusinessServiceItem {
@@ -353,28 +426,6 @@ export interface CompanyFAQItem {
   answer: string;
   category?: string;
   enabled: boolean;
-}
-
-export interface CompanyBusinessProfile {
-  id?: string;
-  organization_id: string;
-  company_name: string;
-  tagline?: string;
-  company_introduction: string;
-  email: string;
-  phone: string;
-  website?: string;
-  address: string;
-  city: string;
-  state: string;
-  country: string;
-  operating_hours: BusinessHours;
-  services: BusinessServiceItem[];
-  faqs: CompanyFAQItem[];
-  allow_user_edits?: boolean;
-  additional_notes?: string;
-  updated_at?: string;
-  updated_by?: string;
 }
 
 export interface AgentConfig {
@@ -414,6 +465,41 @@ export interface AgentConfig {
   custom_knowledge?: string | null;
   pronunciation_rules?: PronunciationRule[];
   few_shot_examples?: FewShotExample[];
+  workflow_stages?: WorkflowStageNode[];
+  // Multi-Agent Orchestrator fields
+  is_orchestrator?: boolean;
+  orchestrator_config?: {
+    child_agent_ids: string[];
+    routing_strategy: 'intent' | 'sequential' | 'round_robin';
+    intent_routing_rules: Array<{
+      intent_keywords: string[];
+      target_agent_id: string;
+      target_agent_name: string;
+      priority: number;
+      transition_intro?: string;
+      confidence_threshold?: number;
+    }>;
+    fallback_agent_id?: string;
+    suppress_child_greeting?: boolean;
+    handoff_summary_enabled?: boolean;
+    shared_context_fields?: string[];
+    auto_return_to_orchestrator?: boolean;
+  };
+  parent_orchestrator_id?: string;
+  agent_entity_scope?: string;
+  /** This agent's own hours/timezone; overrides the organization business profile */
+  /** Business details this agent represents (per agent; no organization profile) */
+  company_name?: string;
+  company_phone?: string;
+  company_email?: string;
+  company_website?: string;
+  office_address?: string;
+  operating_hours?: {
+    days?: string;
+    hours?: string;
+    timezone?: string;
+    closed_on?: string;
+  };
   created_at?: string;
   updated_at?: string;
 }
@@ -1018,6 +1104,57 @@ export interface LeadActionRequest {
   tags?: string[];
   assigned_owner?: string;
 }
+
+export interface CohortStageMetrics {
+  interval_index: number;
+  interval_label: string;
+  engaged_count: number;
+  engaged_pct: number;
+  qualified_count: number;
+  qualified_pct: number;
+  callback_count: number;
+  callback_pct: number;
+  converted_count: number;
+  converted_pct: number;
+}
+
+export interface CohortGroup {
+  cohort_key: string;
+  cohort_label: string;
+  initial_prospects: number;
+  stages: CohortStageMetrics[];
+}
+
+export interface CohortAnalyticsResponse {
+  group_by: string;
+  total_cohorts: number;
+  total_tracked_prospects: number;
+  overall_qualification_rate: number;
+  overall_conversion_rate: number;
+  cohorts: CohortGroup[];
+}
+
+export interface SignalRule {
+  id: string;
+  phrase: string;
+  weight: number;
+  category: "buying_intent" | "decision_maker" | "budget_approved" | "objection" | "negative";
+}
+
+export interface LeadQualificationRules {
+  organization_id: string;
+  qualification_threshold: number;
+  warm_threshold: number;
+  cold_threshold: number;
+  positive_signals: SignalRule[];
+  negative_signals: SignalRule[];
+  auto_qualify_on_budget_approval: boolean;
+  auto_tag_qualified_leads: boolean;
+  qualification_tag: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
 
 export interface KnowledgeDocument {
   id: string;

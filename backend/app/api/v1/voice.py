@@ -15,6 +15,8 @@ from app.schemas.common import ApiResponse
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster
 from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
+from app.agents.handoff_controller import HandoffController
+from app.api.v1.think_proxy import attach_think_proxy, think_proxy_requested, unregister_call_state
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
 from app.repositories.twilio_repository import TwilioRepository
@@ -52,6 +54,8 @@ from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.runtime import AgentRuntimeBuilder
+from app.agents.orchestrator import AgentOrchestrator
+from app.agents.handoff_controller import HandoffController
 import time
 import re
 
@@ -193,8 +197,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         except Exception:
             pass
 
+    # Multi-Agent Orchestrator state
+    orchestrator: Optional[AgentOrchestrator] = None
+    handoff_controller: Optional[HandoffController] = None
+    preview_proxy_token: Optional[str] = None
+    live_transcript_turns: List[Dict[str, str]] = []
+    turn_counter: int = 0
+
     async def handle_dg_transcript(role: str, content: str):
         nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
+        nonlocal live_transcript_turns, turn_counter, orchestrator, handoff_controller, is_concluding_call
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
@@ -202,8 +214,19 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             last_user_speech_time = time.time()
             is_user_speaking = False
             has_reprompted_silence = False
+            turn_counter += 1
+            live_transcript_turns.append({"role": "user", "content": content})
+
+            # Multi-Agent Orchestrator: Submit for Handoff Evaluation
+            if handoff_controller and not is_concluding_call:
+                handoff_controller.submit(content, turn_number=turn_counter)
         else:
             is_agent_speaking = True
+            live_transcript_turns.append({"role": "assistant", "content": content})
+
+            # Steady-State Prompt Swap Following Assistant Response
+            if handoff_controller:
+                asyncio.create_task(handoff_controller.on_assistant_turn(content))
 
         try:
             await websocket.send_json({
@@ -347,16 +370,25 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                             greeting="Hello! I am ready to test."
                         )
 
-                    from app.repositories.business_profile_repository import BusinessProfileRepository
+                    from app.repositories.platform_rules_repository import PlatformRulesRepository
                     target_org_id = agent_config.organization_id
                     if not target_org_id or target_org_id == "default":
                         target_org_id = "org_platform_root"
-                    business_profile = await BusinessProfileRepository.get_profile(target_org_id)
+                    business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
+                    cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
                     deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                         agent_config,
                         business_profile=business_profile,
+                        platform_rules=cached_platform_rules,
                         audio_profile="playground"
                     )
+
+                    if handoff_controller:
+                        handoff_controller.close()
+                        handoff_controller = None
+                    if preview_proxy_token:
+                        unregister_call_state(preview_proxy_token)
+                        preview_proxy_token = None
 
                     if lifecycle_task:
                         lifecycle_task.cancel()
@@ -364,6 +396,79 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
                     if deepgram_client:
                         await deepgram_client.close()
+                        deepgram_client = None
+
+                    # ── Multi-Agent Orchestrator Initialization for Browser Preview ──
+                    orchestrator = None
+                    live_transcript_turns.clear()
+                    turn_counter = 0
+
+                    if agent_config.is_orchestrator and agent_config.orchestrator_config:
+                        try:
+                            child_ids = agent_config.orchestrator_config.child_agent_ids
+                            child_map: dict = {}
+                            effective_org = target_org_id or "global"
+                            for cid in child_ids:
+                                try:
+                                    c_cfg = await agent_repo.get_by_id(effective_org, cid)
+                                    if c_cfg:
+                                        child_map[cid] = c_cfg
+                                        logger.info(f"[Orchestrator:Preview] Loaded child agent '{cid}' → '{c_cfg.name}'")
+                                except Exception as c_err:
+                                    logger.warning(f"[Orchestrator:Preview] Could not load child agent '{cid}': {c_err}")
+
+                            if child_map:
+                                orchestrator = AgentOrchestrator(
+                                    orchestrator_config=agent_config,
+                                    child_agents=child_map,
+                                    business_profile=business_profile or {},
+                                )
+                                # Boost Voice Engine STT keyterms with orchestrator's high-weight terms (capped at 100)
+                                orch_keyterms = orchestrator.get_stt_keyterms()
+                                if orch_keyterms and deepgram_settings.agent.listen and deepgram_settings.agent.listen.provider:
+                                    current_kts = deepgram_settings.agent.listen.provider.keyterms or []
+                                    merged_kts = list(current_kts)
+                                    for kt in orch_keyterms:
+                                        if kt not in merged_kts:
+                                            merged_kts.append(kt)
+                                    deepgram_settings.agent.listen.provider.keyterms = merged_kts[:100]
+
+                                logger.info(
+                                    f"[Orchestrator:Preview] Orchestrator active with {len(child_map)} child agents."
+                                )
+
+                                # Think Proxy removes the one-turn prompt-swap lag (needs a public HTTPS URL)
+                                if think_proxy_requested(agent_config.orchestrator_config):
+                                    async def _on_preview_proxy_committed(specialist_cfg, decision, context):
+                                        nonlocal agent_config
+                                        agent_config = specialist_cfg
+                                        try:
+                                            await websocket.send_json({
+                                                "type": "agent_handoff",
+                                                "target_agent_id": decision.target_agent_id,
+                                                "target_agent_name": decision.target_agent_name,
+                                                "keyword": decision.matched_keyword,
+                                                "reason": decision.reason,
+                                                "confidence": getattr(decision, "confidence", 0.0),
+                                                "margin": getattr(decision, "margin", 0.0),
+                                                "matched_terms": getattr(decision, "matched_terms", []),
+                                            })
+                                        except Exception:
+                                            pass
+
+                                    if preview_proxy_token:
+                                        unregister_call_state(preview_proxy_token)
+                                    preview_proxy_token = attach_think_proxy(
+                                        deepgram_settings,
+                                        orchestrator,
+                                        call_id=f"preview_{agent_config.agent_id}_{int(time.time())}",
+                                        tenant_id=effective_org,
+                                        platform_rules=cached_platform_rules,
+                                        on_committed=_on_preview_proxy_committed,
+                                    )
+                        except Exception as orch_e:
+                            logger.error(f"[Orchestrator:Preview] Failed to initialize orchestrator: {orch_e}")
+                    # ──────────────────────────────────────────────────────────────────
 
                     # Reset state
                     call_start_time = time.time()
@@ -375,6 +480,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     has_reprompted_silence = False
                     call_ended_event.clear()
 
+                    async def handle_dg_error(err_str: str):
+                        logger.error(f"[VoicePreview] Voice engine reported error: {err_str}")
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Voice engine notice: {err_str}"
+                            })
+                        except Exception:
+                            pass
+
                     deepgram_client = DeepgramVoiceAgentClient(
                         on_audio=handle_dg_audio,
                         on_event=handle_dg_event,
@@ -382,8 +497,47 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         on_user_speaking=handle_dg_user_speaking,
                         on_agent_thinking=handle_dg_agent_thinking,
                         on_agent_speaking=handle_dg_agent_speaking,
-                        on_agent_audio_done=handle_dg_agent_audio_done
+                        on_agent_audio_done=handle_dg_agent_audio_done,
+                        on_error=handle_dg_error
                     )
+
+                    # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
+                    if orchestrator and not preview_proxy_token:
+                        async def _on_preview_handoff_committed(specialist_cfg, decision, context):
+                            nonlocal agent_config
+                            agent_config = specialist_cfg
+                            try:
+                                await websocket.send_json({
+                                    "type": "agent_handoff",
+                                    "target_agent_id": decision.target_agent_id,
+                                    "target_agent_name": decision.target_agent_name,
+                                    "keyword": decision.matched_keyword,
+                                    "reason": decision.reason,
+                                    "confidence": getattr(decision, "confidence", 0.0),
+                                    "margin": getattr(decision, "margin", 0.0),
+                                    "runner_up_agent_id": getattr(decision, "runner_up_agent_id", None),
+                                    "runner_up_score": getattr(decision, "runner_up_score", 0.0),
+                                    "matched_terms": getattr(decision, "matched_terms", []),
+                                })
+                            except Exception:
+                                pass
+
+                        async def _on_preview_handoff_failed(decision, reason):
+                            logger.warning(
+                                f"[Orchestrator:Preview] Handoff failed: target='{decision.target_agent_id if decision else None}' "
+                                f"reason='{reason}'"
+                            )
+
+                        handoff_controller = HandoffController(
+                            orchestrator=orchestrator,
+                            deepgram_client=deepgram_client,
+                            on_committed=_on_preview_handoff_committed,
+                            on_failed=_on_preview_handoff_failed,
+                            is_concluding=lambda: is_concluding_call,
+                            get_transcript_turns=lambda: live_transcript_turns,
+                            platform_rules=cached_platform_rules,
+                            ack_timeout=1.0,
+                        )
 
                     try:
                         raw_greeting = greeting or agent_config.greeting
@@ -404,10 +558,10 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                             "sample_rate": 24000,
                             "encoding": "linear16"
                         })
-                        logger.info("[VoicePreview] Deepgram agent connected in HD Studio mode (24kHz Linear PCM) for in-browser preview.")
+                        logger.info("[VoicePreview] Voice agent connected in HD Studio mode (24kHz Linear PCM) for in-browser preview.")
                         lifecycle_task = asyncio.create_task(preview_lifecycle_monitor())
                     except Exception as dg_err:
-                        logger.error(f"[VoicePreview] Failed to configure Deepgram: {dg_err}")
+                        logger.error(f"[VoicePreview] Failed to configure voice agent: {dg_err}")
                         await websocket.send_json({
                             "type": "error",
                             "message": str(dg_err)
@@ -430,11 +584,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     if new_prompt and deepgram_client and deepgram_client.is_ready:
                         await deepgram_client.update_prompt(new_prompt)
 
-                # Inject specific speech text
+                # Inject manual user message (simulates user speech turn for typed input)
                 elif msg_type == "inject_text":
                     text = data.get("text")
                     if text and deepgram_client and deepgram_client.is_ready:
-                        await deepgram_client.inject_agent_message(text)
+                        await deepgram_client.inject_user_message(text)
+
 
                 # Heartbeat ping/pong
                 elif msg_type == "ping":
@@ -443,6 +598,11 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 # Stop preview session
                 elif msg_type == "stop":
                     call_ended_event.set()
+                    if handoff_controller:
+                        handoff_controller.close()
+                    if preview_proxy_token:
+                        unregister_call_state(preview_proxy_token)
+                        preview_proxy_token = None
                     if lifecycle_task:
                         lifecycle_task.cancel()
                         lifecycle_task = None
@@ -456,6 +616,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         logger.error(f"[VoicePreview] Unexpected error: {e}")
     finally:
         call_ended_event.set()
+        if handoff_controller:
+            handoff_controller.close()
+            handoff_controller = None
+        if preview_proxy_token:
+            unregister_call_state(preview_proxy_token)
+            preview_proxy_token = None
         if lifecycle_task:
             lifecycle_task.cancel()
             lifecycle_task = None
@@ -475,7 +641,7 @@ SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
-    Synthesizes a sample audio snippet using Deepgram Aura Text-to-Speech.
+    Synthesizes a sample audio snippet using Aura Text-to-Speech.
     Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
     import os

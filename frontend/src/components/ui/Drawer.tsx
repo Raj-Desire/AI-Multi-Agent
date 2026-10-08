@@ -29,11 +29,9 @@ export const Drawer: React.FC<DrawerProps> = ({
       }
     };
     if (isOpen) {
-      document.body.style.overflow = "hidden";
       window.addEventListener("keydown", handleKeyDown);
     }
     return () => {
-      document.body.style.overflow = "unset";
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -62,7 +60,7 @@ export const Drawer: React.FC<DrawerProps> = ({
 
       {/* Drawer Panel */}
       <div
-        className={`ui-drawer-panel fixed ${positionClasses[position]} ${sizeClasses[size]} bg-[var(--color-surface)] border-[var(--color-border)] shadow-xl z-10 flex flex-col justify-between text-left`}
+        className={`ui-drawer-panel fixed ${positionClasses[position]} ${sizeClasses[size]} bg-[var(--color-surface)] border-[var(--color-border)] shadow-2xl z-10 flex flex-col h-full max-h-screen text-left`}
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">

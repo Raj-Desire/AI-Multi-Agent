@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Optional
+from typing import Any, Dict, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.voice.audio import AudioAdapter
@@ -19,6 +19,10 @@ from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEven
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
 from app.agents.runtime import AgentRuntimeBuilder
+from app.agents.orchestrator import AgentOrchestrator, HandoffContext
+from app.agents.handoff_controller import HandoffController
+from app.api.v1.think_proxy import attach_think_proxy, think_proxy_requested, unregister_call_state
+from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
 from app.services.twilio_service import TwilioService
@@ -53,6 +57,8 @@ async def voice_stream_websocket(websocket: WebSocket):
     deepgram_client: Optional[DeepgramVoiceAgentClient] = None
     stream_sid: Optional[str] = None
     call_sid: Optional[str] = None
+    proxy_token: Optional[str] = None
+    use_think_proxy: bool = False
     turn_start_time: float = time.perf_counter()
 
     # Call lifecycle state
@@ -66,11 +72,22 @@ async def voice_stream_websocket(websocket: WebSocket):
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
     is_concluding_call: bool = False
+    is_transferred: bool = False
     is_interrupted: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
     barge_in_debounce_task: Optional[asyncio.Task] = None
+
+    # Multi-Agent Orchestrator runtime state
+    orchestrator: Optional[AgentOrchestrator] = None
+    handoff_controller: Optional[HandoffController] = None
+    live_transcript_turns: list = []  # [{"role": str, "content": str}]
+    turn_counter: int = 0
+
+    # Cached call-local configurations (loaded once per call at setup)
+    cached_rules_map: dict = {}
+    cached_inbound_forward_number: Optional[str] = None
 
     # Outbound audio metrics
     outbound_chunk_counter: int = 0
@@ -224,6 +241,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     async def handle_transcript(role: str, content: str):
         """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
         nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke
+        nonlocal orchestrator, live_transcript_turns, handoff_controller, turn_counter, cached_rules_map, cached_inbound_forward_number
         if not session:
             return
 
@@ -236,18 +254,20 @@ async def voice_stream_websocket(websocket: WebSocket):
             is_user_speaking = False
             user_spoke = True
             has_reprompted_silence = False
+            live_transcript_turns.append({"role": "user", "content": content})
+            turn_counter += 1
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
 
-            # Smart IVR & Answering Machine Detection (AMD)
+            # ── Multi-Agent Orchestrator: Submit for Handoff Evaluation ──────
+            if handoff_controller and not is_concluding_call:
+                handoff_controller.submit(content, turn_number=turn_counter)
+            # ─────────────────────────────────────────────────────────────────
+
+            # Smart IVR & Answering Machine Detection (AMD) using pre-cached rules
             if not is_concluding_call:
                 try:
                     from app.voice.ivr_detector import SmartIVRDetector
-                    from app.repositories.platform_rules_repository import PlatformRulesRepository
-                    
-                    active_rules_list = PlatformRulesRepository.get_active_rule_directives_sync()
-                    rules_map = {r["id"]: True for r in active_rules_list}
-                    
-                    ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=rules_map)
+                    ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=cached_rules_map)
                     if ivr_res.is_ivr:
                         logger.warning(
                             f"[VoiceGateway:IVR_DETECTED] Machine detected! "
@@ -269,23 +289,25 @@ async def voice_stream_websocket(websocket: WebSocket):
                     logger.error(f"[VoiceGateway] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
+            live_transcript_turns.append({"role": "assistant", "content": content})
             await call_session_service.record_agent_transcript(
                 session,
                 content,
                 turn_latency_ms=turn_latency
             )
+
+            # ── Steady-State Prompt Swap Following Assistant Response ────────
+            if handoff_controller:
+                asyncio.create_task(handoff_controller.on_assistant_turn(content))
+            # ─────────────────────────────────────────────────────────────────
+
             # Check for live human transfer cues in Assistant speech
             lower_content = content.lower()
             transfer_target = getattr(agent_config.guardrails, "human_transfer_phone_number", None) if (agent_config and agent_config.guardrails and getattr(agent_config.guardrails, "human_transfer_enabled", True)) else None
             
-            # Fallback to Twilio config default forward number if no agent-specific transfer number configured
-            if not transfer_target and session and session.organization_id:
-                try:
-                    tw_cfg_target = await twilio_repo.get_by_org(session.organization_id)
-                    if tw_cfg_target and tw_cfg_target.inbound_forward_global_number:
-                        transfer_target = tw_cfg_target.inbound_forward_global_number
-                except Exception:
-                    pass
+            # Fallback to pre-cached Twilio config default forward number if no agent-specific transfer number configured
+            if not transfer_target and cached_inbound_forward_number:
+                transfer_target = cached_inbound_forward_number
 
             is_transfer_announcement = any(k in lower_content for k in [
                 "transferring you to", "transfer you to", "connect you with a human",
@@ -314,7 +336,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def transfer_call_to_human(destination_phone: str, whisper_msg: Optional[str] = None):
         """Transfers the live Twilio call to a human phone number and concludes AI stream."""
-        nonlocal session, call_ended_event, is_concluding_call
+        nonlocal session, call_ended_event, is_concluding_call, is_transferred
         if is_concluding_call:
             return
         is_concluding_call = True
@@ -332,6 +354,12 @@ async def voice_stream_websocket(websocket: WebSocket):
 
         await asyncio.sleep(2.0)  # Allow speech playback to complete
         
+        # Extract configured fallback settings
+        gr = getattr(agent_config, "guardrails", None)
+        timeout_sec = getattr(gr, "human_transfer_timeout_seconds", 25) if gr else 25
+        fallback_act = getattr(gr, "human_transfer_fallback_action", "hangup") if gr else "hangup"
+        fallback_msg = getattr(gr, "human_transfer_fallback_message", "Our representatives are currently busy. We have logged your request and will follow up shortly.") if gr else None
+
         try:
             if session and session.twilio_call_sid and session.organization_id:
                 success = await twilio_service.transfer_call(
@@ -339,12 +367,16 @@ async def voice_stream_websocket(websocket: WebSocket):
                     call_sid=session.twilio_call_sid,
                     destination_phone=destination_phone,
                     caller_id=session.phone_number,
-                    whisper_message=None  # Already announced by AI
+                    whisper_message=None,  # Already announced by AI
+                    timeout_seconds=timeout_sec,
+                    fallback_action=fallback_act,
+                    fallback_message=fallback_msg
                 )
                 if success:
+                    is_transferred = True
                     session.outcome = "TRANSFERRED_TO_HUMAN"
                     session.business_outcome = "Transferred to Human Specialist"
-                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded.")
+                    logger.info(f"[VoiceGateway] Live call transfer to {destination_phone} succeeded (timeout={timeout_sec}s, fallback={fallback_act}).")
                 else:
                     logger.error(f"[VoiceGateway] Live call transfer to {destination_phone} failed.")
         except Exception as transfer_err:
@@ -356,10 +388,13 @@ async def voice_stream_websocket(websocket: WebSocket):
         except Exception:
             pass
 
+
     async def terminate_call():
         """Gracefully terminates the Twilio call and closes connections."""
-        nonlocal session, call_ended_event
+        nonlocal session, call_ended_event, handoff_controller
         call_ended_event.set()
+        if handoff_controller:
+            handoff_controller.close()
         await asyncio.sleep(1.2)  # Allow Twilio buffer delivery
         try:
             if session and session.twilio_call_sid and session.organization_id:
@@ -422,17 +457,23 @@ async def voice_stream_websocket(websocket: WebSocket):
                                 await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
                                 last_backchannel_time = now
 
-                # 1. Dynamic Maximum Call Duration Check
-                if elapsed_call_time >= active_limit and not is_concluding_call:
-                    # If customer is speaking, allow current turn to finish
+                # 1. Smart Minute-Boundary Protection Check (conclude at selected_duration - 5s to avoid rolling into next billed minute)
+                # e.g., 1 min (60s) -> triggers conclusion at 55s, 3 min (180s) -> triggers conclusion at 175s, 5 min (300s) -> triggers at 295s
+                conclude_threshold = max(10, active_limit - 5) if active_limit >= 20 else active_limit
+                if elapsed_call_time >= conclude_threshold and not is_concluding_call:
+                    # If customer is actively speaking, allow current turn to finish naturally
                     if is_user_speaking:
                         continue
 
                     norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
-                    logger.info(f"[VoiceGateway] Dynamic call duration ({active_limit}s, user_spoke={user_spoke}) reached. Speaking conclusion message.")
+                    logger.info(
+                        f"[VoiceGateway] Smart Minute-Boundary Protection triggered: elapsed={elapsed_call_time:.1f}s, "
+                        f"threshold={conclude_threshold}s (limit={active_limit}s, user_spoke={user_spoke}). Speaking conclusion message."
+                    )
                     is_concluding_call = True
                     await deepgram_client.inject_agent_message(norm_conclusion)
-                    asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                    # Allow 3.5s for audio playback, then hangup before the minute boundary
+                    asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                     break
 
                 # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
@@ -572,10 +613,92 @@ async def voice_stream_websocket(websocket: WebSocket):
                 agent_config._call_direction = direction
                 agent_config._prospect_data = prospect_data or {}
 
-                # 2. Build Deepgram Settings via AgentRuntimeBuilder (with Business Profile Knowledge Base)
-                from app.repositories.business_profile_repository import BusinessProfileRepository
-                business_profile = await BusinessProfileRepository.get_profile(org_id)
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(agent_config, business_profile=business_profile)
+                # 2. Pre-fetch platform rules and Twilio configuration once per call at setup
+                cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
+                cached_rules_map = {r["id"]: True for r in cached_platform_rules} if cached_platform_rules else {}
+                cached_tw = None
+                if session and session.organization_id:
+                    try:
+                        cached_tw = await twilio_repo.get_by_org(session.organization_id)
+                        if cached_tw and cached_tw.inbound_forward_global_number:
+                            cached_inbound_forward_number = cached_tw.inbound_forward_global_number
+                    except Exception as tw_err:
+                        logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
+
+                business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
+                    agent_config,
+                    business_profile=business_profile,
+                    platform_rules=cached_platform_rules,
+                )
+
+                # ── Multi-Agent Orchestrator Initialization ────────────────────────
+                if agent_config.is_orchestrator and agent_config.orchestrator_config:
+                    try:
+                        child_agent_ids = agent_config.orchestrator_config.child_agent_ids
+                        child_agents_map: dict = {}
+                        for child_id in child_agent_ids:
+                            try:
+                                child_cfg = await agent_service.get_agent_by_id(ctx, child_id)
+                                child_agents_map[child_id] = child_cfg
+                                logger.info(f"[Orchestrator:Gateway] Loaded child agent '{child_id}' → '{child_cfg.name}'")
+                            except Exception as child_err:
+                                logger.warning(f"[Orchestrator:Gateway] Could not load child agent '{child_id}': {child_err}")
+
+                        if child_agents_map:
+                            orchestrator = AgentOrchestrator(
+                                orchestrator_config=agent_config,
+                                child_agents=child_agents_map,
+                                business_profile=business_profile or {},
+                            )
+                            # Boost Voice Engine STT keyterms with orchestrator's high-weight terms (capped at 100)
+                            orch_keyterms = orchestrator.get_stt_keyterms()
+                            if orch_keyterms and deepgram_settings.agent.listen and deepgram_settings.agent.listen.provider:
+                                current_kts = deepgram_settings.agent.listen.provider.keyterms or []
+                                merged_kts = list(current_kts)
+                                for kt in orch_keyterms:
+                                    if kt not in merged_kts:
+                                        merged_kts.append(kt)
+                                deepgram_settings.agent.listen.provider.keyterms = merged_kts[:100]
+
+                            logger.info(
+                                f"[Orchestrator:Gateway] Orchestrator active with "
+                                f"{len(child_agents_map)} child agents: {list(child_agents_map.keys())}"
+                            )
+
+                            # Think Proxy: route inside the LLM request path (falls back to UpdatePrompt without a public URL)
+                            if think_proxy_requested(agent_config.orchestrator_config):
+                                def _on_think_proxy_committed(specialist_cfg: AgentConfiguration, decision, context):
+                                    nonlocal agent_config
+                                    agent_config = specialist_cfg
+
+                                async def _on_think_proxy_telemetry(telem_data: Dict[str, Any]):
+                                    if session:
+                                        await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                                            event_type=telem_data.get("event_type", "ThinkProxyRouting"),
+                                            call_session_id=session.call_session_id,
+                                            organization_id=session.organization_id,
+                                            agent_id=telem_data.get("agent_id", session.agent_id),
+                                            twilio_call_sid=session.twilio_call_sid,
+                                            payload=telem_data.get("payload", {})
+                                        ))
+
+                                proxy_token = attach_think_proxy(
+                                    deepgram_settings,
+                                    orchestrator,
+                                    call_id=session.call_session_id if session else "session",
+                                    tenant_id=session.organization_id if session else "global",
+                                    platform_rules=cached_platform_rules,
+                                    on_committed=_on_think_proxy_committed,
+                                    telemetry_callback=_on_think_proxy_telemetry,
+                                    twilio_cfg=cached_tw,
+                                )
+                                use_think_proxy = proxy_token is not None
+                        else:
+                            logger.warning("[Orchestrator:Gateway] No child agents loaded. Orchestrator inactive.")
+                    except Exception as orch_err:
+                        logger.error(f"[Orchestrator:Gateway] Failed to initialize orchestrator: {orch_err}")
+                # ──────────────────────────────────────────────────────────────────
 
                 # Override with custom prompt if specified for this test call session
                 if session and session.custom_prompt:
@@ -583,7 +706,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     deepgram_settings.agent.think.prompt = session.custom_prompt
 
                 logger.info(
-                    f"[VoiceGateway] Initializing Deepgram with Settings: "
+                    f"[VoiceGateway] Initializing Voice Engine with Settings: "
                     f"STT Model='{deepgram_settings.agent.listen.provider.model}', "
                     f"LLM Provider='{deepgram_settings.agent.think.provider.type}', "
                     f"LLM Model='{deepgram_settings.agent.think.provider.model}', "
@@ -591,7 +714,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     f"TTS Voice='{deepgram_settings.agent.speak.provider.model}'"
                 )
 
-                # 3. Instantiate and connect Deepgram Client
+                # 3. Instantiate Voice Engine Client
                 deepgram_client = DeepgramVoiceAgentClient(
                     on_audio=handle_deepgram_audio,
                     on_event=handle_deepgram_event,
@@ -601,6 +724,58 @@ async def voice_stream_websocket(websocket: WebSocket):
                     on_agent_speaking=handle_agent_speaking,
                     on_agent_audio_done=handle_agent_audio_done
                 )
+
+                # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
+                if orchestrator and not use_think_proxy:
+                    async def _on_gateway_handoff_committed(specialist_cfg: AgentConfiguration, decision, context):
+                        nonlocal agent_config
+                        agent_config = specialist_cfg
+                        if session:
+                            await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                                event_type="AgentHandoff",
+                                call_session_id=session.call_session_id,
+                                organization_id=session.organization_id,
+                                agent_id=decision.target_agent_id,
+                                twilio_call_sid=session.twilio_call_sid,
+                                payload={
+                                    "from_agent": context.from_agent_id,
+                                    "to_agent": decision.target_agent_id,
+                                    "keyword": decision.matched_keyword,
+                                    "reason": decision.reason,
+                                    "confidence": getattr(decision, "confidence", 0.0),
+                                    "margin": getattr(decision, "margin", 0.0),
+                                    "runner_up_agent_id": getattr(decision, "runner_up_agent_id", None),
+                                    "runner_up_score": getattr(decision, "runner_up_score", 0.0),
+                                    "matched_terms": getattr(decision, "matched_terms", []),
+                                    "cumulative_appended_chars": getattr(handoff_controller, "cumulative_appended_chars", 0),
+                                    "cumulative_appended_tokens": getattr(handoff_controller, "cumulative_appended_tokens", 0),
+                                }
+                            ))
+
+                    async def _on_gateway_handoff_failed(decision, reason):
+                        if session:
+                            await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                                event_type="AgentHandoffFailed",
+                                call_session_id=session.call_session_id,
+                                organization_id=session.organization_id,
+                                agent_id=decision.target_agent_id if decision else session.agent_id,
+                                twilio_call_sid=session.twilio_call_sid,
+                                payload={
+                                    "target_agent": decision.target_agent_id if decision else None,
+                                    "reason": reason,
+                                }
+                            ))
+
+                    handoff_controller = HandoffController(
+                        orchestrator=orchestrator,
+                        deepgram_client=deepgram_client,
+                        on_committed=_on_gateway_handoff_committed,
+                        on_failed=_on_gateway_handoff_failed,
+                        is_concluding=lambda: is_concluding_call,
+                        get_transcript_turns=lambda: live_transcript_turns,
+                        platform_rules=cached_platform_rules,
+                        ack_timeout=1.0,
+                    )
 
                 # Execute official handshake (Welcome -> Settings -> SettingsApplied -> Inject Greeting)
                 try:
@@ -657,6 +832,14 @@ async def voice_stream_websocket(websocket: WebSocket):
             session.error_type = "stream_exception"
     finally:
         call_ended_event.set()
+        if handoff_controller:
+            handoff_controller.close()
+            handoff_controller = None
+
+        if proxy_token:
+            unregister_call_state(proxy_token)
+            proxy_token = None
+
         if lifecycle_task:
             lifecycle_task.cancel()
             lifecycle_task = None
@@ -670,8 +853,8 @@ async def voice_stream_websocket(websocket: WebSocket):
             finally:
                 deepgram_client = None
 
-        # Proactively terminate Twilio phone call via REST API to ensure no billing or lingering phone line
-        if session and session.twilio_call_sid and session.organization_id:
+        # Proactively terminate Twilio phone call via REST API if not already transferred to a human specialist
+        if session and session.twilio_call_sid and session.organization_id and not is_transferred:
             try:
                 logger.info(f"[VoiceGateway] Ensuring Twilio call {session.twilio_call_sid} is terminated on stream disconnect...")
                 await twilio_service.end_call(session.organization_id, session.twilio_call_sid)

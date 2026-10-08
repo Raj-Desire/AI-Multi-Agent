@@ -221,6 +221,7 @@ export function AgentEditorModal({
       <AgentStepper
         currentStep={currentStep}
         onSelectStep={handleSelectStep}
+        agentData={agentData}
       />
 
       {/* 3. Main Step Canvas */}
