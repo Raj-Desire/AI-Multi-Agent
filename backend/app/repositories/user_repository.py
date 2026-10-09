@@ -50,7 +50,13 @@ class UserRepository:
             query = "SELECT * FROM c WHERE c.email = @email"
             params = [{"name": "@email", "value": clean_email}]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                # Scoped directly to email partition key (0 cross-partition scan)
+                items = list(container.query_items(
+                    query=query,
+                    parameters=params,
+                    partition_key=clean_email,
+                    enable_cross_partition_query=False
+                ))
                 if items:
                     _set_cached_user(items[0]["id"], items[0])
                     return items[0]

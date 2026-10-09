@@ -31,13 +31,28 @@ class ProspectRepository:
             if not container:
                 return None
 
+            # 1 RU point read within tenant partition
+            try:
+                item = container.read_item(item=prospect_id, partition_key=organization_id)
+                p = Prospect.model_validate(item)
+                self._memory_store[p.id] = p
+                return p
+            except Exception:
+                pass
+
+            # Fallback query if needed
             query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
             params = [
                 {"name": "@id", "value": prospect_id},
                 {"name": "@organization_id", "value": organization_id}
             ]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                items = list(container.query_items(
+                    query=query,
+                    parameters=params,
+                    partition_key=organization_id,
+                    enable_cross_partition_query=False
+                ))
                 if items:
                     p = Prospect.model_validate(items[0])
                     self._memory_store[p.id] = p
@@ -139,7 +154,12 @@ class ProspectRepository:
                     query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
                     params = [{"name": "@organization_id", "value": organization_id}]
                     try:
-                        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                        items = list(container.query_items(
+                            query=query,
+                            parameters=params,
+                            partition_key=organization_id,
+                            enable_cross_partition_query=False
+                        ))
                         for item in items:
                             p = Prospect.model_validate(item)
                             all_prospects_dict[p.id] = p

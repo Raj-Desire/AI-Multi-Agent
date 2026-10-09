@@ -500,14 +500,27 @@ class PlatformRulesRepository:
         container = cls._get_container()
         if container:
             try:
-                query = "SELECT * FROM c WHERE c.id = 'platform_voice_rules_config' AND c.organization_id = 'org_platform_root'"
-                items = list(container.query_items(query=query, enable_cross_partition_query=True))
-                if items and "rules_state" in items[0]:
-                    cls._in_memory_rules_state = items[0]["rules_state"]
-                    cls._last_updated = items[0].get("updated_at")
+                # 1 RU point read within org_platform_root partition
+                item = container.read_item(item="platform_voice_rules_config", partition_key="org_platform_root")
+                if "rules_state" in item:
+                    cls._in_memory_rules_state = item["rules_state"]
+                    cls._last_updated = item.get("updated_at")
                     return cls._in_memory_rules_state
-            except Exception as e:
-                print(f"[PlatformRulesRepository Warning] Failed to query CosmosDB: {e}")
+            except Exception:
+                # Fallback scoped query if needed
+                try:
+                    query = "SELECT * FROM c WHERE c.id = 'platform_voice_rules_config' AND c.organization_id = 'org_platform_root'"
+                    items = list(container.query_items(
+                        query=query,
+                        partition_key="org_platform_root",
+                        enable_cross_partition_query=False
+                    ))
+                    if items and "rules_state" in items[0]:
+                        cls._in_memory_rules_state = items[0]["rules_state"]
+                        cls._last_updated = items[0].get("updated_at")
+                        return cls._in_memory_rules_state
+                except Exception as e:
+                    print(f"[PlatformRulesRepository Warning] Failed to query CosmosDB: {e}")
 
         # Default state
         default_map = {}

@@ -26,14 +26,46 @@ class TwilioRepository:
         if not container:
             return None
         
+        # 1 RU direct point read using document id cfg_{organization_id} and partition_key user_id
+        doc_id = f"cfg_{organization_id}"
+        try:
+            item = container.read_item(item=doc_id, partition_key=organization_id)
+            cfg = TwilioConfiguration(
+                id=item.get("id", doc_id),
+                organization_id=item.get("user_id", organization_id),
+                account_sid=item.get("account_sid", ""),
+                encrypted_auth_token=item.get("encrypted_auth_token", ""),
+                phone_number=item.get("phone_number", ""),
+                twiml_app_sid=item.get("twiml_app_sid"),
+                api_key_sid=item.get("api_key_sid"),
+                encrypted_api_key_secret=item.get("encrypted_api_key_secret"),
+                public_base_url=item.get("public_base_url"),
+                inbound_forward_mode=item.get("inbound_forward_mode", "global"),
+                inbound_forward_global_number=item.get("inbound_forward_global_number"),
+                inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                status="CONNECTED",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            )
+            _TWILIO_CACHE[organization_id] = (cfg, time.time())
+            return cfg
+        except Exception:
+            pass
+
+        # Fallback scoped query if legacy doc id without cfg_ prefix was saved
         query = "SELECT * FROM c WHERE c.user_id = @user_id"
         params = [{"name": "@user_id", "value": organization_id}]
         try:
-            items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+            items = list(container.query_items(
+                query=query,
+                parameters=params,
+                partition_key=organization_id,
+                enable_cross_partition_query=False
+            ))
             if items:
                 item = items[0]
                 cfg = TwilioConfiguration(
-                    id=item.get("id", f"cfg_{organization_id}"),
+                    id=item.get("id", doc_id),
                     organization_id=item.get("user_id", organization_id),
                     account_sid=item.get("account_sid", ""),
                     encrypted_auth_token=item.get("encrypted_auth_token", ""),

@@ -15,8 +15,9 @@ from app.agents.configuration import AgentConfiguration, get_default_platform_ag
 from app.core.cosmos import get_agents_container, get_agent_versions_container
 
 
-# In-memory agent list cache with TTL for fast load times (<1ms)
+# In-memory agent list and individual agent caches with TTL for fast load times (<1ms) and 0 RU lookups
 _AGENT_CACHE: Dict[str, Tuple[List[AgentConfiguration], float]] = {}
+_AGENT_BY_ID_CACHE: Dict[str, Tuple[AgentConfiguration, float]] = {}
 AGENT_CACHE_TTL_SECONDS = 60.0
 
 def _invalidate_agent_cache(org_id: Optional[str] = None):
@@ -26,6 +27,7 @@ def _invalidate_agent_cache(org_id: Optional[str] = None):
         del _AGENT_CACHE["global"]
     # Clear all org caches if a global agent was modified
     _AGENT_CACHE.clear()
+    _AGENT_BY_ID_CACHE.clear()
 
 
 class AgentRepository:
@@ -56,16 +58,17 @@ class AgentRepository:
                 return
             for agt in get_default_platform_agents():
                 doc_id = f"global_{agt.agent_id}"
-                query = "SELECT * FROM c WHERE c.id = @doc_id"
-                params = [{"name": "@doc_id", "value": doc_id}]
+                # 1 RU point read first to avoid querying
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                    if not items:
+                    container.read_item(item=doc_id, partition_key="global")
+                except Exception:
+                    # If not found or error, create/upsert
+                    try:
                         doc = agt.model_dump(mode="json")
                         doc["id"] = doc_id
                         container.upsert_item(body=doc)
-                except Exception as e:
-                    print(f"[AgentRepository Warning] Cosmos DB seed failed for {agt.agent_id}: {e}")
+                    except Exception as e:
+                        print(f"[AgentRepository Warning] Cosmos DB seed failed for {agt.agent_id}: {e}")
 
         await asyncio.to_thread(_sync_seed)
 
@@ -73,11 +76,40 @@ class AgentRepository:
         """
         Retrieves a specific agent by ID.
         Strictly enforces tenant isolation: returns the agent if it belongs to organization_id OR is a GLOBAL agent.
+        Uses in-memory cache and 1 RU Cosmos DB point reads where possible.
         """
+        cache_key = f"{organization_id}:{agent_id}"
+        cached = _AGENT_BY_ID_CACHE.get(cache_key)
+        if cached:
+            data, ts = cached
+            if time.time() - ts < AGENT_CACHE_TTL_SECONDS:
+                return data
+            del _AGENT_BY_ID_CACHE[cache_key]
+
         def _sync_get():
             container = get_agents_container()
             if container:
-                # Query within organization partition
+                # 1. Try direct 1 RU point read in tenant partition
+                doc_id = f"{organization_id}_{agent_id}"
+                try:
+                    item = container.read_item(item=doc_id, partition_key=organization_id)
+                    res = AgentConfiguration.model_validate(item)
+                    _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
+                    return res
+                except Exception:
+                    pass
+
+                # 2. Try direct 1 RU point read in global partition
+                global_doc_id = f"global_{agent_id}"
+                try:
+                    item = container.read_item(item=global_doc_id, partition_key="global")
+                    res = AgentConfiguration.model_validate(item)
+                    _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
+                    return res
+                except Exception:
+                    pass
+
+                # 3. Fallback scoped query if agent_id doesn't match standard doc_id convention
                 query = "SELECT * FROM c WHERE (c.organization_id = @org_id OR c.organization_id = 'global' OR c.scope = 'GLOBAL') AND c.agent_id = @agent_id"
                 params = [
                     {"name": "@org_id", "value": organization_id},
@@ -86,19 +118,24 @@ class AgentRepository:
                 try:
                     items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                     if items:
-                        # Prioritize org-specific match if both exist
                         org_item = next((i for i in items if i.get("organization_id") == organization_id), items[0])
-                        return AgentConfiguration.model_validate(org_item)
+                        res = AgentConfiguration.model_validate(org_item)
+                        _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
+                        return res
                 except Exception as e:
                     print(f"[AgentRepository Warning] get_by_id failed for {agent_id}: {e}")
 
             # Memory fallback
             org_agents = self._memory_store.get(organization_id, {})
             if agent_id in org_agents:
-                return org_agents[agent_id]
+                res = org_agents[agent_id]
+                _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
+                return res
             global_agents = self._memory_store.get("global", {})
             if agent_id in global_agents:
-                return global_agents[agent_id]
+                res = global_agents[agent_id]
+                _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
+                return res
             return None
 
         return await asyncio.to_thread(_sync_get)
