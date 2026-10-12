@@ -15,7 +15,7 @@ class KnowledgeSearchRequest(BaseModel):
     category: Optional[str] = Field(None, description="Optional category filter")
     document_ids: Optional[List[str]] = Field(None, description="Optional document IDs filter to restrict search scope")
     top_k: int = Field(default=3, ge=1, le=10, description="Max matching chunks to return")
-    min_similarity: float = Field(default=0.45, ge=0.0, le=1.0, description="Minimum cosine similarity score")
+    min_similarity: float = Field(default=0.30, ge=0.0, le=1.0, description="Minimum cosine similarity score")
 
 
 class KnowledgeSearchResponse(BaseModel):
@@ -139,6 +139,21 @@ async def delete_document(
     if not success:
         raise HTTPException(status_code=404, detail="Document not found or already deleted")
     return {"status": "success", "message": f"Document {document_id} and its vector chunks were purged successfully"}
+
+
+@router.post("/reindex", status_code=status.HTTP_200_OK)
+async def reindex_knowledge(
+    tenant: TenantContext = Depends(get_tenant_context)
+):
+    """
+    Re-generate semantic embeddings for all of this organization's documents (use after the embedding
+    provider was missing or changed at upload time).
+    """
+    try:
+        result = await knowledge_service.reindex_organization(tenant.organization_id)
+    except ValueError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"status": "success", **result}
 
 
 @router.post("/search", response_model=KnowledgeSearchResponse)

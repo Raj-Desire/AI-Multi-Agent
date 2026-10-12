@@ -238,11 +238,11 @@ class AgentRuntimeSettings(BaseModel):
     conversational_fillers_enabled: bool = True
     filler_delay_seconds: float = 0.95  # Calibrated delay (950ms) before injecting thoughtful conversational filler
     filler_phrases: List[str] = Field(default_factory=lambda: [
-        "Let me check that for you...",
-        "Got it, one moment please...",
-        "Understood, looking into that right now...",
-        "Sure thing, let me pull that up...",
-        "Alright, let me see..."
+        "Let me check that for you.",
+        "Got it, one moment please.",
+        "Understood, looking into that right now.",
+        "Sure thing, let me pull that up.",
+        "Alright, let me see."
     ])
 
     # Active Backchanneling (subtle listening cues during caller monologues)

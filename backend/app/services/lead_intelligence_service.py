@@ -1,5 +1,7 @@
 import io
 import csv
+import asyncio
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, Tuple
@@ -234,38 +236,115 @@ class LeadIntelligenceService:
         self.campaign_repo = campaign_repo or CampaignRepository()
         self.agent_repo = agent_repo or AgentRepository()
         self._org_data_cache: Dict[str, Dict[str, Any]] = {}
-        self._cache_ttl_seconds: float = 15.0
+        # Stale-while-revalidate: data younger than the fresh TTL is served as is; older (or invalidated)
+        # data up to the max-stale age is served instantly while a single background refresh runs.
+        self._cache_ttl_seconds: float = 60.0
+        self._max_stale_seconds: float = 900.0
+        self._org_locks: Dict[str, asyncio.Lock] = {}
+        self._refresh_tasks: Dict[str, asyncio.Task] = {}
+        self._org_versions: Dict[str, int] = {}
+        from app.core.cache_events import register_listener
+        register_listener(self._on_data_changed)
 
     def invalidate_cache(self, org_id: Optional[str] = None):
-        """Invalidates tenant cache when new calls or updates occur."""
+        """Hard invalidation: the next request waits for fresh data (used after explicit user changes)."""
         if org_id:
             self._org_data_cache.pop(org_id, None)
         else:
             self._org_data_cache.clear()
+
+    def _on_data_changed(self, org_id: Optional[str] = None):
+        """Calls/prospects changed: keep serving the cached copy instantly but refresh it in the background."""
+        targets = [org_id] if org_id else list(self._org_data_cache.keys())
+        for o in targets:
+            self._org_versions[o] = self._org_versions.get(o, 0) + 1
+            entry = self._org_data_cache.get(o)
+            if entry:
+                entry["stale"] = True
 
     async def _get_all_org_data(
         self,
         ctx: TenantContext,
         force_refresh: bool = False
     ) -> Tuple[List[Call], Dict[str, Prospect], Dict[str, Campaign]]:
-        """Fetches all campaign-generated calls, prospects dictionary, and campaigns dictionary scoped to tenant with in-memory caching to eliminate DB latency & RU query costs."""
+        """
+        Returns this tenant's scored calls, prospects and campaigns.
+        - Fresh cache: returned immediately.
+        - Stale cache: returned immediately, refreshed once in the background (no waiting for the database).
+        - No cache: concurrent requests share a single database load instead of each hitting the database.
+        """
         org_id = ctx.organization_id
-        import time
-        now = time.time()
+        entry = self._org_data_cache.get(org_id)
 
-        # Check Cache
-        if not force_refresh and org_id in self._org_data_cache:
-            entry = self._org_data_cache[org_id]
-            if now - entry["timestamp"] < self._cache_ttl_seconds:
+        if entry and not force_refresh:
+            age = time.time() - entry["timestamp"]
+            if age < self._cache_ttl_seconds and not entry.get("stale"):
                 return entry["calls"], entry["prospects_dict"], entry["campaigns_dict"]
+            if age < self._max_stale_seconds:
+                self._schedule_background_refresh(ctx)
+                return entry["calls"], entry["prospects_dict"], entry["campaigns_dict"]
+
+        return await self._load_org_data_single_flight(ctx, force_refresh)
+
+    def _schedule_background_refresh(self, ctx: TenantContext):
+        org_id = ctx.organization_id
+        task = self._refresh_tasks.get(org_id)
+        if task and not task.done():
+            return
+
+        async def _refresh():
+            try:
+                await self._load_org_data_single_flight(ctx, force_refresh=True)
+            except Exception as e:
+                logger.warning(f"[LeadIntelligence] Background refresh failed for {org_id}: {e}")
+            finally:
+                self._refresh_tasks.pop(org_id, None)
+
+        try:
+            self._refresh_tasks[org_id] = asyncio.get_running_loop().create_task(_refresh())
+        except RuntimeError:
+            pass
+
+    async def _load_org_data_single_flight(self, ctx: TenantContext, force_refresh: bool = False):
+        org_id = ctx.organization_id
+        lock = self._org_locks.setdefault(org_id, asyncio.Lock())
+        async with lock:
+            # Another request may have loaded it while we waited for the lock
+            entry = self._org_data_cache.get(org_id)
+            if (
+                not force_refresh
+                and entry
+                and not entry.get("stale")
+                and (time.time() - entry["timestamp"]) < self._cache_ttl_seconds
+            ):
+                return entry["calls"], entry["prospects_dict"], entry["campaigns_dict"]
+            return await self._fetch_org_data(ctx)
+
+    async def _fetch_org_data(
+        self,
+        ctx: TenantContext,
+    ) -> Tuple[List[Call], Dict[str, Prospect], Dict[str, Campaign]]:
+        """Loads calls, prospects and campaigns for the tenant from the database and caches them."""
+        org_id = ctx.organization_id
+        version_at_start = self._org_versions.get(org_id, 0)
+        now = time.time()
 
         # 1. Fetch Calls
         raw_calls = await self.call_repo.list_by_org(org_id)
         if not raw_calls and ctx.user_id and ctx.user_id != org_id:
             raw_calls = await self.call_repo.list_by_org(ctx.user_id)
 
-        # Only retain calls generated by outbound AI campaigns
-        calls = [c for c in raw_calls if c.campaign_id and c.campaign_id.strip()]
+        # Retain campaign calls plus AI-agent calls placed directly from the dialer/test-call path:
+        # those have no campaign_id but are scored by post-call analytics and are real leads.
+        def _is_scored_ai_call(c: Call) -> bool:
+            if not getattr(c, "agent_id", None):
+                return False
+            if (c.campaign_id or "").strip():
+                return True
+            has_score = c.lead_score is not None or bool(c.analytics and c.analytics.get("lead_score") is not None)
+            return has_score or getattr(c, "analytics_status", None) == "ready"
+
+        calls = [c for c in raw_calls if (c.campaign_id and c.campaign_id.strip()) or _is_scored_ai_call(c)]
 
         # 2. Fetch Prospects dictionary
         prospects_list, _ = await self.prospect_repo.list_by_org(org_id, page=1, page_size=10000)
@@ -282,10 +361,12 @@ class LeadIntelligenceService:
 
         # Store in cache
         self._org_data_cache[org_id] = {
-            "timestamp": now,
+            "timestamp": time.time(),
             "calls": calls,
             "prospects_dict": prospects_dict,
             "campaigns_dict": campaigns_dict,
+            # data changed while we were loading: serve it, but refresh again on the next request
+            "stale": self._org_versions.get(org_id, 0) != version_at_start,
         }
 
         return calls, prospects_dict, campaigns_dict

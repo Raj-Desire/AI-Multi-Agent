@@ -28,6 +28,11 @@ class VectorEmbeddingService:
         if not clean_text:
             return [0.0] * 1536
 
+        # Preferred: Azure OpenAI embeddings deployment (real semantic vectors)
+        azure_vecs = await VectorEmbeddingService._azure_embeddings([clean_text[:8000]])
+        if azure_vecs:
+            return azure_vecs[0]
+
         effective_key = api_key or os.getenv("OPENAI_API_KEY", "")
         if effective_key and not any(k in effective_key for k in ["mock", "placeholder", "your_openai_key"]):
             try:
@@ -51,12 +56,59 @@ class VectorEmbeddingService:
             except Exception as e:
                 logger.warning(f"[VectorEmbedding] OpenAI embedding request failed: {e}. Falling back to deterministic vector.")
 
-        # High-Fidelity Deterministic Fallback Vector (1536 dimensions) for local development
+        # High-Fidelity Deterministic Fallback Vector (1536 dimensions) for local development.
+        # These vectors are NOT semantic: retrieval quality is poor, so make it visible in the logs.
+        logger.warning(
+            "[VectorEmbedding] No embedding provider available (Azure OpenAI embeddings deployment / OPENAI_API_KEY). "
+            "Using the non-semantic local fallback; knowledge search results will be unreliable."
+        )
         return VectorEmbeddingService._generate_fallback_embedding(clean_text)
 
     @staticmethod
+    async def _azure_embeddings(texts: List[str]) -> Optional[List[List[float]]]:
+        """
+        Embeds texts with the Azure OpenAI embeddings deployment (AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
+        default 'text-embedding-3-small'). Returns None when Azure is not configured or the call fails.
+        """
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+        key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_KEY", "")
+        if not endpoint or not key or not texts:
+            return None
+        deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
+        version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
+        url = f"{endpoint}/openai/deployments/{deployment}/embeddings?api-version={version}"
+        vectors: List[List[float]] = []
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for start in range(0, len(texts), 16):
+                    batch = texts[start:start + 16]
+                    resp = await client.post(url, headers={"api-key": key, "Content-Type": "application/json"}, json={"input": batch})
+                    if resp.status_code != 200:
+                        logger.warning(f"[VectorEmbedding] Azure embeddings returned {resp.status_code}: {resp.text[:300]}")
+                        return None
+                    data = sorted(resp.json()["data"], key=lambda d: d["index"])
+                    vectors.extend(d["embedding"] for d in data)
+        except Exception as e:
+            logger.warning(f"[VectorEmbedding] Azure embeddings request failed: {e}")
+            return None
+        return vectors if len(vectors) == len(texts) else None
+
+    @staticmethod
+    async def semantic_provider_available() -> bool:
+        """True when real (semantic) embeddings can be produced, i.e. not the local hashing fallback."""
+        if await VectorEmbeddingService._azure_embeddings(["connectivity check"]):
+            return True
+        key = os.getenv("OPENAI_API_KEY", "")
+        return bool(key and not any(k in key for k in ["mock", "placeholder", "your_openai_key"]))
+
+    @staticmethod
     async def get_embeddings_batch(texts: List[str], api_key: Optional[str] = None) -> List[List[float]]:
-        """Batch embedding computation."""
+        """Batch embedding computation (one Azure request per 16 texts when available)."""
+        cleaned = [t.strip().replace(chr(10), " ")[:8000] for t in texts]
+        if cleaned and all(cleaned):
+            azure_vecs = await VectorEmbeddingService._azure_embeddings(cleaned)
+            if azure_vecs:
+                return azure_vecs
         results = []
         for t in texts:
             emb = await VectorEmbeddingService.get_embedding(t, api_key=api_key)

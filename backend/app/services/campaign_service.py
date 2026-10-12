@@ -572,6 +572,9 @@ class CampaignService:
     # -------------------------------------------------------------
     async def recalculate_campaign_stats(self, campaign_id: str) -> CampaignStats:
         members = await self.member_repo.get_all_by_campaign(campaign_id)
+        # Needed by the per-member call lookup below (previously referenced before assignment,
+        # which raised NameError that was silently swallowed). Re-fetched fresh before saving.
+        campaign = await self.campaign_repo.get_by_id("global", campaign_id)
         stats = CampaignStats()
         stats.total_prospects = len(members)
 
@@ -854,7 +857,8 @@ class CampaignService:
         now = datetime.now(timezone.utc)
         for s in active_sessions._sessions.values():
             if s.campaign_id == campaign_id and (s.organization_id == ctx.organization_id or ctx.role == "superadmin"):
-                dur = int((now - s.started_at).total_seconds()) if s.started_at else 0
+                # Duration counts from pickup (stream connected), not from when the number was dialed
+                dur = int((now - s.connected_at).total_seconds()) if s.connected_at else 0
                 active_list.append({
                     "call_session_id": s.call_session_id,
                     "twilio_call_sid": s.twilio_call_sid,
@@ -866,6 +870,7 @@ class CampaignService:
                     "direction": s.direction,
                     "duration": dur,
                     "turn_count": s.turn_count,
-                    "started_at": s.started_at.isoformat() if s.started_at else None
+                    "started_at": s.started_at.isoformat() if s.started_at else None,
+                    "connected_at": s.connected_at.isoformat() if s.connected_at else None
                 })
         return active_list

@@ -196,7 +196,7 @@ export function LeadQualificationRuleEditorModal({
                       onChange={(e) =>
                         setRules({ ...rules, qualification_threshold: parseInt(e.target.value) })
                       }
-                      className={`w-full accent-emerald-600 ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+                      className={`w-full accent-[var(--color-primary)] ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
                     />
                     <p className="text-[10px] text-[var(--color-muted)]">
                       Leads scoring above this receive top priority and immediate CRM assignment.

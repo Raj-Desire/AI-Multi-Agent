@@ -968,3 +968,104 @@ body {
 .animate-wave-4 { animation: waveBar4 0.65s ease-in-out infinite; }
 
 
+
+/* Slide-in panels (drawers and the transcript chat) */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideOutRight {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0.6; }
+}
+@keyframes fadeInSoft {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-slide-in-right { animation: slideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-slide-out-right { animation: slideOutRight 0.22s cubic-bezier(0.4, 0, 1, 1) both; }
+.animate-fade-in-soft { animation: fadeInSoft 0.25s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in-right, .animate-slide-out-right, .animate-fade-in-soft { animation-duration: 0.01ms; }
+}
+
+
+/* ------------------------------------------------------------------
+   Brand-coloured form controls
+   - Checkboxes, radios, sliders and progress bars use the primary brand colour.
+   - Native dropdowns use the customizable-select API where the browser supports it, so the
+     hovered/selected option follows the theme instead of the operating-system blue.
+   ------------------------------------------------------------------ */
+:root {
+  accent-color: var(--color-primary);
+}
+
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]),
+  select:not([multiple]):not([size])::picker(select) {
+    appearance: base-select !important;
+  }
+
+  /* Button layout: the selected text is vertically centred and the arrow sits at the right edge */
+  select:not([multiple]):not([size]) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  select:not([multiple]):not([size])::picker-icon {
+    flex: 0 0 auto;
+    color: var(--color-muted);
+    font-size: 0.7em;
+    transition: rotate 0.2s ease;
+  }
+
+  select:not([multiple]):not([size]):open::picker-icon {
+    rotate: 180deg;
+  }
+
+  /* Selects that already draw their own chevron must not show a second one */
+  select.appearance-none::picker-icon,
+  select.ui-select::picker-icon {
+    display: none;
+  }
+
+  select::picker(select) {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-main, 0.5rem);
+    box-shadow: var(--shadow-elevated, 0 10px 25px rgba(0, 0, 0, 0.18));
+    padding: 4px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  select option {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    background-color: transparent;
+    color: var(--color-heading);
+  }
+
+  /* Hover / keyboard focus: soft brand tint */
+  select option:hover,
+  select option:focus-visible {
+    background-color: var(--color-primary-light) !important;
+    color: var(--color-heading) !important;
+  }
+
+  /* Selected value: solid brand colour */
+  select option:checked {
+    background-color: var(--color-primary) !important;
+    color: #ffffff !important;
+  }
+
+  select option::checkmark {
+    display: none;
+  }
+}

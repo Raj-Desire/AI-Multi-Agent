@@ -1,3 +1,4 @@
+import { TranscriptChat } from "../ui/TranscriptChat";
 import React, { useState, useEffect } from "react";
 import { fetchApi } from "../../api-client";
 import {
@@ -30,7 +31,8 @@ import {
   FileText,
   PhoneForwarded,
   MessageSquare,
-  Search
+  Search,
+  ArrowLeft
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { toast } from "sonner";
@@ -66,7 +68,26 @@ export function LeadDetailDrawer({
   const [tagsList, setTagsList] = useState<string[]>([]);
   const [transcriptSearch, setTranscriptSearch] = useState<string>("");
 
+  // Transcript chat panel: slides in from the right over the drawer and slides back out on close
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [isChatClosing, setIsChatClosing] = useState<boolean>(false);
+
+  const openChat = () => {
+    setIsChatClosing(false);
+    setIsChatOpen(true);
+  };
+  const closeChat = () => {
+    setIsChatClosing(true);
+    setTimeout(() => {
+      setIsChatOpen(false);
+      setIsChatClosing(false);
+      setTranscriptSearch("");
+    }, 220);
+  };
+
   useEffect(() => {
+    setIsChatOpen(false);
+    setIsChatClosing(false);
     if (isOpen && prospectId) {
       loadLeadDetail(prospectId);
     } else {
@@ -150,9 +171,9 @@ export function LeadDetailDrawer({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs transition-opacity animate-in fade-in-50">
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs animate-fade-in-soft">
       <div
-        className="w-full max-w-2xl h-full bg-[var(--color-surface)] border-l border-[var(--color-border)] shadow-2xl flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-250 text-left"
+        className="w-full max-w-2xl h-full bg-[var(--color-surface)] border-l border-[var(--color-border)] shadow-2xl flex flex-col justify-between overflow-hidden relative animate-slide-in-right text-left"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drawer Header Bar */}
@@ -226,9 +247,9 @@ export function LeadDetailDrawer({
             <span>AI Intelligence</span>
           </button>
           <button
-            onClick={() => setDrawerTab("transcript")}
+            onClick={openChat}
             className={`py-2.5 px-3 border-b-2 font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              drawerTab === "transcript"
+              isChatOpen
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
@@ -402,73 +423,6 @@ export function LeadDetailDrawer({
                 </div>
               )}
 
-              {/* TAB 2: FULL TRANSCRIPT */}
-              {drawerTab === "transcript" && (
-                <div className="space-y-3 text-xs">
-                  {/* Transcript Toolbar */}
-                  <div className="flex items-center justify-between gap-2 pb-2">
-                    <div className="relative flex-1 max-w-xs">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-                      <input
-                        type="text"
-                        placeholder="Search transcript..."
-                        value={transcriptSearch}
-                        onChange={(e) => setTranscriptSearch(e.target.value)}
-                        className="w-full pl-8 pr-2 py-1 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded text-[var(--color-text)]"
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyTranscript}
-                      leftIcon={copiedTranscript ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      className="cursor-pointer text-xs"
-                    >
-                      {copiedTranscript ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
-
-                  {/* Transcript Turns List */}
-                  {filteredTranscript.length === 0 ? (
-                    <div className="text-center py-10 text-xs text-[var(--color-muted)]">
-                      No matching transcript turns.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredTranscript.map((turn, idx) => {
-                        const isAgent = turn.role === "assistant" || (turn.role as string) === "agent";
-                        const speakerLabel = isAgent ? (detail.agent_name || "AI Voice Agent") : (detail.prospect.full_name || "Customer");
-                        const contentText = turn.content || (turn as any).text || "";
-
-                        return (
-                          <div
-                            key={idx}
-                            className={`p-3 rounded-[var(--radius-main,0.5rem)] border flex flex-col space-y-1 ${
-                              isAgent
-                                ? "bg-[var(--color-surface)] border-[var(--color-border)] ml-2"
-                                : "bg-[var(--color-primary)]/5 border-[var(--color-primary)]/20 mr-2"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-[10px] text-[var(--color-muted)]">
-                              <span className="font-bold flex items-center gap-1 text-[var(--color-heading)]">
-                                {isAgent ? <Bot className="w-3 h-3 text-[var(--color-primary)]" /> : <User className="w-3 h-3 text-emerald-500" />}
-                                <span>{speakerLabel}</span>
-                              </span>
-                              {turn.timestamp && (
-                                <span className="font-mono">{turn.timestamp}</span>
-                              )}
-                            </div>
-                            <p className="text-xs text-[var(--color-text)] leading-relaxed whitespace-pre-wrap">
-                              {contentText}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* TAB 3: CALL HISTORY */}
               {drawerTab === "history" && (
                 <div className="space-y-3 text-xs">
@@ -632,6 +586,82 @@ export function LeadDetailDrawer({
             Close
           </Button>
         </div>
+
+        {/* Transcript chat panel (slides in from the right over the drawer) */}
+        {isChatOpen && detail && (
+          <div
+            className={`absolute inset-0 z-20 flex flex-col bg-[var(--color-surface)] ${
+              isChatClosing ? "animate-slide-out-right" : "animate-slide-in-right"
+            }`}
+          >
+            {/* Chat header */}
+            <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center gap-3">
+              <button
+                onClick={closeChat}
+                aria-label="Back to lead details"
+                className="p-1.5 rounded-full text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div className="w-9 h-9 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center text-sm font-bold shrink-0">
+                {(detail.prospect?.full_name || "C").trim().charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-[var(--color-heading)] truncate">
+                  {detail.prospect?.full_name || "Customer"}
+                </div>
+                <div className="text-[11px] text-[var(--color-muted)] truncate">
+                  {detail.prospect?.phone_number} · {detail.transcript?.length || 0} messages
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyTranscript}
+                leftIcon={copiedTranscript ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                className="cursor-pointer text-xs"
+              >
+                {copiedTranscript ? "Copied" : "Copy"}
+              </Button>
+              <button
+                onClick={closeChat}
+                aria-label="Close transcript"
+                className="p-1.5 rounded text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="px-4 py-2 border-b border-[var(--color-border)]">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+                <input
+                  type="text"
+                  placeholder="Search in conversation..."
+                  value={transcriptSearch}
+                  onChange={(e) => setTranscriptSearch(e.target.value)}
+                  className="w-full pl-8 pr-2 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-full text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+            </div>
+
+            {/* Conversation (fills the whole panel, no extra padding block above it) */}
+            <div className="flex-1 overflow-y-auto bg-[var(--color-background)] px-4 py-4 scrollbar-thin">
+              {filteredTranscript.length === 0 ? (
+                <div className="text-center py-16 text-xs text-[var(--color-muted)]">
+                  {(detail.transcript?.length || 0) === 0 ? "No conversation was recorded for this lead." : "No matching messages."}
+                </div>
+              ) : (
+                <TranscriptChat
+                  turns={filteredTranscript as any}
+                  agentName={detail.agent_name || "AI Voice Agent"}
+                  customerName={detail.prospect?.full_name || "Customer"}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -30,6 +30,10 @@ from app.core.dependencies import TenantContext
 
 logger = logging.getLogger("campaign_dialer")
 
+# A CALLING member whose call shows no terminal status and no activity for this long is resolved by the watchdog.
+STALE_CALLING_SECONDS = 20 * 60
+TERMINAL_CALL_STATUSES = {"completed", "busy", "no-answer", "no_answer", "failed", "canceled"}
+
 
 class CampaignDialerEngine:
     """
@@ -192,6 +196,10 @@ class CampaignDialerEngine:
         if campaign.status != CampaignStatus.RUNNING:
             return
 
+        # Resolve members stuck in CALLING (lost/late Twilio callbacks, crashed streams) so the
+        # campaign can finish instead of showing RUNNING forever. Runs even outside the calling window.
+        await self._reap_stale_calling_members(campaign)
+
         # 2. Check window for RUNNING campaign
         if not is_in_window:
             logger.debug(f"[CampaignDialer] Campaign {campaign.id} paused due to calling window: {reason}")
@@ -226,6 +234,72 @@ class CampaignDialerEngine:
 
         if dispatch_tasks:
             await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+    # -------------------------------------------------------------
+    # Watchdog: resolve members stuck in CALLING
+    # -------------------------------------------------------------
+    async def _reap_stale_calling_members(self, campaign: Campaign):
+        members = await self.member_repo.get_all_by_campaign(campaign.id)
+        now = datetime.now(timezone.utc)
+
+        def _aware(dt):
+            if dt is None:
+                return None
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+        for m in members:
+            if str(getattr(m.status, "value", m.status)).lower() != "calling":
+                continue
+            async with self._lock_mutex:
+                if m.id in self._dispatch_locks:
+                    continue  # dispatch still in progress
+
+            try:
+                call_rec = await self.call_repo.get_by_id(m.last_call_id) if m.last_call_id else None
+                call_status = ((call_rec.status or "") if call_rec else "").lower().strip()
+                is_terminal = call_status in TERMINAL_CALL_STATUSES
+
+                last_activity = _aware(m.updated_at) or _aware(m.last_attempt_at)
+                call_updated = _aware(call_rec.updated_at) if call_rec else None
+                if call_updated and (not last_activity or call_updated > last_activity):
+                    last_activity = call_updated
+                age = (now - last_activity).total_seconds() if last_activity else float("inf")
+
+                if not is_terminal and age < STALE_CALLING_SECONDS:
+                    continue  # still plausibly in progress
+
+                duration = int((call_rec.duration if call_rec else 0) or m.last_call_duration or 0)
+                if is_terminal:
+                    spoke = bool(duration > 0 or (call_rec and call_rec.transcript))
+                    rich = (call_rec.business_outcome or call_rec.outcome) if call_rec else None
+                    if spoke:
+                        outcome, is_success = (rich or "connected"), True
+                    elif call_status in ("no-answer", "no_answer"):
+                        outcome, is_success = "no_answer", False
+                    elif call_status in ("busy", "failed", "canceled"):
+                        outcome, is_success = call_status, False
+                    else:  # completed with nothing recorded
+                        outcome, is_success = (rich or "completed"), True
+                    error = None
+                else:
+                    outcome, is_success = "failed", False
+                    error = f"Call status not confirmed within {STALE_CALLING_SECONDS // 60} minutes."
+
+                logger.warning(
+                    f"[CampaignDialer] Resolving stale CALLING member {m.id} (call_status='{call_status or 'unknown'}', "
+                    f"age={int(age) if age != float('inf') else 'n/a'}s) -> outcome='{outcome}'."
+                )
+                await self.campaign_service.record_call_outcome(
+                    campaign_id=campaign.id,
+                    member_id=m.id,
+                    call_id=m.last_call_id,
+                    duration=duration,
+                    outcome=outcome,
+                    is_success=is_success,
+                    error=error,
+                )
+            except Exception as e:
+                logger.error(f"[CampaignDialer] Failed to resolve stale member {m.id}: {e}", exc_info=True)
 
     # -------------------------------------------------------------
     # Dispatch Call for a Single Prospect Member

@@ -731,9 +731,10 @@ export function CampaignDetailView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {activeCalls.map((ac) => {
-              const liveSecs = ac.started_at
-                ? Math.max(0, Math.floor((Date.now() - new Date(ac.started_at).getTime()) / 1000))
-                : ac.duration || 0;
+              // Count from pickup (connected_at); a ringing call has no connected_at yet and shows 00:00
+              const liveSecs = ac.connected_at
+                ? Math.max(0, Math.floor((Date.now() - new Date(ac.connected_at).getTime()) / 1000))
+                : 0;
               const mins = Math.floor(liveSecs / 60);
               const secs = liveSecs % 60;
               const formattedTime = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;

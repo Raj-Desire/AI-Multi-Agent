@@ -31,6 +31,7 @@ import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
 import { Drawer } from "./ui/Drawer";
+import { TranscriptChat } from "./ui/TranscriptChat";
 
 function formatDuration(seconds: number) {
   if (!seconds || seconds <= 0) return "0s";
@@ -78,6 +79,9 @@ export function AIAgentDialerView({
   // Inspection Drawer
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
 
+  const [analyzingCall, setAnalyzingCall] = useState(false);
+  const analyzedCallIdsRef = useRef<Set<string>>(new Set());
+
   const timerRef = useRef<any>(null);
   const telemetryWsRef = useRef<WebSocket | null>(null);
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +105,30 @@ export function AIAgentDialerView({
       transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
     }
   }, [transcriptMessages]);
+
+  // When a call is opened without a summary (e.g. analysis failed at hang-up), generate it from the transcript
+  useEffect(() => {
+    if (!selectedCall) return;
+    const hasCustomerSpeech = (selectedCall.transcript || []).some(
+      (t: any) => (t.role === "user" || t.role === "customer") && (t.content || "").trim()
+    );
+    if (selectedCall.summary || !hasCustomerSpeech || analyzedCallIdsRef.current.has(selectedCall.id)) return;
+    analyzedCallIdsRef.current.add(selectedCall.id);
+    void handleGenerateSummary(selectedCall.id);
+  }, [selectedCall?.id]);
+
+  async function handleGenerateSummary(callId: string) {
+    try {
+      setAnalyzingCall(true);
+      const updated = await fetchApi<CallRecord>(`/calls/${callId}/analyze`, { method: "POST" });
+      setSelectedCall((prev) => (prev && prev.id === callId ? { ...prev, ...updated } : prev));
+      setCalls((prev) => prev.map((c) => (c.id === callId ? { ...c, ...updated } : c)));
+    } catch (err: any) {
+      console.warn("Call summary generation failed:", err);
+    } finally {
+      setAnalyzingCall(false);
+    }
+  }
 
   async function loadData() {
     try {
@@ -196,6 +224,10 @@ export function AIAgentDialerView({
             tts: event.payload.tts_latency_ms || 0,
             turn: event.payload.turn_latency_ms || 0,
           });
+        } else if (event.event_type === "StreamConnected") {
+          // Call answered: start the clock now so the timer matches the call duration measured by the backend
+          setCallState("connected");
+          startTimer();
         } else if (event.event_type === "CallEnded") {
           setCallState("idle");
           setCalling(false);
@@ -239,8 +271,8 @@ export function AIAgentDialerView({
 
       setActiveSessionId(res.call_session_id);
       setActiveCallSid(res.call_sid);
-      setCallState("connected");
-      startTimer();
+      // Still ringing: the timer starts when the "StreamConnected" telemetry event arrives (on answer)
+      setCallState("ringing");
       connectTelemetryStream(res.call_session_id);
       fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
     } catch (err: any) {
@@ -626,7 +658,12 @@ export function AIAgentDialerView({
                 <Radio className={`w-4 h-4 ${calling ? "text-emerald-500 animate-pulse" : "text-[var(--color-muted)]"}`} />
                 <h3 className="text-sm font-semibold text-[var(--color-heading)]">Live Telemetry & Spoken Turns</h3>
               </div>
-              {calling ? (
+              {calling && callState !== "connected" ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-xs font-semibold text-amber-600">Ringing...</span>
+                </div>
+              ) : calling ? (
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span className="font-mono text-xs font-semibold text-emerald-600">
@@ -741,6 +778,75 @@ export function AIAgentDialerView({
               </div>
             </div>
 
+            {/* Conversation Summary & Lead Intelligence */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  Conversation Summary
+                </h4>
+                {selectedCall.transcript && selectedCall.transcript.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateSummary(selectedCall.id)}
+                    disabled={analyzingCall}
+                    className="text-[11px] text-[var(--color-primary)] hover:underline disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${analyzingCall ? "animate-spin" : ""}`} />
+                    {analyzingCall ? "Analyzing..." : "Regenerate"}
+                  </button>
+                )}
+              </div>
+              <div className="p-3 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3">
+                {selectedCall.summary ? (
+                  <p className="text-xs leading-relaxed text-[var(--color-heading)]">{selectedCall.summary}</p>
+                ) : (
+                  <p className="text-xs text-[var(--color-muted)]">
+                    {analyzingCall
+                      ? "Generating a summary of this conversation..."
+                      : selectedCall.transcript && selectedCall.transcript.length > 0
+                        ? "No summary yet. Use Regenerate to create one from the transcript."
+                        : "No conversation was recorded for this call, so there is nothing to summarize."}
+                  </p>
+                )}
+
+                {(selectedCall.business_outcome || selectedCall.outcome || selectedCall.interest_level || selectedCall.lead_score !== undefined) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(selectedCall.business_outcome || selectedCall.outcome) && (
+                      <Badge variant="primary" size="sm">{selectedCall.business_outcome || selectedCall.outcome}</Badge>
+                    )}
+                    {selectedCall.interest_level && (
+                      <Badge variant="neutral" size="sm">{selectedCall.interest_level}</Badge>
+                    )}
+                    {selectedCall.lead_score !== undefined && selectedCall.lead_score !== null && (
+                      <Badge variant="neutral" size="sm">Lead score {selectedCall.lead_score}</Badge>
+                    )}
+                    {selectedCall.sentiment && (
+                      <Badge variant="neutral" size="sm">{selectedCall.sentiment}</Badge>
+                    )}
+                  </div>
+                )}
+
+                {selectedCall.next_action && (
+                  <div>
+                    <span className="text-[var(--color-muted)] block text-[11px]">Recommended next step</span>
+                    <span className="text-xs text-[var(--color-heading)]">{selectedCall.next_action}</span>
+                  </div>
+                )}
+
+                {selectedCall.key_insights && selectedCall.key_insights.length > 0 && (
+                  <div>
+                    <span className="text-[var(--color-muted)] block text-[11px] mb-1">Key points</span>
+                    <ul className="list-disc pl-4 space-y-0.5 text-xs text-[var(--color-heading)]">
+                      {selectedCall.key_insights.map((k, i) => (
+                        <li key={i}>{k}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Agent Snapshot Info */}
             <div className="space-y-2">
               <h4 className="text-xs font-semibold text-[var(--color-heading)]">AI Agent Profile (Snapshot)</h4>
@@ -764,21 +870,12 @@ export function AIAgentDialerView({
             {selectedCall.transcript && selectedCall.transcript.length > 0 && (
               <div className="space-y-1.5">
                 <h4 className="text-xs font-semibold text-[var(--color-heading)]">Conversation Transcript</h4>
-                <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2 max-h-56 overflow-y-auto">
-                  {selectedCall.transcript.map((t, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-2 rounded text-xs ${t.role === "user"
-                          ? "bg-[var(--color-primary-light)] text-[var(--color-primary)] font-medium"
-                          : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                        }`}
-                    >
-                      <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize">
-                        {t.role === "user" ? "Customer" : selectedCall.agent_name || "AI Agent"}
-                      </div>
-                      <div>{t.content}</div>
-                    </div>
-                  ))}
+                <div className="p-3 bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] max-h-96 overflow-y-auto">
+                  <TranscriptChat
+                    turns={selectedCall.transcript as any}
+                    agentName={selectedCall.agent_name || "AI Agent"}
+                    customerName="Customer"
+                  />
                 </div>
               </div>
             )}

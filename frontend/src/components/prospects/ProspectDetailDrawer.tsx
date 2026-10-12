@@ -1,3 +1,4 @@
+import { TranscriptChat } from "../ui/TranscriptChat";
 import React, { useState, useEffect } from "react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
@@ -529,22 +530,8 @@ export function ProspectDetailDrawer({
                         <span className="text-[10px] font-semibold uppercase text-[var(--color-muted)] mb-1 block">
                           Transcript turns ({call.transcript.length} turns):
                         </span>
-                        <div className="max-h-40 overflow-y-auto space-y-1.5 p-2 rounded bg-[var(--color-background)] border border-[var(--color-border)]">
-                          {call.transcript.map((msg: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className={`p-1.5 rounded text-[11px] ${
-                                msg.role === "assistant"
-                                  ? "bg-[var(--color-surface-muted)] text-[var(--color-heading)] border-l-2 border-[var(--color-primary)]"
-                                  : "bg-[var(--color-primary-light)]/40 text-[var(--color-heading)] border-l-2 border-emerald-500"
-                              }`}
-                            >
-                              <span className="font-semibold text-[10px] uppercase text-[var(--color-muted)] mr-1">
-                                {msg.role === "assistant" ? (call.agent_name || "Agent") : "Prospect"}:
-                              </span>
-                              <span>{msg.content}</span>
-                            </div>
-                          ))}
+                        <div className="max-h-72 overflow-y-auto p-2 rounded bg-[var(--color-background)] border border-[var(--color-border)]">
+                          <TranscriptChat turns={call.transcript} agentName={call.agent_name || "Agent"} customerName="Prospect" />
                         </div>
                       </div>
                     )}

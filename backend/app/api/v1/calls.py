@@ -97,6 +97,55 @@ async def get_call(
     return ApiResponse.ok(CallResponse.model_validate(call))
 
 
+@router.post("/{call_id}/analyze", response_model=ApiResponse[CallResponse])
+async def analyze_call(
+    call_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """
+    (Re)generates the conversation summary and lead intelligence for a call from its transcript.
+    Used by the call inspector when a call has no summary yet (e.g. analysis failed at hang-up).
+    """
+    from fastapi import HTTPException
+    call = await call_repo.get_by_id(call_id)
+    if not call:
+        raise HTTPException(status_code=404, detail="Call record not found.")
+    if call.organization_id != ctx.organization_id and ctx.role != "superadmin":
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this call record.")
+    if not call.transcript:
+        raise HTTPException(status_code=400, detail="This call has no conversation transcript to summarize.")
+
+    from app.services.call_analytics_service import CallAnalyticsService
+    data = await CallAnalyticsService().analyze_call_transcript(
+        call.transcript,
+        call_duration=call.duration or 0,
+        call_status=call.status or "completed",
+    )
+
+    call.summary = data.get("summary") or call.summary
+    call.key_insights = data.get("key_insights") or call.key_insights
+    call.key_requirements = data.get("key_requirements") or call.key_requirements
+    call.customer_questions = data.get("customer_questions") or call.customer_questions
+    call.objections = data.get("objections") or call.objections
+    call.important_info = data.get("important_info") or call.important_info
+    call.next_action = data.get("next_action") or call.next_action
+    call.intent = data.get("intent") or call.intent
+    call.sentiment = data.get("sentiment") or call.sentiment
+    if data.get("lead_score") is not None:
+        call.lead_score = data["lead_score"]
+    call.interest_level = data.get("interest_level") or call.interest_level
+    call.classification = data.get("classification") or call.classification
+    call.callback_datetime = data.get("callback_datetime") or call.callback_datetime
+    # Keep a transfer outcome recorded during the call; otherwise take the analyzed outcome
+    if not (call.business_outcome or call.outcome or "").upper().startswith("TRANSFER"):
+        call.business_outcome = data.get("business_outcome") or call.business_outcome
+        call.outcome = call.business_outcome or call.outcome
+    call.analytics = data
+    call.analytics_status = "ready"
+    await call_repo.save(call)
+    return ApiResponse.ok(CallResponse.model_validate(call))
+
+
 @router.get("", response_model=ApiResponse[List[CallResponse]])
 async def list_calls(
     type: Optional[str] = None,  # "simple" | "ai" | None

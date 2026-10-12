@@ -91,9 +91,15 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       setTranscriptMessages([]);
       setLatestLatency({ stt: 0, llm: 0, tts: 0, turn: 0 });
 
-      // 1. Initialize Web Audio Context at native browser hardware rate (e.g. 44.1kHz or 48kHz)
+      // 1. Initialize Web Audio Context at 24kHz so the browser's own resampler handles mic input
+      // and playback; this avoids our naive (unfiltered) downsampling that aliases speech.
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx(); // Native hardware clock, no downsampling distortion
+      let audioCtx: AudioContext;
+      try {
+        audioCtx = new AudioCtx({ sampleRate: 24000 });
+      } catch {
+        audioCtx = new AudioCtx(); // Fallback: native rate; manual resampling below still applies
+      }
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
@@ -481,15 +487,15 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       const sourceNode = audioCtx.createBufferSource();
       sourceNode.buffer = audioBuffer;
 
-      const voiceSpeed = agentConfig?.voice?.speed || 1.0;
-      sourceNode.playbackRate.value = Math.max(0.5, Math.min(2.0, voiceSpeed));
-
+      // Play at native rate: playbackRate would resample and shift pitch/formants (robotic timbre).
       sourceNode.connect(audioCtx.destination);
 
       const currentTime = audioCtx.currentTime;
-      // If queue fell behind current time, schedule with small 10ms safety buffer
-      const startTime = Math.max(currentTime + 0.01, nextPlayTimeRef.current);
-      const chunkDuration = audioBuffer.duration / sourceNode.playbackRate.value;
+      // When the queue has drained (start of a turn or after an underrun), add a short jitter
+      // buffer so following chunks arrive before this one finishes instead of leaving gaps.
+      const queueDrained = nextPlayTimeRef.current <= currentTime;
+      const startTime = queueDrained ? currentTime + 0.15 : nextPlayTimeRef.current;
+      const chunkDuration = audioBuffer.duration;
 
       sourceNode.start(startTime);
       nextPlayTimeRef.current = startTime + chunkDuration;

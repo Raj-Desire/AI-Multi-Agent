@@ -14,6 +14,8 @@ def _invalidate_prospect_cache(org_id: Optional[str] = None):
         del _PROSPECT_CACHE[org_id]
     else:
         _PROSPECT_CACHE.clear()
+    from app.core.cache_events import notify_data_changed
+    notify_data_changed(org_id)
 
 
 class ProspectRepository:

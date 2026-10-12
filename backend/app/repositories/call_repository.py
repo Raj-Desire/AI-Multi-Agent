@@ -13,6 +13,8 @@ def _invalidate_calls_cache(org_id: Optional[str] = None):
         del _CALLS_CACHE[org_id]
     else:
         _CALLS_CACHE.clear()
+    from app.core.cache_events import notify_data_changed
+    notify_data_changed(org_id)
 
 class CallRepository:
     def __init__(self):

@@ -277,9 +277,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     if is_user_speaking or is_agent_speaking or is_concluding_call:
                         return
                     phrases = getattr(runtime, "filler_phrases", None) or [
-                        "Got it, let me check that for you...",
-                        "Understood, give me one moment...",
-                        "Sure thing, looking into that right now..."
+                        "Got it, let me check that for you.",
+                        "Understood, give me one moment.",
+                        "Sure thing, looking into that right now."
                     ]
                     import random
                     filler = random.choice(phrases)

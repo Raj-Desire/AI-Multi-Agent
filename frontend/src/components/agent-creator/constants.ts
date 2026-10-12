@@ -626,6 +626,70 @@ CONVERSATIONAL RULES:
     }
   },
   {
+    id: "discovery_outreach",
+    title: "Discovery Outreach & Meeting Booking",
+    description: "Natural outbound intro call that explores automation, custom software and AI needs, shares relevant project experience, then books a specialist meeting or transfers the call live.",
+    icon: PhoneCall,
+    defaultRole: "Business Technology Outreach Specialist",
+    defaultObjective: "Open a natural, low-pressure call, learn which manual or spreadsheet-based processes, custom software or AI needs the prospect has, discuss the most relevant service in more detail using real project examples from the knowledge base, and either book a meeting with a specialist or transfer the call live.",
+    defaultGreeting: "Hi {{caller_name}}, this is Aria from {{company_name}}. I'll keep this quick. We help teams automate manual, spreadsheet-based workflows and build custom software and AI systems. I'm not selling anything on this call, I'm just checking whether it's worth a short conversation with one of our specialists. Is now an okay time, or would later suit you better?",
+    defaultSystemPrompt: `You are Aria, a warm, sharp and genuinely curious business technology advisor calling on behalf of {{company_name}}. You sound like a thoughtful person making a quick, respectful call, never like a script. You are openly an AI assistant if asked.
+
+GOAL OF THE CALL:
+Find out whether this person's team has a real need in one of our service areas, talk about that area in a concrete way, and leave them excited enough to either book a short meeting with a specialist or speak with one right now. You are not selling, quoting prices, or closing deals.
+
+SERVICE AREAS (explore, do not recite):
+- Workflow and spreadsheet automation (replacing manual, repetitive, spreadsheet-driven work).
+- Custom software, web and mobile application development.
+- AI systems, including voice assistants, chat assistants, document and data automation.
+Use the company knowledge base for real project examples. Only mention a project if it appears in the knowledge base and clearly fits what the caller said. If nothing fits, say our specialists will bring relevant examples to the meeting. Never invent clients, results, numbers or timelines.
+
+HOW THE CALL FLOWS (adapt, never follow rigidly):
+1. OPENING: After the greeting, wait for their answer. If they say it is a bad time, offer one specific alternative ("Would tomorrow morning or afternoon be easier?"), confirm it, thank them and end warmly. If they ask what this is about or say go ahead, move on.
+2. DISCOVERY: Ask ONE open question at a time, such as how their team handles things like reporting, approvals or data entry today, and whether any of it still lives in spreadsheets or email. Then listen. React to what they actually said ("that sounds time consuming, how many people touch that?") before asking the next question. Learn: what process hurts, who is affected, how often, what tools they use today, and any rough timeline.
+3. DEEPEN: Pick the ONE service area that matches their pain and talk about it in plain language for two or three sentences, linking it to a relevant project from the knowledge base if one exists. Ask what outcome would make it worthwhile for them.
+4. COMMIT: When interest is clear, offer a next step. Offer the live option first if they sound keen: "Would you like me to bring one of our specialists on the line right now, or would you rather set a time that suits you?"
+   - LIVE TRANSFER: If they want to talk now, say exactly: "Absolutely, let me transfer you to one of our specialists right now." Say nothing else after that.
+   - BOOK MEETING: Offer two concrete options (for example "tomorrow at eleven or Thursday afternoon"), then confirm: their full name, company, best phone number, email address, the date and time with time zone, and the topic in one short line. Read it all back once and ask for a yes.
+   - Do NOT use the words "transfer you" unless the caller has just agreed to a live transfer.
+5. CLOSE: Thank them by name, repeat the meeting time, and say they will receive a confirmation. If they are not interested, thank them sincerely and end the call. Do not push a second time.
+
+HUMAN CONVERSATION RULES:
+- Sound natural. Use contractions. Vary your sentence length. Acknowledge feelings and facts before moving on.
+- One question per turn. Keep most turns to one or two short sentences; use three only when explaining a project.
+- Mirror their energy and pace. If they sound rushed, get to the point. If they enjoy chatting, give them a little more room.
+- Use their name occasionally, not every turn.
+- Never interrupt when they pause mid-thought.
+
+OBJECTIONS:
+- "Not interested": Respect it once with a light question, such as whether manual work is simply not a problem right now. If still no, thank them and close.
+- "Send me an email": Agree, ask for the best email, confirm it by reading it back letter by letter, and still offer a short call as an option.
+- "How much does it cost": Explain that it depends entirely on scope, and that a specialist can give a realistic range in fifteen minutes.
+- "Are you a robot?": Say yes, you are an AI assistant, and that you can have a human specialist call them directly if they prefer.
+- "Who are you / how did you get my number": Say you are calling from {{company_name}} to see if a short conversation is worthwhile, and offer to remove their number if they would like.
+- "Take me off your list": Apologize, confirm you will remove them, and end the call politely.
+
+Never claim to have read their website or know their business unless they told you. Never promise delivery dates, discounts or guarantees.`,
+    defaultCommunicationStyle: "Consultative + Conversational Warmth",
+    defaultResponseLength: "short",
+    defaultCapabilities: ["Qualify leads", "Provide product information", "Handle objections", "Book appointments", "Transfer to human specialist"],
+    recommendedVoiceId: "flux-hannah-en",
+    recommendedSpeed: 1.0,
+    recommendedTemperature: 0.5,
+    recommendationRationale: "A warm, expressive voice with slightly higher temperature keeps the conversation natural and non-scripted, which is what makes cold intro calls convert to meetings.",
+    defaultPersonality: {
+      professionalism: 85,
+      friendliness: 90,
+      empathy: 85,
+      patience: 90,
+      confidence: 85,
+      energy: 70,
+      assertiveness: 55,
+      humor: 20,
+      curiosity: 95
+    }
+  },
+  {
     id: "custom",
     title: "Custom Purpose",
     description: "Define a custom business purpose and specialized workflow tailored to your unique requirements.",
@@ -712,6 +776,34 @@ export const AURA_VOICES = [
   { id: "flux-cole-en", name: "Cole", language: "en", gender: "Male", style: "Energetic & Direct", description: "Dynamic, upbeat, and persuasive. Excellent for outbound lead outreach and surveys.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
   { id: "flux-kit-en", name: "Kit (British)", language: "en", gender: "Male", style: "Articulate British", description: "Polite, distinguished British male voice for global and corporate brands.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
   { id: "flux-colin-en", name: "Colin (British)", language: "en", gender: "Male", style: "Executive British", description: "Direct, authoritative British accent suited for financial and enterprise services.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-gemma-en", name: "Gemma (British)", language: "en", gender: "Female", style: "Cheerful & Gentle", description: "Cheerful, Gentle, Easygoing. Best for customer support, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-haley-en", name: "Haley", language: "en", gender: "Female", style: "Articulate & Polished", description: "Articulate, Polished, Attentive. Best for customer support, financial services, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-heather-en", name: "Heather", language: "en", gender: "Female", style: "Articulate & Animated", description: "Articulate, Animated, Lively. Best for customer support, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-miles-en", name: "Miles", language: "en", gender: "Male", style: "Articulate & Serene", description: "Articulate, Serene, Polished. Best for customer support, financial services, informational.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-sean-en", name: "Sean (British)", language: "en", gender: "Male", style: "Amiable & Gentle", description: "Amiable, Gentle, Attentive. Best for iVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-bree-en", name: "Bree", language: "en", gender: "Female", style: "Warm & Gentle", description: "Warm, Gentle, Considerate. Best for customer support, casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-brittany-en", name: "Brittany", language: "en", gender: "Female", style: "Self-assured & Caring", description: "Self-assured, Caring, Soft-spoken. Best for casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-bruce-en", name: "Bruce", language: "en", gender: "Male", style: "Amiable & Considerate", description: "Amiable, Considerate, Natural. Best for customer support, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-conor-en", name: "Conor (British)", language: "en", gender: "Male", style: "Self-assured & Low-pitched", description: "Self-assured, Low-pitched, Approachable. Best for customer support, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-donovan-en", name: "Donovan", language: "en", gender: "Male", style: "Professional & Serene", description: "Professional, Serene, Reflective. Best for iVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-drew-en", name: "Drew", language: "en", gender: "Male", style: "Self-assured & Laid-back", description: "Self-assured, Laid-back, Gentle. Best for healthcare, financial services, customer support, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-elise-en", name: "Elise", language: "en", gender: "Female", style: "Articulate & Professional", description: "Articulate, Professional, Serene. Best for customer support, financial services, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-jack-en", name: "Jack (British)", language: "en", gender: "Male", style: "Self-assured & Reflective", description: "Self-assured, Reflective, Amiable. Best for customer support, storytelling.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-kai-en", name: "Kai (Singaporean)", language: "en", gender: "Male", style: "Articulate & Serene", description: "Articulate, Serene, Professional. Best for customer support, informational, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-kelsey-en", name: "Kelsey", language: "en", gender: "Female", style: "Articulate & Professional", description: "Articulate, Professional, Attentive. Best for customer support, IVR, financial services.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-maeve-en", name: "Maeve (Irish)", language: "en", gender: "Female", style: "Amiable & Spirited", description: "Amiable, Spirited, Self-assured. Best for customer support, IVR, narration.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-marcelo-en", name: "Marcelo (Filipino)", language: "en", gender: "Male", style: "Articulate & Serene", description: "Articulate, Serene, Professional. Best for customer support, informational, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-marcus-en", name: "Marcus", language: "en", gender: "Male", style: "Amiable & Helpful", description: "Amiable, Helpful, Smooth. Best for customer support, casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-meena-en", name: "Meena (Indian)", language: "en", gender: "Female", style: "Empathetic & Professional", description: "Empathetic, Professional, Serene. Best for customer support, casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-meghan-en", name: "Meghan", language: "en", gender: "Female", style: "Amiable & Pleasant", description: "Amiable, Pleasant, Spirited. Best for healthcare, financial services.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-naveen-en", name: "Naveen (Indian)", language: "en", gender: "Male", style: "Articulate & Professional", description: "Articulate, Professional, Well-informed. Best for customer support, IVR, informational.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-paige-en", name: "Paige", language: "en", gender: "Female", style: "Articulate & Professional", description: "Articulate, Professional, Serene. Best for customer support, financial services, IVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-priya-en", name: "Priya (Indian)", language: "en", gender: "Female", style: "Self-assured & Empathetic", description: "Self-assured, Empathetic, Professional. Best for iVR.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-rufus-en", name: "Rufus (British)", language: "en", gender: "Male", style: "Amiable & Self-assured", description: "Amiable, Self-assured, Astute. Best for healthcare, financial services, storytelling.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-sharon-en", name: "Sharon (Australian)", language: "en", gender: "Female", style: "Formal & Serene", description: "Formal, Serene, Relaxed. Best for healthcare, financial services.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-tanner-en", name: "Tanner (British)", language: "en", gender: "Male", style: "Professional & Serene", description: "Professional, Serene, Self-assured. Best for customer support.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-wade-en", name: "Wade", language: "en", gender: "Male", style: "Warm & Self-assured", description: "Warm, Self-assured, Articulate. Best for customer support, casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
+  { id: "flux-wes-en", name: "Wes", language: "en", gender: "Male", style: "Reflective & Amiable", description: "Reflective, Amiable, Warm. Best for customer support, casual conversation.", sampleText: "Hello! I am your AI voice assistant. How can I help you today?" },
 
   // Multilingual Spoken Voices
   { id: "aura-2-agustina-es", name: "Agustina (Spanish)", language: "es", gender: "Female", style: "Native Spanish • Warm & Clear", description: "Natural Spanish female voice.", sampleText: "¡Hola! Soy tu asistente de voz con inteligencia artificial. ¿En qué puedo ayudarte hoy?" },
@@ -721,6 +813,80 @@ export const AURA_VOICES = [
   { id: "aura-2-cesare-it", name: "Cesare (Italian)", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Natural Italian male voice.", sampleText: "Ciao! Sono il tuo assistente vocale intelligente. Come posso aiutarti oggi?" },
   { id: "aura-2-ama-ja", name: "Ama (Japanese)", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Natural Japanese female voice.", sampleText: "こんにちは！AI音声アシスタントです。本日はどのようなご用件でしょうか？" }
 ];
+
+// -------------------------------------------------------------
+// Voice use-case categories: lets end users filter the voice picker by the kind of agent they are building.
+// Tags come from the voice provider's published character and use-case descriptions, plus judgement on tone:
+// energetic/confident voices are tagged for sales and marketing, calm/polished ones for support and finance, etc.
+// -------------------------------------------------------------
+export const VOICE_CATEGORIES = [
+  { id: "sales", label: "Sales & Outreach" },
+  { id: "marketing", label: "Marketing & Promotions" },
+  { id: "support", label: "Customer Support" },
+  { id: "reception", label: "Reception & IVR" },
+  { id: "healthcare", label: "Healthcare & Wellness" },
+  { id: "finance", label: "Finance & Corporate" },
+  { id: "hospitality", label: "Hospitality & Luxury" },
+  { id: "narration", label: "Storytelling & Narration" },
+  { id: "casual", label: "Friendly Conversation" }
+] as const;
+
+export type VoiceCategoryId = (typeof VOICE_CATEGORIES)[number]["id"];
+
+export const VOICE_CATEGORY_MAP: Record<string, VoiceCategoryId[]> = {
+  // Original Flux voices
+  "flux-hannah-en": ["sales", "marketing", "reception", "casual"],
+  "flux-alexis-en": ["support", "reception", "finance"],
+  "flux-sienna-en": ["healthcare", "support", "hospitality"],
+  "flux-brooke-en": ["sales", "healthcare", "finance", "casual"],
+  "flux-cliff-en": ["sales", "finance", "narration"],
+  "flux-cole-en": ["sales", "marketing", "reception"],
+  "flux-kit-en": ["support", "finance", "hospitality", "narration"],
+  "flux-colin-en": ["finance", "hospitality", "support"],
+  // Additional Flux voices
+  "flux-gemma-en": ["marketing", "support", "reception", "casual"],
+  "flux-haley-en": ["support", "finance", "reception"],
+  "flux-heather-en": ["marketing", "sales", "support", "reception"],
+  "flux-miles-en": ["support", "finance", "narration"],
+  "flux-sean-en": ["reception", "healthcare"],
+  "flux-bree-en": ["support", "casual", "healthcare"],
+  "flux-brittany-en": ["casual", "healthcare"],
+  "flux-bruce-en": ["support", "reception", "sales"],
+  "flux-conor-en": ["support", "reception", "casual"],
+  "flux-donovan-en": ["reception", "finance"],
+  "flux-drew-en": ["healthcare", "finance", "support", "casual"],
+  "flux-elise-en": ["support", "finance", "reception"],
+  "flux-jack-en": ["support", "finance", "narration"],
+  "flux-kai-en": ["support", "reception"],
+  "flux-kelsey-en": ["support", "reception", "finance"],
+  "flux-maeve-en": ["hospitality", "marketing", "narration", "support"],
+  "flux-marcelo-en": ["support", "reception"],
+  "flux-marcus-en": ["sales", "support", "casual"],
+  "flux-meena-en": ["support", "casual"],
+  "flux-meghan-en": ["healthcare", "finance", "marketing"],
+  "flux-naveen-en": ["support", "reception", "finance"],
+  "flux-paige-en": ["support", "finance", "reception"],
+  "flux-priya-en": ["reception", "support"],
+  "flux-rufus-en": ["healthcare", "finance", "narration", "sales"],
+  "flux-sharon-en": ["healthcare", "finance", "reception"],
+  "flux-tanner-en": ["support", "finance"],
+  "flux-wade-en": ["sales", "marketing", "support", "casual"],
+  "flux-wes-en": ["casual", "support", "narration"],
+  // Aura voices (multilingual and Gen-2 English)
+  "aura-2-thalia-en": ["reception", "support", "casual"],
+  "aura-2-andromeda-en": ["hospitality", "sales"],
+  "aura-2-apollo-en": ["sales", "marketing"],
+  "aura-2-agustina-es": ["reception", "support"],
+  "aura-2-javier-es": ["sales", "finance"],
+  "aura-2-aurelia-de": ["support", "reception"],
+  "aura-2-agathe-fr": ["reception", "hospitality"],
+  "aura-2-cesare-it": ["support", "hospitality"],
+  "aura-2-ama-ja": ["support", "finance"]
+};
+
+export function getVoiceCategories(voiceId: string): VoiceCategoryId[] {
+  return VOICE_CATEGORY_MAP[voiceId] || [];
+}
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English (US / Global Standard)", native: "English", defaultVoice: "flux-hannah-en" },

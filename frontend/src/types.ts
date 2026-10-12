@@ -802,6 +802,7 @@ export interface ActiveCampaignCall {
   duration: number;
   turn_count: number;
   started_at?: string;
+  connected_at?: string | null;
 }
 
 export interface CampaignStats {
