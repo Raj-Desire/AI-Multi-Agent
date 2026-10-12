@@ -18,7 +18,7 @@ from app.models.campaign import (
 )
 
 _CAMPAIGN_CACHE: Dict[str, Tuple[List[Campaign], float]] = {}
-CAMPAIGN_CACHE_TTL_SECONDS = 10.0
+CAMPAIGN_CACHE_TTL_SECONDS = 120.0
 
 _CAMPAIGNS_MEM_STORE: Dict[str, Campaign] = {}
 _CAMPAIGN_MEMBERS_MEM_STORE: Dict[str, CampaignMember] = {}
