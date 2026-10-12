@@ -47,17 +47,17 @@ interface VoiceMetadata {
 }
 
 const VOICE_METADATA_MAP: Record<string, VoiceMetadata> = {
-  "aura-orion-en": { accent: "US English", tone: "Calm & Professional", bestFor: "B2B Sales & Execs" },
-  "aura-luna-en": { accent: "US English", tone: "Calm & Relaxed", bestFor: "Follow-Up & Support" },
-  "aura-asteria-en": { accent: "US English", tone: "Warm & Natural", bestFor: "Reception & Scheduling" },
-  "aura-stella-en": { accent: "US English", tone: "Friendly & Clear", bestFor: "Reminders & Outreach" },
-  "aura-arcas-en": { accent: "US English", tone: "Conversational & Steady", bestFor: "Customer Care & Surveys" },
-  "aura-athena-en": { accent: "US English", tone: "Authoritative & Crisp", bestFor: "Tech Support & Billing" },
-  "aura-hera-en": { accent: "US English", tone: "Confident & Polished", bestFor: "Corporate Consultation" },
-  "aura-perseus-en": { accent: "US English", tone: "Energetic & Direct", bestFor: "Outbound Lead Gen" },
-  "aura-angus-en": { accent: "US English", tone: "Deep & Formal", bestFor: "Healthcare & Legal" },
-  "aura-helios-en": { accent: "US English", tone: "Direct & Crisp", bestFor: "Logistics & Delivery" },
-  "aura-zeus-en": { accent: "US English", tone: "Deep & Resonant", bestFor: "Authority & Broadcast" },
+  // Flux Conversation-Native Voices
+  "flux-hannah-en": { accent: "US English", tone: "Ultra-Natural & Engaging", bestFor: "Reception, Support & High EQ" },
+  "flux-alexis-en": { accent: "US English", tone: "Confident & Professional", bestFor: "Executive & Consultation" },
+  "flux-sienna-en": { accent: "US English", tone: "Warm & Friendly", bestFor: "Healthcare, Wellness & Booking" },
+  "flux-brooke-en": { accent: "US English", tone: "Calm & Polished", bestFor: "Technical Advisory & Inquiries" },
+  "flux-cliff-en": { accent: "US English", tone: "Conversational & Grounded", bestFor: "B2B Sales & Follow-ups" },
+  "flux-cole-en": { accent: "US English", tone: "Energetic & Direct", bestFor: "Outbound Lead Gen & Surveys" },
+  "flux-kit-en": { accent: "British English", tone: "Articulate British", bestFor: "Global Enterprise & Luxury" },
+  "flux-colin-en": { accent: "British English", tone: "Executive British", bestFor: "Financial & Corporate Services" },
+
+  // Multilingual Spoken Voices
   "aura-2-thalia-en": { accent: "US English (Gen-2)", tone: "Ultra-Natural & Warm", bestFor: "High-EQ Conversations" },
   "aura-2-andromeda-en": { accent: "US English (Gen-2)", tone: "Expressive & Natural", bestFor: "Concierge & Real Estate" },
   "aura-2-apollo-en": { accent: "US English (Gen-2)", tone: "Dynamic & Expressive", bestFor: "Interactive Pitching" },
@@ -150,7 +150,7 @@ export function Step3VoiceLanguage({
   }, [agentData.role, agentData.name]);
 
   // Selected Voice
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const isPlayingSample = playingVoiceId === selectedVoiceId;
 
   // Cleanup audio on unmount
@@ -206,7 +206,7 @@ export function Step3VoiceLanguage({
 
   // Pre-warm active voice and common voices in the background
   useEffect(() => {
-    const popularVoices = [selectedVoiceId, "aura-2-thalia-en", "aura-orion-en", "aura-luna-en", "aura-asteria-en", "aura-2-agustina-es", "aura-2-agathe-fr", "aura-2-aurelia-de"];
+    const popularVoices = [selectedVoiceId, "flux-hannah-en", "flux-alexis-en", "flux-cliff-en", "flux-sienna-en", "flux-cole-en", "flux-kit-en", "aura-2-agustina-es"];
     popularVoices.forEach((vId) => {
       prefetchVoiceSample(vId);
     });

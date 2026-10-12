@@ -29,16 +29,14 @@ import { Input } from "./ui/Input";
 import { Select } from "./ui/Select";
 
 const AURA_VOICES = [
-  { value: "aura-luna-en", label: "Luna (Female - Calm, Relaxed & Professional - Recommended for slower cadence)" },
-  { value: "aura-orion-en", label: "Orion (Male - Calm, Smooth & Measured - Recommended for slower cadence)" },
-  { value: "aura-asteria-en", label: "Asteria (Female - Warm & Natural)" },
-  { value: "aura-stella-en", label: "Stella (Female - Friendly & Clear)" },
-  { value: "aura-arcas-en", label: "Arcas (Male - Conversational & Grounded)" },
-  { value: "aura-athena-en", label: "Athena (Female - Authoritative)" },
-  { value: "aura-hera-en", label: "Hera (Female - Confident & Polished)" },
-  { value: "aura-perseus-en", label: "Perseus (Male - Energetic)" },
-  { value: "aura-angus-en", label: "Angus (Male - Deep & Formal)" },
-  { value: "aura-helios-en", label: "Helios (Male - Direct & Crisp)" }
+  { value: "flux-hannah-en", label: "Hannah (Female - Ultra-Natural, Expressive & Conversational • Flagship)" },
+  { value: "flux-alexis-en", label: "Alexis (Female - Confident, Clear & Professional)" },
+  { value: "flux-sienna-en", label: "Sienna (Female - Warm, Friendly & Empathetic)" },
+  { value: "flux-brooke-en", label: "Brooke (Female - Calm, Measured & Polished)" },
+  { value: "flux-cliff-en", label: "Cliff (Male - Conversational, Grounded & Confident)" },
+  { value: "flux-cole-en", label: "Cole (Male - Energetic, Dynamic & Relatable)" },
+  { value: "flux-kit-en", label: "Kit (Male - Articulate British Accent)" },
+  { value: "flux-colin-en", label: "Colin (Male - Direct British Accent)" }
 ];
 
 const LLM_MODELS = [
@@ -525,12 +523,12 @@ export function VoiceAgentView() {
                     <Volume2 className="w-4 h-4 text-emerald-400" />
                     <CardTitle>Voice & LLM Model Settings</CardTitle>
                   </div>
-                  <CardDescription>Aura TTS voice and LLM inference configuration.</CardDescription>
+                  <CardDescription>Conversational voice synthesis and LLM inference configuration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium mb-1">Aura TTS Voice</label>
+                      <label className="block text-xs font-medium mb-1">Conversational Spoken Voice</label>
                       <Select
                         value={agent.voice.voice}
                         onChange={(e) =>

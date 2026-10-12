@@ -630,7 +630,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
 
 class SampleSpeechRequest(BaseModel):
-    voice: str = "aura-orion-en"
+    voice: str = "flux-hannah-en"
     text: Optional[str] = None
     speed: Optional[float] = 0.95
 
@@ -641,7 +641,7 @@ SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
-    Synthesizes a sample audio snippet using Aura Text-to-Speech.
+    Synthesizes a sample audio snippet using Conversational Text-to-Speech.
     Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
     import os
@@ -653,7 +653,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
         sample_text = "Hello! I am your AI Voice Agent. How can I help you today?"
 
     sample_text = sample_text.strip()
-    voice = payload.voice or "aura-orion-en"
+    voice = payload.voice or "flux-hannah-en"
 
     cache_key = f"{voice}:{sample_text}"
     if cache_key in SAMPLE_SPEECH_CACHE:
@@ -663,12 +663,14 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
             headers={"Cache-Control": "public, max-age=86400", "X-Cache": "HIT"}
         )
 
-    # Deepgram Aura REST TTS (Lightweight MP3 encoding for instant playback)
+    # Conversational Speech Synthesis Preview (Flux / Spoken Engine)
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
 
-    deepgram_url = f"https://api.deepgram.com/v1/speak?model={voice}&encoding=mp3"
+    # Flux voices use /v2/speak, while legacy models use /v1/speak
+    endpoint_path = "v2/speak" if "flux" in voice.lower() else "v1/speak"
+    deepgram_url = f"https://api.deepgram.com/{endpoint_path}?model={voice}&encoding=mp3"
     headers = {
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json"

@@ -69,7 +69,7 @@ class CallSession(BaseModel):
     agent_name: str = "AI Receptionist"
     agent_role: str = "Professional AI Voice Assistant"
     language: str = "en"
-    voice: str = "aura-asteria-en"
+    voice: str = "flux-hannah-en"
     model: str = "gpt-4o-mini"
     custom_prompt: Optional[str] = None
     agent_config_snapshot: Optional[Dict[str, Any]] = None

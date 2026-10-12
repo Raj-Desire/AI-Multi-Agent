@@ -17,7 +17,7 @@ from app.models.call import Call
 # Default Industry Standard Provider Costs (Cost to Platform)
 TELEPHONY_COST_PER_MINUTE = 0.0140    # ~$0.014 / min for Twilio outbound/inbound PSTN
 STT_COST_PER_MINUTE = 0.0043          # ~$0.0043 / min for Real-time streaming transcription
-TTS_COST_PER_1K_CHARS = 0.0150        # ~$0.015 / 1K chars for conversational voice synthesis
+TTS_COST_PER_1K_CHARS = 0.0450        # ~$0.045 / 1K chars for Flux conversational voice synthesis
 
 # LLM Pricing Table per 1K Tokens (Input, Output)
 LLM_RATES_PER_1K: Dict[str, Dict[str, float]] = {

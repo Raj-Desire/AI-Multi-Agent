@@ -29,9 +29,9 @@ class AgentLanguageConfig(BaseModel):
 
 class SpeakProviderConfig(BaseModel):
     provider: str = "deepgram"
-    version: str = "v1"
-    model: str = "aura"
-    voice: str = "aura-orion-en"
+    version: str = "v2"
+    model: str = "flux"
+    voice: str = "flux-hannah-en"
     language: str = "en"
     speed: float = 1.0
     pitch: Optional[float] = None
@@ -212,10 +212,10 @@ class ListenProviderConfig(BaseModel):
     provider: str = "deepgram"
     model: str = "nova-3"
     language: str = "en"
-    endpointing: int = 550  # Natural human turn-taking endpointing (ms) preventing premature cutoffs
-    endpointing_mode: str = "balanced"  # "rapid" (450ms) | "balanced" (550ms) | "dictation" (900ms) | "adaptive" (550ms)
-    dictation_endpointing: int = 900
-    rapid_endpointing: int = 450
+    endpointing: int = 450  # Natural human turn-taking endpointing (ms) preventing premature cutoffs
+    endpointing_mode: str = "balanced"  # "rapid" (380ms) | "balanced" (450ms) | "dictation" (800ms) | "adaptive" (450ms)
+    dictation_endpointing: int = 800
+    rapid_endpointing: int = 380
     eot_threshold: Optional[float] = None
     eager_eot: bool = True
     keyterms: List[str] = Field(default_factory=list)
@@ -224,7 +224,7 @@ class ListenProviderConfig(BaseModel):
 class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
-    turn_delay_ms: int = Field(default=250, description="Natural conversational acoustic delay before speech synthesis output begins (ms)")
+    turn_delay_ms: int = Field(default=0, description="Natural conversational acoustic delay before speech synthesis output begins (ms)")
     silence_timeout: int = 5  # Seconds of silence before asking reprompt message
     silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
     silence_hangup_delay: int = 5  # Seconds after reprompt before concluding and hanging up
@@ -535,7 +535,7 @@ def get_default_platform_agents() -> List[AgentConfiguration]:
             communication_style="Professional + Friendly",
             greeting="Hi, thanks for calling. How can I help you today?",
             personality=AgentPersonality(professionalism=90, friendliness=85, empathy=80, patience=90, confidence=80, energy=60, assertiveness=45, humor=10, curiosity=70),
-            voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.4)
         ),
         AgentConfiguration(
@@ -584,7 +584,7 @@ OBJECTIONS & PHONE RULES:
 - Disinterest: "Understood! Thanks so much for your time today. Have a wonderful day!"
 """,
             personality=AgentPersonality(professionalism=90, friendliness=85, empathy=80, patience=85, confidence=90, energy=75, assertiveness=65, humor=15, curiosity=90),
-            voice=SpeakProviderConfig(voice="aura-luna-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-cliff-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.45)
         ),
         AgentConfiguration(
@@ -606,7 +606,7 @@ OBJECTIONS & PHONE RULES:
             communication_style="Empathetic + Patient",
             greeting="Hi, this is Customer Support. I'm here to help you get this sorted out. What seems to be the issue?",
             personality=AgentPersonality(professionalism=95, friendliness=90, empathy=95, patience=100, confidence=80, energy=50, assertiveness=40, humor=5, curiosity=75),
-            voice=SpeakProviderConfig(voice="aura-asteria-en", speed=0.95),
+            voice=SpeakProviderConfig(voice="flux-brooke-en", speed=0.98),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.3)
         ),
         AgentConfiguration(
@@ -628,7 +628,7 @@ OBJECTIONS & PHONE RULES:
             communication_style="Polite + Efficient",
             greeting="Hello! I can help you schedule or manage an appointment with our team. What day works best for you?",
             personality=AgentPersonality(professionalism=90, friendliness=85, empathy=70, patience=90, confidence=85, energy=65, assertiveness=50, humor=10, curiosity=60),
-            voice=SpeakProviderConfig(voice="aura-stella-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.3)
         ),
         AgentConfiguration(
@@ -649,7 +649,7 @@ OBJECTIONS & PHONE RULES:
             communication_style="Curious + Professional",
             greeting="Hi there! Thanks for your interest. May I ask a few quick questions about your team's current setup?",
             personality=AgentPersonality(professionalism=90, friendliness=80, empathy=75, patience=85, confidence=90, energy=70, assertiveness=65, humor=15, curiosity=95),
-            voice=SpeakProviderConfig(voice="aura-arcas-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-alexis-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.4)
         ),
         AgentConfiguration(
@@ -695,7 +695,7 @@ CONVERSATIONAL RULES:
             custom_knowledge="""Grand Seaside Resort (Goa): Standard King $175/night, Deluxe Ocean View Suite $280/night, Executive Garden Villa (plunge pool) $420/night. Spa massage $120/hr. Free airport shuttle.
 CloudFlow AI Software: Starter $49/mo (1,000 mins), Professional $149/mo (5,000 mins), Enterprise $499/mo (25,000 mins). Telephony overage $0.025/min. Twilio BYOC supported on Pro and Enterprise with zero markup.""",
             personality=AgentPersonality(professionalism=90, friendliness=95, empathy=90, patience=95, confidence=85, energy=65, assertiveness=50, humor=15, curiosity=80),
-            voice=SpeakProviderConfig(voice="aura-luna-en", speed=0.95),
+            voice=SpeakProviderConfig(voice="flux-sienna-en", speed=0.98),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
         ),
         AgentConfiguration(
@@ -716,7 +716,7 @@ CloudFlow AI Software: Starter $49/mo (1,000 mins), Professional $149/mo (5,000 
             communication_style="Precise + Methodical",
             greeting="Hello, Technical Support. Let's walk through your issue step-by-step. What error code or behavior are you experiencing?",
             personality=AgentPersonality(professionalism=95, friendliness=75, empathy=80, patience=100, confidence=90, energy=50, assertiveness=55, humor=5, curiosity=90),
-            voice=SpeakProviderConfig(voice="aura-angus-en", speed=0.95),
+            voice=SpeakProviderConfig(voice="flux-alexis-en", speed=0.98),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.2)
         ),
         # 1. Apex Dental & Wellness Clinic
@@ -776,7 +776,7 @@ Prices: Exam/X-Ray $120, Adult Cleaning $95, Child Cleaning $75, Laser Whitening
 Insurance: Delta Dental, Cigna, MetLife, Aetna, Guardian, BCBS. 10% self-pay discount. CareCredit/Sunbit available.
 Cancellation: 24h notice required, otherwise $50 fee applies. Extractions: no straws/smoking for 48h.""",
             personality=AgentPersonality(professionalism=95, friendliness=90, empathy=95, patience=95, confidence=85, energy=65, assertiveness=50, humor=10, curiosity=75),
-            voice=SpeakProviderConfig(voice="aura-asteria-en", speed=0.98),
+            voice=SpeakProviderConfig(voice="flux-sienna-en", speed=0.98),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.3)
         ),
         # 2. CloudFlow AI Enterprise Software
@@ -831,7 +831,7 @@ Telephony: $0.025/min overage, local numbers $3/mo, toll-free $5/mo + $0.035/min
 Security: SOC2 Type II, ISO 27001, HIPAA BAA on Enterprise. AES-256 at rest, TLS 1.3 in transit.
 Trial: 14 days free, $20 credit, no credit card required. 7-day annual renewal refund policy.""",
             personality=AgentPersonality(professionalism=95, friendliness=85, empathy=80, patience=90, confidence=95, energy=75, assertiveness=70, humor=10, curiosity=85),
-            voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-cliff-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
         ),
         # 3. Grand Seaside Resort & Spa
@@ -901,7 +901,7 @@ Pets: Under 30 lbs allowed in Ocean View & Villas ($65 fee).
 Transport: Free airport shuttle every 30 mins (6am-11pm). Sedan transfer $75. Free self-parking, Valet $25/night.
 Cancellation: Free up to 48 hours before check-in.""",
             personality=AgentPersonality(professionalism=95, friendliness=95, empathy=90, patience=95, confidence=90, energy=70, assertiveness=50, humor=15, curiosity=80),
-            voice=SpeakProviderConfig(voice="aura-luna-en", speed=1.0),
+            voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
         )
     ]
@@ -921,7 +921,7 @@ def get_default_receptionist_agent(organization_id: str = "global") -> AgentConf
         objective="Understand the customer's reason for calling and provide appropriate assistance or route the conversation toward the next useful action.",
         communication_style="Professional + Friendly",
         greeting="Hi, thanks for calling. How can I help you today?",
-        voice=SpeakProviderConfig(voice="aura-orion-en", speed=1.0),
+        voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
         personality=AgentPersonality(
             professionalism=90,
             friendliness=85,

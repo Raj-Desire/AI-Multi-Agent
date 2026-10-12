@@ -34,7 +34,7 @@ class CallSessionService:
         direction: str = "outbound",
         agent_name: str = "AI Receptionist",
         agent_role: str = "Professional AI Voice Assistant",
-        voice: str = "aura-asteria-en",
+        voice: str = "flux-hannah-en",
         model: str = "gpt-4o-mini",
         twilio_call_sid: Optional[str] = None,
         twilio_stream_sid: Optional[str] = None,

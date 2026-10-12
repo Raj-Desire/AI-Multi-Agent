@@ -163,7 +163,7 @@ async def generate_prompt(
             suggested_greetings=gen.get("suggested_greetings", []),
             suggested_objective=gen.get("suggested_objective", desc),
             communication_style=gen.get("communication_style", style),
-            recommended_voice=gen.get("recommended_voice", "aura-orion-en"),
+            recommended_voice=gen.get("recommended_voice", "flux-hannah-en"),
             positive_flow=gen.get("positive_flow", ""),
             negative_flow=gen.get("negative_flow", "")
         ))

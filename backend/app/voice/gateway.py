@@ -112,11 +112,11 @@ async def voice_stream_websocket(websocket: WebSocket):
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
 
-            # Natural human conversational turn delay: If transitioning from silence/user turn,
-            # introduce calibrated conversational pause (turn_delay_ms) before outbound audio burst
+            # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
+            # Only apply turn_delay_ms if a positive delay is explicitly requested by runtime config.
             if not is_agent_speaking and user_spoke and outbound_chunk_counter > 0:
                 runtime = agent_config.runtime if agent_config else None
-                delay_ms = getattr(runtime, "turn_delay_ms", 250) if runtime else 250
+                delay_ms = getattr(runtime, "turn_delay_ms", 0) if runtime else 0
                 if delay_ms > 0:
                     delay_s = min(delay_ms / 1000.0, 0.45)
                     await asyncio.sleep(delay_s)

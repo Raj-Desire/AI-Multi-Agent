@@ -174,7 +174,7 @@ export function Step1Basics({
         personality: { ...prev.personality, ...purpose.defaultPersonality },
         voice: {
           ...prev.voice,
-          voice: purpose.recommendedVoiceId || prev.voice?.voice || "aura-orion-en",
+          voice: purpose.recommendedVoiceId || prev.voice?.voice || "flux-hannah-en",
           speed: purpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0
         },
         llm: {

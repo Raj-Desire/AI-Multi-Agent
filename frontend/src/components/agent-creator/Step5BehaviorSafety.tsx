@@ -83,7 +83,7 @@ export function Step5BehaviorSafety({
     setIsPlayingAudio(false);
   };
 
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
 
   const currentDurationSeconds = agentData.runtime?.maximum_call_duration ?? 300;

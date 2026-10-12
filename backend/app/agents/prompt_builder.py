@@ -229,14 +229,13 @@ class VoicePromptBuilder:
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: DETAILED (3–4 SENTENCES)]\n"
                 "- Response Length: 3 to 4 comprehensive, detailed spoken sentences per turn (around 50-75 words total).\n"
                 "- Deliver thorough explanations, step-by-step answers, and complete context.\n"
-                "- Keep the conversation interactive and conversational. Ask only ONE single question at a time."
+                "- Keep the conversation natural and interactive without interrogating the caller."
             )
         elif length_key in ["balanced", "medium"]:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: BALANCED (2–3 SENTENCES)]\n"
                 "- Response Length: 2 to 3 well-structured, clear spoken sentences per turn (around 35-45 words total).\n"
-                "- Provide helpful context without giving overly long monologues.\n"
-                "- Ask only ONE single question at a time to allow the caller to respond."
+                "- Provide helpful context directly. Only ask a question if you need caller confirmation."
             )
         else:
             return (
@@ -244,7 +243,7 @@ class VoicePromptBuilder:
                 "- Response Length: STRICTLY 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (maximum 20-25 words total).\n"
                 "- NEVER produce 3 or more sentences in a single turn.\n"
                 "- NEVER give long explanations, monologues, or multiple paragraphs.\n"
-                "- Ask only ONE single question at a time to allow the caller to respond."
+                "- Deliver information directly as a clear, confident statement. Do NOT force a question at the end of every turn unless needed."
             )
 
     @staticmethod
@@ -536,7 +535,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 
     @staticmethod
     def _build_conversational_acoustics_section(config: AgentConfiguration) -> str:
-        """Injects instructions for natural conversational fillers and spoken human acoustics."""
+        """Injects instructions for natural conversational fillers, phrasing rhythm, and spoken human acoustics."""
         runtime = config.runtime
         if not runtime or not getattr(runtime, "conversational_fillers_enabled", True):
             return ""
@@ -545,11 +544,13 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you...", "Understood, give me one moment..."])])
 
         return (
-            "[NATURAL CONVERSATIONAL FILLERS & SPOKEN ACOUSTICS]\n"
-            "- HUMAN THINKING CUES: When retrieving details, computing dates/times, or answering complex inquiries, seamlessly begin with natural thinking acknowledgments (e.g., "
-            f"{phrases_example}). This mimics natural human conversational cadence and avoids stiff silence.\n"
-            "- MICRO-ACKNOWLEDGMENTS: Use a short acknowledgment ('Got it', 'Sure', 'Makes sense') only occasionally, never on two turns in a row, and never as a separate sentence before a direct answer. When the caller asks a question, start with the answer itself.\n"
-            "- NATURAL CONTRACTIONS: Use spoken contractions ('I\\'ll', 'we\\'re', 'it\\'s', 'don\\'t') instead of rigid written phrasing ('I will', 'we are', 'it is')."
+            "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
+            "- IMMEDIATE CONVERSATIONAL BRIDGES: When asked a multi-part question or lookup, begin your turn immediately with a natural human bridge (e.g., "
+            f"{phrases_example}) so the caller experiences instant acknowledgement without dead silence.\n"
+            "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
+            "- FLUID INTER-SENTENCE PACING (ZERO DEAD AIR): Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
+            "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
+            "- CONVERSATIONAL FLOW: Never produce dense paragraphs or list bullet points aloud. Speak warmly, articulately, and casually like an experienced human executive on the telephone."
         )
 
     @staticmethod

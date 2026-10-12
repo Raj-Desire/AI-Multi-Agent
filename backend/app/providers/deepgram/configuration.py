@@ -29,7 +29,7 @@ class DeepgramListenProvider(BaseModel):
     language: Optional[str] = "en"
     smart_format: Optional[bool] = True
     keyterms: Optional[List[str]] = None
-    endpointing: Optional[int] = 500  # 500ms balanced turn-taking endpointing buffer for continuous speech
+    endpointing: Optional[int] = 450  # 450ms balanced turn-taking endpointing buffer for rapid continuous speech
 
 
 class DeepgramListenConfig(BaseModel):
@@ -56,7 +56,8 @@ class DeepgramThinkConfig(BaseModel):
 
 class DeepgramSpeakProvider(BaseModel):
     type: str = "deepgram"
-    model: str = "aura-orion-en"
+    version: Optional[str] = "v2"
+    model: str = "flux-hannah-en"
 
 
 class DeepgramSpeakConfig(BaseModel):

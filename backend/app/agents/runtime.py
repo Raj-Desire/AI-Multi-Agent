@@ -66,17 +66,17 @@ class AgentRuntimeBuilder:
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
-        # Adaptive endpointing calculation for natural human turn taking (600ms - 850ms)
+        # Adaptive endpointing calculation for natural human turn taking (380ms - 500ms)
         mode = getattr(config.listen, "endpointing_mode", "balanced") if config.listen else "balanced"
         if mode == "rapid":
-            listen_endpointing = getattr(config.listen, "rapid_endpointing", 450) or 450
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 380) or 380
         elif mode == "dictation":
-            listen_endpointing = getattr(config.listen, "dictation_endpointing", 1000) or 1000
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 800) or 800
         elif mode == "balanced":
-            listen_endpointing = getattr(config.listen, "endpointing", 680) or 680
+            listen_endpointing = getattr(config.listen, "endpointing", 450) or 450
         else:
-            # Natural conversational default: 680ms preventing premature mid-sentence cutoffs during multi-clause speech
-            listen_endpointing = min(getattr(config.listen, "endpointing", 680) or 680, 850)
+            # Natural conversational default: 450ms preventing awkward pauses while avoiding premature cutoffs
+            listen_endpointing = min(getattr(config.listen, "endpointing", 450) or 450, 600)
 
         # Merge keyterms from listen config, router high-weight terms, and pronunciation rules
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
@@ -127,9 +127,11 @@ class AgentRuntimeBuilder:
         )
 
         # 4. Speak configuration (TTS)
-        voice_model = config.voice.voice or "aura-2-thalia-en"
+        voice_model = config.voice.voice or "flux-hannah-en"
+        voice_version = getattr(config.voice, "version", "v2") or ("v2" if "flux" in voice_model else "v1")
         speak_provider = DeepgramSpeakProvider(
             type="deepgram",
+            version=voice_version,
             model=voice_model
         )
         speak_config = DeepgramSpeakConfig(

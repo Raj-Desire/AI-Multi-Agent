@@ -51,19 +51,19 @@ interface AgentManagementViewProps {
   onEditorDirtyChange?: (isDirty: boolean, handleSaveDraft: () => Promise<void>, handleDiscard: () => void) => void;
 }
 
-// Map technical voice IDs to human-readable format: "Athena · English (US)"
+// Map technical voice IDs to human-readable format: "Hannah · English (US)"
 const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
-  "aura-orion-en": { name: "Orion", locale: "English (US)" },
-  "aura-luna-en": { name: "Luna", locale: "English (US)" },
-  "aura-asteria-en": { name: "Asteria", locale: "English (US)" },
-  "aura-stella-en": { name: "Stella", locale: "English (US)" },
-  "aura-arcas-en": { name: "Arcas", locale: "English (US)" },
-  "aura-athena-en": { name: "Athena", locale: "English (US)" },
-  "aura-hera-en": { name: "Hera", locale: "English (US)" },
-  "aura-perseus-en": { name: "Perseus", locale: "English (US)" },
-  "aura-angus-en": { name: "Angus", locale: "English (US)" },
-  "aura-helios-en": { name: "Helios", locale: "English (US)" },
-  "aura-zeus-en": { name: "Zeus", locale: "English (US)" },
+  // Flux Conversation-Native Voices
+  "flux-hannah-en": { name: "Hannah", locale: "English (US)" },
+  "flux-alexis-en": { name: "Alexis", locale: "English (US)" },
+  "flux-sienna-en": { name: "Sienna", locale: "English (US)" },
+  "flux-brooke-en": { name: "Brooke", locale: "English (US)" },
+  "flux-cliff-en": { name: "Cliff", locale: "English (US)" },
+  "flux-cole-en": { name: "Cole", locale: "English (US)" },
+  "flux-kit-en": { name: "Kit", locale: "English (UK)" },
+  "flux-colin-en": { name: "Colin", locale: "English (UK)" },
+
+  // Multilingual Spoken Voices
   "aura-2-thalia-en": { name: "Thalia", locale: "English (US)" },
   "aura-2-andromeda-en": { name: "Andromeda", locale: "English (US)" },
   "aura-2-apollo-en": { name: "Apollo", locale: "English (US)" },
@@ -78,7 +78,7 @@ const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
 function formatVoiceDisplay(rawVoice?: string) {
   if (!rawVoice) return { name: "Standard Voice", locale: "English" };
   if (VOICE_DISPLAY_MAP[rawVoice]) return VOICE_DISPLAY_MAP[rawVoice];
-  const parts = rawVoice.replace(/^aura(-2)?-/, "").split("-");
+  const parts = rawVoice.replace(/^(flux|aura(-2)?)-/, "").split("-");
   const name = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : rawVoice;
   const lang = parts[1] === "es" ? "Spanish" : parts[1] === "fr" ? "French" : parts[1] === "de" ? "German" : parts[1] === "it" ? "Italian" : parts[1] === "ja" ? "Japanese" : "English";
   return { name, locale: lang };
