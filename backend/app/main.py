@@ -33,11 +33,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Main Startup Error] Cosmos DB init failed: {e}")
 
-    # Start automated outbound dialer engine
-    try:
-        campaign_dialer_engine.start()
-    except Exception as e:
-        print(f"[Main Startup Error] Campaign dialer start failed: {e}")
+    # Start automated outbound dialer engine (opt-in via ENABLE_CAMPAIGN_BACKGROUND_DIALER)
+    # Default is false to preserve free tier quota and prevent 24/7 database querying when idle
+    dialer_enabled = os.getenv("ENABLE_CAMPAIGN_BACKGROUND_DIALER", "false").lower() in ("true", "1", "yes")
+    if dialer_enabled:
+        try:
+            campaign_dialer_engine.start()
+        except Exception as e:
+            print(f"[Main Startup Error] Campaign dialer start failed: {e}")
+    else:
+        print("[CampaignDialer] Continuous background polling disabled (ENABLE_CAMPAIGN_BACKGROUND_DIALER=false). Dialing operates on-demand.")
 
     # Check concurrency warning for in-process think proxy registry
     think_proxy_flag = os.getenv("ORCHESTRATOR_THINK_PROXY", "false").lower() in ("true", "1", "yes")
