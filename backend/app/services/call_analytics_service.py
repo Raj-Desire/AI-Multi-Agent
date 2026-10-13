@@ -226,6 +226,14 @@ BUSINESS OUTCOME (Choose precisely one):
 - "Voicemail": Automated answering machine.
 - "No Answer": Unanswered or drop.
 
+RECORDING RETENTION RULES (Cost Optimization):
+- "needs_audio_recording" MUST BE true ONLY IF:
+  1. The call experienced human agent escalation, supervisor request, or handoff.
+  2. Customer expressed strong negative sentiment, anger, frustration, or severe complaint.
+  3. The AI misunderstood the user multiple times, gave contradictory answers, or got confused.
+  4. Dispute, legal, cancellation, or billing conflict keywords were raised.
+- For all other standard, successful, routine inquiries, answered questions, or voicemail drops, set "needs_audio_recording": false.
+
 JSON OUTPUT STRUCTURE:
 {
   "summary": "Concise 2-3 sentence overview of the conversation.",
@@ -242,7 +250,9 @@ JSON OUTPUT STRUCTURE:
   "next_action": "Clear, actionable recommended next step",
   "callback_datetime": "Parsed date/time string if customer requested callback, or null",
   "customer_name": "Customer name if mentioned or null",
-  "company_name": "Company name if mentioned or null"
+  "company_name": "Company name if mentioned or null",
+  "needs_audio_recording": false,
+  "recording_retention_reason": "Escalation / Negative Sentiment / AI Confusion / None"
 }"""
 
         user_prompt = f"TRANSCRIPT:\n{formatted_transcript}\n\nPlease output valid JSON."
@@ -411,6 +421,42 @@ JSON OUTPUT STRUCTURE:
         if not summary_text and not is_machine and customer_words:
             summary_text = self._fallback_summary(transcript_array, raw_outcome)
 
+        # Fallback heuristic for recording retention if LLM did not provide flag
+        has_escalation = any(
+            phrase in customer_full_text or phrase in agent_full_text
+            for phrase in [
+                "speak to a manager", "speak to human", "talk to human", "transfer me",
+                "supervisor", "human representative", "speak to representative"
+            ]
+        )
+        has_negative_sentiment = (parsed.get("sentiment") == "Negative") or any(
+            phrase in customer_full_text
+            for phrase in [
+                "angry", "furious", "unacceptable", "terrible service", "scam",
+                "lawyer", "sue you", "complaint", "fraud", "cancel my subscription", "cancel service"
+            ]
+        )
+        has_ai_confusion = any(
+            phrase in agent_full_text
+            for phrase in [
+                "i apologize, i did not understand", "i am having trouble understanding",
+                "could you repeat that again", "sorry, i didn't catch that"
+            ]
+        ) and (len(transcript_array) > 4)
+
+        needs_recording = bool(parsed.get("needs_audio_recording", False))
+        retention_reason = parsed.get("recording_retention_reason") or "None"
+
+        if has_escalation:
+            needs_recording = True
+            retention_reason = "Human Escalation / Supervisor Transfer"
+        elif has_negative_sentiment:
+            needs_recording = True
+            retention_reason = "Negative Sentiment / Customer Complaint"
+        elif has_ai_confusion and not needs_recording:
+            needs_recording = True
+            retention_reason = "AI Confusion / Misunderstanding"
+
         return {
             "summary": summary_text,
             "intent": parsed.get("intent", "General Inquiry"),
@@ -429,4 +475,6 @@ JSON OUTPUT STRUCTURE:
             "customer_name": parsed.get("customer_name"),
             "company_name": parsed.get("company_name"),
             "business_requirements": parsed.get("business_requirements"),
+            "needs_audio_recording": needs_recording,
+            "recording_retention_reason": retention_reason,
         }

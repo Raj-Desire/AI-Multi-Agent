@@ -45,7 +45,9 @@ const STATUS_FILTERS: { value: string; label: string }[] = [
   { value: "New", label: "New" },
   { value: "Contacted", label: "Contacted" },
   { value: "Connected", label: "Connected" },
-  { value: "Interested", label: "Interested" },
+  { value: "Interested", label: "Interested (Qualified / Converted)" },
+  { value: "Qualified", label: "Qualified" },
+  { value: "Converted", label: "Converted" },
   { value: "Callback Requested", label: "Callback Requested" },
   { value: "Not Interested", label: "Not Interested" },
   { value: "Do Not Contact", label: "Do Not Contact (DNC)" },
@@ -406,7 +408,9 @@ export function ProspectsView() {
   const getStatusBadge = (st: string) => {
     switch (st) {
       case "Qualified":
+        return <Badge variant="success">Qualified</Badge>;
       case "Converted":
+        return <Badge variant="success">Converted</Badge>;
       case "Interested":
         return <Badge variant="success">Interested</Badge>;
       case "Connected":

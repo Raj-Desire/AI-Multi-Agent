@@ -211,6 +211,15 @@ class UserRepository:
         return list(org_map.values())
 
     @staticmethod
+    async def get_organization(organization_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves summary details for a specific organization by its ID."""
+        orgs = await UserRepository.list_organizations()
+        for org in orgs:
+            if org["organization_id"] == organization_id:
+                return org
+        return None
+
+    @staticmethod
     async def toggle_organization_status(organization_id: str, is_active: bool) -> int:
         """Enables or disables all user accounts belonging to an organization."""
         def _sync_toggle():

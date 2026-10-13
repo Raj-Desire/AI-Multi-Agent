@@ -6,6 +6,7 @@ with full immutable agent snapshots and transcripts.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 import logging
 from typing import Optional, List, Dict, Any
@@ -382,5 +383,83 @@ class CallSessionService:
             }
         ))
 
+        # Smart Recording Storage Optimizer:
+        # If call was routine, successful, and did NOT experience escalation, negative sentiment, or AI confusion,
+        # delete the raw Twilio audio recording immediately to eliminate storage charges ($0 storage fee).
+        if session.twilio_call_sid and session.organization_id:
+            needs_rec = analytics_data.get("needs_audio_recording", False)
+            if not needs_rec:
+                try:
+                    from app.services.twilio_service import TwilioService
+                    from app.repositories.twilio_repository import TwilioRepository
+                    tw_svc = TwilioService(TwilioRepository())
+                    asyncio.create_task(tw_svc.delete_call_recording(session.organization_id, session.twilio_call_sid))
+                    logger.info(f"[CallSessionService:SmartRetention] Scheduled instant deletion of routine recording on Twilio for SID {session.twilio_call_sid} to save storage credits.")
+                except Exception as del_err:
+                    logger.debug(f"[CallSessionService:SmartRetention] Notice deleting routine recording: {del_err}")
+            else:
+                reason = analytics_data.get("recording_retention_reason", "Escalation / Review")
+                logger.info(f"[CallSessionService:SmartRetention] Retaining recording on Twilio for SID {session.twilio_call_sid} (Reason: {reason}). Will auto-purge after 28 days.")
+                
+                # Dispatch Email Alert to SuperAdmin / Configured Alert Recipients
+                try:
+                    from app.services.graph_email_service import graph_email_service
+                    from app.repositories.twilio_repository import TwilioRepository
+                    from app.repositories.user_repository import UserRepository
+                    
+                    async def _send_escalation_alert_async():
+                        try:
+                            # 1. Check organization Twilio config for custom alert settings
+                            tw_repo = TwilioRepository()
+                            tw_cfg = await tw_repo.get_by_org(session.organization_id)
+                            alerts_enabled = tw_cfg.escalation_alerts_enabled if tw_cfg and tw_cfg.escalation_alerts_enabled is not None else True
+                            
+                            # Global env fallback check
+                            global_enabled = os.getenv("ESCALATION_ALERTS_ENABLED", "true").lower() in ("true", "1", "yes")
+                            if not (alerts_enabled and global_enabled):
+                                logger.info(f"[CallSessionService:Alert] Escalation alerts disabled for org {session.organization_id}")
+                                return
+
+                            # Determine recipient emails
+                            recipient = (tw_cfg.escalation_alert_email if tw_cfg and tw_cfg.escalation_alert_email else "").strip()
+                            if not recipient:
+                                recipient = os.getenv("ESCALATION_ALERT_RECIPIENT", "jashpalP@t12y7.onmicrosoft.com").strip()
+                            
+                            recipients_list = [r.strip() for r in recipient.split(",") if r.strip()]
+                            if not recipients_list:
+                                return
+
+                            # Organization friendly name
+                            org_info = await UserRepository.get_organization(session.organization_id)
+                            org_name = (org_info.get("org_name") if org_info else session.organization_id) or "AI Voice Platform"
+
+                            # Build excerpt from transcript
+                            excerpt_lines = []
+                            for t in transcript_records[-6:]:
+                                r_label = "Agent" if t.get("role") in ["agent", "assistant"] else "Customer"
+                                excerpt_lines.append(f"{r_label}: {t.get('content') or t.get('text', '')}")
+                            excerpt_str = "\n".join(excerpt_lines) if excerpt_lines else None
+
+                            await graph_email_service.send_recording_escalation_alert(
+                                to_recipients=recipients_list,
+                                org_name=org_name,
+                                call_id=session.call_session_id,
+                                call_sid=session.twilio_call_sid,
+                                customer_phone=session.destination_number or session.phone_number or "Unknown",
+                                call_duration_seconds=session.call_duration or 0,
+                                retention_reason=reason,
+                                summary=analytics_data.get("summary", ""),
+                                sentiment=analytics_data.get("sentiment", "Neutral"),
+                                transcript_excerpt=excerpt_str,
+                                retention_days=28
+                            )
+                        except Exception as alert_inner_err:
+                            logger.error(f"[CallSessionService:Alert Error] {alert_inner_err}")
+
+                    asyncio.create_task(_send_escalation_alert_async())
+                except Exception as alert_dispatch_err:
+                    logger.error(f"[CallSessionService:Alert Dispatch] Could not schedule alert: {alert_dispatch_err}")
+
         # Cleanup from active memory
         active_sessions.remove(session.call_session_id)
+

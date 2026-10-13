@@ -1192,3 +1192,100 @@ export interface KnowledgeSearchResponse {
   total_results: number;
 }
 
+// -------------------------------------------------------------
+// Direct Twilio Account Native Usage & Credit Telemetry
+// -------------------------------------------------------------
+export interface TwilioUsageRecordItem {
+  category: string;
+  description?: string;
+  count?: string;
+  count_unit?: string | null;
+  usage?: string;
+  usage_unit?: string | null;
+  price: number;
+  price_unit: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_fixed_recurring: boolean;
+}
+
+export interface TwilioPhoneNumberDetail {
+  phone_number: string;
+  friendly_name?: string | null;
+  country_code: string;
+  country_name: string;
+  flag_emoji: string;
+  number_type: string;
+  monthly_rental_usd: number;
+  capabilities: {
+    voice: boolean;
+    sms: boolean;
+    mms: boolean;
+  };
+  date_created?: string | null;
+}
+
+export interface TwilioFixedChargesSummary {
+  total_fixed_cost: number;
+  phone_numbers_cost: number;
+  active_numbers_count: number;
+  phone_numbers: TwilioPhoneNumberDetail[];
+  details: TwilioUsageRecordItem[];
+}
+
+export interface TwilioDirectAccountUsageResponse {
+  configured: boolean;
+  organization_id?: string;
+  org_name?: string;
+  account_sid?: string;
+  friendly_name?: string;
+  currency: string;
+  current_balance?: number | null;
+  time_range: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  total_spend: number;
+  fixed_recurring_spend: number;
+  variable_usage_spend: number;
+  fixed_charges: TwilioFixedChargesSummary;
+  phone_numbers: TwilioPhoneNumberDetail[];
+  records: TwilioUsageRecordItem[];
+  error?: string | null;
+  message?: string | null;
+}
+
+export interface TwilioConfiguredOrg {
+  organization_id: string;
+  org_name: string;
+  account_sid: string;
+  phone_number: string;
+  status: string;
+}
+
+export interface TwilioRecordingInventory {
+  total_count: number;
+  older_than_28_days: number;
+  newer_than_28_days: number;
+  total_minutes: number;
+  older_minutes: number;
+  account_sid?: string;
+  error?: string;
+}
+
+export interface TwilioPurgeResponse {
+  success: boolean;
+  deleted_count: number;
+  freed_minutes: number;
+  threshold_days: number;
+  message: string;
+  error?: string;
+}
+export interface EscalationAlertConfig {
+  organization_id?: string;
+  enabled: boolean;
+  recipient_email: string;
+  mail_sender?: string;
+  graph_configured: boolean;
+  sender?: string;
+}
+

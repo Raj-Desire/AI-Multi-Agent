@@ -46,6 +46,8 @@ const STATUS_LIST: ProspectStatus[] = [
   "Contacted",
   "Connected",
   "Interested",
+  "Qualified",
+  "Converted",
   "Not Interested",
   "Callback Requested",
   "Do Not Contact",

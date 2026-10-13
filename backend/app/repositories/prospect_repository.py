@@ -188,10 +188,18 @@ class ProspectRepository:
 
             if status and status.strip() and status.lower() != "all":
                 target_status = status.strip().lower()
+                # Treat 'interested', 'qualified', and 'converted' as matching when filtering by 'interested'
+                if target_status == "interested":
+                    allowed_statuses = {"interested", "qualified", "converted"}
+                elif target_status in ("qualified", "converted"):
+                    allowed_statuses = {"qualified", "converted", "interested"}
+                else:
+                    allowed_statuses = {target_status}
+
                 filtered = [
                     p for p in filtered
-                    if str(getattr(p.status, "value", p.status)).lower() == target_status
-                    or str(getattr(p.status, "name", "")).lower() == target_status
+                    if str(getattr(p.status, "value", p.status)).lower() in allowed_statuses
+                    or str(getattr(p.status, "name", "")).lower() in allowed_statuses
                 ]
 
             if tag and tag.strip():

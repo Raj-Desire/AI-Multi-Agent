@@ -8,7 +8,7 @@ from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.repositories.call_repository import CallRepository
 from app.services.twilio_service import TwilioService
 from app.services.cost_calculator import CostCalculatorService
-from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse
+from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, TwilioDirectAccountUsageResponse
 from app.schemas.platform_rules import VoiceRulesResponse, UpdateVoiceRulesPayload
 from app.core.dependencies import require_superadmin, TenantContext
 
@@ -428,5 +428,213 @@ async def get_platform_usage_and_cost(
 
     telemetry["time_range"] = time_range
     return telemetry
+
+
+# ---------------------------------------------------------------------------
+# Direct Twilio Account Native Usage & Credit Telemetry (SuperAdmin Only)
+# ---------------------------------------------------------------------------
+
+@router.get("/twilio-account-usage", response_model=TwilioDirectAccountUsageResponse)
+async def get_direct_twilio_usage(
+    organization_id: Optional[str] = Query(None, description="Organization ID or blank for first connected account"),
+    time_range: str = Query("this_month", description="this_month, last_month, today, yesterday, all_time"),
+    current_admin: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Directly query official Twilio Usage Records and account balance.
+    Provides true vendor billing logs, monthly recurring fixed lease charges (numbers),
+    and pay-as-you-go variable itemization.
+    """
+    target_org_id = organization_id
+    target_org_name = "Primary Organization"
+
+    if not target_org_id:
+        # Auto-pick the first organization that has an active Twilio configuration
+        all_configs = await twilio_repo.list_all()
+        if all_configs:
+            first_cfg = all_configs[0]
+            target_org_id = first_cfg.organization_id
+            target_org_name = first_cfg.organization_id
+            # Resolve friendly name if available
+            org_info = await UserRepository.get_organization(target_org_id)
+            if org_info:
+                target_org_name = org_info.get("org_name", target_org_name)
+        else:
+            return TwilioDirectAccountUsageResponse(
+                configured=False,
+                message="No Twilio configurations found in the platform database."
+            )
+    else:
+        org_info = await UserRepository.get_organization(target_org_id)
+        if org_info:
+            target_org_name = org_info.get("org_name", target_org_id)
+
+    ctx = TenantContext(
+        organization_id=target_org_id,
+        user_id=current_admin.get("id", "superadmin"),
+        email=current_admin.get("email", "admin@platform.com"),
+        role="superadmin",
+        org_name=target_org_name
+    )
+
+    res = await twilio_service.get_account_usage_records(ctx, time_range=time_range)
+    if res.configured and not res.org_name:
+        res.org_name = target_org_name
+    return res
+
+
+@router.get("/twilio-configured-organizations")
+async def list_twilio_configured_organizations(_: Dict[str, Any] = Depends(require_superadmin)):
+    """
+    Returns list of all organizations that have Twilio configured for easy switching in the dashboard.
+    """
+    configs = await twilio_repo.list_all()
+    org_list = []
+    for cfg in configs:
+        org_info = await UserRepository.get_organization(cfg.organization_id)
+        org_name = org_info.get("org_name") if org_info else cfg.organization_id
+        org_list.append({
+            "organization_id": cfg.organization_id,
+            "org_name": org_name or cfg.organization_id,
+            "account_sid": cfg.account_sid,
+            "phone_number": cfg.phone_number,
+            "status": cfg.status
+        })
+    return org_list
+
+
+@router.get("/twilio-recording-inventory")
+async def get_twilio_recording_inventory(
+    organization_id: Optional[str] = Query(None),
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Returns inventory of stored recordings on Twilio:
+    Total count, recordings older than 28 days, recordings under 28 days, and total minutes.
+    """
+    return await twilio_service.get_recording_inventory(org_id=organization_id)
+
+
+@router.post("/twilio-purge-recordings")
+async def purge_old_twilio_recordings(
+    days: int = Query(28, ge=1, le=365, description="Purge recordings older than this number of days"),
+    organization_id: Optional[str] = Query(None),
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Deletes call recordings on Twilio older than `days` (default 28) to eliminate recurring storage fees.
+    """
+    res = await twilio_service.purge_recordings(org_id=organization_id, days=days)
+    return res
+
+
+class EscalationAlertConfigPayload(BaseModel):
+    organization_id: Optional[str] = None
+    enabled: bool = True
+    recipient_email: str = Field(..., min_length=3)
+
+
+@router.get("/escalation-alert-config")
+async def get_escalation_alert_config(
+    organization_id: Optional[str] = Query(None),
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Returns the current escalation recording alert settings (enabled, recipient email, sender, Graph status).
+    """
+    from app.services.graph_email_service import graph_email_service
+    import os
+
+    cfg = None
+    if organization_id:
+        cfg = await twilio_repo.get_by_org(organization_id)
+    if not cfg:
+        cfg = await twilio_repo.get_default()
+
+    default_email = os.getenv("ESCALATION_ALERT_RECIPIENT", "ponkiyaraj7@gmail.com")
+    enabled = cfg.escalation_alerts_enabled if cfg and cfg.escalation_alerts_enabled is not None else True
+    recipient = (cfg.escalation_alert_email if cfg and cfg.escalation_alert_email else None) or default_email
+
+    return {
+        "organization_id": cfg.organization_id if cfg else organization_id,
+        "enabled": enabled,
+        "recipient_email": recipient,
+        "mail_sender": graph_email_service.mail_sender,
+        "graph_configured": graph_email_service.is_configured(),
+        "sender": graph_email_service.mail_sender
+    }
+
+
+@router.post("/escalation-alert-config")
+async def update_escalation_alert_config(
+    payload: EscalationAlertConfigPayload,
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Updates the escalation recording alert settings (toggle ON/OFF and recipient email).
+    """
+    cfg = None
+    if payload.organization_id:
+        cfg = await twilio_repo.get_by_org(payload.organization_id)
+    if not cfg:
+        cfg = await twilio_repo.get_default()
+
+    if not cfg:
+        raise HTTPException(status_code=404, detail="No connected Twilio account found to attach settings to.")
+
+    cfg.escalation_alerts_enabled = payload.enabled
+    cfg.escalation_alert_email = payload.recipient_email.strip()
+    await twilio_repo.save(cfg)
+
+    return {
+        "success": True,
+        "message": f"Escalation alert settings updated successfully. Notifications will route to {cfg.escalation_alert_email}.",
+        "enabled": cfg.escalation_alerts_enabled,
+        "recipient_email": cfg.escalation_alert_email
+    }
+
+
+class SendTestAlertPayload(BaseModel):
+    recipient_email: str
+    organization_id: Optional[str] = None
+
+
+@router.post("/send-test-escalation-alert")
+async def send_test_escalation_alert(
+    payload: SendTestAlertPayload,
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """
+    Dispatches a real formatted test alert email using Microsoft Graph API to verify delivery.
+    """
+    from app.services.graph_email_service import graph_email_service
+
+    org_name = "AI Voice Platform (Production Tenant)"
+    if payload.organization_id:
+        org_info = await UserRepository.get_organization(payload.organization_id)
+        if org_info and org_info.get("org_name"):
+            org_name = org_info["org_name"]
+
+    res = await graph_email_service.send_recording_escalation_alert(
+        to_recipients=[payload.recipient_email.strip()],
+        org_name=org_name,
+        call_id="call_test_audit_verification",
+        call_sid="CA_twilio_test_audit_example",
+        customer_phone="+919023671902",
+        call_duration_seconds=128,
+        retention_reason="AI Confusion & Repeated Misunderstanding (Audit Trigger)",
+        summary="Customer asked for clarification on monthly number pricing and regional tariffs. AI voice assistant repeated conflicting responses, triggering supervisory escalation and audio retention.",
+        sentiment="Negative",
+        transcript_excerpt="Customer: Can you explain the monthly DID rental for my UK number?\nAgent: I apologize, let me check that again for you...\nCustomer: You already said that twice. Are you unable to answer?\nAgent: I sincerely apologize for the confusion. I am flagging this call for audit.",
+        retention_days=28
+    )
+
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to dispatch email."))
+
+    return res
+
+
+
 
 

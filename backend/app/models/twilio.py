@@ -19,6 +19,8 @@ class TwilioConfiguration(BaseModel):
     inbound_forward_mapping: Optional[Dict[str, str]] = None  # { "+1TwilioNumber": "+1ForwardTarget" }
     default_agent_id: Optional[str] = None
     inbound_agent_mapping: Optional[Dict[str, str]] = None  # { "+1TwilioNumber": "agent_id" }
+    escalation_alerts_enabled: Optional[bool] = True
+    escalation_alert_email: Optional[str] = None
     status: str = "CONNECTED"
     created_at: datetime
     updated_at: datetime
