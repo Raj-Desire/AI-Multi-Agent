@@ -1,221 +1,248 @@
-import React from "react";
-import { useTheme } from "../../context/ThemeContext";
-import {
-  Phone,
-  Users,
-  BarChart3,
-  ShieldCheck,
-  Bot,
-  Activity,
-  PhoneCall,
-  TrendingUp,
-  PieChart
-} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Mic, PhoneIncoming, CalendarCheck } from "lucide-react";
+
+const EXCHANGES = [
+  { caller: "Hi, I'd like to book an appointment.", agent: "Of course. Does Thursday at 10:30 work?" },
+  { caller: "What are your opening hours?", agent: "We're open 9 to 6, Monday to Saturday." },
+  { caller: "Can someone call me back today?", agent: "Done. I've scheduled a callback for 4 PM." },
+];
+
+const CAPABILITIES = [
+  { icon: PhoneIncoming, label: "Answers every call" },
+  { icon: Mic, label: "Understands and speaks" },
+  { icon: CalendarCheck, label: "Books and qualifies" },
+];
+
+const ROWS = [
+  { amp: 92, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: 0.0, size: 2.1, alpha: 1 },
+  { amp: 74, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: 0.35, size: 1.9, alpha: 0.85 },
+  { amp: 56, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: 0.7, size: 1.8, alpha: 0.7 },
+  { amp: 36, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: 1.05, size: 1.7, alpha: 0.55 },
+  { amp: 112, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: -0.35, size: 1.5, alpha: 0.4 },
+  { amp: 18, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: 1.4, size: 1.5, alpha: 0.35 },
+  { amp: 132, f1: 0.011, f2: 0.027, s1: 0.9, s2: 0.6, ph: -0.7, size: 1.3, alpha: 0.25 },
+];
+const SPACING = 9;
+
+interface Ripple {
+  x: number;
+  y: number;
+  t0: number;
+}
 
 export const ProductExperiencePanel: React.FC = () => {
-  const { draftTheme } = useTheme();
-  const orgName = draftTheme.identity.org_name || "AI Voice Platform";
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [touched, setTouched] = useState(false);
+  const [exIdx, setExIdx] = useState(0);
 
-  const featurePillars = [
-    {
-      title: "AI Voice Agents",
-      description: "Human-like conversations that understand and engage.",
-      icon: Bot,
-      color: "text-blue-600 bg-blue-50/80 border-blue-100",
-    },
-    {
-      title: "Multi-Agent Orchestration",
-      description: "Run multiple agents in parallel and handle thousands of calls.",
-      icon: Users,
-      color: "text-indigo-600 bg-indigo-50/80 border-indigo-100",
-    },
-    {
-      title: "Real-time Analytics",
-      description: "Track performance, monitor calls and optimize outcomes.",
-      icon: BarChart3,
-      color: "text-sky-600 bg-sky-50/80 border-sky-100",
-    },
-    {
-      title: "Secure & Scalable",
-      description: "Enterprise-grade security with built-in reliability.",
-      icon: ShieldCheck,
-      color: "text-emerald-600 bg-emerald-50/80 border-emerald-100",
-    },
-  ];
+  useEffect(() => {
+    const t = setInterval(() => setExIdx((i) => (i + 1) % EXCHANGES.length), 5200);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const canvas = canvasRef.current;
+    if (!wrap || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let w = 0;
+    let h = 0;
+    let raf = 0;
+    const ripples: Ripple[] = [];
+    const mouse = { x: 0, y: 0, tx: 0, ty: 0, hover: 0, target: 0 };
+    let surge = 0;
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = wrap.clientWidth;
+      h = wrap.clientHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const draw = (now: number) => {
+      const t = now / 1000;
+      ctx.clearRect(0, 0, w, h);
+
+      mouse.x += (mouse.tx - mouse.x) * 0.14;
+      mouse.y += (mouse.ty - mouse.y) * 0.14;
+      mouse.hover += (mouse.target - mouse.hover) * 0.08;
+      surge *= 0.965;
+      while (ripples.length && (now - ripples[0].t0) / 1000 > 3.2) ripples.shift();
+
+      const cy = h * 0.46;
+      const cols = Math.floor(w / SPACING) + 1;
+      const idle = 0.85 + 0.15 * Math.sin(t * 1.3);
+
+      for (let r = 0; r < ROWS.length; r++) {
+        const row = ROWS[r];
+        for (let i = 0; i < cols; i++) {
+          const x = i * SPACING;
+          const nx = x / w;
+          const env = Math.pow(Math.sin(Math.PI * nx), 1.2);
+
+          const wave =
+            Math.sin(x * row.f1 + t * row.s1 + row.ph * 3) * 0.6 +
+            Math.sin(x * row.f2 - t * row.s2 + row.ph * 5) * 0.4;
+
+          const dxm = x - mouse.x;
+          let y0 = cy + row.amp * env * wave * idle;
+          const dym = mouse.y - y0;
+          const near = Math.exp(-(dxm * dxm + dym * dym) / (2 * 140 * 140)) * mouse.hover;
+
+          const amp = 1 + near * 1.5 + surge * 0.7;
+          let y = cy + row.amp * env * wave * idle * amp;
+          y += (mouse.y - y) * 0.16 * near;
+
+          let glow = 0;
+          for (let k = 0; k < ripples.length; k++) {
+            const rp = ripples[k];
+            const age = (now - rp.t0) / 1000;
+            const d = Math.hypot(x - rp.x, y - rp.y);
+            const delta = d - age * 420;
+            if (delta > -90 && delta < 90) {
+              const p = Math.exp(-((delta / 38) * (delta / 38))) * Math.exp(-age * 1.1);
+              y += Math.sin(delta * 0.12) * 26 * p;
+              glow = Math.max(glow, p);
+            }
+          }
+
+          const radius = row.size * (1 + near * 0.9 + glow * 1.1);
+          const base = (0.25 + 0.75 * env) * row.alpha;
+          const a = Math.min(1, base + near * 0.5 + glow * 0.7);
+          const mix = Math.min(1, near * 0.9 + glow);
+          const k = 0.9 * env;
+          const rC = Math.round(79 + (103 - 79) * k + (255 - 79) * mix * 0.7);
+          const gC = Math.round(70 + (232 - 70) * k + (255 - 70) * mix * 0.7);
+          const bC = Math.round(229 + (249 - 229) * k + (255 - 229) * mix * 0.7);
+
+          ctx.fillStyle = `rgba(${Math.min(rC, 255)},${Math.min(gC, 255)},${Math.min(bC, 255)},${a})`;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      if (!reduceMotion) raf = requestAnimationFrame(draw);
+    };
+
+    const local = (e: PointerEvent) => {
+      const rect = wrap.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    const onMove = (e: PointerEvent) => {
+      const p = local(e);
+      if (mouse.target === 0) {
+        mouse.x = p.x;
+        mouse.y = p.y;
+      }
+      mouse.tx = p.x;
+      mouse.ty = p.y;
+      mouse.target = 1;
+    };
+    const onLeave = () => {
+      mouse.target = 0;
+    };
+    const onDown = (e: PointerEvent) => {
+      const p = local(e);
+      ripples.push({ x: p.x, y: p.y, t0: performance.now() });
+      surge = 1;
+      setTouched(true);
+    };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointerleave", onLeave);
+    wrap.addEventListener("pointerdown", onDown);
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      wrap.removeEventListener("pointermove", onMove);
+      wrap.removeEventListener("pointerleave", onLeave);
+      wrap.removeEventListener("pointerdown", onDown);
+    };
+  }, []);
 
   return (
-    <div className="relative w-full h-full bg-[#f6f9fd] text-slate-900 flex flex-col justify-between p-6 sm:p-8 xl:p-10 overflow-hidden select-none">
-      {/* Background Subtle Gradient Glow */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/90 via-[#f5f8fc]/70 to-[#e4eef9]/80 pointer-events-none -z-10" />
+    <div ref={wrapRef} className="relative w-full h-full overflow-hidden bg-[#070b1d] text-white cursor-pointer select-none">
+      {/* Corner glows mirror the blue and cyan glows on the sign-in side */}
+      <div className="absolute -top-40 -right-32 w-[520px] h-[520px] rounded-full bg-indigo-600/20 blur-[130px] pointer-events-none" />
+      <div className="absolute -bottom-48 -left-24 w-[480px] h-[480px] rounded-full bg-cyan-500/15 blur-[130px] pointer-events-none" />
 
-      {/* 1. Top Brand Header */}
-      <div className="relative z-10 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <Activity className="w-5 h-5 stroke-[2.5]" />
+      <canvas ref={canvasRef} className="absolute inset-0" />
+
+      {/* Soft vignette so text stays readable */}
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_35%,rgba(7,11,29,0.78)_100%)]" />
+
+      {/* Seam between the two sections */}
+      <div className="absolute inset-y-0 left-0 w-px pointer-events-none bg-gradient-to-b from-transparent via-blue-400/60 to-transparent" />
+
+      <div className="absolute top-10 left-12 xl:left-16 pointer-events-none text-[11px] font-medium tracking-[0.32em] uppercase text-cyan-200/80">
+        Real-Time Spoken AI
+      </div>
+
+      {/* Sample exchange: what callers say, what the agent answers */}
+      <div
+        key={exIdx}
+        className="absolute top-[17%] right-12 xl:right-16 w-[300px] pointer-events-none space-y-2.5"
+        style={{ animation: "pep-in .6s cubic-bezier(.2,.7,.2,1) both" }}
+      >
+        <style>{`@keyframes pep-in { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }`}</style>
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 w-7 h-7 shrink-0 rounded-full bg-white/10 border border-white/15 flex items-center justify-center">
+            <Mic className="w-3.5 h-3.5 text-blue-100" />
+          </span>
+          <div className="rounded-2xl rounded-tl-md bg-white/[0.07] border border-white/10 backdrop-blur px-3.5 py-2 text-[13px] text-slate-200">
+            {EXCHANGES[exIdx].caller}
           </div>
-          <div>
-            <h2 className="font-extrabold text-sm tracking-tight text-slate-900 uppercase">
-              {orgName}
-            </h2>
-            <p className="text-[10.5px] font-medium text-slate-500 tracking-wide">
-              Multi-Agent Voice Platform
-            </p>
+        </div>
+        <div className="flex items-start gap-2.5 justify-end">
+          <div className="rounded-2xl rounded-tr-md bg-gradient-to-r from-blue-600/80 to-indigo-600/80 border border-blue-300/20 px-3.5 py-2 text-[13px] text-blue-50">
+            {EXCHANGES[exIdx].agent}
           </div>
         </div>
       </div>
 
-      {/* 2. Middle Body: Two Column Grid (Left Features + Right 3D Visual with Floating Cards) */}
-      <div className="relative z-10 my-auto py-2 grid grid-cols-1 xl:grid-cols-12 gap-5 items-center w-full">
-        {/* Left Column: Headings & 4 Feature Badges (5.5 cols) */}
-        <div className="xl:col-span-6 space-y-4">
-          <div className="space-y-2">
-            <h1 className="text-3xl xl:text-[2.2rem] font-extrabold tracking-tight text-slate-900 leading-[1.14]">
-              Smarter Calls. <br />
-              Stronger Connections. <br />
-              <span className="text-[#2563eb]">Better Results.</span>
-            </h1>
-            <div className="w-10 h-1 bg-blue-600 rounded-full" />
-            <p className="text-xs text-slate-600 font-normal leading-relaxed pt-1 max-w-sm">
-              Build, manage and scale AI voice agents that converse, convert and create real impact.
-            </p>
-          </div>
-
-          {/* Feature Highlights List */}
-          <div className="space-y-2.5 pt-1">
-            {featurePillars.map((feature, idx) => {
-              const Icon = feature.icon;
-              return (
-                <div
-                  key={idx}
-                  className="flex items-start gap-3 group transition-all"
-                >
-                  <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 shadow-2xs ${feature.color}`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <div className="space-y-0.5 min-w-0">
-                    <h4 className="text-xs font-bold text-slate-900 leading-snug">
-                      {feature.title}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 leading-tight">
-                      {feature.description}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Column: 3D Robot & Dynamic Floating Telephony Cards (6.5 cols) */}
-        <div className="hidden xl:flex xl:col-span-6 relative h-[360px] items-center justify-center">
-          {/* Subtle cyan connection line circles */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-            <div className="w-64 h-64 rounded-full border border-dashed border-blue-300 animate-spin-slow" />
-          </div>
-
-          {/* Center 3D AI Robot with Glowing Pedestal */}
-          <div className="relative z-10 w-64 h-64 flex flex-col items-center justify-center">
-            <img
-              src="/robot-avatar.png"
-              alt="AI Voice Agent Robot"
-              className="w-56 h-56 object-contain drop-shadow-[0_25px_35px_rgba(37,99,235,0.28)] animate-pulse [animation-duration:3s]"
-            />
-            {/* 3D Circular Pedestal Stand */}
-            <div className="w-40 h-7 rounded-[100%] bg-gradient-to-r from-blue-600 via-sky-400 to-blue-600 shadow-[0_12px_25px_rgba(37,99,235,0.45)] border border-blue-300/70 -mt-4 -z-10 flex items-center justify-center">
-              <div className="w-24 h-3.5 rounded-[100%] bg-white/70 blur-[1px]" />
-            </div>
-          </div>
-
-          {/* Floating Card 1: Active Calls (Top Center) */}
-          <div className="absolute top-0 right-14 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2.5 px-3 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.06)] flex items-center gap-2.5 animate-bounce [animation-duration:4s]">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <PhoneCall className="w-4 h-4" />
-            </div>
-            <div className="text-left">
-              <span className="text-[10px] font-medium text-slate-400 block">Active Calls</span>
-              <span className="text-xs font-extrabold text-slate-900 leading-none">28</span>
-              <span className="inline-flex items-center gap-1 text-[9px] text-emerald-600 font-semibold ml-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+      <div className="absolute bottom-12 left-12 xl:left-16 right-12 pointer-events-none">
+        <h2 className="text-3xl xl:text-4xl font-semibold tracking-tight leading-[1.12] text-slate-50">
+          Every call answered.
+          <br />
+          <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-300 bg-clip-text text-transparent">
+            Every lead qualified.
+          </span>
+        </h2>
+        <p className="mt-4 text-sm text-blue-200/50 max-w-sm">
+          Voice agents that listen, reason and respond in real time.
+        </p>
+        <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2.5">
+          {CAPABILITIES.map(({ icon: Icon, label }) => (
+            <span key={label} className="flex items-center gap-2 text-xs text-blue-100/70">
+              <span className="w-6 h-6 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
+                <Icon className="w-3 h-3 text-cyan-300" />
               </span>
-            </div>
-          </div>
-
-          {/* Floating Card 2: AI Agents (Top Left) */}
-          <div className="absolute top-10 left-0 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2 px-3 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.06)] flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Users className="w-3.5 h-3.5" />
-            </div>
-            <div className="text-left">
-              <span className="text-[9.5px] font-medium text-slate-400 block">AI Agents</span>
-              <span className="text-xs font-extrabold text-slate-900 leading-none">18</span>
-              <span className="text-[9px] text-emerald-600 font-semibold ml-1">↑ 8.2%</span>
-            </div>
-          </div>
-
-          {/* Floating Card 3: Recent Calls (Right Side List) */}
-          <div className="absolute right-0 top-14 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2.5 border border-slate-100 shadow-[0_10px_25px_rgba(0,0,0,0.07)] text-left w-40 space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] font-bold text-slate-800 pb-1 border-b border-slate-100">
-              <span>Recent Calls</span>
-            </div>
-            <div className="space-y-1 text-[9.5px]">
-              <div className="flex items-center justify-between text-slate-600">
-                <span className="flex items-center gap-1"><Phone className="w-2.5 h-2.5 text-blue-500" /> +1 (415) 555-0123</span>
-                <span className="text-slate-400 font-mono">02:15</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-600">
-                <span className="flex items-center gap-1"><Phone className="w-2.5 h-2.5 text-blue-500" /> +1 (212) 555-0189</span>
-                <span className="text-slate-400 font-mono">01:42</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-600">
-                <span className="flex items-center gap-1"><Phone className="w-2.5 h-2.5 text-blue-500" /> +1 (310) 555-0112</span>
-                <span className="text-slate-400 font-mono">00:58</span>
-              </div>
-            </div>
-            <div className="pt-1 text-center border-t border-slate-100">
-              <span className="text-[9px] text-blue-600 font-semibold cursor-pointer">View All Calls</span>
-            </div>
-          </div>
-
-          {/* Floating Card 4: Conversations (Bottom Left) */}
-          <div className="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2 px-3 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.06)] flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-              <Activity className="w-3.5 h-3.5" />
-            </div>
-            <div className="text-left">
-              <span className="text-[9.5px] font-medium text-slate-400 block">Conversations</span>
-              <span className="text-xs font-extrabold text-slate-900 leading-none">6,324</span>
-              <span className="text-[9px] text-emerald-600 font-semibold ml-1">↑ 11.7%</span>
-            </div>
-          </div>
-
-          {/* Floating Card 5: Conversion Rate (Bottom Right) */}
-          <div className="absolute bottom-2 right-10 z-20 bg-white/95 backdrop-blur-md rounded-xl p-2 px-3 border border-slate-100 shadow-[0_8px_20px_rgba(0,0,0,0.06)] flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <PieChart className="w-3.5 h-3.5" />
-            </div>
-            <div className="text-left">
-              <span className="text-[9.5px] font-medium text-slate-400 block">Conversion Rate</span>
-              <span className="text-xs font-extrabold text-slate-900 leading-none">24.6%</span>
-              <span className="text-[9px] text-emerald-600 font-semibold ml-1">↑ 8.4%</span>
-            </div>
-          </div>
+              {label}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* 3. Bottom Slogan Pill */}
-      <div className="relative z-10 pt-3 border-t border-slate-200/80 flex items-center gap-3 shrink-0">
-        <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-          <PhoneCall className="w-4 h-4" />
-        </div>
-        <div className="text-left">
-          <span className="text-xs font-bold text-blue-600 block leading-tight">
-            Automate Calls. Build Relationships. Drive Results.
-          </span>
-          <span className="text-[11px] text-slate-500">
-            The future of customer communication is here.
-          </span>
-        </div>
+      <div
+        className={`absolute bottom-12 right-12 xl:right-16 pointer-events-none text-[11px] tracking-[0.2em] uppercase text-blue-200/30 transition-opacity duration-700 ${
+          touched ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        Touch the wave
       </div>
     </div>
   );
