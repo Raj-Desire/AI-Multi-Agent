@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Optional, Dict, Set
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Set, Tuple
 from fastapi import HTTPException
 
 from zoneinfo import ZoneInfo
@@ -40,6 +40,7 @@ class CampaignDialerEngine:
     Asynchronous Automated Outbound Dialer Engine.
     Handles scheduling, timezone calculations, concurrency limits, eligibility checks,
     idempotent dispatching, and retry lifecycles.
+    Uses an Interruptible Event-Driven priority scheduler to eliminate idle CPU and database query waste.
     """
 
     def __init__(
@@ -78,6 +79,17 @@ class CampaignDialerEngine:
         self._worker_task: Optional[asyncio.Task] = None
         self._dispatch_locks: Set[str] = set()  # Set of in-flight member_ids to prevent race conditions
         self._lock_mutex = asyncio.Lock()
+        self._wake_event = asyncio.Event()
+
+    # -------------------------------------------------------------
+    # Event Wakeup Trigger
+    # -------------------------------------------------------------
+    def notify_schedule_changed(self):
+        """
+        Instantly wakes up the worker loop when any campaign is created,
+        updated, started, resumed, or stopped.
+        """
+        self._wake_event.set()
 
     # -------------------------------------------------------------
     # Lifecycle: Start / Stop Background Worker
@@ -93,6 +105,7 @@ class CampaignDialerEngine:
     async def stop(self):
         """Gracefully stops the dialer worker loop."""
         self._running = False
+        self._wake_event.set()
         if self._worker_task:
             self._worker_task.cancel()
             try:
@@ -102,24 +115,100 @@ class CampaignDialerEngine:
         logger.info("[CampaignDialer] Automated outbound dialer engine stopped.")
 
     async def _worker_loop(self):
-        """Main periodic polling loop."""
+        """
+        Interruptible Priority Scheduler Loop.
+        If calls are actively in flight or queue is actively dialing, sleeps briefly (3s).
+        If all campaigns are in future schedules or empty, sleeps until the EARLIEST start
+        time or until an event (like a new campaign created for an earlier time) awakens it!
+        """
         while self._running:
+            self._wake_event.clear()
+            next_wake_delay = 300.0  # Default fallback sleep: 5 minutes if idle
+
             try:
-                await self.tick()
+                has_active_work, next_candidate_delay = await self.tick()
+                if has_active_work:
+                    # Campaign is actively dialing calls
+                    next_wake_delay = self.poll_interval
+                elif next_candidate_delay is not None:
+                    # Cap minimum wait to 5s, max to 1 hour per evaluation cycle
+                    next_wake_delay = max(5.0, min(next_candidate_delay, 3600.0))
+                else:
+                    # No active or scheduled campaigns exist
+                    next_wake_delay = 300.0
             except Exception as e:
                 logger.error(f"[CampaignDialer Error] Unexpected error in worker loop: {e}", exc_info=True)
-            await asyncio.sleep(self.poll_interval)
+                next_wake_delay = 10.0
+
+            # Interruptible wait: sleeps until next_wake_delay OR until notify_schedule_changed() fires!
+            try:
+                await asyncio.wait_for(self._wake_event.wait(), timeout=next_wake_delay)
+            except asyncio.TimeoutError:
+                pass
 
     # -------------------------------------------------------------
     # Single Tick: Evaluates all active campaigns
+    # Returns (has_active_work: bool, next_earliest_delay_seconds: Optional[float])
     # -------------------------------------------------------------
-    async def tick(self):
+    async def tick(self) -> Tuple[bool, Optional[float]]:
         active_campaigns = await self.campaign_repo.list_active_campaigns()
+        has_active_work = False
+        earliest_delays = []
+
         for campaign in active_campaigns:
             try:
-                await self.process_campaign(campaign)
+                active, delay_needed = await self.process_campaign(campaign)
+                if active:
+                    has_active_work = True
+                if delay_needed is not None and delay_needed > 0:
+                    earliest_delays.append(delay_needed)
             except Exception as ce:
                 logger.error(f"[CampaignDialer Error] Processing campaign {campaign.id}: {ce}", exc_info=True)
+
+        next_delay = min(earliest_delays) if earliest_delays else None
+        return has_active_work, next_delay
+
+    # -------------------------------------------------------------
+    # Calculate seconds until next calling window start
+    # -------------------------------------------------------------
+    def get_seconds_until_window_start(self, campaign: Campaign, now_utc: Optional[datetime] = None) -> Optional[float]:
+        """Calculates precise seconds until this campaign's next allowed calling start time."""
+        now = now_utc or datetime.now(timezone.utc)
+        sched = campaign.schedule
+
+        try:
+            tz = ZoneInfo(sched.timezone)
+            now_tz = now.astimezone(tz)
+        except Exception:
+            return 300.0
+
+        try:
+            start_parts = [int(p) for p in sched.calling_start_time.split(":")]
+            target_time = now_tz.replace(hour=start_parts[0], minute=start_parts[1], second=0, microsecond=0)
+            if target_time <= now_tz:
+                # Target start time today has passed, check next day
+                target_time += timedelta(days=1)
+
+            # Advance day by day until date matches start_date and day is in allowed calling_days
+            allowed_days = [d.strip().capitalize() for d in sched.calling_days]
+            for _ in range(30):  # Look up to 30 days ahead
+                day_name = target_time.strftime("%A")
+                date_str = target_time.strftime("%Y-%m-%d")
+                if sched.start_date and date_str < sched.start_date:
+                    target_time += timedelta(days=1)
+                    continue
+                if sched.end_date and date_str > sched.end_date:
+                    return None  # Campaign has expired
+                if day_name in allowed_days:
+                    # Found earliest match!
+                    diff = (target_time - now_tz).total_seconds()
+                    return max(0.0, diff)
+                target_time += timedelta(days=1)
+        except Exception as e:
+            logger.warning(f"[CampaignDialer] Error calculating window start for {campaign.id}: {e}")
+            return 300.0
+
+        return None
 
     # -------------------------------------------------------------
     # Timezone & Schedule Verification
@@ -174,8 +263,9 @@ class CampaignDialerEngine:
 
     # -------------------------------------------------------------
     # Process Single Campaign
+    # Returns (is_actively_calling: bool, delay_until_next_attempt: Optional[float])
     # -------------------------------------------------------------
-    async def process_campaign(self, campaign: Campaign):
+    async def process_campaign(self, campaign: Campaign) -> Tuple[bool, Optional[float]]:
         # 1. Check if campaign status is SCHEDULED and time to activate
         is_in_window, reason = self.is_inside_calling_window(campaign)
 
@@ -191,10 +281,11 @@ class CampaignDialerEngine:
                     message=f"Campaign schedule activated. Status transitioned from SCHEDULED to RUNNING."
                 )
             else:
-                return
+                delay = self.get_seconds_until_window_start(campaign)
+                return False, delay
 
         if campaign.status != CampaignStatus.RUNNING:
-            return
+            return False, None
 
         # Resolve members stuck in CALLING (lost/late Twilio callbacks, crashed streams) so the
         # campaign can finish instead of showing RUNNING forever. Runs even outside the calling window.
@@ -203,7 +294,8 @@ class CampaignDialerEngine:
         # 2. Check window for RUNNING campaign
         if not is_in_window:
             logger.debug(f"[CampaignDialer] Campaign {campaign.id} paused due to calling window: {reason}")
-            return
+            delay = self.get_seconds_until_window_start(campaign)
+            return False, delay
 
         # 3. Calculate Concurrency Limit
         in_flight = await self.member_repo.count_in_flight_calls(campaign.id)
@@ -212,14 +304,14 @@ class CampaignDialerEngine:
 
         if available_slots <= 0:
             logger.debug(f"[CampaignDialer] Campaign {campaign.id} at max concurrency ({in_flight}/{max_concurrent}).")
-            return
+            return True, None
 
         # 4. Fetch Next Eligible Members (Queued or Retrying due for attempt)
         eligible_members = await self.member_repo.get_next_eligible_members(campaign.id, limit=available_slots)
         if not eligible_members:
             # Check if campaign is finished
             await self.campaign_service.recalculate_campaign_stats(campaign.id)
-            return
+            return (in_flight > 0), None
 
         # 5. Dispatch calls for eligible members concurrently
         dispatch_tasks = []
@@ -234,6 +326,8 @@ class CampaignDialerEngine:
 
         if dispatch_tasks:
             await asyncio.gather(*dispatch_tasks, return_exceptions=True)
+
+        return True, None
 
     # -------------------------------------------------------------
     # Watchdog: resolve members stuck in CALLING

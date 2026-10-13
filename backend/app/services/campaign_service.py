@@ -290,18 +290,13 @@ class CampaignService:
             details={"initial_status": initial_status.value, "prospect_count": len(members)}
         )
 
-        if initial_status == CampaignStatus.RUNNING:
-            await self.event_repo.log_event(
-                organization_id=ctx.organization_id,
-                campaign_id=campaign_id,
-                event_type=CampaignEventType.STARTED,
-                message=f"Campaign '{campaign.name}' started immediately."
-            )
-            try:
-                from app.services.campaign_dialer import campaign_dialer_engine
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+            if initial_status == CampaignStatus.RUNNING:
                 asyncio.create_task(campaign_dialer_engine.process_campaign(saved))
-            except Exception as de:
-                logger.warning(f"Failed to auto-dispatch campaign: {de}")
+        except Exception as de:
+            logger.warning(f"Failed to notify dialer engine: {de}")
 
         return saved
 
@@ -368,6 +363,11 @@ class CampaignService:
             event_type=CampaignEventType.UPDATED,
             message=f"Campaign '{campaign.name}' configuration was updated."
         )
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+        except Exception:
+            pass
         return saved
 
     async def delete_campaign(self, ctx: TenantContext, campaign_id: str) -> bool:
@@ -380,6 +380,11 @@ class CampaignService:
 
         await self.member_repo.delete_by_campaign(ctx.organization_id, campaign_id)
         await self.campaign_repo.delete(ctx.organization_id, campaign_id)
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+        except Exception:
+            pass
         return True
 
     # -------------------------------------------------------------
@@ -417,6 +422,7 @@ class CampaignService:
             )
             try:
                 from app.services.campaign_dialer import campaign_dialer_engine
+                campaign_dialer_engine.notify_schedule_changed()
                 asyncio.create_task(campaign_dialer_engine.process_campaign(saved))
             except Exception as de:
                 logger.warning(f"Failed to auto-dispatch on start: {de}")
@@ -424,6 +430,7 @@ class CampaignService:
 
         try:
             from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
             asyncio.create_task(campaign_dialer_engine.process_campaign(campaign))
         except Exception:
             pass
@@ -444,6 +451,11 @@ class CampaignService:
             event_type=CampaignEventType.PAUSED,
             message=f"Campaign '{campaign.name}' was paused. In-flight calls will complete; no new calls will be placed."
         )
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+        except Exception:
+            pass
         return saved
 
     async def resume_campaign(self, ctx: TenantContext, campaign_id: str) -> Campaign:
@@ -461,6 +473,12 @@ class CampaignService:
             event_type=CampaignEventType.RESUMED,
             message=f"Campaign '{campaign.name}' resumed."
         )
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+            asyncio.create_task(campaign_dialer_engine.process_campaign(saved))
+        except Exception:
+            pass
         return saved
 
     async def stop_campaign(self, ctx: TenantContext, campaign_id: str) -> Campaign:
@@ -479,6 +497,11 @@ class CampaignService:
             event_type=CampaignEventType.STOPPED,
             message=f"Campaign '{campaign.name}' was stopped."
         )
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()
+        except Exception:
+            pass
         return saved
 
     # -------------------------------------------------------------
