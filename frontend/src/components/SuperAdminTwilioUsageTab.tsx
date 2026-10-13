@@ -103,14 +103,14 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
         ? `/superadmin/twilio-purge-recordings?days=28&organization_id=${encodeURIComponent(selectedOrgId)}`
         : `/superadmin/twilio-purge-recordings?days=28`;
       const res = await fetchApi<TwilioPurgeResponse>(url, { method: "POST" });
-      if (res.success) {
-        setSuccessMsg(res.message);
+      if (res?.success) {
+        setSuccessMsg(res?.message || "Recordings purged successfully.");
         await Promise.all([fetchUsage(), fetchRecordingInventory()]);
       } else {
-        setError(res.error || res.message);
+        setError(res?.error || res?.message || "Purge operation failed.");
       }
     } catch (err: any) {
-      setError(err.message || "Failed to purge old recordings.");
+      setError(err?.message || "Failed to purge old recordings.");
     } finally {
       setIsPurging(false);
     }
@@ -160,7 +160,7 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
       setIsSavingAlertConfig(true);
       setError(null);
       setSuccessMsg(null);
-      const res = await fetchApi<{ success: boolean; message: string }>("/superadmin/escalation-alert-config", {
+      const res = await fetchApi<any>("/superadmin/escalation-alert-config", {
         method: "POST",
         body: JSON.stringify({
           organization_id: selectedOrgId || undefined,
@@ -168,10 +168,10 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
           recipient_email: alertRecipientEmail.trim(),
         }),
       });
-      setSuccessMsg(res.message);
+      setSuccessMsg(res?.message || "Escalation alert settings updated successfully.");
       await fetchAlertConfig();
     } catch (err: any) {
-      setError(err.message || "Failed to save alert configuration.");
+      setError(err?.message || "Failed to save alert configuration.");
     } finally {
       setIsSavingAlertConfig(false);
     }
@@ -435,9 +435,6 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
                 <span>Smart Recording Retention & Cost Optimizer</span>
                 <Badge variant="primary" size="sm">Auto Credit Protection</Badge>
               </div>
-              <p className="text-[11px] text-[var(--color-muted)] mt-1 max-w-2xl leading-relaxed">
-                Routine calls delete raw audio from Twilio immediately upon call wrap-up to incur <strong>$0 storage charges</strong>. Calls flagged for <em>human escalation</em>, <em>user complaints</em>, or <em>AI confusion</em> retain audio for 28 days before auto-purging. Complete transcripts and analytics always remain securely preserved in your database.
-              </p>
             </div>
           </div>
 
@@ -528,9 +525,6 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
                   {alertEnabled ? "Active & Monitoring" : "Alerts Paused"}
                 </Badge>
               </div>
-              <p className="text-[11px] text-[var(--color-muted)] mt-1 max-w-2xl leading-relaxed">
-                Automatically notifies designated supervisors via <strong>Microsoft 365 Graph API</strong> whenever call audio is retained due to <em>AI confusion / repeated misunderstanding</em>, <em>human escalation requests</em>, <em>negative customer sentiment</em>, or <em>dispute keywords</em>.
-              </p>
             </div>
           </div>
 

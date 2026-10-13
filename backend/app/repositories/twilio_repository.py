@@ -14,6 +14,10 @@ def _invalidate_twilio_cache(org_id: Optional[str] = None):
         _TWILIO_CACHE.clear()
 
 class TwilioRepository:
+    async def get_default(self) -> Optional[TwilioConfiguration]:
+        configs = await self.list_all()
+        return configs[0] if configs else None
+
     async def get_by_org(self, organization_id: str) -> Optional[TwilioConfiguration]:
         cached = _TWILIO_CACHE.get(organization_id)
         if cached:
@@ -43,6 +47,8 @@ class TwilioRepository:
                 inbound_forward_mode=item.get("inbound_forward_mode", "global"),
                 inbound_forward_global_number=item.get("inbound_forward_global_number"),
                 inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
+                escalation_alert_email=item.get("escalation_alert_email"),
                 status="CONNECTED",
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc)
@@ -77,6 +83,8 @@ class TwilioRepository:
                     inbound_forward_mode=item.get("inbound_forward_mode", "global"),
                     inbound_forward_global_number=item.get("inbound_forward_global_number"),
                     inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                    escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
+                    escalation_alert_email=item.get("escalation_alert_email"),
                     status="CONNECTED",
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
@@ -113,6 +121,8 @@ class TwilioRepository:
                     inbound_forward_mode=item.get("inbound_forward_mode", "global"),
                     inbound_forward_global_number=item.get("inbound_forward_global_number"),
                     inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                    escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
+                    escalation_alert_email=item.get("escalation_alert_email"),
                     status="CONNECTED",
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
@@ -152,6 +162,8 @@ class TwilioRepository:
                     inbound_forward_mode=item.get("inbound_forward_mode", "global"),
                     inbound_forward_global_number=item.get("inbound_forward_global_number"),
                     inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                    escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
+                    escalation_alert_email=item.get("escalation_alert_email"),
                     status="CONNECTED",
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
@@ -178,6 +190,8 @@ class TwilioRepository:
                     "inbound_forward_mode": config.inbound_forward_mode,
                     "inbound_forward_global_number": config.inbound_forward_global_number,
                     "inbound_forward_mapping": config.inbound_forward_mapping or {},
+                    "escalation_alerts_enabled": config.escalation_alerts_enabled,
+                    "escalation_alert_email": config.escalation_alert_email,
                     "updated_at": datetime.now(timezone.utc).isoformat()
                 }
                 container.upsert_item(body=doc)

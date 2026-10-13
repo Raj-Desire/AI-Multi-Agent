@@ -580,10 +580,24 @@ async def update_escalation_alert_config(
         cfg = await twilio_repo.get_default()
 
     if not cfg:
-        raise HTTPException(status_code=404, detail="No connected Twilio account found to attach settings to.")
+        # Create or update a global default configuration if no tenant is connected yet
+        org_id = payload.organization_id or "global"
+        cfg = TwilioConfiguration(
+            id=f"cfg_{org_id}",
+            organization_id=org_id,
+            account_sid="",
+            encrypted_auth_token="",
+            phone_number="",
+            escalation_alerts_enabled=payload.enabled,
+            escalation_alert_email=payload.recipient_email.strip(),
+            status="CONNECTED",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+    else:
+        cfg.escalation_alerts_enabled = payload.enabled
+        cfg.escalation_alert_email = payload.recipient_email.strip()
 
-    cfg.escalation_alerts_enabled = payload.enabled
-    cfg.escalation_alert_email = payload.recipient_email.strip()
     await twilio_repo.save(cfg)
 
     return {
