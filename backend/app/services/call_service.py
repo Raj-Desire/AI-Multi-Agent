@@ -52,6 +52,15 @@ class CallService:
         from app.services.prospect_service import ProspectService
         from app.repositories.prospect_repository import ProspectRepository
         prospect_repo = ProspectRepository()
+        # 1. Organization Credit Authorization Check
+        from app.services.credit_service import credit_service
+        auth_check = await credit_service.check_call_authorization(ctx.organization_id)
+        if not auth_check.get("allowed", True):
+            raise HTTPException(
+                status_code=402,
+                detail=auth_check.get("reason", "Organization has exhausted available call credits. Please top up your subscription minutes.")
+            )
+
         prospect_svc = ProspectService(prospect_repo, self.call_repo)
 
         if await prospect_svc.is_dnc_blocked(ctx.organization_id, to_number):
@@ -138,6 +147,9 @@ class CallService:
                     "from_": selected_from,
                     "twiml": twiml_body,
                 }
+                if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
+                    rem_sec = int(auth_check.get("remaining_seconds", 14400))
+                    create_kwargs["time_limit"] = max(1, min(14400, rem_sec))
                 if status_callback_url:
                     create_kwargs["status_callback"] = status_callback_url
                     create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed", "busy", "no-answer", "canceled"]

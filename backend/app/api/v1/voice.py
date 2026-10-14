@@ -719,7 +719,16 @@ async def initiate_ai_test_call(
     """
     Places an outbound phone call via Twilio and immediately connects it to the AI Voice Gateway Media Stream.
     """
-    # 1. Strict Backend DNC Enforcement
+    # 1. Organization Credit Authorization Check
+    from app.services.credit_service import credit_service
+    auth_check = await credit_service.check_call_authorization(ctx.organization_id)
+    if not auth_check.get("allowed", True):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED if hasattr(status, "HTTP_402_PAYMENT_REQUIRED") else 402,
+            detail=auth_check.get("reason", "Organization has exhausted available call credits. Please top up your subscription minutes.")
+        )
+
+    # 2. Strict Backend DNC Enforcement
     from app.services.prospect_service import ProspectService
     from app.repositories.prospect_repository import ProspectRepository
     prospect_repo = ProspectRepository()
@@ -825,11 +834,15 @@ async def initiate_ai_test_call(
     try:
         def _place_call():
             client = Client(tw_cfg.account_sid, auth_token)
-            return client.calls.create(
-                to=payload.to_number,
-                from_=selected_from,
-                twiml=twiml
-            )
+            create_kwargs = {
+                "to": payload.to_number,
+                "from_": selected_from,
+                "twiml": twiml
+            }
+            if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
+                rem_sec = int(auth_check.get("remaining_seconds", 14400))
+                create_kwargs["time_limit"] = max(1, min(14400, rem_sec))
+            return client.calls.create(**create_kwargs)
 
         tw_call = await asyncio.to_thread(_place_call)
         session.twilio_call_sid = tw_call.sid

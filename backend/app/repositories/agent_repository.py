@@ -140,6 +140,10 @@ class AgentRepository:
 
         return await asyncio.to_thread(_sync_get)
 
+    async def list_agents(self, organization_id: str, include_global: bool = True) -> List[AgentConfiguration]:
+        """Alias for list_by_org."""
+        return await self.list_by_org(organization_id, include_global=include_global)
+
     async def list_by_org(self, organization_id: str, include_global: bool = True) -> List[AgentConfiguration]:
         """Lists all agent configurations for a given organization (including global defaults if requested)."""
         cache_key = f"{organization_id}_{include_global}"

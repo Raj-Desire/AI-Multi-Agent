@@ -297,6 +297,24 @@ class CampaignDialerEngine:
             delay = self.get_seconds_until_window_start(campaign)
             return False, delay
 
+        # 2.5 Check Organization Credit Balance before dispatching campaign calls
+        try:
+            from app.services.credit_service import credit_service
+            auth_check = await credit_service.check_call_authorization(campaign.organization_id)
+            if not auth_check.get("allowed", True):
+                logger.warning(f"[CampaignDialer] Auto-pausing Campaign {campaign.id}: Organization credits exhausted.")
+                campaign.status = CampaignStatus.PAUSED
+                await self.campaign_repo.save(campaign)
+                await self.campaign_service.log_event(
+                    campaign_id=campaign.id,
+                    organization_id=campaign.organization_id,
+                    event_type=CampaignEventType.PAUSED,
+                    message="Campaign paused automatically: You have reached your allocated organization calling limit (0 available minutes). Please contact your workspace administrator to top up your account."
+                )
+                return False, None
+        except Exception as cred_err:
+            logger.error(f"[CampaignDialer] Error checking credits for campaign {campaign.id}: {cred_err}")
+
         # 3. Calculate Concurrency Limit
         in_flight = await self.member_repo.count_in_flight_calls(campaign.id)
         max_concurrent = campaign.calling_config.max_concurrent_calls

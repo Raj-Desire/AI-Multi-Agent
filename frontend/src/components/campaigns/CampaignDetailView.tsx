@@ -189,6 +189,21 @@ export function CampaignDetailView({
 
   // Lifecycle actions
   const handleStart = async () => {
+    try {
+      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+      if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+        window.dispatchEvent(
+          new CustomEvent("credit-limit-exceeded", {
+            detail: {
+              message:
+                "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+            }
+          })
+        );
+        return;
+      }
+    } catch {}
+
     setIsActionLoading(true);
     try {
       const updated = await fetchApi<Campaign>(`/campaigns/${campaignId}/start`, { method: "POST" });
@@ -217,6 +232,21 @@ export function CampaignDetailView({
   };
 
   const handleResume = async () => {
+    try {
+      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+      if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+        window.dispatchEvent(
+          new CustomEvent("credit-limit-exceeded", {
+            detail: {
+              message:
+                "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+            }
+          })
+        );
+        return;
+      }
+    } catch {}
+
     setIsActionLoading(true);
     try {
       const updated = await fetchApi<Campaign>(`/campaigns/${campaignId}/resume`, { method: "POST" });

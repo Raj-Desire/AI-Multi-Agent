@@ -96,6 +96,14 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
         } else if (typeof errDetail === "object" && errDetail !== null) {
           errDetail = JSON.stringify(errDetail);
         }
+
+        // Trigger global credit exhausted modal on 402 or credit limit errors
+        if (res.status === 402 || (typeof errDetail === "string" && errDetail.toLowerCase().includes("credit"))) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("credit-limit-exceeded", { detail: { message: errDetail } }));
+          }
+        }
+
         throw new Error(errDetail || `API request failed with status ${res.status}`);
       }
 

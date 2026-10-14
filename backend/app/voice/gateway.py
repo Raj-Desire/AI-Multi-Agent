@@ -73,6 +73,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     has_reprompted_silence: bool = False
     reprompt_injected_at: float = 0.0
     is_concluding_call: bool = False
+    org_credit_limit_sec: Optional[float] = None
     is_transferred: bool = False
     is_interrupted: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
@@ -422,24 +423,30 @@ async def voice_stream_websocket(websocket: WebSocket):
                     continue
 
                 runtime = agent_config.runtime or AgentRuntimeSettings()
+                now = time.time()
+                elapsed_call_time = now - call_start_time
+
                 silence_timeout = max(3, runtime.silence_timeout)
                 hangup_delay = max(2, runtime.silence_hangup_delay or 5)
                 max_duration = max(10, runtime.maximum_call_duration or 300)
+                if org_credit_limit_sec is not None:
+                    max_duration = max(3.0, min(float(max_duration), float(org_credit_limit_sec)))
+
                 active_limit = max_duration if user_spoke else min(60, max_duration)
                 
                 conclusion_msg = (runtime.conclusion_message or "Thank you for your time. We will connect with you shortly. Goodbye!").strip()
-                reprompt_msg = (runtime.silence_reprompt_message or "Hello? Are you there? Are you available?").strip()
+                if org_credit_limit_sec is not None and elapsed_call_time >= max(1.0, org_credit_limit_sec - 10):
+                    conclusion_msg = "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account. Goodbye!"
 
-                now = time.time()
-                elapsed_call_time = now - call_start_time
+                reprompt_msg = (runtime.silence_reprompt_message or "Hello? Are you there? Are you available?").strip()
 
                 # 0. Maximum call duration. Evaluated BEFORE the speaking checks below so a long agent
                 # monologue or a noisy caller can never push the call past the configured limit.
                 # Elapsed time counts from pickup (stream start). The conclusion is spoken a few seconds
                 # early so the call is over by the limit; at the limit itself the call is cut regardless.
                 if not is_concluding_call:
-                    conclude_threshold = max(10, active_limit - 8) if active_limit >= 20 else active_limit
-                    hard_limit_reached = elapsed_call_time >= active_limit - 1.5  # terminate_call adds ~1.2s buffer
+                    conclude_threshold = max(3, active_limit - 8) if active_limit >= 20 else max(1, active_limit - 2)
+                    hard_limit_reached = elapsed_call_time >= active_limit - 1.2  # terminate_call adds ~1.2s buffer
                     if hard_limit_reached or (elapsed_call_time >= conclude_threshold and not is_user_speaking):
                         norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
                         logger.info(
@@ -630,6 +637,17 @@ async def voice_stream_websocket(websocket: WebSocket):
                             cached_inbound_forward_number = cached_tw.inbound_forward_global_number
                     except Exception as tw_err:
                         logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
+
+                # Fetch organization credit limit if strict enforcement is configured
+                if org_id and org_id != "default":
+                    try:
+                        from app.services.credit_service import credit_service
+                        org_cred = await credit_service.repo.get_or_create_org_credits(org_id)
+                        if org_cred and org_cred.is_credit_enforced and org_cred.credit_exhausted_action == "block":
+                            org_credit_limit_sec = float(max(1, org_cred.remaining_credits_seconds))
+                            logger.info(f"[VoiceGateway] Org '{org_id}' credit limit active: {org_credit_limit_sec:.1f}s remaining.")
+                    except Exception as c_err:
+                        logger.debug(f"[VoiceGateway] Notice checking org credit limit: {c_err}")
 
                 business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(

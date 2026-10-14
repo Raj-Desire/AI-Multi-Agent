@@ -319,6 +319,13 @@ class CallSessionService:
         try:
             await self.call_repo.save(call_doc)
             logger.info(f"Persisted CallSession {call_doc.id} (SID: {session.twilio_call_sid}) to database with Agent {session.agent_name} (v{agent_version}). Outcome: {resolved_business_outcome}")
+            
+            # Atomic Credit Deduction & Usage Ledger Tracking
+            try:
+                from app.services.credit_service import credit_service
+                await credit_service.process_completed_call(call_doc)
+            except Exception as cred_err:
+                logger.error(f"[CallSessionService] Error processing credit deduction for call {call_doc.id}: {cred_err}")
         except Exception as e:
             logger.error(f"Error saving CallSession to database: {e}")
 

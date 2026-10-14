@@ -16,7 +16,8 @@ import {
   Layers,
   Sparkles,
   DollarSign,
-  PhoneCall
+  PhoneCall,
+  Coins
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -30,6 +31,7 @@ import { Tabs } from "./ui/Tabs";
 import { SuperAdminVoiceRulesTab } from "./SuperAdminVoiceRulesTab";
 import { SuperAdminUsageCostTab } from "./SuperAdminUsageCostTab";
 import { SuperAdminTwilioUsageTab } from "./SuperAdminTwilioUsageTab";
+import { SuperAdminCreditsTab } from "./SuperAdminCreditsTab";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -412,6 +414,7 @@ export const SuperAdminPanel: React.FC = () => {
         tabs={[
           { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
           { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
+          { id: "credits", label: "Credits & Subscriptions", icon: <Coins className="w-3.5 h-3.5 text-amber-500" /> },
           { id: "cost_tracking", label: "Usage & Cost Tracking", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> },
           { id: "twilio_usage", label: "Twilio Account Telemetry", icon: <PhoneCall className="w-3.5 h-3.5 text-blue-500" /> },
           { id: "voice_rules", label: "AI Voice Rules & Intelligence", icon: <Sparkles className="w-3.5 h-3.5" /> },
@@ -490,7 +493,12 @@ export const SuperAdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: Usage & Cost Tracking (SuperAdmin Only) */}
+      {/* TAB 3: Organization Credits & Subscriptions */}
+      {activeTab === "credits" && (
+        <SuperAdminCreditsTab />
+      )}
+
+      {/* TAB 4: Usage & Cost Tracking (SuperAdmin Only) */}
       {activeTab === "cost_tracking" && (
         <SuperAdminUsageCostTab />
       )}

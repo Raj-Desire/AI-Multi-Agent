@@ -59,6 +59,16 @@ async def create_campaign(
     service: CampaignService = Depends(get_campaign_service)
 ):
     """Creates a new outbound campaign with selected prospects and calling rules."""
+    # Organization Campaign Creation Quota Check
+    if ctx.role != "superadmin":
+        from app.services.credit_service import credit_service
+        can_create = await credit_service.can_create_campaign(ctx.organization_id)
+        if not can_create:
+            raise HTTPException(
+                status_code=403,
+                detail="Campaign creation limit reached for your organization's subscription plan. Please contact your platform administrator."
+            )
+
     campaign = await service.create_campaign(ctx, payload)
     return ApiResponse.ok(CampaignResponse.model_validate(campaign))
 
@@ -142,6 +152,13 @@ async def start_campaign(
     service: CampaignService = Depends(get_campaign_service)
 ):
     """Starts or activates a campaign."""
+    from app.services.credit_service import credit_service
+    auth_check = await credit_service.check_call_authorization(ctx.organization_id)
+    if not auth_check.get("allowed", False):
+        raise HTTPException(
+            status_code=402,
+            detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
+        )
     campaign = await service.start_campaign(ctx, campaign_id)
     # Trigger immediate dialer evaluation
     asyncio.create_task(campaign_dialer_engine.tick())
@@ -166,6 +183,13 @@ async def resume_campaign(
     service: CampaignService = Depends(get_campaign_service)
 ):
     """Resumes a paused campaign."""
+    from app.services.credit_service import credit_service
+    auth_check = await credit_service.check_call_authorization(ctx.organization_id)
+    if not auth_check.get("allowed", False):
+        raise HTTPException(
+            status_code=402,
+            detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
+        )
     campaign = await service.resume_campaign(ctx, campaign_id)
     asyncio.create_task(campaign_dialer_engine.tick())
     return ApiResponse.ok(CampaignResponse.model_validate(campaign))
@@ -302,6 +326,13 @@ async def trigger_dial_now(
     service: CampaignService = Depends(get_campaign_service)
 ):
     """Manually triggers an immediate dialer tick for this campaign."""
+    from app.services.credit_service import credit_service
+    auth_check = await credit_service.check_call_authorization(ctx.organization_id)
+    if not auth_check.get("allowed", False):
+        raise HTTPException(
+            status_code=402,
+            detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
+        )
     campaign = await service.get_campaign(ctx, campaign_id)
     await campaign_dialer_engine.process_campaign(campaign)
     stats = await service.recalculate_campaign_stats(campaign_id)

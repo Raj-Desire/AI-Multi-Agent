@@ -91,6 +91,24 @@ export function ProspectCallModal({
     }
 
     try {
+      // Pre-flight Credit Limit Check
+      try {
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+        if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+          window.dispatchEvent(
+            new CustomEvent("credit-limit-exceeded", {
+              detail: {
+                message:
+                  "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+              }
+            })
+          );
+          return;
+        }
+      } catch {
+        // Fall back to server-side enforcement
+      }
+
       setIsCalling(true);
       const selectedAgent = availableAgents.find((a) => a.agent_id === selectedAgentId);
 

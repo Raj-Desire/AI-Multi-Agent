@@ -21,12 +21,13 @@ import {
   BookOpen,
   UserCheck,
   Contact,
-  Sparkles
+  Sparkles,
+  Coins
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin" | "usage_credits";
 
 export const TAB_ROUTE_MAP: Record<NavTab, string> = {
   dashboard: "/dashboard",
@@ -40,6 +41,7 @@ export const TAB_ROUTE_MAP: Record<NavTab, string> = {
   theme: "/theme",
   admin: "/team",
   superadmin: "/superadmin",
+  usage_credits: "/usage-credits",
 };
 
 export const ROUTE_TAB_MAP: Record<string, NavTab> = {
@@ -64,6 +66,9 @@ export const ROUTE_TAB_MAP: Record<string, NavTab> = {
   "/team": "admin",
   "/admin": "admin",
   "/superadmin": "superadmin",
+  "/usage-credits": "usage_credits",
+  "/credits": "usage_credits",
+  "/usage": "usage_credits",
 };
 
 interface SidebarProps {
@@ -174,6 +179,13 @@ export function Sidebar({
           label: "Team",
           icon: Users,
           visible: isAdmin,
+        },
+        {
+          id: "usage_credits",
+          label: "Usage & Credits",
+          icon: Coins,
+          visible: true,
+          badge: "Pool",
         },
         {
           id: "theme",

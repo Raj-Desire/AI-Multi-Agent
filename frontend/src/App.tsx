@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -22,6 +22,12 @@ import { BusinessProfileView } from "./components/BusinessProfileView";
 import { ProspectsView } from "./components/prospects/ProspectsView";
 import { CampaignsView } from "./components/campaigns/CampaignsView";
 import { LeadIntelligenceView } from "./components/lead-intelligence/LeadIntelligenceView";
+import { UsageDashboardView } from "./components/UsageDashboardView";
+import { LowCreditBanner } from "./components/LowCreditBanner";
+import { HeaderCreditWidget } from "./components/HeaderCreditWidget";
+import { CreditExhaustedModal } from "./components/CreditExhaustedModal";
+import { OrgCreditStatus } from "./types";
+import { fetchApi } from "./api-client";
 import { Sidebar, NavTab, TAB_ROUTE_MAP, ROUTE_TAB_MAP } from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
 import { Modal } from "./components/ui/Modal";
@@ -41,7 +47,8 @@ import {
   Building2,
   AlertCircle,
   Save,
-  Sparkles
+  Sparkles,
+  Coins
 } from "lucide-react";
 
 function MainContent() {
@@ -62,6 +69,34 @@ function MainContent() {
   const [pendingTargetRoute, setPendingTargetRoute] = useState<string | null>(null);
   const [showNavConfirmModal, setShowNavConfirmModal] = useState(false);
   const [navConfirmSource, setNavConfirmSource] = useState<"agent" | "campaign">("agent");
+
+  // Real-time Organization Credit Status for Alert Banners & Header Pill
+  const [creditStatus, setCreditStatus] = useState<OrgCreditStatus | null>(null);
+  const [showCreditExhaustedModal, setShowCreditExhaustedModal] = useState(false);
+  const [creditExhaustedMessage, setCreditExhaustedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchApi<OrgCreditStatus>("/credits/my-org")
+        .then((res) => setCreditStatus(res))
+        .catch(() => {});
+    }
+  }, [user, location.pathname]);
+
+  // Global listener for credit limit exceeded errors
+  useEffect(() => {
+    const handleCreditExhausted = (e: any) => {
+      const msg = e?.detail?.message;
+      if (msg) {
+        setCreditExhaustedMessage(msg);
+      }
+      setShowCreditExhaustedModal(true);
+    };
+    window.addEventListener("credit-limit-exceeded", handleCreditExhausted);
+    return () => {
+      window.removeEventListener("credit-limit-exceeded", handleCreditExhausted);
+    };
+  }, []);
 
   // Determine current active NavTab from URL path
   const currentPath = location.pathname.toLowerCase().replace(/\/$/, "") || "/";
@@ -162,6 +197,12 @@ function MainContent() {
           sub: "White-label design tokens and UI architecture styles",
           icon: Palette,
         };
+      case "usage_credits":
+        return {
+          title: "Usage & Credit Pool",
+          sub: "Shared organization talk-time credits, active resource quotas & consumption ledger",
+          icon: Coins,
+        };
       case "admin":
         return {
           title: "Team Administration",
@@ -249,6 +290,12 @@ function MainContent() {
 
           {/* Right Status Indicators */}
           <div className="flex items-center gap-2.5">
+            {/* Header Battery/Charging Credit Gauge Pill */}
+            <HeaderCreditWidget
+              creditStatus={creditStatus}
+              onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+            />
+
             {/* Tenant Organization */}
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
@@ -256,6 +303,14 @@ function MainContent() {
             </div>
           </div>
         </header>
+
+        {/* Organization Credit Low/Exhausted Warning Banner */}
+        <LowCreditBanner
+          status={creditStatus?.status || "healthy"}
+          remainingMinutes={creditStatus?.remaining_minutes || 0}
+          totalMinutes={creditStatus?.total_credits_minutes || 0}
+          onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+        />
 
         {/* Dynamic Route View - Full Width & Fully Responsive */}
         <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">
@@ -313,6 +368,9 @@ function MainContent() {
             <Route path="/contacts" element={<Navigate to="/prospects" replace />} />
             <Route path="/knowledge" element={<BusinessProfileView />} />
             <Route path="/company-profile" element={<Navigate to="/knowledge" replace />} />
+            <Route path="/usage-credits" element={<UsageDashboardView />} />
+            <Route path="/credits" element={<Navigate to="/usage-credits" replace />} />
+            <Route path="/usage" element={<Navigate to="/usage-credits" replace />} />
             <Route
               path="/phone-settings"
               element={isAdmin ? <TwilioSettingsView /> : <Navigate to="/dashboard" replace />}
@@ -406,6 +464,18 @@ function MainContent() {
             </div>
           </div>
         </Modal>
+
+        {/* Credit Limit Exceeded Direct Professional Modal */}
+        <CreditExhaustedModal
+          isOpen={showCreditExhaustedModal}
+          onClose={() => {
+            setShowCreditExhaustedModal(false);
+            setCreditExhaustedMessage(null);
+          }}
+          creditStatus={creditStatus}
+          customMessage={creditExhaustedMessage}
+          onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+        />
 
         {/* Minimal Footer */}
         {/* <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">
