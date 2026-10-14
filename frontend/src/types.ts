@@ -9,6 +9,24 @@ export interface AuthUser {
   org_name?: string;
 }
 
+export interface LoginResponse {
+  require_2fa: boolean;
+  is_setup?: boolean;
+  temp_token?: string;
+  secret_key?: string;
+  otpauth_url?: string;
+  email?: string;
+  access_token?: string;
+  token_type?: string;
+  user?: AuthUser;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
 export interface UserSummary {
   id: string;
   username: string;

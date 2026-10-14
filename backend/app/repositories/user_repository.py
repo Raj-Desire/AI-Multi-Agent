@@ -346,4 +346,74 @@ class UserRepository:
                 return False
         return await asyncio.to_thread(_sync_delete)
 
+    @staticmethod
+    async def save_totp_temp_secret(user_id: str, temp_secret: str) -> bool:
+        """Stores temporary unconfirmed TOTP secret for initial setup."""
+        target_user = await UserRepository.get_by_id(user_id)
+        if not target_user:
+            return False
+
+        def _sync_save():
+            container = get_users_container()
+            if not container:
+                return False
+            try:
+                target_user["totp_temp_secret"] = temp_secret
+                container.upsert_item(body=target_user)
+                _invalidate_user_cache(user_id=user_id, email=target_user.get("email"))
+                return True
+            except Exception as e:
+                print(f"[UserRepository Error] save_totp_temp_secret: {e}")
+                return False
+
+        return await asyncio.to_thread(_sync_save)
+
+    @staticmethod
+    async def activate_totp(user_id: str, secret: str) -> bool:
+        """Activates confirmed TOTP 2FA on the user account and cleans up temp secret."""
+        target_user = await UserRepository.get_by_id(user_id)
+        if not target_user:
+            return False
+
+        def _sync_activate():
+            container = get_users_container()
+            if not container:
+                return False
+            try:
+                target_user["totp_secret"] = secret
+                target_user["totp_enabled"] = True
+                target_user.pop("totp_temp_secret", None)
+                container.upsert_item(body=target_user)
+                _invalidate_user_cache(user_id=user_id, email=target_user.get("email"))
+                return True
+            except Exception as e:
+                print(f"[UserRepository Error] activate_totp: {e}")
+                return False
+
+        return await asyncio.to_thread(_sync_activate)
+
+    @staticmethod
+    async def disable_totp(user_id: str) -> bool:
+        """Deactivates TOTP 2FA on the user account."""
+        target_user = await UserRepository.get_by_id(user_id)
+        if not target_user:
+            return False
+
+        def _sync_disable():
+            container = get_users_container()
+            if not container:
+                return False
+            try:
+                target_user["totp_enabled"] = False
+                target_user.pop("totp_secret", None)
+                target_user.pop("totp_temp_secret", None)
+                container.upsert_item(body=target_user)
+                _invalidate_user_cache(user_id=user_id, email=target_user.get("email"))
+                return True
+            except Exception as e:
+                print(f"[UserRepository Error] disable_totp: {e}")
+                return False
+
+        return await asyncio.to_thread(_sync_disable)
+
 
