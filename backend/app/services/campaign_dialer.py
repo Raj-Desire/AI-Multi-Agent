@@ -305,7 +305,7 @@ class CampaignDialerEngine:
                 logger.warning(f"[CampaignDialer] Auto-pausing Campaign {campaign.id}: Organization credits exhausted.")
                 campaign.status = CampaignStatus.PAUSED
                 await self.campaign_repo.save(campaign)
-                await self.campaign_service.log_event(
+                await self.event_repo.log_event(
                     campaign_id=campaign.id,
                     organization_id=campaign.organization_id,
                     event_type=CampaignEventType.PAUSED,
@@ -327,9 +327,21 @@ class CampaignDialerEngine:
         # 4. Fetch Next Eligible Members (Queued or Retrying due for attempt)
         eligible_members = await self.member_repo.get_next_eligible_members(campaign.id, limit=available_slots)
         if not eligible_members:
+            # Check if campaign has pending retries in the future to schedule next wake delay
+            all_members = await self.member_repo.get_all_by_campaign(campaign.id)
+            now = datetime.now(timezone.utc)
+            pending_retry_delays = []
+            for m in all_members:
+                if str(getattr(m.status, "value", m.status)).lower() == "retrying" and m.next_attempt_at:
+                    next_dt = m.next_attempt_at if m.next_attempt_at.tzinfo else m.next_attempt_at.replace(tzinfo=timezone.utc)
+                    diff = (next_dt - now).total_seconds()
+                    if diff > 0:
+                        pending_retry_delays.append(diff)
+            
             # Check if campaign is finished
             await self.campaign_service.recalculate_campaign_stats(campaign.id)
-            return (in_flight > 0), None
+            earliest_retry = min(pending_retry_delays) if pending_retry_delays else None
+            return (in_flight > 0), earliest_retry
 
         # 5. Dispatch calls for eligible members concurrently
         dispatch_tasks = []

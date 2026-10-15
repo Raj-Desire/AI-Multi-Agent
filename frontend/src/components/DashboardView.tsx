@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { fetchApi } from "../api-client";
+import { fetchApi, LIVE } from "../api-client";
 import { TwilioConfig, CallRecord } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -198,14 +198,14 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       call.on("ringing", () => {
         setCallState("ringing");
         setDeviceStatusText(`Ringing ${toNumber}...`);
-        fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+        fetchApi<CallRecord[]>("/calls", LIVE).then(setCalls).catch(() => {});
       });
 
       call.on("accept", () => {
         setCallState("connected");
         setDeviceStatusText("Call in Progress (WebRTC Live)");
         startTimer();
-        fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+        fetchApi<CallRecord[]>("/calls", LIVE).then(setCalls).catch(() => {});
       });
 
       call.on("disconnect", () => {
@@ -248,7 +248,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       });
       setMessage({ text: `Outbound call initiated! SID: ${call.call_sid}`, type: "success" });
       setCallState("idle");
-      const updatedCalls = await fetchApi<CallRecord[]>("/calls");
+      const updatedCalls = await fetchApi<CallRecord[]>("/calls", LIVE);
       setCalls(updatedCalls);
     } catch (err: any) {
       setCallState("idle");
@@ -316,7 +316,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
     setCallState("idle");
     setIsMuted(false);
     activeCallRef.current = null;
-    fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => {});
+    fetchApi<CallRecord[]>("/calls", LIVE).then(setCalls).catch(() => {});
   }
 
   const availableFromNumbers = (config?.phone_number || "")

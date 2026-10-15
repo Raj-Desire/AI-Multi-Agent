@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { fetchApi } from "../../api-client";
+import { fetchApi, LIVE } from "../../api-client";
 import {
   Campaign,
   CampaignStatus,
@@ -69,7 +69,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
         params.set("status", statusFilter);
       }
 
-      const res = await fetchApi<CampaignPaginationResponse>(`/campaigns?${params.toString()}`);
+      const res = await fetchApi<CampaignPaginationResponse>(`/campaigns?${params.toString()}`, LIVE);
       if (res) {
         setCampaigns(res.items || []);
         setTotal(res.total || 0);
@@ -94,7 +94,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
 
     const interval = setInterval(() => {
       loadCampaigns(true);
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [campaigns, loadCampaigns]);
 
@@ -104,7 +104,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
     try {
       // Pre-flight Credit Limit Check
       try {
-        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
         if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
           window.dispatchEvent(
             new CustomEvent("credit-limit-exceeded", {
@@ -142,7 +142,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
     try {
       // Pre-flight Credit Limit Check
       try {
-        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
         if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
           window.dispatchEvent(
             new CustomEvent("credit-limit-exceeded", {

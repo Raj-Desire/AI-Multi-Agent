@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -252,12 +253,31 @@ async def voice_status_webhook(request: Request):
     if not call_sid:
         return Response(content="<Response/>", media_type="application/xml")
 
+    # Push the live status to the dashboard immediately, before any database work
+    from app.voice.session import active_sessions
+    live_session = active_sessions.get(request.query_params.get("call_session_id") or "") or active_sessions.get_by_call_sid(call_sid)
+    if live_session and call_status:
+        if call_status in ("initiated", "queued", "ringing", "in-progress", "answered"):
+            live_session.status = "in-progress" if call_status in ("in-progress", "answered") else call_status
+        try:
+            from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
+            await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                event_type=VoiceEventType.CALL_STATUS,
+                call_session_id=live_session.call_session_id,
+                organization_id=live_session.organization_id,
+                agent_id=live_session.agent_id,
+                twilio_call_sid=call_sid,
+                payload={"status": call_status, "campaign_id": live_session.campaign_id}
+            ))
+        except Exception as be:
+            print(f"[Twilio Status Webhook] Live status broadcast warning: {be}")
+
     try:
         # Find Call record by call_sid
         existing_call = await call_repo.get_by_call_sid(call_sid)
         if not existing_call:
             # Try memory search or cross-partition lookup
-            existing_call = await call_repo.get_by_id("global", call_sid)
+            existing_call = await call_repo.get_by_id(call_sid)
 
         target_campaign_id = campaign_id or (existing_call.campaign_id if existing_call else None)
         target_prospect_id = prospect_id or (existing_call.prospect_id if existing_call else None)
@@ -389,4 +409,42 @@ async def voice_status_webhook(request: Request):
     except Exception as e:
         print(f"[Twilio Status Webhook Error] {e}")
 
+    if live_session and call_status in ("completed", "busy", "no-answer", "no_answer", "failed", "canceled"):
+        task = asyncio.create_task(_release_live_session(live_session, call_status.replace("_", "-")))
+        _webhook_tasks.add(task)
+        task.add_done_callback(_webhook_tasks.discard)
+
     return Response(content="<Response/>", media_type="application/xml")
+
+
+_webhook_tasks: set = set()
+
+
+async def _release_live_session(session, call_status: str):
+    """Ends a live session the media stream never closed (unanswered / busy / failed, or a dropped stream),
+    so the live console and dialer UI are released the moment Twilio reports the call is over."""
+    from app.voice.session import active_sessions
+    from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
+    try:
+        if session.connected_at:
+            # Normal case: the stream "stop" finalizes the call; only step in if it never does.
+            await asyncio.sleep(4)
+        if not active_sessions.get(session.call_session_id):
+            return
+        if session.campaign_id and not session.connected_at:
+            # Campaign webhook above already synced the call and member; just release the live session.
+            active_sessions.remove(session.call_session_id)
+            await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                event_type=VoiceEventType.CALL_ENDED,
+                call_session_id=session.call_session_id,
+                organization_id=session.organization_id,
+                agent_id=session.agent_id,
+                twilio_call_sid=session.twilio_call_sid,
+                payload={"call_id": session.call_session_id, "campaign_id": session.campaign_id,
+                         "prospect_id": session.prospect_id, "status": call_status, "call_duration": 0}
+            ))
+        else:
+            from app.services.call_session_service import CallSessionService
+            await CallSessionService(call_repo).finalize_session(session, final_status=call_status)
+    except Exception as e:
+        print(f"[Twilio Status Webhook] Live session release warning: {e}")

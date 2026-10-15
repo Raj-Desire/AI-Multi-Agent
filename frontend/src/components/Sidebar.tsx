@@ -71,6 +71,52 @@ export const ROUTE_TAB_MAP: Record<string, NavTab> = {
   "/usage": "usage_credits",
 };
 
+/**
+ * Returns the proper URL for a navigation tab.
+ * For example: getTabRoute("campaigns", "org_123") -> "/org_123/campaigns"
+ */
+export function getTabRoute(tab: NavTab, orgId?: string): string {
+  if (tab === "superadmin") {
+    return "/superadmin";
+  }
+  const cleanOrgId = orgId?.trim();
+  const subRoute = TAB_ROUTE_MAP[tab] || "/dashboard";
+  return cleanOrgId ? `/${cleanOrgId}${subRoute}` : subRoute;
+}
+
+/**
+ * Parses the active NavTab and optional orgId from the browser pathname.
+ * Handles both scoped ("/org_123/campaigns") and flat legacy ("/campaigns") routes.
+ */
+export function parseActiveTabFromPath(pathname: string): { activeTab: NavTab; urlOrgId: string | null; subRoute: string } {
+  const cleanPath = pathname.toLowerCase().replace(/\/$/, "") || "/";
+  if (cleanPath === "/superadmin") {
+    return { activeTab: "superadmin", urlOrgId: null, subRoute: "superadmin" };
+  }
+
+  const parts = cleanPath.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return { activeTab: "dashboard", urlOrgId: null, subRoute: "dashboard" };
+  }
+
+  // Check if first segment is a direct known route (legacy flat URL)
+  const firstSegmentRoute = `/${parts[0]}`;
+  if (ROUTE_TAB_MAP[firstSegmentRoute]) {
+    return { activeTab: ROUTE_TAB_MAP[firstSegmentRoute], urlOrgId: null, subRoute: parts[0] };
+  }
+
+  // Otherwise, first segment is the orgId: e.g. "/org_123/campaigns"
+  const urlOrgId = parts[0];
+  if (parts.length >= 2) {
+    const rawSub = `/${parts.slice(1).join("/")}`;
+    const matchedTab = ROUTE_TAB_MAP[rawSub] || ROUTE_TAB_MAP[`/${parts[1]}`] || "dashboard";
+    return { activeTab: matchedTab, urlOrgId, subRoute: parts[1] };
+  }
+
+  // If only "/org_123", default to dashboard
+  return { activeTab: "dashboard", urlOrgId, subRoute: "dashboard" };
+}
+
 interface SidebarProps {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;

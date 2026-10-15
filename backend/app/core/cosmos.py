@@ -317,41 +317,5 @@ def init_cosmos_db():
     except Exception as e:
         print(f"[CosmosDB Error] Container verification during startup: {e}")
 
-    container = get_users_container()
-    if not container:
-        print("[CosmosDB Warning] Users container unavailable. Skipping initial admin seed.")
-        return
 
-    query = "SELECT * FROM c WHERE c.email = @email"
-    params = [{"name": "@email", "value": ADMIN_EMAIL.lower()}]
-    try:
-        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-        desired_hash = hash_password(ADMIN_PASSWORD)
-        if not items:
-            admin_user = {
-                "id": f"usr_{uuid.uuid4().hex[:12]}",
-                "username": "Super Admin",
-                "email": ADMIN_EMAIL.lower(),
-                "hashed_password": desired_hash,
-                "role": "superadmin",
-                "organization_id": "org_platform_root",
-                "org_name": "Platform Master",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            container.create_item(body=admin_user)
-            print(f"[CosmosDB] Superadmin user successfully seeded: {ADMIN_EMAIL}")
-        else:
-            admin_doc = items[0]
-            # Ensure superadmin role and password hash
-            admin_doc["hashed_password"] = desired_hash
-            admin_doc["role"] = "superadmin"
-            if not admin_doc.get("organization_id"):
-                admin_doc["organization_id"] = "org_platform_root"
-            if not admin_doc.get("org_name"):
-                admin_doc["org_name"] = "Platform Master"
-            container.upsert_item(body=admin_doc)
-            print(f"[CosmosDB] Superadmin user synced: {ADMIN_EMAIL}")
-    except Exception as e:
-        print(f"[CosmosDB Error] Error during admin user seed check: {e}")
 

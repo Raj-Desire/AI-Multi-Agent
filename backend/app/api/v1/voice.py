@@ -4,6 +4,8 @@ Provides real-time developer telemetry WebSocket stream, active session monitori
 """
 
 import asyncio
+import uuid
+from datetime import datetime, timezone
 import json
 import logging
 from typing import Optional, List, Dict, Any
@@ -30,6 +32,56 @@ logger = logging.getLogger("voice_api")
 router = APIRouter(prefix="/voice", tags=["Voice"])
 
 twilio_repo = TwilioRepository()
+
+# Identifies this server process. Twilio is told to call back PUBLIC_BASE_URL; when that URL points at a
+# different deployment (e.g. a cloud instance) the media stream and status webhooks never reach this
+# process, so its in-memory live state can never update. We detect that and fall back to Twilio's own status.
+INSTANCE_ID = uuid.uuid4().hex
+_remote_sessions: Dict[str, str] = {}          # call_session_id -> host that actually receives the call
+_twilio_status_cache: Dict[str, tuple] = {}    # call_sid -> (monotonic_ts, status, start_time_iso, duration)
+
+
+def _fetch_instance_id_sync(base_url: str) -> Optional[str]:
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"{base_url.rstrip('/')}/api/v1/voice/instance", headers={"ngrok-skip-browser-warning": "1"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            return (body.get("data") or body).get("instance_id")
+    except Exception:
+        return None
+
+
+async def _routes_to_this_server(base_url: str) -> bool:
+    return (await asyncio.to_thread(_fetch_instance_id_sync, base_url)) == INSTANCE_ID
+
+
+async def _twilio_call_status(org_id: str, call_sid: str) -> Optional[tuple]:
+    """Live call status straight from Twilio (cached ~1.5s): (status, start_time_iso, duration)."""
+    cached = _twilio_status_cache.get(call_sid)
+    if cached and time.monotonic() - cached[0] < 1.5:
+        return cached[1:]
+    tw_cfg = await twilio_repo.get_by_org(org_id)
+    if not tw_cfg:
+        return None
+
+    def _fetch():
+        c = Client(tw_cfg.account_sid, decrypt_token(tw_cfg.encrypted_auth_token)).calls(call_sid).fetch()
+        return (c.status or "", c.start_time.isoformat() if c.start_time else None, int(c.duration or 0))
+
+    try:
+        result = await asyncio.to_thread(_fetch)
+    except Exception as e:
+        logger.warning(f"[VoiceAPI] Could not read Twilio status for {call_sid}: {e}")
+        return None
+    _twilio_status_cache[call_sid] = (time.monotonic(),) + result
+    return result
+
+
+@router.get("/instance")
+async def get_instance_id():
+    """Public: lets a server check whether the public tunnel / deployment URL routes back to itself."""
+    return {"instance_id": INSTANCE_ID}
 agent_repo = AgentRepository()
 agent_service = AgentService(agent_repo)
 call_repo = CallRepository()
@@ -99,16 +151,25 @@ async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
     await websocket.accept()
     q = await telemetry_broadcaster.subscribe(call_session_id)
 
+    # Watch the client side too: a handler that only waits on the queue never notices a disconnect or a
+    # server shutdown, which leaks the subscription and makes uvicorn's auto-reload hang indefinitely.
+    recv_task = asyncio.create_task(websocket.receive_text())
     try:
         while True:
-            # Check for disconnect or messages from client
-            event_data = await q.get()
-            await websocket.send_json(event_data)
+            get_task = asyncio.create_task(q.get())
+            done, _ = await asyncio.wait({get_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+            if recv_task in done:
+                get_task.cancel()
+                recv_task.result()  # raises WebSocketDisconnect when the client is gone
+                recv_task = asyncio.create_task(websocket.receive_text())
+                continue
+            await websocket.send_json(get_task.result())
     except WebSocketDisconnect:
         logger.info(f"Telemetry client disconnected for session {call_session_id}")
     except Exception as e:
         logger.error(f"Telemetry stream error: {e}")
     finally:
+        recv_task.cancel()
         await telemetry_broadcaster.unsubscribe(call_session_id, q)
 
 
@@ -837,16 +898,29 @@ async def initiate_ai_test_call(
             create_kwargs = {
                 "to": payload.to_number,
                 "from_": selected_from,
-                "twiml": twiml
+                "twiml": twiml,
+                "status_callback": f"{base_url.rstrip('/')}/api/v1/twilio/voice/status?organization_id={ctx.organization_id}&call_session_id={session.call_session_id}",
+                "status_callback_event": ["initiated", "ringing", "answered", "completed"],
+                "status_callback_method": "POST",
             }
             if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
                 rem_sec = int(auth_check.get("remaining_seconds", 14400))
                 create_kwargs["time_limit"] = max(1, min(14400, rem_sec))
             return client.calls.create(**create_kwargs)
 
+        routing_check = asyncio.create_task(_routes_to_this_server(base_url))
         tw_call = await asyncio.to_thread(_place_call)
         session.twilio_call_sid = tw_call.sid
         active_sessions.register(session)
+        routes_here = await routing_check
+        if not routes_here:
+            from urllib.parse import urlparse
+            _remote_sessions[session.call_session_id] = urlparse(base_url).netloc
+            logger.warning(
+                f"[VoiceAPI] Twilio is routed to {base_url}, which is NOT this server. Live transcript/stats for call "
+                f"{tw_call.sid} will be handled there; this server shows Twilio's call status only. "
+                f"Point Public Base URL at this server (tunnel) to get live transcript here."
+            )
 
         return ApiResponse.ok({
             "call_session_id": session.call_session_id,
@@ -855,11 +929,81 @@ async def initiate_ai_test_call(
             "to": payload.to_number,
             "from": selected_from,
             "agent_name": agent_config.name,
-            "stream_url": stream_url
+            "stream_url": stream_url,
+            "routes_to_this_server": routes_here,
+            "routed_host": _remote_sessions.get(session.call_session_id),
         })
     except Exception as e:
         logger.error(f"Error placing AI test call: {e}")
         raise HTTPException(status_code=400, detail=f"Twilio call failed: {str(e)}")
+
+
+@router.get("/session/{call_session_id}/live", response_model=ApiResponse[Dict[str, Any]])
+async def get_live_session_state(
+    call_session_id: str,
+    ctx: TenantContext = Depends(get_tenant_context)
+):
+    """
+    Lightweight in-memory snapshot of a call (phase, duration, transcript, latency).
+    The dashboard polls this so its status never depends on catching a one-off websocket event.
+    """
+    session = active_sessions.get(call_session_id)
+    if session:
+        if session.organization_id != ctx.organization_id and ctx.role != "superadmin":
+            raise HTTPException(status_code=404, detail="Call session not found.")
+        remote_host = _remote_sessions.get(call_session_id)
+        if remote_host and not session.connected_at and session.twilio_call_sid:
+            # The stream/webhooks land on another deployment: Twilio itself is the source of truth.
+            tw = await _twilio_call_status(session.organization_id, session.twilio_call_sid)
+            tw_status = (tw[0] if tw else "") or ""
+            tw_start, tw_duration = (tw[1], tw[2]) if tw else (None, 0)
+            if tw_status in ("completed", "busy", "no-answer", "failed", "canceled"):
+                _remote_sessions.pop(call_session_id, None)
+                active_sessions.remove(call_session_id)  # the call record is saved by the instance that handled it
+                return ApiResponse.ok({"phase": "ended", "status": tw_status, "duration": tw_duration,
+                                       "turn_count": 0, "messages": [], "latency": {}, "remote": True, "remote_host": remote_host})
+            if tw_status == "in-progress":
+                dur = 0
+                if tw_start:
+                    try:
+                        dur = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(tw_start)).total_seconds()))
+                    except Exception:
+                        dur = 0
+                return ApiResponse.ok({"phase": "connected", "status": tw_status, "duration": dur, "turn_count": 0,
+                                       "messages": [], "latency": {}, "remote": True, "remote_host": remote_host})
+            return ApiResponse.ok({"phase": "ringing" if tw_status == "ringing" else "dialing", "status": tw_status or "initiated",
+                                   "duration": 0, "turn_count": 0, "messages": [], "latency": {}, "remote": True, "remote_host": remote_host})
+        now = datetime.now(timezone.utc)
+        if session.connected_at:
+            phase = "connected"
+        elif session.status == "ringing":
+            phase = "ringing"
+        else:
+            phase = "dialing"
+        return ApiResponse.ok({
+            "phase": phase,
+            "status": session.status,
+            "duration": int((now - session.connected_at).total_seconds()) if session.connected_at else 0,
+            "turn_count": session.turn_count,
+            "messages": [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "stt_latency_ms": m.stt_latency_ms,
+                    "llm_latency_ms": m.llm_latency_ms,
+                    "tts_latency_ms": m.tts_latency_ms,
+                    "turn_latency_ms": m.turn_latency_ms,
+                }
+                for m in session.messages
+            ],
+            "latency": session.latest_latency.model_dump(mode="json") if hasattr(session.latest_latency, "model_dump") else {},
+        })
+
+    call = await call_repo.get_by_id(call_session_id)
+    if call and call.organization_id == ctx.organization_id:
+        return ApiResponse.ok({"phase": "ended", "status": call.status, "duration": call.duration or 0,
+                               "turn_count": 0, "messages": [], "latency": {}})
+    return ApiResponse.ok({"phase": "unknown"})
 
 
 @router.post("/hangup", response_model=ApiResponse[Dict[str, Any]])
@@ -897,7 +1041,11 @@ async def hangup_call(
 
     # Finalize the session if active
     if session:
-        await call_session_service.finalize_session(session, final_status="completed")
+        if _remote_sessions.pop(session.call_session_id, None) and not session.connected_at:
+            # The call is handled by another deployment which saves the record; just release the local live state.
+            await call_session_service.release_live_session(session, "completed")
+        else:
+            await call_session_service.finalize_session(session, final_status="completed")
 
     return ApiResponse.ok({
         "message": "Call successfully hung up and all streaming resources released.",

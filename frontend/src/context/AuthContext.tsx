@@ -56,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem("desire_token");
     setToken(null);
     setUser(null);
+    window.location.href = "/";
   };
 
   const isSuperAdmin = user?.role === "superadmin";

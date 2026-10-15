@@ -441,6 +441,7 @@ class CampaignMemberRepository:
     async def save(self, member: CampaignMember) -> CampaignMember:
         def _sync_save():
             self._memory_store[member.id] = member
+            _invalidate_campaign_members_cache(member.campaign_id)
             container = get_campaign_members_container()
             if container:
                 try:
@@ -448,6 +449,7 @@ class CampaignMemberRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[CampaignMemberRepository Error] save: {e}")
+            _invalidate_campaign_members_cache(member.campaign_id)
             return member
 
         return await asyncio.to_thread(_sync_save)
@@ -455,14 +457,18 @@ class CampaignMemberRepository:
     async def save_bulk(self, members: List[CampaignMember]) -> List[CampaignMember]:
         def _sync_save_bulk():
             container = get_campaign_members_container()
+            affected_campaigns = set()
             for m in members:
                 self._memory_store[m.id] = m
+                affected_campaigns.add(m.campaign_id)
                 if container:
                     try:
                         doc = m.model_dump(mode="json")
                         container.upsert_item(body=doc)
                     except Exception as e:
                         print(f"[CampaignMemberRepository Error] save_bulk: {e}")
+            for c_id in affected_campaigns:
+                _invalidate_campaign_members_cache(c_id)
             return members
 
         return await asyncio.to_thread(_sync_save_bulk)

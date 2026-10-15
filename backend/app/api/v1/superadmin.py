@@ -179,7 +179,7 @@ async def toggle_org_status(
     if organization_id == "org_platform_root":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Platform Master root organization cannot be disabled."
+            detail="Desire Infoweb root organization cannot be disabled."
         )
 
     updated_count = await UserRepository.toggle_organization_status(organization_id, payload.is_active)
@@ -195,7 +195,7 @@ async def delete_org(
     if organization_id == "org_platform_root":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Platform Master root organization cannot be deleted."
+            detail="Desire Infoweb root organization cannot be deleted."
         )
 
     deleted_count = await UserRepository.delete_organization(organization_id)

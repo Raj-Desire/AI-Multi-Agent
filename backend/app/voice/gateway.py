@@ -92,6 +92,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     cached_inbound_forward_number: Optional[str] = None
 
     # Outbound audio metrics
+    startup_timing: dict = {}  # perf_counter marks for the answer -> first-greeting-audio path
     outbound_chunk_counter: int = 0
     total_outbound_audio_bytes: int = 0
     total_outbound_audio_duration_s: float = 0.0
@@ -124,6 +125,13 @@ async def voice_stream_websocket(websocket: WebSocket):
                     await asyncio.sleep(delay_s)
                     if is_interrupted or not websocket:
                         return
+
+            if "first_audio" not in startup_timing and "start" in startup_timing:
+                startup_timing["first_audio"] = time.perf_counter()
+                first_audio_ms = (startup_timing["first_audio"] - startup_timing["start"]) * 1000.0
+                logger.info(f"[VoiceGateway:Startup] First greeting audio sent to Twilio {first_audio_ms:.0f}ms after stream start")
+                if session:
+                    session.latest_latency.first_audio_latency_ms = round(first_audio_ms, 1)
 
             if last_agent_speech_done_time < now:
                 last_agent_speech_done_time = now + audio_duration
@@ -598,7 +606,12 @@ async def voice_stream_websocket(websocket: WebSocket):
                         agent_config_snapshot=agent_config.model_dump(mode="json")
                     )
 
+                startup_timing["start"] = time.perf_counter()
                 await call_session_service.attach_stream(session, stream_sid, call_sid=call_sid)
+                if session.connected_at and session.started_at:
+                    session.latest_latency.call_connection_time_ms = round(
+                        (session.connected_at - session.started_at).total_seconds() * 1000.0, 1
+                    )
 
                 # Reset timers
                 call_start_time = time.time()
@@ -626,28 +639,38 @@ async def voice_stream_websocket(websocket: WebSocket):
                 agent_config._call_direction = direction
                 agent_config._prospect_data = prospect_data or {}
 
-                # 2. Pre-fetch platform rules and Twilio configuration once per call at setup
+                # 2. Pre-fetch platform rules (in-memory) and start the Twilio config / credit lookups in the
+                # background so they overlap with the Voice Engine handshake instead of delaying the greeting.
                 cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
                 cached_rules_map = {r["id"]: True for r in cached_platform_rules} if cached_platform_rules else {}
                 cached_tw = None
-                if session and session.organization_id:
+
+                async def _load_twilio_cfg():
+                    if not (session and session.organization_id):
+                        return None
                     try:
-                        cached_tw = await twilio_repo.get_by_org(session.organization_id)
-                        if cached_tw and cached_tw.inbound_forward_global_number:
-                            cached_inbound_forward_number = cached_tw.inbound_forward_global_number
+                        return await twilio_repo.get_by_org(session.organization_id)
                     except Exception as tw_err:
                         logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
+                        return None
 
-                # Fetch organization credit limit if strict enforcement is configured
-                if org_id and org_id != "default":
+                async def _load_credit_limit():
+                    # Fetch organization credit limit if strict enforcement is configured
+                    if not org_id or org_id == "default":
+                        return None
                     try:
                         from app.services.credit_service import credit_service
                         org_cred = await credit_service.repo.get_or_create_org_credits(org_id)
                         if org_cred and org_cred.is_credit_enforced and org_cred.credit_exhausted_action == "block":
-                            org_credit_limit_sec = float(max(1, org_cred.remaining_credits_seconds))
-                            logger.info(f"[VoiceGateway] Org '{org_id}' credit limit active: {org_credit_limit_sec:.1f}s remaining.")
+                            limit_sec = float(max(1, org_cred.remaining_credits_seconds))
+                            logger.info(f"[VoiceGateway] Org '{org_id}' credit limit active: {limit_sec:.1f}s remaining.")
+                            return limit_sec
                     except Exception as c_err:
                         logger.debug(f"[VoiceGateway] Notice checking org credit limit: {c_err}")
+                    return None
+
+                twilio_cfg_task = asyncio.create_task(_load_twilio_cfg())
+                credit_limit_task = asyncio.create_task(_load_credit_limit())
 
                 business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
@@ -692,6 +715,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                             # Think Proxy: route inside the LLM request path (falls back to UpdatePrompt without a public URL)
                             if think_proxy_requested(agent_config.orchestrator_config):
+                                cached_tw = await twilio_cfg_task
                                 def _on_think_proxy_committed(specialist_cfg: AgentConfiguration, decision, context):
                                     nonlocal agent_config
                                     agent_config = specialist_cfg
@@ -809,11 +833,20 @@ async def voice_stream_websocket(websocket: WebSocket):
                         raw_greeting,
                         getattr(agent_config, "pronunciation_rules", None)
                     ) if raw_greeting else None
+                    startup_timing["handshake_begin"] = time.perf_counter()
                     await deepgram_client.connect_and_configure(
                         settings=deepgram_settings,
                         greeting=norm_greeting
                     )
+                    startup_timing["handshake_done"] = time.perf_counter()
+                    handshake_ms = (startup_timing["handshake_done"] - startup_timing["handshake_begin"]) * 1000.0
+                    session.latest_latency.deepgram_connection_time_ms = round(handshake_ms, 1)
+                    logger.info(f"[VoiceGateway:Startup] Voice Engine handshake (connect + settings applied) took {handshake_ms:.0f}ms")
                     logger.info("[VoiceGateway] Deepgram Voice Agent successfully connected and ready.")
+                    cached_tw = await twilio_cfg_task
+                    if cached_tw and cached_tw.inbound_forward_global_number:
+                        cached_inbound_forward_number = cached_tw.inbound_forward_global_number
+                    org_credit_limit_sec = await credit_limit_task
 
                     # Calculate greeting duration to ensure silence monitor does not fire during opening statement
                     greeting_text = (agent_config.greeting or "").strip()
@@ -856,6 +889,14 @@ async def voice_stream_websocket(websocket: WebSocket):
             session.error_type = "stream_exception"
     finally:
         call_ended_event.set()
+        # Release the live status for every dashboard before any slow teardown (Voice Engine close,
+        # Twilio REST hangup, database persistence) so "ringing / in call" never lingers after hang-up.
+        if session:
+            _early_status = "failed" if session.last_error and session.error_type == "deepgram_connection_error" else "completed"
+            try:
+                await call_session_service.release_live_session(session, _early_status)
+            except Exception as rel_err:
+                logger.debug(f"[VoiceGateway] Early session release notice: {rel_err}")
         if handoff_controller:
             handoff_controller.close()
             handoff_controller = None

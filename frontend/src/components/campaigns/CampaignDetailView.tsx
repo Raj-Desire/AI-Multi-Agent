@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { fetchApi } from "../../api-client";
+import { fetchApi, LIVE } from "../../api-client";
 import {
   Campaign,
   CampaignMember,
@@ -113,11 +113,6 @@ export function CampaignDetailView({
   const loadCampaignData = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      // 1. Load Campaign Detail + Real-Time Aggregated Stats
-      const cmpData = await fetchApi<Campaign>(`/campaigns/${campaignId}`);
-      setCampaign(cmpData);
-
-      // 2. Load Members
       const memParams = new URLSearchParams({
         page: memberPage.toString(),
         page_size: memberPageSize.toString(),
@@ -125,22 +120,6 @@ export function CampaignDetailView({
       if (memberStatusFilter !== "all") memParams.set("status", memberStatusFilter);
       if (memberSearch.trim()) memParams.set("search", memberSearch.trim());
 
-      const memRes = await fetchApi<{ items: CampaignMember[]; total: number; total_pages: number }>(
-        `/campaigns/${campaignId}/members?${memParams.toString()}`
-      );
-      if (memRes) {
-        setMembers(memRes.items || []);
-        setMemberTotal(memRes.total || 0);
-        setMemberTotalPages(memRes.total_pages || 1);
-      }
-
-      // 3. Load Active Calls
-      const activeRes = await fetchApi<ActiveCampaignCall[]>(`/campaigns/${campaignId}/active-calls`).catch(() => []);
-      if (Array.isArray(activeRes)) {
-        setActiveCalls(activeRes);
-      }
-
-      // 4. Load Campaign Calls
       const callParams = new URLSearchParams({
         page: callsPage.toString(),
         page_size: "25",
@@ -149,17 +128,33 @@ export function CampaignDetailView({
       if (callOutcomeFilter !== "all") callParams.set("outcome", callOutcomeFilter);
       if (callSearch.trim()) callParams.set("search", callSearch.trim());
 
-      const callsRes = await fetchApi<{ items: CallRecord[]; total: number; total_pages: number }>(
-        `/campaigns/${campaignId}/calls?${callParams.toString()}`
-      ).catch(() => ({ items: [], total: 0, total_pages: 1 }));
+      // Fire all requests in parallel instead of one after another
+      const [cmpData, memRes, activeRes, callsRes, evtRes] = await Promise.all([
+        fetchApi<Campaign>(`/campaigns/${campaignId}`, LIVE),
+        fetchApi<{ items: CampaignMember[]; total: number; total_pages: number }>(
+          `/campaigns/${campaignId}/members?${memParams.toString()}`, LIVE
+        ),
+        fetchApi<ActiveCampaignCall[]>(`/campaigns/${campaignId}/active-calls`, LIVE).catch(() => []),
+        fetchApi<{ items: CallRecord[]; total: number; total_pages: number }>(
+          `/campaigns/${campaignId}/calls?${callParams.toString()}`, LIVE
+        ).catch(() => ({ items: [], total: 0, total_pages: 1 })),
+        fetchApi<CampaignEvent[]>(`/campaigns/${campaignId}/events?limit=50`, LIVE).catch(() => []),
+      ]);
+
+      setCampaign(cmpData);
+      if (memRes) {
+        setMembers(memRes.items || []);
+        setMemberTotal(memRes.total || 0);
+        setMemberTotalPages(memRes.total_pages || 1);
+      }
+      if (Array.isArray(activeRes)) {
+        setActiveCalls(activeRes);
+      }
       if (callsRes) {
         setCampaignCalls(callsRes.items || []);
         setCallsTotal(callsRes.total || 0);
         setCallsTotalPages(callsRes.total_pages || 1);
       }
-
-      // 5. Load Events
-      const evtRes = await fetchApi<CampaignEvent[]>(`/campaigns/${campaignId}/events?limit=50`).catch(() => []);
       if (Array.isArray(evtRes)) {
         setEvents(evtRes);
       }
@@ -182,15 +177,44 @@ export function CampaignDetailView({
 
     const interval = setInterval(() => {
       loadCampaignData(true);
-    }, 2500);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [campaign?.status, loadCampaignData]);
 
+  // Lightweight live-status poll: only active calls + campaign stats. When an in-flight call
+  // disappears (call ended) the full data is refreshed immediately instead of waiting for the slow poll.
+  const lastActiveCountRef = useRef<number>(0);
+  useEffect(() => {
+    if (campaign?.status !== "running") return;
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const [active, cmp] = await Promise.all([
+          fetchApi<ActiveCampaignCall[]>(`/campaigns/${campaignId}/active-calls`, LIVE).catch(() => null),
+          fetchApi<Campaign>(`/campaigns/${campaignId}`, LIVE).catch(() => null),
+        ]);
+        if (cmp) setCampaign(cmp);
+        if (Array.isArray(active)) {
+          setActiveCalls(active);
+          if (active.length < lastActiveCountRef.current) {
+            loadCampaignData(true);
+          }
+          lastActiveCountRef.current = active.length;
+        }
+      } finally {
+        busy = false;
+      }
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [campaign?.status, campaignId, loadCampaignData]);
+
   // Lifecycle actions
   const handleStart = async () => {
     try {
-      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
       if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
         window.dispatchEvent(
           new CustomEvent("credit-limit-exceeded", {
@@ -233,7 +257,7 @@ export function CampaignDetailView({
 
   const handleResume = async () => {
     try {
-      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org");
+      const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
       if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
         window.dispatchEvent(
           new CustomEvent("credit-limit-exceeded", {

@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 export interface DrawerProps {
@@ -50,8 +51,8 @@ export const Drawer: React.FC<DrawerProps> = ({
     left: "left-0 top-0 bottom-0 border-r",
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex">
+  const drawerNode = (
+    <div className="fixed inset-0 z-[100] overflow-hidden flex">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
@@ -90,4 +91,8 @@ export const Drawer: React.FC<DrawerProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(drawerNode, document.body)
+    : drawerNode;
 };

@@ -1,3 +1,4 @@
+import time
 import asyncio
 import math
 from typing import Optional, List, Dict, Any
@@ -108,6 +109,10 @@ async def list_campaigns(
     )
 
 
+_LAST_STATS_REFRESH: Dict[str, float] = {}
+STATS_REFRESH_MIN_INTERVAL_SECONDS = 10.0
+
+
 @router.get("/{campaign_id}", response_model=ApiResponse[CampaignResponse])
 async def get_campaign(
     campaign_id: str,
@@ -116,10 +121,14 @@ async def get_campaign(
 ):
     """Retrieves single campaign details and real-time statistics."""
     campaign = await service.get_campaign(ctx, campaign_id)
-    # Refresh live statistics
-    await service.recalculate_campaign_stats(campaign_id)
-    refreshed = await service.get_campaign(ctx, campaign_id)
-    return ApiResponse.ok(CampaignResponse.model_validate(refreshed))
+    # Refresh live statistics, throttled: call outcome events already recalculate stats as they
+    # happen, so frequent dashboard polling must not trigger a full recalculation every time.
+    now_ts = time.monotonic()
+    if now_ts - _LAST_STATS_REFRESH.get(campaign_id, 0.0) >= STATS_REFRESH_MIN_INTERVAL_SECONDS:
+        _LAST_STATS_REFRESH[campaign_id] = now_ts
+        await service.recalculate_campaign_stats(campaign_id)
+        campaign = await service.get_campaign(ctx, campaign_id)
+    return ApiResponse.ok(CampaignResponse.model_validate(campaign))
 
 
 @router.put("/{campaign_id}", response_model=ApiResponse[CampaignResponse])
@@ -347,13 +356,21 @@ async def campaign_events_websocket(websocket: WebSocket, campaign_id: str):
     """Real-time WebSocket stream for campaign live status and execution updates."""
     await websocket.accept()
     q = await telemetry_broadcaster.subscribe(f"campaign_{campaign_id}")
+    recv_task = asyncio.create_task(websocket.receive_text())
     try:
         while True:
-            event_data = await q.get()
-            await websocket.send_json(event_data)
+            get_task = asyncio.create_task(q.get())
+            done, _ = await asyncio.wait({get_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
+            if recv_task in done:
+                get_task.cancel()
+                recv_task.result()  # raises WebSocketDisconnect when the client is gone
+                recv_task = asyncio.create_task(websocket.receive_text())
+                continue
+            await websocket.send_json(get_task.result())
     except WebSocketDisconnect:
         pass
     except Exception:
         pass
     finally:
+        recv_task.cancel()
         await telemetry_broadcaster.unsubscribe(f"campaign_{campaign_id}", q)
