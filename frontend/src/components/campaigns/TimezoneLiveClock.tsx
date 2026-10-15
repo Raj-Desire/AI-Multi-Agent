@@ -13,6 +13,8 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
   const [isInsideWindow, setIsInsideWindow] = useState<boolean>(true);
   const [windowStatusReason, setWindowStatusReason] = useState<string>("");
 
+  const cleanTz = (tz: string) => (tz === "UTC" ? "UTC" : tz.replace(/_/g, " "));
+
   useEffect(() => {
     function updateClock() {
       const targetTz = schedule?.timezone || "UTC";
@@ -77,9 +79,20 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
         const endMins = endParts[0] * 60 + (endParts[1] || 0);
         const currentMins = tzHour * 60 + tzMinute;
 
+        // When the campaign timezone differs from the viewer's own, show the opening time in both,
+        // so "17:15 UTC" is never mistaken for 17:15 local time.
+        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const describeOpening = (minsFromNow: number, label: string, hhmm: string) => {
+          const when = new Date(now.getTime() + minsFromNow * 60000);
+          const rel = minsFromNow >= 60 ? `${Math.floor(minsFromNow / 60)}h ${minsFromNow % 60}m` : `${minsFromNow}m`;
+          if (!localTz || localTz === targetTz) return `${label} ${hhmm} in ${rel}`;
+          const localStr = new Intl.DateTimeFormat("en-GB", { timeZone: localTz, hour: "2-digit", minute: "2-digit", hour12: false }).format(when);
+          return `${label} ${hhmm} ${cleanTz(targetTz)} = ${localStr} your time, in ${rel}`;
+        };
+
         if (currentMins < startMins) {
           setIsInsideWindow(false);
-          setWindowStatusReason(`Opens at ${schedule.calling_start_time}`);
+          setWindowStatusReason(describeOpening(startMins - currentMins, "Opens at", schedule.calling_start_time));
         } else if (currentMins >= endMins) {
           setIsInsideWindow(false);
           setWindowStatusReason(`Closed at ${schedule.calling_end_time}`);
