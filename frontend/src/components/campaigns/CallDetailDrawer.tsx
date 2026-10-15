@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { fetchApi } from "../../api-client";
+import { fetchApi, LIVE } from "../../api-client";
 import { CallRecord, ConversationTurnMessage } from "../../types";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
@@ -56,9 +56,33 @@ export function CallDetailDrawer({
 
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
 
+  // A call that is still in progress has no saved record yet (it is written when the call ends),
+  // so it is shown from the server's live session state instead.
+  const [liveMode, setLiveMode] = useState<boolean>(false);
+
+  type LiveState = {
+    phase: "dialing" | "ringing" | "connected" | "ended" | "unknown";
+    status?: string;
+    duration?: number;
+    messages?: any[];
+  };
+
+  const buildLiveCall = (id: string, st: LiveState): CallRecord =>
+    ({
+      id,
+      status: st.phase === "connected" ? "in-progress" : st.phase === "ringing" ? "ringing" : st.phase === "ended" ? (st.status || "completed") : "initiated",
+      duration: st.duration || 0,
+      to_number: "",
+      from_number: "",
+      transcript: (st.messages || []).map((m) => ({ role: m.role, content: m.content })),
+      created_at: new Date().toISOString(),
+      analytics_status: "pending",
+    } as unknown as CallRecord);
+
   // Load call details
   useEffect(() => {
     if (!isOpen || !callId) {
+      setLiveMode(false);
       setCall(null);
       setProspect(null);
       setError(null);
@@ -70,8 +94,9 @@ export function CallDetailDrawer({
     async function loadCallDetails() {
       setIsLoading(true);
       setError(null);
+      setLiveMode(false);
       try {
-        const data = await fetchApi<CallRecord>(`/calls/${callId}`);
+        const data = await fetchApi<CallRecord>(`/calls/${callId}`, LIVE);
         if (!isMounted) return;
         setCall(data);
 
@@ -85,6 +110,17 @@ export function CallDetailDrawer({
           }
         }
       } catch (err: any) {
+        // No saved record yet: the call may still be in progress, so try its live session state
+        try {
+          const st = await fetchApi<LiveState>(`/voice/session/${callId}/live`, LIVE);
+          if (isMounted && st && st.phase !== "unknown") {
+            setCall(buildLiveCall(callId!, st));
+            setLiveMode(true);
+            return;
+          }
+        } catch {
+          // fall through to the original error
+        }
         if (isMounted) {
           setError(err.message || "Failed to load call details.");
         }
@@ -98,6 +134,55 @@ export function CallDetailDrawer({
       isMounted = false;
     };
   }, [callId, isOpen]);
+
+  // Live call: refresh the transcript while the call runs, then swap in the saved record once it exists
+  useEffect(() => {
+    if (!isOpen || !callId || !liveMode) return;
+    let stopped = false;
+    let busy = false;
+    let savedLookups = 0;
+    const tick = async () => {
+      if (busy || stopped) return;
+      busy = true;
+      try {
+        const st = await fetchApi<LiveState>(`/voice/session/${callId}/live`, LIVE);
+        if (stopped || !st) return;
+        if (st.phase === "ended" || st.phase === "unknown") {
+          // Call finished: the saved record is written a moment after hang-up
+          try {
+            const saved = await fetchApi<CallRecord>(`/calls/${callId}`, LIVE);
+            if (!stopped) {
+              setCall(saved);
+              setLiveMode(false);
+              onRefreshParent?.();
+            }
+            return;
+          } catch {
+            savedLookups += 1;
+            if (savedLookups > 8 && !stopped) setLiveMode(false);
+          }
+        } else {
+          setCall(buildLiveCall(callId, st));
+        }
+      } catch {
+        // transient error, retry on next tick
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(tick, 1500);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [callId, isOpen, liveMode]);
+
+  // Keep the live transcript scrolled to the newest turn
+  useEffect(() => {
+    if (liveMode && transcriptBoxRef.current) {
+      transcriptBoxRef.current.scrollTop = transcriptBoxRef.current.scrollHeight;
+    }
+  }, [call?.transcript?.length, liveMode]);
 
   // Highlight search matches
   const highlightMatches = (text: string, query: string) => {
@@ -360,6 +445,13 @@ export function CallDetailDrawer({
             </div>
 
             {/* TAB 1: TRANSCRIPT */}
+            {liveMode && (
+              <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2.5 py-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Live call in progress. The transcript updates automatically and the full record appears when the call ends.
+              </div>
+            )}
+
             {activeTab === "transcript" && (
               <div className="flex flex-col flex-1 space-y-3 min-h-[350px]">
                 {/* Search in Transcript */}

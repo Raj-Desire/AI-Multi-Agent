@@ -690,7 +690,7 @@ export function CampaignCreateWizardView({
         return;
       }
       if (maxConcurrent < 1 || maxConcurrent > 10) {
-        toast.error("Max concurrent calls must be between 1 and 50.");
+        toast.error("Max concurrent calls must be between 1 and 10.");
         return;
       }
     } else if (step === 5) {
@@ -851,10 +851,10 @@ export function CampaignCreateWizardView({
               }}
               disabled={!isPassed && !isCurrent}
               className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${isCurrent
-                  ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)]"
-                  : isPassed
-                    ? "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] cursor-pointer hover:bg-[var(--color-surface-muted)]"
-                    : "bg-[var(--color-surface-muted)]/50 border-[var(--color-border)]/50 text-[var(--color-muted)] opacity-60 cursor-not-allowed"
+                ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)]"
+                : isPassed
+                  ? "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] cursor-pointer hover:bg-[var(--color-surface-muted)]"
+                  : "bg-[var(--color-surface-muted)]/50 border-[var(--color-border)]/50 text-[var(--color-muted)] opacity-60 cursor-not-allowed"
                 }`}
             >
               <div className="flex items-center justify-between">
@@ -943,8 +943,8 @@ export function CampaignCreateWizardView({
                         key={agentId}
                         onClick={() => setSelectedAgentId(agentId)}
                         className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between gap-3 ${isSelected
-                            ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.06))] ring-1 ring-[var(--color-primary)] shadow-xs"
-                            : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.06))] ring-1 ring-[var(--color-primary)] shadow-xs"
+                          : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
                           }`}
                       >
                         <div className="flex items-start justify-between">
@@ -1008,8 +1008,8 @@ export function CampaignCreateWizardView({
                       type="button"
                       onClick={() => setSelectionMode("tags")}
                       className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all flex items-center gap-1.5 ${selectionMode === "tags"
-                          ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
-                          : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                        ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
+                        : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                         }`}
                     >
                       <Folder className="w-3.5 h-3.5" />
@@ -1019,8 +1019,8 @@ export function CampaignCreateWizardView({
                       type="button"
                       onClick={() => setSelectionMode("all")}
                       className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${selectionMode === "all"
-                          ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
-                          : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                        ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
+                        : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                         }`}
                     >
                       All Contacts ({prospects.length})
@@ -1029,8 +1029,8 @@ export function CampaignCreateWizardView({
                       type="button"
                       onClick={() => setSelectionMode("manual")}
                       className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${selectionMode === "manual"
-                          ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
-                          : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                        ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
+                        : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                         }`}
                     >
                       Manual Select ({selectedProspectIds.length})
@@ -1400,8 +1400,8 @@ export function CampaignCreateWizardView({
                             key={tag}
                             onClick={() => toggleTag(tag)}
                             className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 group ${isSelected
-                                ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)] shadow-xs"
-                                : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-primary)]/40"
+                              ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)] shadow-xs"
+                              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-primary)]/40"
                               }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -1428,8 +1428,8 @@ export function CampaignCreateWizardView({
 
                               {/* Selection Indicator */}
                               <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected
-                                  ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                                  : "border-[var(--color-border)] bg-[var(--color-surface)] group-hover:border-[var(--color-primary)]/50"
+                                ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                                : "border-[var(--color-border)] bg-[var(--color-surface)] group-hover:border-[var(--color-primary)]/50"
                                 }`}>
                                 {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                               </div>
@@ -1507,8 +1507,8 @@ export function CampaignCreateWizardView({
                                 type="button"
                                 onClick={() => setProspectSearch(grp === prospectSearch ? "" : grp)}
                                 className={`px-2 py-0.5 rounded-full border transition-colors cursor-pointer flex items-center gap-1 ${prospectSearch === grp
-                                    ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-semibold"
-                                    : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                                  ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-semibold"
+                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                                   }`}
                               >
                                 <Folder className="w-2.5 h-2.5" />
@@ -1705,8 +1705,8 @@ export function CampaignCreateWizardView({
                         }
                       }}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "single_day"
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
                         }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1720,8 +1720,8 @@ export function CampaignCreateWizardView({
                       type="button"
                       onClick={() => setScheduleMode("date_range")}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "date_range"
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
                         }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1738,8 +1738,8 @@ export function CampaignCreateWizardView({
                         setEndDate("");
                       }}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "recurring"
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
+                        : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
                         }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1804,8 +1804,8 @@ export function CampaignCreateWizardView({
                           disabled={scheduleMode === "single_day"}
                           onClick={() => toggleCallingDay(day)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${isSelected
-                              ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-2xs font-semibold"
-                              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                            ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-2xs font-semibold"
+                            : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                             } ${scheduleMode === "single_day" ? "cursor-default" : "cursor-pointer"}`}
                         >
                           {day.slice(0, 3)}
@@ -1904,8 +1904,8 @@ export function CampaignCreateWizardView({
                                       toast.success(`Selected timezone: ${opt.label}`);
                                     }}
                                     className={`p-2.5 text-xs cursor-pointer flex items-center justify-between transition-colors ${isCur
-                                        ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold"
-                                        : "hover:bg-[var(--color-surface-muted)] text-[var(--color-text)]"
+                                      ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold"
+                                      : "hover:bg-[var(--color-surface-muted)] text-[var(--color-text)]"
                                       }`}
                                   >
                                     <div className="flex items-center gap-2 truncate">
@@ -1949,8 +1949,8 @@ export function CampaignCreateWizardView({
                             toast.success(`Selected timezone: ${item.name}`);
                           }}
                           className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${timezone === item.tz
-                              ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-bold"
-                              : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                            ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-bold"
+                            : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
                             }`}
                         >
                           {item.name}
