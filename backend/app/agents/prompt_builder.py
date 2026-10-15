@@ -229,22 +229,21 @@ class VoicePromptBuilder:
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: DETAILED (3–4 SENTENCES)]\n"
                 "- Response Length: 3 to 4 comprehensive, detailed spoken sentences per turn (around 50-75 words total).\n"
                 "- Deliver thorough explanations, step-by-step answers, and complete context.\n"
-                "- Keep the conversation interactive and conversational. Ask only ONE single question at a time."
+                "- Keep the conversation natural and interactive without interrogating the caller."
             )
         elif length_key in ["balanced", "medium"]:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: BALANCED (2–3 SENTENCES)]\n"
                 "- Response Length: 2 to 3 well-structured, clear spoken sentences per turn (around 35-45 words total).\n"
-                "- Provide helpful context without giving overly long monologues.\n"
-                "- Ask only ONE single question at a time to allow the caller to respond."
+                "- Provide helpful context directly. Only ask a question if you need caller confirmation."
             )
         else:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: SHORT (1–2 SENTENCES)]\n"
-                "- Response Length: STRICTLY 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (maximum 20-25 words total).\n"
+                "- Response Length: 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (around 25-35 words total). Vary sentence length so it sounds like a real person, not a script.\n"
                 "- NEVER produce 3 or more sentences in a single turn.\n"
                 "- NEVER give long explanations, monologues, or multiple paragraphs.\n"
-                "- Ask only ONE single question at a time to allow the caller to respond."
+                "- Deliver information directly as a clear, confident statement. Do NOT force a question at the end of every turn unless needed."
             )
 
     @staticmethod
@@ -536,20 +535,33 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 
     @staticmethod
     def _build_conversational_acoustics_section(config: AgentConfiguration) -> str:
-        """Injects instructions for natural conversational fillers and spoken human acoustics."""
+        """Injects instructions for natural conversational fillers, phrasing rhythm, and spoken human acoustics."""
         runtime = config.runtime
         if not runtime or not getattr(runtime, "conversational_fillers_enabled", True):
             return ""
 
         phrases = getattr(runtime, "filler_phrases", None)
-        phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you...", "Understood, give me one moment..."])])
+        phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you.", "Understood, give me one moment."])])
+
+        # The voice engine has no tempo setting, so pacing is steered through phrasing.
+        speed = getattr(getattr(config, "voice", None), "speed", None) or 1.0
+        if speed <= 0.9:
+            pacing_line = "- PACING: Speak in a calm, unhurried way. Prefer shorter sentences and let thoughts land before moving on.\n"
+        elif speed >= 1.05:
+            pacing_line = "- PACING: Keep a brisk, energetic pace. Be direct and skip unnecessary lead-ins.\n"
+        else:
+            pacing_line = ""
 
         return (
-            "[NATURAL CONVERSATIONAL FILLERS & SPOKEN ACOUSTICS]\n"
-            "- HUMAN THINKING CUES: When retrieving details, computing dates/times, or answering complex inquiries, seamlessly begin with natural thinking acknowledgments (e.g., "
-            f"{phrases_example}). This mimics natural human conversational cadence and avoids stiff silence.\n"
-            "- MICRO-ACKNOWLEDGMENTS: Use a short acknowledgment ('Got it', 'Sure', 'Makes sense') only occasionally, never on two turns in a row, and never as a separate sentence before a direct answer. When the caller asks a question, start with the answer itself.\n"
-            "- NATURAL CONTRACTIONS: Use spoken contractions ('I\\'ll', 'we\\'re', 'it\\'s', 'don\\'t') instead of rigid written phrasing ('I will', 'we are', 'it is')."
+            "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
+            f"{pacing_line}"
+            "- SPOKEN FORMAT: Write everything the way it is said aloud. Say prices in words ('two hundred fifty dollars', not '$250'), say dates as 'March third', say phone numbers as digit words in comma-separated groups (for example 'nine eight seven six five, four three two one zero'), and never use symbols, abbreviations like 'approx.', URLs read character by character, markdown, or emojis.\n"
+            "- IMMEDIATE CONVERSATIONAL BRIDGES: When asked a multi-part question or lookup, begin your turn immediately with a natural human bridge (e.g., "
+            f"{phrases_example}) so the caller experiences instant acknowledgement without dead silence.\n"
+            "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
+            "- FLUID INTER-SENTENCE PACING (ZERO DEAD AIR): Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
+            "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
+            "- CONVERSATIONAL FLOW: Never produce dense paragraphs or list bullet points aloud. Speak warmly, articulately, and casually like an experienced human executive on the telephone."
         )
 
     @staticmethod
@@ -579,7 +591,9 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 
         articulation_guidelines = (
             "\nENTITY ARTICULATION & DIGIT GROUPING RULES (MANDATORY):\n"
-            "- PHONE NUMBERS: Never speak a phone number as billions or millions. Speak digit by digit in natural human cadence (e.g., '9 8 7 6 5, 4 3 2 1 0').\n"
+            "- PHONE NUMBERS (CRITICAL): ALWAYS write every phone number, OTP, PIN, extension or ID as individual digit WORDS, grouped with commas so there is a natural breath between groups. Never write phone numbers as digits or as one big number, because the voice would read them as thousands or millions. "
+            "Example: 9876543210 must be written as 'nine eight seven six five, four three two one zero'. A number with a country code such as +91 98765 43210 becomes 'plus nine one, nine eight seven six five, four three two one zero'. Use 'zero' for 0. "
+            "When confirming a number the caller gave you, repeat it back in the same grouping and ask 'is that right?'.\n"
             "- CURRENCIES & AMOUNTS: Spell out amounts clearly, in the SAME currency your facts use (e.g., '$280/night' is spoken as '280 dollars per night'; '₹1.5Cr' as '1.5 crore rupees'). Never convert or estimate a price in another currency.\n"
             "- UNITS & DIMENSIONS: Speak full words for dimensions and units (e.g., say 'square feet', not 'sq ft'; say '2 B-H-K', not '2bhk').\n"
             "- CLEAN SPOKEN TEXT: NEVER output asterisks, hashtags, or markdown tables. Speak pure natural conversational text."

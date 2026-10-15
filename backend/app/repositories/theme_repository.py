@@ -71,19 +71,18 @@ class ThemeRepository:
                 _THEME_CACHE[organization_id] = (doc, time.time())
                 return doc
 
-            query = "SELECT * FROM c WHERE c.organization_id = @org_id"
-            params = [{"name": "@org_id", "value": organization_id}]
+            # 1 RU direct point read
+            doc_id = f"theme_{organization_id}"
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                if items:
-                    _THEME_CACHE[organization_id] = (items[0], time.time())
-                    return items[0]
-            except Exception as e:
-                print(f"[ThemeRepository Error] get_theme: {e}")
-            
+                item = container.read_item(item=doc_id, partition_key=organization_id)
+                _THEME_CACHE[organization_id] = (item, time.time())
+                return item
+            except Exception:
+                pass
+
             # Default theme fallback
             doc = {
-                "id": f"theme_{organization_id}",
+                "id": doc_id,
                 "organization_id": organization_id,
                 **DEFAULT_THEME,
                 "updated_at": datetime.now(timezone.utc).isoformat()

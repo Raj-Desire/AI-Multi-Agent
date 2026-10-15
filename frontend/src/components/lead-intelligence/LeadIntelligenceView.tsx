@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { fetchApi, getAuthHeaders } from "../../api-client";
+import { fetchWithCache, hasCached } from "../../utils/swrCache";
 import { useAuth } from "../../context/AuthContext";
 import {
   LeadKPISummary,
@@ -60,6 +61,8 @@ const INITIAL_FILTERS: LeadFilterState = {
 
 export function LeadIntelligenceView() {
   const { user } = useAuth();
+  // Cache entries are scoped per organization so one tenant's data is never shown to another
+  const cacheScope = user?.organization_id || "default";
 
   // Navigation View Tab: "all_leads" | "interested" | "callbacks" | "analytics" | "cohorts"
   const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "analytics" | "cohorts">("all_leads");
@@ -131,23 +134,26 @@ export function LeadIntelligenceView() {
 
       const queryStr = params.toString() ? `?${params.toString()}` : "";
 
-      const [sumRes, cmpRes, agRes, rulesRes] = await Promise.all([
-        fetchApi<LeadKPISummary>(`/lead-intelligence/summary${queryStr}`).catch(() => null),
-        fetchApi<CampaignLeadStat[]>(`/lead-intelligence/campaigns${queryStr}`).catch(() => []),
-        fetchApi<AgentLeadStat[]>(`/lead-intelligence/agents${queryStr}`).catch(() => []),
-        fetchApi<any>("/lead-intelligence/qualification-rules").catch(() => null),
-      ]);
+      const k = (path: string) => `${cacheScope}:${path}`;
+      const sumUrl = `/lead-intelligence/summary${queryStr}`;
+      const cmpUrl = `/lead-intelligence/campaigns${queryStr}`;
+      const agUrl = `/lead-intelligence/agents${queryStr}`;
+      const rulesUrl = "/lead-intelligence/qualification-rules";
+      // Show cached KPIs instantly on revisit; fresh data replaces them as soon as it arrives
+      if (hasCached(k(sumUrl))) setIsLoadingSummary(false);
 
-      if (sumRes) setSummary(sumRes);
-      if (Array.isArray(cmpRes)) setCampaigns(cmpRes);
-      if (Array.isArray(agRes)) setAgents(agRes);
-      if (rulesRes) setQualificationRules(rulesRes);
+      await Promise.all([
+        fetchWithCache<LeadKPISummary>(k(sumUrl), () => fetchApi<LeadKPISummary>(sumUrl).catch(() => null), (d) => setSummary(d)),
+        fetchWithCache<CampaignLeadStat[]>(k(cmpUrl), () => fetchApi<CampaignLeadStat[]>(cmpUrl).catch(() => null), (d) => Array.isArray(d) && setCampaigns(d)),
+        fetchWithCache<AgentLeadStat[]>(k(agUrl), () => fetchApi<AgentLeadStat[]>(agUrl).catch(() => null), (d) => Array.isArray(d) && setAgents(d)),
+        fetchWithCache<any>(k(rulesUrl), () => fetchApi<any>(rulesUrl).catch(() => null), (d) => setQualificationRules(d)),
+      ]);
     } catch (err) {
       console.error("Failed to load lead summary:", err);
     } finally {
       setIsLoadingSummary(false);
     }
-  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId]);
+  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, cacheScope]);
 
   const loadAnalyticsDetails = useCallback(async () => {
     setIsLoadingTrends(true);
@@ -160,22 +166,22 @@ export function LeadIntelligenceView() {
 
       const queryStr = params.toString() ? `?${params.toString()}` : "";
 
-      const distPromise = fetchApi<LeadOutcomeDistributionResponse>(`/lead-intelligence/distribution${queryStr}`).catch(() => null);
-
       const trendParams = new URLSearchParams(params);
       trendParams.set("metric", trendMetric);
-      const trendPromise = fetchApi<LeadTrendsResponse>(`/lead-intelligence/trends?${trendParams.toString()}`).catch(() => null);
+      const distUrl = `/lead-intelligence/distribution${queryStr}`;
+      const trendUrl = `/lead-intelligence/trends?${trendParams.toString()}`;
+      if (hasCached(`${cacheScope}:${distUrl}`) && hasCached(`${cacheScope}:${trendUrl}`)) setIsLoadingTrends(false);
 
-      const [distRes, trendRes] = await Promise.all([distPromise, trendPromise]);
-
-      if (distRes) setDistribution(distRes);
-      if (trendRes) setTrends(trendRes);
+      await Promise.all([
+        fetchWithCache<LeadOutcomeDistributionResponse>(`${cacheScope}:${distUrl}`, () => fetchApi<LeadOutcomeDistributionResponse>(distUrl).catch(() => null), (d) => setDistribution(d)),
+        fetchWithCache<LeadTrendsResponse>(`${cacheScope}:${trendUrl}`, () => fetchApi<LeadTrendsResponse>(trendUrl).catch(() => null), (d) => setTrends(d)),
+      ]);
     } catch (err) {
       console.error("Failed to load analytics details:", err);
     } finally {
       setIsLoadingTrends(false);
     }
-  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, trendMetric]);
+  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, trendMetric, cacheScope]);
 
   const loadLeads = useCallback(async () => {
     setIsLoadingLeads(true);
@@ -213,12 +219,18 @@ export function LeadIntelligenceView() {
       const isOnlyHighValue = activeTab === "interested" && filters.outcome === "all";
       params.set("only_high_value", isOnlyHighValue ? "true" : "false");
 
-      const res = await fetchApi<LeadListPaginationResponse>(`/lead-intelligence/leads?${params.toString()}`);
-      if (res) {
-        setLeads(res.items || []);
-        setLeadsTotal(res.total || 0);
-        setLeadsTotalPages(res.total_pages || 1);
-      }
+      const leadsUrl = `/lead-intelligence/leads?${params.toString()}`;
+      const leadsKey = `${cacheScope}:${leadsUrl}`;
+      if (hasCached(leadsKey)) setIsLoadingLeads(false);
+      await fetchWithCache<LeadListPaginationResponse>(
+        leadsKey,
+        () => fetchApi<LeadListPaginationResponse>(leadsUrl).catch(() => null),
+        (res) => {
+          setLeads(res.items || []);
+          setLeadsTotal(res.total || 0);
+          setLeadsTotalPages(res.total_pages || 1);
+        }
+      );
     } catch (err) {
       console.error("Failed to load leads list:", err);
     } finally {
@@ -241,6 +253,7 @@ export function LeadIntelligenceView() {
     filters.prospectStatus,
     filters.followUp,
     activeTab,
+    cacheScope,
   ]);
 
   const loadCallbacks = useCallback(async () => {
@@ -253,18 +266,24 @@ export function LeadIntelligenceView() {
       if (filters.search.trim()) params.set("search", filters.search.trim());
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
 
-      const res = await fetchApi<CallbackListPaginationResponse>(`/lead-intelligence/callbacks?${params.toString()}`);
-      if (res) {
-        setCallbacks(res.items || []);
-        setCallbacksTotal(res.total || 0);
-        setCallbacksTotalPages(res.total_pages || 1);
-      }
+      const cbUrl = `/lead-intelligence/callbacks?${params.toString()}`;
+      const cbKey = `${cacheScope}:${cbUrl}`;
+      if (hasCached(cbKey)) setIsLoadingCallbacks(false);
+      await fetchWithCache<CallbackListPaginationResponse>(
+        cbKey,
+        () => fetchApi<CallbackListPaginationResponse>(cbUrl).catch(() => null),
+        (res) => {
+          setCallbacks(res.items || []);
+          setCallbacksTotal(res.total || 0);
+          setCallbacksTotalPages(res.total_pages || 1);
+        }
+      );
     } catch (err) {
       console.error("Failed to load callbacks:", err);
     } finally {
       setIsLoadingCallbacks(false);
     }
-  }, [callbacksPage, filters.search, filters.campaignId]);
+  }, [callbacksPage, filters.search, filters.campaignId, cacheScope]);
 
   // Initial and reactive load: Summary is always loaded
   useEffect(() => {
@@ -551,11 +570,11 @@ export function LeadIntelligenceView() {
             }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "interested"
-                ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <Sparkles className="w-3.5 h-3.5" />
             <span>Interested Leads ({summary?.interested ?? 0})</span>
           </button>
 
@@ -563,11 +582,11 @@ export function LeadIntelligenceView() {
             onClick={() => setActiveTab("callbacks")}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "callbacks"
-                ? "border-purple-500 text-purple-600 dark:text-purple-400"
+                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
           >
-            <PhoneForwarded className="w-3.5 h-3.5 text-purple-500" />
+            <PhoneForwarded className="w-3.5 h-3.5" />
             <span>Callback Requests ({summary?.callback_requested || 0})</span>
           </button>
 
@@ -587,11 +606,11 @@ export function LeadIntelligenceView() {
             onClick={() => setActiveTab("cohorts")}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "cohorts"
-                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
           >
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
+            <TrendingUp className="w-3.5 h-3.5" />
             <span>Cohort Retention Matrix</span>
           </button>
         </div>

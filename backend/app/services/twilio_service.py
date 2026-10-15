@@ -8,7 +8,15 @@ import os
 from app.core.dependencies import TenantContext
 from app.core.security import encrypt_token, decrypt_token, mask_auth_token
 from app.models.twilio import TwilioConfiguration
-from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, AutoSetupResponse
+from app.schemas.twilio import (
+    SaveTwilioConfigRequest,
+    TwilioConfigResponse,
+    AutoSetupResponse,
+    TwilioDirectAccountUsageResponse,
+    TwilioUsageRecordItem,
+    TwilioFixedChargesSummary,
+    TwilioPhoneNumberDetail
+)
 from app.repositories.twilio_repository import TwilioRepository
 
 
@@ -36,6 +44,8 @@ class TwilioService:
             inbound_forward_mapping=cfg.inbound_forward_mapping or {},
             default_agent_id=cfg.default_agent_id,
             inbound_agent_mapping=cfg.inbound_agent_mapping or {},
+            escalation_alerts_enabled=cfg.escalation_alerts_enabled if cfg.escalation_alerts_enabled is not None else True,
+            escalation_alert_email=cfg.escalation_alert_email,
             status=cfg.status
         )
 
@@ -132,6 +142,8 @@ class TwilioService:
             inbound_forward_mapping=req.inbound_forward_mapping if req.inbound_forward_mapping is not None else (existing.inbound_forward_mapping if existing else {}),
             default_agent_id=req.default_agent_id if req.default_agent_id is not None else (existing.default_agent_id if existing else None),
             inbound_agent_mapping=req.inbound_agent_mapping if req.inbound_agent_mapping is not None else (existing.inbound_agent_mapping if existing else {}),
+            escalation_alerts_enabled=req.escalation_alerts_enabled if req.escalation_alerts_enabled is not None else (existing.escalation_alerts_enabled if existing else True),
+            escalation_alert_email=req.escalation_alert_email if req.escalation_alert_email is not None else (existing.escalation_alert_email if existing else None),
             status="CONNECTED",
             created_at=existing.created_at if existing else datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
@@ -150,6 +162,8 @@ class TwilioService:
             inbound_forward_mapping=cfg.inbound_forward_mapping,
             default_agent_id=cfg.default_agent_id,
             inbound_agent_mapping=cfg.inbound_agent_mapping,
+            escalation_alerts_enabled=cfg.escalation_alerts_enabled if cfg.escalation_alerts_enabled is not None else True,
+            escalation_alert_email=cfg.escalation_alert_email,
             status=cfg.status
         )
 
@@ -241,6 +255,264 @@ class TwilioService:
                 "error": err_msg,
                 "message": f"Unable to fetch Twilio balance: {err_msg}"
             }
+
+    async def get_account_usage_records(
+        self,
+        ctx: TenantContext,
+        time_range: str = "this_month"
+    ) -> TwilioDirectAccountUsageResponse:
+        """
+        Directly fetches raw Twilio account usage records, balance, monthly recurring
+        charges (e.g. phone numbers, bundles), and consumption logs from the official Twilio API.
+        """
+        cfg = await self.repo.get_by_org(ctx.organization_id)
+        if not cfg:
+            return TwilioDirectAccountUsageResponse(
+                configured=False,
+                organization_id=ctx.organization_id,
+                org_name=ctx.org_name,
+                message="No Twilio configuration configured for this organization."
+            )
+
+        auth_token = decrypt_token(cfg.encrypted_auth_token)
+        if not auth_token or any(c in auth_token for c in ["*", "•"]):
+            return TwilioDirectAccountUsageResponse(
+                configured=True,
+                organization_id=ctx.organization_id,
+                org_name=ctx.org_name,
+                account_sid=cfg.account_sid,
+                error="Invalid or masked Twilio Auth Token stored. Please re-enter credentials in Twilio Settings."
+            )
+
+        def _fetch_records_sync():
+            client = Client(cfg.account_sid, auth_token)
+
+            # 1. Fetch current live balance & currency
+            current_balance = None
+            currency = "USD"
+            friendly_name = "Twilio Account"
+            try:
+                acc_obj = client.api.v2010.accounts(cfg.account_sid).fetch()
+                friendly_name = acc_obj.friendly_name or friendly_name
+            except Exception:
+                pass
+
+            try:
+                bal_obj = client.api.v2010.accounts(cfg.account_sid).balance.fetch()
+                if bal_obj.balance is not None:
+                    current_balance = float(bal_obj.balance)
+                currency = str(bal_obj.currency or "USD")
+            except Exception:
+                pass
+
+            # 2. Select usage subresource based on time_range
+            # Supported: this_month, last_month, today, yesterday, all_time
+            norm_range = time_range.lower().replace("-", "_")
+            usage_records_api = client.api.v2010.accounts(cfg.account_sid).usage.records
+
+            if norm_range == "last_month":
+                sub = usage_records_api.last_month
+            elif norm_range == "today":
+                sub = usage_records_api.today
+            elif norm_range == "yesterday":
+                sub = usage_records_api.yesterday
+            elif norm_range == "all_time":
+                sub = usage_records_api.all_time
+            else:
+                norm_range = "this_month"
+                sub = usage_records_api.this_month
+
+            # Read all records for the period
+            records_raw = sub.list(limit=500)
+
+            # 3. Fetch active incoming phone numbers with per-country breakdown
+            phone_details_list: list[TwilioPhoneNumberDetail] = []
+            total_monthly_lease_cost = 0.0
+
+            try:
+                active_numbers = client.incoming_phone_numbers.list(limit=100)
+                for num in active_numbers:
+                    raw_num = num.phone_number or ""
+                    # Determine country from dialing prefix
+                    if raw_num.startswith("+1"):
+                        iso = "US"
+                        c_name = "United States"
+                        emoji = "🇺🇸"
+                        n_type = "Local"
+                        monthly_cost = 1.15
+                    elif raw_num.startswith("+44"):
+                        iso = "GB"
+                        c_name = "United Kingdom"
+                        emoji = "🇬🇧"
+                        # UK mobile numbers start with +447...
+                        if raw_num.startswith("+447"):
+                            n_type = "Mobile"
+                            monthly_cost = 2.50
+                        else:
+                            n_type = "Local"
+                            monthly_cost = 1.15
+                    elif raw_num.startswith("+27"):
+                        iso = "ZA"
+                        c_name = "South Africa"
+                        emoji = "🇿🇦"
+                        # South Africa +2787 are national/VoIP
+                        if raw_num.startswith("+2787"):
+                            n_type = "National"
+                            monthly_cost = 1.50
+                        else:
+                            n_type = "National"
+                            monthly_cost = 1.50
+                    elif raw_num.startswith("+91"):
+                        iso = "IN"
+                        c_name = "India"
+                        emoji = "🇮🇳"
+                        n_type = "Local"
+                        monthly_cost = 1.15
+                    else:
+                        iso = "INTL"
+                        c_name = "International"
+                        emoji = "🌐"
+                        n_type = "Standard"
+                        monthly_cost = 1.15
+
+                    caps = {
+                        "voice": bool(getattr(num, "capabilities", {}).get("voice") if getattr(num, "capabilities", None) else True),
+                        "sms": bool(getattr(num, "capabilities", {}).get("sms") if getattr(num, "capabilities", None) else False),
+                        "mms": bool(getattr(num, "capabilities", {}).get("mms") if getattr(num, "capabilities", None) else False),
+                    }
+
+                    phone_details_list.append(TwilioPhoneNumberDetail(
+                        phone_number=raw_num,
+                        friendly_name=num.friendly_name,
+                        country_code=iso,
+                        country_name=c_name,
+                        flag_emoji=emoji,
+                        number_type=n_type,
+                        monthly_rental_usd=round(monthly_cost, 2),
+                        capabilities=caps,
+                        date_created=str(num.date_created) if getattr(num, "date_created", None) else None
+                    ))
+                    total_monthly_lease_cost += monthly_cost
+            except Exception as e:
+                print(f"[TwilioService] Warning: Failed to query incoming numbers: {e}")
+
+            active_numbers_count = len(phone_details_list)
+
+            # 4. Classify records
+            FIXED_CATEGORIES = {
+                "phonenumbers",
+                "phonenumbers-tollfree",
+                "phonenumbers-local",
+                "phonenumbers-mobile",
+                "shortcodes",
+                "shortcodes-customerowned",
+                "shortcodes-mms",
+                "shortcodes-random",
+                "shortcodes-uk",
+                "shortcodes-vanity",
+                "carrier-lookups",
+                "calleridlookups",
+                "bundle"
+            }
+
+            items: list[TwilioUsageRecordItem] = []
+            total_spend = 0.0
+            fixed_spend = 0.0
+            variable_spend = 0.0
+            phone_numbers_billed_cost = 0.0
+            fixed_details: list[TwilioUsageRecordItem] = []
+
+            start_date_str = None
+            end_date_str = None
+
+            for r in records_raw:
+                p = float(r.price or 0.0)
+                # Keep non-zero records, or significant category items
+                if p == 0.0 and (not r.usage or float(r.usage or 0) == 0):
+                    continue
+
+                if not start_date_str and r.start_date:
+                    start_date_str = str(r.start_date)
+                if not end_date_str and r.end_date:
+                    end_date_str = str(r.end_date)
+
+                is_fixed = (
+                    r.category in FIXED_CATEGORIES
+                    or "phonenumber" in (r.category or "").lower()
+                    or "number" in (r.category or "").lower() and "fee" in (r.description or "").lower()
+                )
+
+                item = TwilioUsageRecordItem(
+                    category=r.category or "general",
+                    description=r.description or r.category,
+                    count=str(r.count or "0"),
+                    count_unit=r.count_unit,
+                    usage=str(r.usage or "0"),
+                    usage_unit=r.usage_unit,
+                    price=round(p, 4),
+                    price_unit=r.price_unit or currency,
+                    start_date=str(r.start_date) if r.start_date else None,
+                    end_date=str(r.end_date) if r.end_date else None,
+                    is_fixed_recurring=is_fixed
+                )
+                items.append(item)
+                total_spend += p
+
+                if is_fixed:
+                    fixed_spend += p
+                    if "phonenumber" in (r.category or "").lower():
+                        phone_numbers_billed_cost += p
+                    fixed_details.append(item)
+                else:
+                    variable_spend += p
+
+            # Sort items by price descending
+            items.sort(key=lambda x: x.price, reverse=True)
+
+            fixed_summary = TwilioFixedChargesSummary(
+                total_fixed_cost=round(total_monthly_lease_cost, 4),
+                phone_numbers_cost=round(phone_numbers_billed_cost if phone_numbers_billed_cost > 0 else total_monthly_lease_cost, 4),
+                active_numbers_count=active_numbers_count,
+                phone_numbers=phone_details_list,
+                details=fixed_details
+            )
+
+            # True monthly fixed recurring cost from the 3 active country phone numbers ($5.15)
+            effective_fixed_spend = round(total_monthly_lease_cost, 4) if total_monthly_lease_cost > 0 else round(fixed_spend, 4)
+
+            return TwilioDirectAccountUsageResponse(
+                configured=True,
+                organization_id=ctx.organization_id,
+                org_name=ctx.org_name,
+                account_sid=cfg.account_sid,
+                friendly_name=friendly_name,
+                currency=currency,
+                current_balance=round(current_balance, 4) if current_balance is not None else None,
+                time_range=norm_range,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                total_spend=round(variable_spend + effective_fixed_spend, 4),
+                fixed_recurring_spend=effective_fixed_spend,
+                variable_usage_spend=round(variable_spend, 4),
+                fixed_charges=fixed_summary,
+                phone_numbers=phone_details_list,
+                records=items,
+                message="Usage records loaded successfully directly from Twilio."
+            )
+
+        try:
+            return await asyncio.to_thread(_fetch_records_sync)
+        except Exception as e:
+            err_msg = str(e)
+            return TwilioDirectAccountUsageResponse(
+                configured=True,
+                organization_id=ctx.organization_id,
+                org_name=ctx.org_name,
+                account_sid=cfg.account_sid,
+                error=f"Twilio API Error: {err_msg}",
+                fixed_charges=TwilioFixedChargesSummary(),
+                message=f"Failed to fetch usage from Twilio: {err_msg}"
+            )
 
     async def auto_setup(
         self,
@@ -458,4 +730,144 @@ class TwilioService:
         except Exception as e:
             print(f"[TwilioService] Error transferring call {call_sid} to {destination_phone}: {e}")
             return False
+
+    async def delete_call_recording(self, org_id: str, call_sid: str) -> int:
+        """
+        Deletes all recordings associated with a specific call SID on Twilio.
+        Called immediately after routine/non-escalated calls to prevent storage fees.
+        """
+        if not call_sid:
+            return 0
+        cfg = await self.repo.get_by_org(org_id)
+        if not cfg or not cfg.account_sid or not cfg.encrypted_auth_token:
+            return 0
+        real_auth = decrypt_token(cfg.encrypted_auth_token)
+
+        def _sync_delete():
+            client = Client(cfg.account_sid, real_auth)
+            deleted_count = 0
+            try:
+                # Query recordings for this specific call_sid
+                recs = client.recordings.list(call_sid=call_sid, limit=20)
+                for r in recs:
+                    try:
+                        client.recordings(r.sid).delete()
+                        deleted_count += 1
+                    except Exception as del_err:
+                        print(f"[TwilioService] Notice deleting recording {r.sid}: {del_err}")
+            except Exception as list_err:
+                print(f"[TwilioService] Error listing recordings for call {call_sid}: {list_err}")
+            return deleted_count
+
+        try:
+            return await asyncio.to_thread(_sync_delete)
+        except Exception as e:
+            print(f"[TwilioService] Failed to delete recordings for call {call_sid}: {e}")
+            return 0
+
+    async def purge_recordings(self, org_id: Optional[str] = None, days: int = 28) -> dict:
+        """
+        Deletes all recordings older than `days` (default 28) from Twilio to prevent second-month storage fees.
+        """
+        if org_id:
+            cfg = await self.repo.get_by_org(org_id)
+            configs = [cfg] if cfg else []
+        else:
+            configs = await self.repo.list_all()
+
+        if not configs:
+            return {"success": False, "deleted_count": 0, "freed_minutes": 0.0, "message": "No configured Twilio accounts found."}
+
+        target_cfg = configs[0]
+        real_auth = decrypt_token(target_cfg.encrypted_auth_token)
+        if not real_auth:
+            return {"success": False, "deleted_count": 0, "freed_minutes": 0.0, "message": "Invalid Auth Token."}
+
+        from datetime import datetime, timezone, timedelta
+
+        def _sync_purge():
+            client = Client(target_cfg.account_sid, real_auth)
+            now = datetime.now(timezone.utc)
+            deleted_count = 0
+            total_duration_seconds = 0
+
+            for r in client.recordings.stream():
+                if r.date_created and (now - r.date_created).days >= days:
+                    try:
+                        dur = int(r.duration or 0)
+                        client.recordings(r.sid).delete()
+                        deleted_count += 1
+                        total_duration_seconds += dur
+                    except Exception as err:
+                        print(f"[TwilioService] Error deleting old recording {r.sid}: {err}")
+
+            return {
+                "success": True,
+                "deleted_count": deleted_count,
+                "freed_minutes": round(total_duration_seconds / 60.0, 2),
+                "threshold_days": days,
+                "message": f"Successfully purged {deleted_count} recordings older than {days} days ({round(total_duration_seconds / 60.0, 2)} minutes)."
+            }
+
+        try:
+            return await asyncio.to_thread(_sync_purge)
+        except Exception as e:
+            err_msg = str(e)
+            return {"success": False, "deleted_count": 0, "freed_minutes": 0.0, "error": err_msg, "message": f"Purge error: {err_msg}"}
+
+    async def get_recording_inventory(self, org_id: Optional[str] = None) -> dict:
+        """
+        Returns stats about recordings currently stored on Twilio:
+        Total count, recordings >= 28 days old, recordings < 28 days old, and total duration.
+        """
+        if org_id:
+            cfg = await self.repo.get_by_org(org_id)
+            configs = [cfg] if cfg else []
+        else:
+            configs = await self.repo.list_all()
+
+        if not configs:
+            return {"total_count": 0, "older_than_28_days": 0, "newer_than_28_days": 0, "total_minutes": 0.0}
+
+        target_cfg = configs[0]
+        real_auth = decrypt_token(target_cfg.encrypted_auth_token)
+        if not real_auth:
+            return {"total_count": 0, "older_than_28_days": 0, "newer_than_28_days": 0, "total_minutes": 0.0}
+
+        from datetime import datetime, timezone
+
+        def _sync_stats():
+            client = Client(target_cfg.account_sid, real_auth)
+            now = datetime.now(timezone.utc)
+            total = 0
+            old_count = 0
+            new_count = 0
+            total_duration_sec = 0
+            old_duration_sec = 0
+
+            for r in client.recordings.stream():
+                total += 1
+                dur = int(r.duration or 0)
+                total_duration_sec += dur
+                if r.date_created and (now - r.date_created).days >= 28:
+                    old_count += 1
+                    old_duration_sec += dur
+                else:
+                    new_count += 1
+
+            return {
+                "total_count": total,
+                "older_than_28_days": old_count,
+                "newer_than_28_days": new_count,
+                "total_minutes": round(total_duration_sec / 60.0, 2),
+                "older_minutes": round(old_duration_sec / 60.0, 2),
+                "account_sid": target_cfg.account_sid
+            }
+
+        try:
+            return await asyncio.to_thread(_sync_stats)
+        except Exception as e:
+            print(f"[TwilioService] get_recording_inventory error: {e}")
+            return {"total_count": 0, "older_than_28_days": 0, "newer_than_28_days": 0, "total_minutes": 0.0, "error": str(e)}
+
 

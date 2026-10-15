@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -22,7 +22,20 @@ import { BusinessProfileView } from "./components/BusinessProfileView";
 import { ProspectsView } from "./components/prospects/ProspectsView";
 import { CampaignsView } from "./components/campaigns/CampaignsView";
 import { LeadIntelligenceView } from "./components/lead-intelligence/LeadIntelligenceView";
-import { Sidebar, NavTab, TAB_ROUTE_MAP, ROUTE_TAB_MAP } from "./components/Sidebar";
+import { UsageDashboardView } from "./components/UsageDashboardView";
+import { LowCreditBanner } from "./components/LowCreditBanner";
+import { HeaderCreditWidget } from "./components/HeaderCreditWidget";
+import { CreditExhaustedModal } from "./components/CreditExhaustedModal";
+import { OrgCreditStatus } from "./types";
+import { fetchApi } from "./api-client";
+import {
+  Sidebar,
+  NavTab,
+  TAB_ROUTE_MAP,
+  ROUTE_TAB_MAP,
+  getTabRoute,
+  parseActiveTabFromPath
+} from "./components/Sidebar";
 import { LoadingState } from "./components/ui/LoadingState";
 import { Modal } from "./components/ui/Modal";
 import { Button } from "./components/ui/Button";
@@ -41,7 +54,8 @@ import {
   Building2,
   AlertCircle,
   Save,
-  Sparkles
+  Sparkles,
+  Coins
 } from "lucide-react";
 
 function MainContent() {
@@ -63,12 +77,63 @@ function MainContent() {
   const [showNavConfirmModal, setShowNavConfirmModal] = useState(false);
   const [navConfirmSource, setNavConfirmSource] = useState<"agent" | "campaign">("agent");
 
-  // Determine current active NavTab from URL path
-  const currentPath = location.pathname.toLowerCase().replace(/\/$/, "") || "/";
-  const activeTab: NavTab = ROUTE_TAB_MAP[currentPath] || "dashboard";
+  // Real-time Organization Credit Status for Alert Banners & Header Pill
+  const [creditStatus, setCreditStatus] = useState<OrgCreditStatus | null>(null);
+  const [showCreditExhaustedModal, setShowCreditExhaustedModal] = useState(false);
+  const [creditExhaustedMessage, setCreditExhaustedMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchApi<OrgCreditStatus>("/credits/my-org")
+        .then((res) => setCreditStatus(res))
+        .catch(() => {});
+    }
+  }, [user, location.pathname]);
+
+  // Global listener for credit limit exceeded errors
+  useEffect(() => {
+    const handleCreditExhausted = (e: any) => {
+      const msg = e?.detail?.message;
+      if (msg) {
+        setCreditExhaustedMessage(msg);
+      }
+      setShowCreditExhaustedModal(true);
+    };
+    window.addEventListener("credit-limit-exceeded", handleCreditExhausted);
+    return () => {
+      window.removeEventListener("credit-limit-exceeded", handleCreditExhausted);
+    };
+  }, []);
+
+  // User authorized organization ID
+  const userOrgId = user?.organization_id || "default";
+
+  // Parse active NavTab, urlOrgId, and subRoute from browser path
+  const { activeTab: resolvedTab, urlOrgId, subRoute } = parseActiveTabFromPath(location.pathname);
+  const activeTab: NavTab = resolvedTab;
+
+  // Effective organization context: SuperAdmin viewing /:orgId/... is honored; otherwise userOrgId
+  const effectiveOrgId = (isSuperAdmin && urlOrgId) ? urlOrgId : userOrgId;
+
+  // 1. Security Tenant Mismatch Guard:
+  // If a non-superadmin user visits a URL with an orgId that does NOT match their authorized organization,
+  // or visits a legacy flat route (e.g. /campaigns), automatically redirect to their authorized scoped workspace.
+  useEffect(() => {
+    if (user && !isSuperAdmin) {
+      if (urlOrgId && urlOrgId !== user.organization_id) {
+        toast.error("Access restricted: Redirected to your authorized organization workspace.");
+        const safeTarget = getTabRoute(activeTab, user.organization_id);
+        navigate(safeTarget, { replace: true });
+      } else if (!urlOrgId && location.pathname !== "/" && activeTab !== "superadmin") {
+        // Upgrade legacy flat route /campaigns -> /:myOrg/campaigns
+        const upgradedTarget = getTabRoute(activeTab, user.organization_id);
+        navigate(upgradedTarget, { replace: true });
+      }
+    }
+  }, [user, urlOrgId, isSuperAdmin, location.pathname, activeTab]);
 
   const handleTabSelect = (tab: NavTab) => {
-    const targetRoute = TAB_ROUTE_MAP[tab] || "/dashboard";
+    const targetRoute = getTabRoute(tab, effectiveOrgId);
     if (activeTab === "voice_agent" && isAgentEditorDirty && tab !== "voice_agent") {
       setNavConfirmSource("agent");
       setPendingTargetRoute(targetRoute);
@@ -162,6 +227,12 @@ function MainContent() {
           sub: "White-label design tokens and UI architecture styles",
           icon: Palette,
         };
+      case "usage_credits":
+        return {
+          title: "Usage & Credit Pool",
+          sub: "Shared organization talk-time credits, active resource quotas & consumption ledger",
+          icon: Coins,
+        };
       case "admin":
         return {
           title: "Team Administration",
@@ -224,7 +295,7 @@ function MainContent() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Bar */}
-        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 shadow-2xs">
+        <header className="h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs">
           <div className="flex items-center gap-3">
             {/* Mobile Sidebar Hamburger Toggle */}
             <button
@@ -249,24 +320,47 @@ function MainContent() {
 
           {/* Right Status Indicators */}
           <div className="flex items-center gap-2.5">
+            {/* Header Battery/Charging Credit Gauge Pill */}
+            <HeaderCreditWidget
+              creditStatus={creditStatus}
+              onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+            />
+
             {/* Tenant Organization */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
               <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "AI Voice Platform"}</strong></span>
             </div>
           </div>
         </header>
 
+        {/* Organization Credit Low/Exhausted Warning Banner */}
+        <LowCreditBanner
+          status={creditStatus?.status || "healthy"}
+          remainingMinutes={creditStatus?.remaining_minutes || 0}
+          totalMinutes={creditStatus?.total_credits_minutes || 0}
+          onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+        />
+
         {/* Dynamic Route View - Full Width & Fully Responsive */}
         <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Root Redirect to Scoped Workspace */}
+            <Route path="/" element={<Navigate to={`/${userOrgId}/dashboard`} replace />} />
+
+            {/* Platform SuperAdmin Route */}
             <Route
-              path="/dashboard"
+              path="/superadmin"
+              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to={`/${userOrgId}/dashboard`} replace />}
+            />
+
+            {/* Scoped Organization Routes (/:orgId/...) */}
+            <Route
+              path="/:orgId/dashboard"
               element={<DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />}
             />
             <Route
-              path="/dialer"
+              path="/:orgId/dialer"
               element={
                 <AIAgentDialerView
                   initialAgentId={activeDialerAgentId}
@@ -275,9 +369,9 @@ function MainContent() {
                 />
               }
             />
-            <Route path="/ai-dialer" element={<Navigate to="/dialer" replace />} />
+            <Route path="/:orgId/ai-dialer" element={<Navigate to={`/${effectiveOrgId}/dialer`} replace />} />
             <Route
-              path="/agents"
+              path="/:orgId/agents"
               element={
                 <AgentManagementView
                   onNavigateToDialer={(agentId) => {
@@ -292,13 +386,13 @@ function MainContent() {
                 />
               }
             />
-            <Route path="/voice-agents" element={<Navigate to="/agents" replace />} />
-            <Route path="/lead-intelligence" element={<LeadIntelligenceView />} />
-            <Route path="/leads" element={<Navigate to="/lead-intelligence" replace />} />
-            <Route path="/opportunities" element={<Navigate to="/lead-intelligence" replace />} />
-            <Route path="/lead-insights" element={<Navigate to="/lead-intelligence" replace />} />
+            <Route path="/:orgId/voice-agents" element={<Navigate to={`/${effectiveOrgId}/agents`} replace />} />
+            <Route path="/:orgId/lead-intelligence" element={<LeadIntelligenceView />} />
+            <Route path="/:orgId/leads" element={<Navigate to={`/${effectiveOrgId}/lead-intelligence`} replace />} />
+            <Route path="/:orgId/opportunities" element={<Navigate to={`/${effectiveOrgId}/lead-intelligence`} replace />} />
+            <Route path="/:orgId/lead-insights" element={<Navigate to={`/${effectiveOrgId}/lead-intelligence`} replace />} />
             <Route
-              path="/campaigns"
+              path="/:orgId/campaigns"
               element={
                 <CampaignsView
                   onEditorDirtyChange={(isDirty, handleSaveDraft, handleDiscard) => {
@@ -309,30 +403,58 @@ function MainContent() {
                 />
               }
             />
-            <Route path="/prospects" element={<ProspectsView />} />
-            <Route path="/contacts" element={<Navigate to="/prospects" replace />} />
-            <Route path="/knowledge" element={<BusinessProfileView />} />
-            <Route path="/company-profile" element={<Navigate to="/knowledge" replace />} />
+            <Route path="/:orgId/prospects" element={<ProspectsView />} />
+            <Route path="/:orgId/contacts" element={<Navigate to={`/${effectiveOrgId}/prospects`} replace />} />
+            <Route path="/:orgId/knowledge" element={<BusinessProfileView />} />
+            <Route path="/:orgId/company-profile" element={<Navigate to={`/${effectiveOrgId}/knowledge`} replace />} />
+            <Route path="/:orgId/usage-credits" element={<UsageDashboardView />} />
+            <Route path="/:orgId/credits" element={<Navigate to={`/${effectiveOrgId}/usage-credits`} replace />} />
+            <Route path="/:orgId/usage" element={<Navigate to={`/${effectiveOrgId}/usage-credits`} replace />} />
             <Route
-              path="/phone-settings"
-              element={isAdmin ? <TwilioSettingsView /> : <Navigate to="/dashboard" replace />}
+              path="/:orgId/phone-settings"
+              element={isAdmin ? <TwilioSettingsView /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
             />
-            <Route path="/twilio" element={<Navigate to="/phone-settings" replace />} />
+            <Route path="/:orgId/twilio" element={<Navigate to={`/${effectiveOrgId}/phone-settings`} replace />} />
             <Route
-              path="/theme"
-              element={isAdmin ? <ThemeStudioView /> : <Navigate to="/dashboard" replace />}
+              path="/:orgId/theme"
+              element={isAdmin ? <ThemeStudioView /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
             />
             <Route
-              path="/team"
-              element={isAdmin ? <AdminPanel /> : <Navigate to="/dashboard" replace />}
+              path="/:orgId/team"
+              element={isAdmin ? <AdminPanel /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
             />
-            <Route path="/admin" element={<Navigate to="/team" replace />} />
+            <Route path="/:orgId/admin" element={<Navigate to={`/${effectiveOrgId}/team`} replace />} />
             <Route
-              path="/superadmin"
-              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to="/dashboard" replace />}
+              path="/:orgId/superadmin"
+              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
             />
-            {/* Catch all route - redirect to dashboard */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+            {/* Legacy Flat Route Redirections (Forwarding to scoped organization URLs) */}
+            <Route path="/dashboard" element={<Navigate to={`/${userOrgId}/dashboard`} replace />} />
+            <Route path="/dialer" element={<Navigate to={`/${userOrgId}/dialer`} replace />} />
+            <Route path="/ai-dialer" element={<Navigate to={`/${userOrgId}/dialer`} replace />} />
+            <Route path="/agents" element={<Navigate to={`/${userOrgId}/agents`} replace />} />
+            <Route path="/voice-agents" element={<Navigate to={`/${userOrgId}/agents`} replace />} />
+            <Route path="/lead-intelligence" element={<Navigate to={`/${userOrgId}/lead-intelligence`} replace />} />
+            <Route path="/leads" element={<Navigate to={`/${userOrgId}/lead-intelligence`} replace />} />
+            <Route path="/opportunities" element={<Navigate to={`/${userOrgId}/lead-intelligence`} replace />} />
+            <Route path="/lead-insights" element={<Navigate to={`/${userOrgId}/lead-intelligence`} replace />} />
+            <Route path="/campaigns" element={<Navigate to={`/${userOrgId}/campaigns`} replace />} />
+            <Route path="/prospects" element={<Navigate to={`/${userOrgId}/prospects`} replace />} />
+            <Route path="/contacts" element={<Navigate to={`/${userOrgId}/prospects`} replace />} />
+            <Route path="/knowledge" element={<Navigate to={`/${userOrgId}/knowledge`} replace />} />
+            <Route path="/company-profile" element={<Navigate to={`/${userOrgId}/knowledge`} replace />} />
+            <Route path="/usage-credits" element={<Navigate to={`/${userOrgId}/usage-credits`} replace />} />
+            <Route path="/credits" element={<Navigate to={`/${userOrgId}/usage-credits`} replace />} />
+            <Route path="/usage" element={<Navigate to={`/${userOrgId}/usage-credits`} replace />} />
+            <Route path="/phone-settings" element={<Navigate to={`/${userOrgId}/phone-settings`} replace />} />
+            <Route path="/twilio" element={<Navigate to={`/${userOrgId}/phone-settings`} replace />} />
+            <Route path="/theme" element={<Navigate to={`/${userOrgId}/theme`} replace />} />
+            <Route path="/team" element={<Navigate to={`/${userOrgId}/team`} replace />} />
+            <Route path="/admin" element={<Navigate to={`/${userOrgId}/team`} replace />} />
+
+            {/* Catch-all Wildcard Route */}
+            <Route path="*" element={<Navigate to={`/${effectiveOrgId}/dashboard`} replace />} />
           </Routes>
         </main>
 
@@ -406,6 +528,18 @@ function MainContent() {
             </div>
           </div>
         </Modal>
+
+        {/* Credit Limit Exceeded Direct Professional Modal */}
+        <CreditExhaustedModal
+          isOpen={showCreditExhaustedModal}
+          onClose={() => {
+            setShowCreditExhaustedModal(false);
+            setCreditExhaustedMessage(null);
+          }}
+          creditStatus={creditStatus}
+          customMessage={creditExhaustedMessage}
+          onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+        />
 
         {/* Minimal Footer */}
         {/* <footer className="bg-[var(--color-surface)]/60 border-t border-[var(--color-border)] px-4 sm:px-6 py-3 text-xs text-[var(--color-muted)] flex flex-col sm:flex-row justify-between items-center gap-2">

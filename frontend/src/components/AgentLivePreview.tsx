@@ -45,6 +45,8 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const [latestLatency, setLatestLatency] = useState({ stt: 0, llm: 0, tts: 0, turn: 0 });
   const [typedMessage, setTypedMessage] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [micVolume, setMicVolume] = useState<number>(0);
+  const userSpeakingTimeoutRef = useRef<any>(null);
 
   // Audio Context & Streaming refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -89,9 +91,15 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       setTranscriptMessages([]);
       setLatestLatency({ stt: 0, llm: 0, tts: 0, turn: 0 });
 
-      // 1. Initialize Web Audio Context at native browser hardware rate (e.g. 44.1kHz or 48kHz)
+      // 1. Initialize Web Audio Context at 24kHz so the browser's own resampler handles mic input
+      // and playback; this avoids our naive (unfiltered) downsampling that aliases speech.
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx(); // Native hardware clock, no downsampling distortion
+      let audioCtx: AudioContext;
+      try {
+        audioCtx = new AudioCtx({ sampleRate: 24000 });
+      } catch {
+        audioCtx = new AudioCtx(); // Fallback: native rate; manual resampling below still applies
+      }
       if (audioCtx.state === "suspended") {
         await audioCtx.resume();
       }
@@ -235,7 +243,67 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       const audioCtx = audioContextRef.current;
       if (!audioCtx) return;
 
+      // Ensure AudioContext is actively running (browsers suspend on async getUserMedia)
+      if (audioCtx.state !== "running") {
+        await audioCtx.resume();
+      }
+
       const source = audioCtx.createMediaStreamSource(stream);
+
+      // Process linear PCM chunks, compute RMS for user-speaking status, and transmit to WS
+      const handleAudioBlock = (inputData: Float32Array) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (ws.bufferedAmount > 65536) return; // Drop frame if network buffer is backlogged
+        if (!inputData || inputData.length === 0) return;
+
+        // Compute RMS volume for visual meter and speech activity
+        let sumSquares = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sumSquares += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sumSquares / inputData.length);
+        const normalizedVol = Math.min(100, Math.round(rms * 400));
+        setMicVolume(normalizedVol);
+
+        if (rms > 0.015) {
+          setIsUserSpeaking(true);
+          if (userSpeakingTimeoutRef.current) clearTimeout(userSpeakingTimeoutRef.current);
+          userSpeakingTimeoutRef.current = setTimeout(() => {
+            setIsUserSpeaking(false);
+            setMicVolume(0);
+          }, 600);
+        }
+
+        // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to 24000Hz Linear PCM
+        const targetSampleRate = 24000;
+        const srcSampleRate = audioCtx.sampleRate;
+        let resampledData: Float32Array;
+
+        if (srcSampleRate === targetSampleRate) {
+          resampledData = inputData;
+        } else {
+          const ratio = srcSampleRate / targetSampleRate;
+          const newLength = Math.round(inputData.length / ratio);
+          resampledData = new Float32Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            const srcIdx = i * ratio;
+            const i0 = Math.floor(srcIdx);
+            const i1 = Math.min(i0 + 1, inputData.length - 1);
+            const frac = srcIdx - i0;
+            resampledData[i] = inputData[i0] * (1 - frac) + inputData[i1] * frac;
+          }
+        }
+
+        // Convert Float32 to Int16 Linear PCM (16-bit linear at 24000Hz)
+        const pcm16Buffer = new Int16Array(resampledData.length);
+        for (let i = 0; i < resampledData.length; i++) {
+          const s = Math.max(-1, Math.min(1, resampledData[i]));
+          pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+        }
+
+        // Send binary buffer directly to backend preview stream
+        ws.send(pcm16Buffer.buffer);
+      };
 
       // Inline AudioWorklet code: batches render quanta into ~1024 samples for linear16 streaming
       const workletCode = `
@@ -271,46 +339,12 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         const workletNode = new AudioWorkletNode(audioCtx, "mic-processor");
         workletNodeRef.current = workletNode;
 
-        // Keep audio graph alive in Chromium by routing workletNode through a silent gain node to destination
         const muteGain = audioCtx.createGain();
         muteGain.gain.value = 0.0;
         muteGainRef.current = muteGain;
 
         workletNode.port.onmessage = (e) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          if (ws.bufferedAmount > 65536) return; // Drop frame if network buffer is backlogged
-          const inputData: Float32Array = e.data;
-          if (!inputData || inputData.length === 0) return;
-
-          // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to 24000Hz Linear PCM
-          const targetSampleRate = 24000;
-          const srcSampleRate = audioCtx.sampleRate;
-          let resampledData: Float32Array;
-
-          if (srcSampleRate === targetSampleRate) {
-            resampledData = inputData;
-          } else {
-            const ratio = srcSampleRate / targetSampleRate;
-            const newLength = Math.round(inputData.length / ratio);
-            resampledData = new Float32Array(newLength);
-            for (let i = 0; i < newLength; i++) {
-              const srcIdx = i * ratio;
-              const i0 = Math.floor(srcIdx);
-              const i1 = Math.min(i0 + 1, inputData.length - 1);
-              const frac = srcIdx - i0;
-              resampledData[i] = inputData[i0] * (1 - frac) + inputData[i1] * frac;
-            }
-          }
-
-          // Convert Float32 to Int16 Linear PCM (16-bit linear at 24000Hz)
-          const pcm16Buffer = new Int16Array(resampledData.length);
-          for (let i = 0; i < resampledData.length; i++) {
-            const s = Math.max(-1, Math.min(1, resampledData[i]));
-            pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-          }
-
-          // Send raw binary PCM16 buffer directly for maximum throughput and zero serialization latency
-          ws.send(pcm16Buffer.buffer);
+          handleAudioBlock(e.data);
         };
 
         source.connect(workletNode);
@@ -322,41 +356,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         processorNodeRef.current = processor;
 
         processor.onaudioprocess = (e) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          if (ws.bufferedAmount > 65536) return;
           const inputData = e.inputBuffer.getChannelData(0);
-
-          // Resample from browser native sample rate to 24000Hz
-          const targetSampleRate = 24000;
-          const srcSampleRate = audioCtx.sampleRate;
-          let resampledData: Float32Array;
-
-          if (srcSampleRate === targetSampleRate) {
-            resampledData = inputData;
-          } else {
-            const ratio = srcSampleRate / targetSampleRate;
-            const newLength = Math.round(inputData.length / ratio);
-            resampledData = new Float32Array(newLength);
-            for (let i = 0; i < newLength; i++) {
-              const srcIdx = i * ratio;
-              const i0 = Math.floor(srcIdx);
-              const i1 = Math.min(i0 + 1, inputData.length - 1);
-              const frac = srcIdx - i0;
-              resampledData[i] = inputData[i0] * (1 - frac) + inputData[i1] * frac;
-            }
-          }
-
-          const pcm16Buffer = new Int16Array(resampledData.length);
-          for (let i = 0; i < resampledData.length; i++) {
-            const s = Math.max(-1, Math.min(1, resampledData[i]));
-            pcm16Buffer[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-          }
-
-          ws.send(pcm16Buffer.buffer);
+          handleAudioBlock(inputData);
         };
 
+        const muteGain = audioCtx.createGain();
+        muteGain.gain.value = 0.0;
+        muteGainRef.current = muteGain;
+
         source.connect(processor);
-        processor.connect(audioCtx.destination);
+        processor.connect(muteGain);
+        muteGain.connect(audioCtx.destination);
       }
     } catch (err: any) {
       console.warn("Microphone access denied or unavailable:", err);
@@ -477,15 +487,15 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       const sourceNode = audioCtx.createBufferSource();
       sourceNode.buffer = audioBuffer;
 
-      const voiceSpeed = agentConfig?.voice?.speed || 1.0;
-      sourceNode.playbackRate.value = Math.max(0.5, Math.min(2.0, voiceSpeed));
-
+      // Play at native rate: playbackRate would resample and shift pitch/formants (robotic timbre).
       sourceNode.connect(audioCtx.destination);
 
       const currentTime = audioCtx.currentTime;
-      // If queue fell behind current time, schedule with small 10ms safety buffer
-      const startTime = Math.max(currentTime + 0.01, nextPlayTimeRef.current);
-      const chunkDuration = audioBuffer.duration / sourceNode.playbackRate.value;
+      // When the queue has drained (start of a turn or after an underrun), add a short jitter
+      // buffer so following chunks arrive before this one finishes instead of leaving gaps.
+      const queueDrained = nextPlayTimeRef.current <= currentTime;
+      const startTime = queueDrained ? currentTime + 0.15 : nextPlayTimeRef.current;
+      const chunkDuration = audioBuffer.duration;
 
       sourceNode.start(startTime);
       nextPlayTimeRef.current = startTime + chunkDuration;
@@ -616,7 +626,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs text-[11px]">
             <Volume2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
             <span className="text-[var(--color-muted)]">Voice:</span>
-            <span className="font-mono font-semibold text-[var(--color-heading)]">{agentConfig.voice?.voice || "aura-orion-en"}</span>
+            <span className="font-mono font-semibold text-[var(--color-heading)]">{agentConfig.voice?.voice || "flux-hannah-en"}</span>
           </div>
 
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xs text-[11px]">
@@ -737,9 +747,24 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         </div>
 
         {isConnected && isMicActive && (
-          <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold px-2.5 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shrink-0">
-            <Mic className="w-3.5 h-3.5 animate-pulse text-emerald-500" />
+          <div className="flex items-center gap-2 text-[11px] text-emerald-600 font-semibold px-2.5 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 shrink-0 select-none">
+            <Mic className={`w-3.5 h-3.5 ${isUserSpeaking ? "text-emerald-500 animate-pulse" : "text-emerald-600"}`} />
             <span>Mic Live</span>
+            {/* Real-time audio waveform activity bars */}
+            <div className="flex items-center gap-0.5 h-3 px-1">
+              <span
+                className="w-0.5 bg-emerald-500 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(3, Math.min(12, micVolume * 0.12))}px` }}
+              />
+              <span
+                className="w-0.5 bg-emerald-500 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(3, Math.min(12, micVolume * 0.20))}px` }}
+              />
+              <span
+                className="w-0.5 bg-emerald-500 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(3, Math.min(12, micVolume * 0.14))}px` }}
+              />
+            </div>
           </div>
         )}
       </div>

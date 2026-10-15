@@ -51,19 +51,47 @@ interface AgentManagementViewProps {
   onEditorDirtyChange?: (isDirty: boolean, handleSaveDraft: () => Promise<void>, handleDiscard: () => void) => void;
 }
 
-// Map technical voice IDs to human-readable format: "Athena · English (US)"
+// Map technical voice IDs to human-readable format: "Hannah · English (US)"
 const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
-  "aura-orion-en": { name: "Orion", locale: "English (US)" },
-  "aura-luna-en": { name: "Luna", locale: "English (US)" },
-  "aura-asteria-en": { name: "Asteria", locale: "English (US)" },
-  "aura-stella-en": { name: "Stella", locale: "English (US)" },
-  "aura-arcas-en": { name: "Arcas", locale: "English (US)" },
-  "aura-athena-en": { name: "Athena", locale: "English (US)" },
-  "aura-hera-en": { name: "Hera", locale: "English (US)" },
-  "aura-perseus-en": { name: "Perseus", locale: "English (US)" },
-  "aura-angus-en": { name: "Angus", locale: "English (US)" },
-  "aura-helios-en": { name: "Helios", locale: "English (US)" },
-  "aura-zeus-en": { name: "Zeus", locale: "English (US)" },
+  // Flux Conversation-Native Voices
+  "flux-hannah-en": { name: "Hannah", locale: "English (US)" },
+  "flux-alexis-en": { name: "Alexis", locale: "English (US)" },
+  "flux-sienna-en": { name: "Sienna", locale: "English (US)" },
+  "flux-brooke-en": { name: "Brooke", locale: "English (US)" },
+  "flux-cliff-en": { name: "Cliff", locale: "English (US)" },
+  "flux-cole-en": { name: "Cole", locale: "English (US)" },
+  "flux-kit-en": { name: "Kit", locale: "English (UK)" },
+  "flux-colin-en": { name: "Colin", locale: "English (UK)" },
+  "flux-gemma-en": { name: "Gemma", locale: "English (UK)" },
+  "flux-haley-en": { name: "Haley", locale: "English (US)" },
+  "flux-heather-en": { name: "Heather", locale: "English (US)" },
+  "flux-miles-en": { name: "Miles", locale: "English (US)" },
+  "flux-sean-en": { name: "Sean", locale: "English (UK)" },
+  "flux-bree-en": { name: "Bree", locale: "English (US)" },
+  "flux-brittany-en": { name: "Brittany", locale: "English (US)" },
+  "flux-bruce-en": { name: "Bruce", locale: "English (US)" },
+  "flux-conor-en": { name: "Conor", locale: "English (UK)" },
+  "flux-donovan-en": { name: "Donovan", locale: "English (US)" },
+  "flux-drew-en": { name: "Drew", locale: "English (US)" },
+  "flux-elise-en": { name: "Elise", locale: "English (US)" },
+  "flux-jack-en": { name: "Jack", locale: "English (UK)" },
+  "flux-kai-en": { name: "Kai", locale: "English (SG)" },
+  "flux-kelsey-en": { name: "Kelsey", locale: "English (US)" },
+  "flux-maeve-en": { name: "Maeve", locale: "English (IE)" },
+  "flux-marcelo-en": { name: "Marcelo", locale: "English (PH)" },
+  "flux-marcus-en": { name: "Marcus", locale: "English (US)" },
+  "flux-meena-en": { name: "Meena", locale: "English (IN)" },
+  "flux-meghan-en": { name: "Meghan", locale: "English (US)" },
+  "flux-naveen-en": { name: "Naveen", locale: "English (IN)" },
+  "flux-paige-en": { name: "Paige", locale: "English (US)" },
+  "flux-priya-en": { name: "Priya", locale: "English (IN)" },
+  "flux-rufus-en": { name: "Rufus", locale: "English (UK)" },
+  "flux-sharon-en": { name: "Sharon", locale: "English (AU)" },
+  "flux-tanner-en": { name: "Tanner", locale: "English (UK)" },
+  "flux-wade-en": { name: "Wade", locale: "English (US)" },
+  "flux-wes-en": { name: "Wes", locale: "English (US)" },
+
+  // Multilingual Spoken Voices
   "aura-2-thalia-en": { name: "Thalia", locale: "English (US)" },
   "aura-2-andromeda-en": { name: "Andromeda", locale: "English (US)" },
   "aura-2-apollo-en": { name: "Apollo", locale: "English (US)" },
@@ -78,7 +106,7 @@ const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
 function formatVoiceDisplay(rawVoice?: string) {
   if (!rawVoice) return { name: "Standard Voice", locale: "English" };
   if (VOICE_DISPLAY_MAP[rawVoice]) return VOICE_DISPLAY_MAP[rawVoice];
-  const parts = rawVoice.replace(/^aura(-2)?-/, "").split("-");
+  const parts = rawVoice.replace(/^(flux|aura(-2)?)-/, "").split("-");
   const name = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : rawVoice;
   const lang = parts[1] === "es" ? "Spanish" : parts[1] === "fr" ? "French" : parts[1] === "de" ? "German" : parts[1] === "it" ? "Italian" : parts[1] === "ja" ? "Japanese" : "English";
   return { name, locale: lang };

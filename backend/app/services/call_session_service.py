@@ -6,6 +6,7 @@ with full immutable agent snapshots and transcripts.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone
 import logging
 from typing import Optional, List, Dict, Any
@@ -16,6 +17,11 @@ from app.repositories.call_repository import CallRepository
 from app.models.call import Call
 
 logger = logging.getLogger("call_session_service")
+
+# Strong references so fire-and-forget analytics tasks are not garbage collected mid-run.
+_background_tasks: set = set()
+_finalized_session_ids: set = set()
+_released_session_ids: set = set()
 
 
 class CallSessionService:
@@ -34,7 +40,7 @@ class CallSessionService:
         direction: str = "outbound",
         agent_name: str = "AI Receptionist",
         agent_role: str = "Professional AI Voice Assistant",
-        voice: str = "aura-asteria-en",
+        voice: str = "flux-hannah-en",
         model: str = "gpt-4o-mini",
         twilio_call_sid: Optional[str] = None,
         twilio_stream_sid: Optional[str] = None,
@@ -179,12 +185,57 @@ class CallSessionService:
             payload={"turn_index": session.turn_count}
         ))
 
+    async def release_live_session(self, session: CallSession, final_status: str = "completed"):
+        """Instantly marks the call as ended for every dashboard: removes it from the live registry and
+        broadcasts CallEnded. No database or network work happens here, so the UI is never kept waiting
+        on call teardown, persistence or analytics. Idempotent."""
+        if session.call_session_id in _released_session_ids:
+            return
+        _released_session_ids.add(session.call_session_id)
+
+        session.status = final_status
+        if not session.ended_at:
+            session.ended_at = datetime.now(timezone.utc)
+        session.calculate_duration()
+        active_sessions.remove(session.call_session_id)
+
+        unanswered = {"no-answer": "no_answer", "busy": "busy", "failed": "failed", "canceled": "canceled"}
+        await telemetry_broadcaster.broadcast(VoiceEventMessage(
+            event_type=VoiceEventType.CALL_ENDED,
+            call_session_id=session.call_session_id,
+            organization_id=session.organization_id,
+            agent_id=session.agent_id,
+            twilio_call_sid=session.twilio_call_sid,
+            payload={
+                "call_id": session.call_session_id,
+                "campaign_id": session.campaign_id,
+                "prospect_id": session.prospect_id,
+                "call_duration": session.call_duration,
+                "turn_count": session.turn_count,
+                "status": final_status,
+                "business_outcome": session.outcome or unanswered.get(final_status, "Completed"),
+                "summary": "",
+                "next_action": "",
+                "interest_level": "",
+                "lead_score": 0,
+                "analytics_pending": True,
+                "message_count": len(session.messages),
+                "agent_name": session.agent_name,
+            }
+        ))
+
     async def finalize_session(self, session: CallSession, final_status: str = "completed"):
         """Calculates final metrics, stores transcript and immutable agent snapshot in Call model, and persists to Cosmos DB."""
+        # Idempotent: the media-stream stop, the hangup API and the Twilio status webhook can all end a call.
+        if session.call_session_id in _finalized_session_ids:
+            return
+        _finalized_session_ids.add(session.call_session_id)
+
+        # Dashboards learn the call is over right now; persistence below can take a few seconds.
+        await self.release_live_session(session, final_status)
         session.status = final_status
-        session.ended_at = datetime.now(timezone.utc)
-        session.calculate_duration()
         session.current_state = ConversationState.COMPLETED
+        session.calculate_duration()
 
         # Create combined transcript preview
         transcript_lines = [f"{m.role.upper()}: {m.content}" for m in session.messages]
@@ -202,27 +253,14 @@ class CallSessionService:
         ]
         latency_dict = session.latest_latency.model_dump(mode="json") if hasattr(session.latest_latency, "model_dump") else None
 
-        # Execute Post-Call Transcript Intelligence
-        analytics_data = {}
-        try:
-            from app.services.call_analytics_service import CallAnalyticsService
-            analytics_svc = CallAnalyticsService()
-            analytics_data = await analytics_svc.analyze_call_transcript(
-                transcript_records,
-                call_duration=session.call_duration or 0,
-                call_status=final_status
-            )
-            logger.info(
-                f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
-                f"Score={analytics_data.get('lead_score')}, Interest='{analytics_data.get('interest_level')}', "
-                f"Classification='{analytics_data.get('classification')}'"
-            )
-        except Exception as analytics_err:
-            logger.error(f"[CallSessionService] Post-call analytics error: {analytics_err}")
+        # Live status first: transcript intelligence (slow LLM call) runs in the background after the
+        # call is persisted, the campaign member is updated and the live console has been released.
+        analytics_data: Dict[str, Any] = {}
 
         # Persist or update Call model in Cosmos DB (prevent duplicate records when call was initiated via dialer)
-        resolved_business_outcome = session.outcome or analytics_data.get("business_outcome") or analytics_data.get("interest_level") or "Completed"
-        
+        unanswered_statuses = {"no-answer": "no_answer", "busy": "busy", "failed": "failed", "canceled": "canceled"}
+        resolved_business_outcome = session.outcome or unanswered_statuses.get(final_status, "Completed")
+
         existing_call = None
         if session.twilio_call_sid:
             try:
@@ -261,7 +299,7 @@ class CallSessionService:
             call_doc.interest_level = analytics_data.get("interest_level") or existing_call.interest_level
             call_doc.classification = analytics_data.get("classification") or existing_call.classification
             call_doc.callback_datetime = analytics_data.get("callback_datetime") or existing_call.callback_datetime
-            call_doc.analytics_status = "ready" if analytics_data else "unavailable"
+            call_doc.analytics_status = "pending"
             call_doc.analytics = analytics_data if analytics_data else existing_call.analytics
             call_doc.latency_metrics = latency_dict or existing_call.latency_metrics
             call_doc.updated_at = session.ended_at
@@ -308,18 +346,39 @@ class CallSessionService:
                 interest_level=analytics_data.get("interest_level"),
                 classification=analytics_data.get("classification"),
                 callback_datetime=analytics_data.get("callback_datetime"),
-                analytics_status="ready" if analytics_data else "unavailable",
+                analytics_status="pending",
                 analytics=analytics_data if analytics_data else None,
                 latency_metrics=latency_dict,
                 created_at=session.started_at,
                 updated_at=session.ended_at
             )
 
+        call_saved = False
         try:
             await self.call_repo.save(call_doc)
+            call_saved = True
             logger.info(f"Persisted CallSession {call_doc.id} (SID: {session.twilio_call_sid}) to database with Agent {session.agent_name} (v{agent_version}). Outcome: {resolved_business_outcome}")
         except Exception as e:
             logger.error(f"Error saving CallSession to database: {e}")
+
+        if call_saved:
+            # Tell dashboards the call record now exists so they can refresh their call lists
+            await telemetry_broadcaster.broadcast(VoiceEventMessage(
+                event_type=VoiceEventType.CALL_SAVED,
+                call_session_id=session.call_session_id,
+                organization_id=session.organization_id,
+                agent_id=session.agent_id,
+                twilio_call_sid=session.twilio_call_sid,
+                payload={"call_id": call_doc.id, "campaign_id": session.campaign_id, "status": final_status}
+            ))
+
+        if call_saved:
+            # Atomic Credit Deduction & Usage Ledger Tracking
+            try:
+                from app.services.credit_service import credit_service
+                await credit_service.process_completed_call(call_doc)
+            except Exception as cred_err:
+                logger.error(f"[CallSessionService] Error processing credit deduction for call {call_doc.id}: {cred_err}")
 
         # Update Prospect Activity & Metrics
         try:
@@ -357,30 +416,195 @@ class CallSessionService:
             except Exception as cmp_err:
                 logger.warning(f"[CallSessionService] Could not sync campaign member outcome: {cmp_err}")
 
-        # Broadcast CallEnded event
+        # Transcript intelligence (summary, lead score, retention) completes in the background.
+        task = asyncio.create_task(self._run_post_call_analytics(
+            session=session,
+            call_id=call_doc.id,
+            transcript_records=transcript_records,
+            final_status=final_status,
+            agent_version=agent_version,
+            initial_outcome=resolved_business_outcome,
+        ))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    async def _run_post_call_analytics(
+        self,
+        session: CallSession,
+        call_id: str,
+        transcript_records: List[Dict[str, Any]],
+        final_status: str,
+        agent_version: int,
+        initial_outcome: str,
+    ):
+        """Runs LLM transcript analysis after the call has already been finalized, then enriches the
+        stored call, prospect and campaign member, and handles recording retention."""
+        analytics_data: Dict[str, Any] = {}
+        try:
+            from app.services.call_analytics_service import CallAnalyticsService
+            analytics_data = await CallAnalyticsService().analyze_call_transcript(
+                transcript_records,
+                call_duration=session.call_duration or 0,
+                call_status=final_status
+            ) or {}
+            logger.info(
+                f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
+                f"Score={analytics_data.get('lead_score')}, Interest='{analytics_data.get('interest_level')}', "
+                f"Classification='{analytics_data.get('classification')}'"
+            )
+        except Exception as analytics_err:
+            logger.error(f"[CallSessionService] Post-call analytics error: {analytics_err}")
+
+        resolved_outcome = session.outcome or analytics_data.get("business_outcome") or analytics_data.get("interest_level") or "Completed"
+
+        # Enrich the stored call record (re-read: the Twilio status webhook may have updated it meanwhile)
+        try:
+            call_doc = await self.call_repo.get_by_id(call_id)
+            if call_doc:
+                call_doc.summary = analytics_data.get("summary") or call_doc.summary
+                call_doc.key_insights = analytics_data.get("key_insights") or call_doc.key_insights
+                call_doc.key_requirements = analytics_data.get("key_requirements") or call_doc.key_requirements
+                call_doc.customer_questions = analytics_data.get("customer_questions") or call_doc.customer_questions
+                call_doc.objections = analytics_data.get("objections") or call_doc.objections
+                call_doc.important_info = analytics_data.get("important_info") or call_doc.important_info
+                call_doc.next_action = analytics_data.get("next_action") or call_doc.next_action
+                call_doc.intent = analytics_data.get("intent") or call_doc.intent
+                call_doc.sentiment = analytics_data.get("sentiment") or call_doc.sentiment
+                if analytics_data.get("lead_score") is not None:
+                    call_doc.lead_score = analytics_data.get("lead_score")
+                call_doc.interest_level = analytics_data.get("interest_level") or call_doc.interest_level
+                call_doc.classification = analytics_data.get("classification") or call_doc.classification
+                call_doc.callback_datetime = analytics_data.get("callback_datetime") or call_doc.callback_datetime
+                call_doc.analytics = analytics_data if analytics_data else call_doc.analytics
+                call_doc.analytics_status = "ready" if analytics_data else "unavailable"
+                call_doc.outcome = resolved_outcome
+                call_doc.business_outcome = resolved_outcome
+                await self.call_repo.save(call_doc)
+        except Exception as e:
+            logger.error(f"[CallSessionService] Error saving post-call analytics for {call_id}: {e}")
+
+        # Propagate a richer outcome (e.g. "Interested") to the prospect and campaign member
+        if resolved_outcome != initial_outcome:
+            try:
+                from app.services.prospect_service import ProspectService
+                from app.repositories.prospect_repository import ProspectRepository
+                await ProspectService(ProspectRepository(), self.call_repo).record_call_outcome(
+                    organization_id=session.organization_id,
+                    phone_number=session.destination_number,
+                    call_id=session.call_session_id,
+                    duration=session.call_duration,
+                    outcome=resolved_outcome,
+                    is_success=(final_status == "completed" or session.call_duration > 0)
+                )
+            except Exception as p_err:
+                logger.warning(f"[CallSessionService] Could not sync prospect analytics outcome: {p_err}")
+
+            if session.campaign_id and session.prospect_id:
+                try:
+                    from app.services.campaign_service import CampaignService
+                    from app.repositories.campaign_repository import CampaignMemberRepository
+                    mem_repo = CampaignMemberRepository()
+                    target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id)
+                    if target_mem and target_mem.last_call_id == call_id:
+                        target_mem.last_call_outcome = resolved_outcome
+                        await mem_repo.save(target_mem)
+                        await CampaignService().recalculate_campaign_stats(session.campaign_id)
+                except Exception as cmp_err:
+                    logger.warning(f"[CallSessionService] Could not sync campaign analytics outcome: {cmp_err}")
+
         await telemetry_broadcaster.broadcast(VoiceEventMessage(
-            event_type=VoiceEventType.CALL_ENDED,
+            event_type=VoiceEventType.LEAD_INTELLIGENCE_UPDATED,
             call_session_id=session.call_session_id,
             organization_id=session.organization_id,
             agent_id=session.agent_id,
             twilio_call_sid=session.twilio_call_sid,
             payload={
-                "call_id": session.call_session_id,
+                "call_id": call_id,
                 "campaign_id": session.campaign_id,
                 "prospect_id": session.prospect_id,
-                "call_duration": session.call_duration,
-                "turn_count": session.turn_count,
-                "status": final_status,
-                "business_outcome": resolved_business_outcome,
+                "business_outcome": resolved_outcome,
                 "summary": analytics_data.get("summary", ""),
                 "next_action": analytics_data.get("next_action", ""),
                 "interest_level": analytics_data.get("interest_level", ""),
                 "lead_score": analytics_data.get("lead_score", 0),
-                "message_count": len(session.messages),
                 "agent_name": session.agent_name,
                 "agent_version": agent_version
             }
         ))
 
-        # Cleanup from active memory
-        active_sessions.remove(session.call_session_id)
+        # Smart Recording Storage Optimizer:
+        # If call was routine, successful, and did NOT experience escalation, negative sentiment, or AI confusion,
+        # delete the raw Twilio audio recording immediately to eliminate storage charges ($0 storage fee).
+        if session.twilio_call_sid and session.organization_id:
+            needs_rec = analytics_data.get("needs_audio_recording", False)
+            if not needs_rec:
+                try:
+                    from app.services.twilio_service import TwilioService
+                    from app.repositories.twilio_repository import TwilioRepository
+                    tw_svc = TwilioService(TwilioRepository())
+                    asyncio.create_task(tw_svc.delete_call_recording(session.organization_id, session.twilio_call_sid))
+                    logger.info(f"[CallSessionService:SmartRetention] Scheduled instant deletion of routine recording on Twilio for SID {session.twilio_call_sid} to save storage credits.")
+                except Exception as del_err:
+                    logger.debug(f"[CallSessionService:SmartRetention] Notice deleting routine recording: {del_err}")
+            else:
+                reason = analytics_data.get("recording_retention_reason", "Escalation / Review")
+                logger.info(f"[CallSessionService:SmartRetention] Retaining recording on Twilio for SID {session.twilio_call_sid} (Reason: {reason}). Will auto-purge after 28 days.")
+                
+                # Dispatch Email Alert to SuperAdmin / Configured Alert Recipients
+                try:
+                    from app.services.graph_email_service import graph_email_service
+                    from app.repositories.twilio_repository import TwilioRepository
+                    from app.repositories.user_repository import UserRepository
+                    
+                    async def _send_escalation_alert_async():
+                        try:
+                            # 1. Check organization Twilio config for custom alert settings
+                            tw_repo = TwilioRepository()
+                            tw_cfg = await tw_repo.get_by_org(session.organization_id)
+                            alerts_enabled = tw_cfg.escalation_alerts_enabled if tw_cfg and tw_cfg.escalation_alerts_enabled is not None else True
+                            
+                            # Global env fallback check
+                            global_enabled = os.getenv("ESCALATION_ALERTS_ENABLED", "true").lower() in ("true", "1", "yes")
+                            if not (alerts_enabled and global_enabled):
+                                logger.info(f"[CallSessionService:Alert] Escalation alerts disabled for org {session.organization_id}")
+                                return
+
+                            # Determine recipient emails
+                            recipient = (tw_cfg.escalation_alert_email if tw_cfg and tw_cfg.escalation_alert_email else "").strip()
+                            if not recipient:
+                                recipient = os.getenv("ESCALATION_ALERT_RECIPIENT", "jashpalP@t12y7.onmicrosoft.com").strip()
+                            
+                            recipients_list = [r.strip() for r in recipient.split(",") if r.strip()]
+                            if not recipients_list:
+                                return
+
+                            # Organization friendly name
+                            org_info = await UserRepository.get_organization(session.organization_id)
+                            org_name = (org_info.get("org_name") if org_info else session.organization_id) or "AI Voice Platform"
+
+                            # Build excerpt from transcript
+                            excerpt_lines = []
+                            for t in transcript_records[-6:]:
+                                r_label = "Agent" if t.get("role") in ["agent", "assistant"] else "Customer"
+                                excerpt_lines.append(f"{r_label}: {t.get('content') or t.get('text', '')}")
+                            excerpt_str = "\n".join(excerpt_lines) if excerpt_lines else None
+
+                            await graph_email_service.send_recording_escalation_alert(
+                                to_recipients=recipients_list,
+                                org_name=org_name,
+                                call_id=session.call_session_id,
+                                call_sid=session.twilio_call_sid,
+                                customer_phone=session.destination_number or session.phone_number or "Unknown",
+                                call_duration_seconds=session.call_duration or 0,
+                                retention_reason=reason,
+                                summary=analytics_data.get("summary", ""),
+                                sentiment=analytics_data.get("sentiment", "Neutral"),
+                                transcript_excerpt=excerpt_str,
+                                retention_days=28
+                            )
+                        except Exception as alert_inner_err:
+                            logger.error(f"[CallSessionService:Alert Error] {alert_inner_err}")
+
+                    asyncio.create_task(_send_escalation_alert_async())
+                except Exception as alert_dispatch_err:
+                    logger.error(f"[CallSessionService:Alert Dispatch] Could not schedule alert: {alert_dispatch_err}")

@@ -84,7 +84,7 @@ export function LeadKpiSection({
       icon: Users,
       color: "text-indigo-500 dark:text-indigo-400",
       bgColor: "bg-indigo-500/10",
-      activeRing: "ring-2 ring-indigo-500",
+      activeRing: "ring-2 ring-[var(--color-primary)]",
       description: "All campaign leads",
     },
     {
@@ -95,7 +95,7 @@ export function LeadKpiSection({
       icon: Sparkles,
       color: "text-emerald-500 dark:text-emerald-400",
       bgColor: "bg-emerald-500/10",
-      activeRing: "ring-2 ring-emerald-500",
+      activeRing: "ring-2 ring-[var(--color-primary)]",
       description: "Positive prospect response",
     },
     {
@@ -106,7 +106,7 @@ export function LeadKpiSection({
       icon: PhoneForwarded,
       color: "text-purple-500 dark:text-purple-400",
       bgColor: "bg-purple-500/10",
-      activeRing: "ring-2 ring-purple-500",
+      activeRing: "ring-2 ring-[var(--color-primary)]",
       description: "Specific time requested",
     },
     {
@@ -117,7 +117,7 @@ export function LeadKpiSection({
       icon: HelpCircle,
       color: "text-blue-500 dark:text-blue-400",
       bgColor: "bg-blue-500/10",
-      activeRing: "ring-2 ring-blue-500",
+      activeRing: "ring-2 ring-[var(--color-primary)]",
       description: "Details or follow-up needed",
     },
     {
@@ -128,7 +128,7 @@ export function LeadKpiSection({
       icon: PhoneOff,
       color: "text-slate-500 dark:text-slate-400",
       bgColor: "bg-slate-500/10",
-      activeRing: "ring-2 ring-slate-500",
+      activeRing: "ring-2 ring-[var(--color-primary)]",
       description: "Unanswered, voicemail, other",
     },
   ];

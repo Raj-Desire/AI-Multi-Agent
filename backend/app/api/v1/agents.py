@@ -163,7 +163,7 @@ async def generate_prompt(
             suggested_greetings=gen.get("suggested_greetings", []),
             suggested_objective=gen.get("suggested_objective", desc),
             communication_style=gen.get("communication_style", style),
-            recommended_voice=gen.get("recommended_voice", "aura-orion-en"),
+            recommended_voice=gen.get("recommended_voice", "flux-hannah-en"),
             positive_flow=gen.get("positive_flow", ""),
             negative_flow=gen.get("negative_flow", "")
         ))
@@ -291,6 +291,16 @@ async def create_agent(
     service: AgentService = Depends(get_agent_service)
 ):
     """Creates a new AI Agent for the organization (or global agent if SuperAdmin)."""
+    # Organization Agent Creation Quota Check
+    if ctx.role != "superadmin":
+        from app.services.credit_service import credit_service
+        can_create = await credit_service.can_create_agent(ctx.organization_id)
+        if not can_create:
+            raise HTTPException(
+                status_code=403,
+                detail="Agent creation limit reached for your organization's subscription plan. Please contact your platform administrator."
+            )
+
     created = await service.create_agent(ctx, payload)
     return ApiResponse.ok(created)
 

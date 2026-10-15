@@ -46,23 +46,28 @@ class CampaignRepository:
             if not container:
                 return None
 
+            # 1 RU point read when organization_id is known and not global
+            if organization_id and organization_id != "global":
+                try:
+                    item = container.read_item(item=campaign_id, partition_key=organization_id)
+                    c = Campaign.model_validate(item)
+                    self._memory_store[c.id] = c
+                    return c
+                except Exception:
+                    pass
+
+            # Fallback query
             if organization_id == "global":
                 query = "SELECT * FROM c WHERE c.id = @id"
                 params = [{"name": "@id", "value": campaign_id}]
-            else:
-                query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
-                params = [
-                    {"name": "@id", "value": campaign_id},
-                    {"name": "@organization_id", "value": organization_id}
-                ]
-            try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                if items:
-                    c = Campaign.model_validate(items[0])
-                    self._memory_store[c.id] = c
-                    return c
-            except Exception as e:
-                print(f"[CampaignRepository Error] get_by_id: {e}")
+                try:
+                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    if items:
+                        c = Campaign.model_validate(items[0])
+                        self._memory_store[c.id] = c
+                        return c
+                except Exception as e:
+                    print(f"[CampaignRepository Error] get_by_id: {e}")
             return None
 
         return await asyncio.to_thread(_sync_get)
@@ -87,7 +92,12 @@ class CampaignRepository:
                 query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
                 params = [{"name": "@organization_id", "value": organization_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    items = list(container.query_items(
+                        query=query,
+                        parameters=params,
+                        partition_key=organization_id,
+                        enable_cross_partition_query=False
+                    ))
                     for item in items:
                         c = Campaign.model_validate(item)
                         all_dict[c.id] = c
@@ -228,23 +238,27 @@ class CampaignMemberRepository:
             if not container:
                 return None
 
+            # 1 RU point read when organization_id is known
+            if organization_id and organization_id != "global":
+                try:
+                    item = container.read_item(item=member_id, partition_key=organization_id)
+                    m = CampaignMember.model_validate(item)
+                    self._memory_store[m.id] = m
+                    return m
+                except Exception:
+                    pass
+
             if organization_id == "global":
                 query = "SELECT * FROM c WHERE c.id = @id"
                 params = [{"name": "@id", "value": member_id}]
-            else:
-                query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
-                params = [
-                    {"name": "@id", "value": member_id},
-                    {"name": "@organization_id", "value": organization_id}
-                ]
-            try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                if items:
-                    m = CampaignMember.model_validate(items[0])
-                    self._memory_store[m.id] = m
-                    return m
-            except Exception as e:
-                print(f"[CampaignMemberRepository Error] get_by_id: {e}")
+                try:
+                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    if items:
+                        m = CampaignMember.model_validate(items[0])
+                        self._memory_store[m.id] = m
+                        return m
+                except Exception as e:
+                    print(f"[CampaignMemberRepository Error] get_by_id: {e}")
             return None
 
         return await asyncio.to_thread(_sync_get)
@@ -334,17 +348,30 @@ class CampaignMemberRepository:
                     {"name": "@campaign_id", "value": campaign_id},
                     {"name": "@organization_id", "value": organization_id}
                 ]
+                try:
+                    items = list(container.query_items(
+                        query=query,
+                        parameters=params,
+                        partition_key=organization_id,
+                        enable_cross_partition_query=False
+                    ))
+                    for item in items:
+                        m = CampaignMember.model_validate(item)
+                        all_dict[m.id] = m
+                        self._memory_store[m.id] = m
+                except Exception as e:
+                    print(f"[CampaignMemberRepository Error] _get_cached_or_queried_members: {e}")
             else:
                 query = "SELECT * FROM c WHERE c.campaign_id = @campaign_id"
                 params = [{"name": "@campaign_id", "value": campaign_id}]
-            try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-                for item in items:
-                    m = CampaignMember.model_validate(item)
-                    all_dict[m.id] = m
-                    self._memory_store[m.id] = m
-            except Exception as e:
-                print(f"[CampaignMemberRepository Error] _get_cached_or_queried_members: {e}")
+                try:
+                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    for item in items:
+                        m = CampaignMember.model_validate(item)
+                        all_dict[m.id] = m
+                        self._memory_store[m.id] = m
+                except Exception as e:
+                    print(f"[CampaignMemberRepository Error] _get_cached_or_queried_members: {e}")
 
         members_list = list(all_dict.values())
         _CAMPAIGN_MEMBERS_CACHE[campaign_id] = (members_list, now_ts)
@@ -414,6 +441,7 @@ class CampaignMemberRepository:
     async def save(self, member: CampaignMember) -> CampaignMember:
         def _sync_save():
             self._memory_store[member.id] = member
+            _invalidate_campaign_members_cache(member.campaign_id)
             container = get_campaign_members_container()
             if container:
                 try:
@@ -421,6 +449,7 @@ class CampaignMemberRepository:
                     container.upsert_item(body=doc)
                 except Exception as e:
                     print(f"[CampaignMemberRepository Error] save: {e}")
+            _invalidate_campaign_members_cache(member.campaign_id)
             return member
 
         return await asyncio.to_thread(_sync_save)
@@ -428,14 +457,18 @@ class CampaignMemberRepository:
     async def save_bulk(self, members: List[CampaignMember]) -> List[CampaignMember]:
         def _sync_save_bulk():
             container = get_campaign_members_container()
+            affected_campaigns = set()
             for m in members:
                 self._memory_store[m.id] = m
+                affected_campaigns.add(m.campaign_id)
                 if container:
                     try:
                         doc = m.model_dump(mode="json")
                         container.upsert_item(body=doc)
                     except Exception as e:
                         print(f"[CampaignMemberRepository Error] save_bulk: {e}")
+            for c_id in affected_campaigns:
+                _invalidate_campaign_members_cache(c_id)
             return members
 
         return await asyncio.to_thread(_sync_save_bulk)

@@ -21,6 +21,7 @@ from app.api.v1.campaigns import router as campaigns_router
 from app.api.v1.lead_intelligence import router as lead_intelligence_router
 from app.api.v1.knowledge import router as knowledge_router
 from app.api.v1.think_proxy import router as think_proxy_router
+from app.api.v1.credits import router as credits_router, superadmin_credits_router
 from app.voice.gateway import router as gateway_router
 from app.core.cosmos import init_cosmos_db
 from app.services.campaign_dialer import campaign_dialer_engine
@@ -102,6 +103,8 @@ app.include_router(lead_intelligence_router, prefix="/api/v1")
 app.include_router(knowledge_router, prefix="/api/v1")
 app.include_router(gateway_router, prefix="/api/v1")
 app.include_router(think_proxy_router, prefix="/api/v1")
+app.include_router(credits_router, prefix="/api/v1")
+app.include_router(superadmin_credits_router, prefix="/api/v1")
 
 
 from fastapi.responses import Response
@@ -112,5 +115,12 @@ async def favicon():
 
 @app.get("/health/live")
 async def health_live():
+    # Asynchronously evaluate active campaign queues on health/cron ping
+    # This guarantees sleeping/free-tier servers immediately process scheduled campaigns
+    try:
+        from app.services.campaign_dialer import campaign_dialer_engine
+        asyncio.create_task(campaign_dialer_engine.tick())
+    except Exception:
+        pass
     return {"status": "ok"}
 

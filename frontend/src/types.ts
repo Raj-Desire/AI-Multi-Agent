@@ -802,6 +802,7 @@ export interface ActiveCampaignCall {
   duration: number;
   turn_count: number;
   started_at?: string;
+  connected_at?: string | null;
 }
 
 export interface CampaignStats {
@@ -1190,4 +1191,191 @@ export interface KnowledgeSearchResponse {
   latency_ms: number;
   total_results: number;
 }
+
+// -------------------------------------------------------------
+// Direct Twilio Account Native Usage & Credit Telemetry
+// -------------------------------------------------------------
+export interface TwilioUsageRecordItem {
+  category: string;
+  description?: string;
+  count?: string;
+  count_unit?: string | null;
+  usage?: string;
+  usage_unit?: string | null;
+  price: number;
+  price_unit: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_fixed_recurring: boolean;
+}
+
+export interface TwilioPhoneNumberDetail {
+  phone_number: string;
+  friendly_name?: string | null;
+  country_code: string;
+  country_name: string;
+  flag_emoji: string;
+  number_type: string;
+  monthly_rental_usd: number;
+  capabilities: {
+    voice: boolean;
+    sms: boolean;
+    mms: boolean;
+  };
+  date_created?: string | null;
+}
+
+export interface TwilioFixedChargesSummary {
+  total_fixed_cost: number;
+  phone_numbers_cost: number;
+  active_numbers_count: number;
+  phone_numbers: TwilioPhoneNumberDetail[];
+  details: TwilioUsageRecordItem[];
+}
+
+export interface TwilioDirectAccountUsageResponse {
+  configured: boolean;
+  organization_id?: string;
+  org_name?: string;
+  account_sid?: string;
+  friendly_name?: string;
+  currency: string;
+  current_balance?: number | null;
+  time_range: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  total_spend: number;
+  fixed_recurring_spend: number;
+  variable_usage_spend: number;
+  fixed_charges: TwilioFixedChargesSummary;
+  phone_numbers: TwilioPhoneNumberDetail[];
+  records: TwilioUsageRecordItem[];
+  error?: string | null;
+  message?: string | null;
+}
+
+export interface TwilioConfiguredOrg {
+  organization_id: string;
+  org_name: string;
+  account_sid: string;
+  phone_number: string;
+  status: string;
+}
+
+export interface TwilioRecordingInventory {
+  total_count: number;
+  older_than_28_days: number;
+  newer_than_28_days: number;
+  total_minutes: number;
+  older_minutes: number;
+  account_sid?: string;
+  error?: string;
+}
+
+export interface TwilioPurgeResponse {
+  success: boolean;
+  deleted_count: number;
+  freed_minutes: number;
+  threshold_days: number;
+  message: string;
+  error?: string;
+}
+export interface EscalationAlertConfig {
+  organization_id?: string;
+  enabled: boolean;
+  recipient_email: string;
+  mail_sender?: string;
+  graph_configured: boolean;
+  sender?: string;
+}
+
+// ============================================================================
+// Organization Credits, Resource Counters & Usage Tracking
+// ============================================================================
+
+export type CreditHealthStatus = 'healthy' | 'warning' | 'critical' | 'exhausted';
+
+export interface OrgCreditStatus {
+  organization_id: string;
+  org_name: string;
+  plan_name: string;
+  total_credits_minutes: number;
+  used_minutes: number;
+  remaining_minutes: number;
+  usage_percentage: number;
+  status: CreditHealthStatus;
+  is_credit_enforced: boolean;
+  credit_exhausted_action: 'block' | 'warn_only';
+  low_credit_threshold_pct: number;
+  period_start?: string;
+  period_end?: string;
+  max_agents_allowed?: number;
+  max_campaigns_allowed?: number;
+  updated_at?: string;
+}
+
+export interface ResourceCounters {
+  total_agents: number;
+  max_agents_allowed?: number;
+  total_campaigns: number;
+  max_campaigns_allowed?: number;
+  total_calls_count: number;
+  total_billed_minutes: number;
+}
+
+export interface DailyUsageMetric {
+  date_key: string;
+  total_seconds: number;
+  total_minutes: number;
+  total_tokens: number;
+  call_count: number;
+}
+
+export interface LedgerItem {
+  id: string;
+  call_id: string;
+  call_sid?: string;
+  duration_seconds: number;
+  credits_consumed_minutes: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  balance_before_seconds: number;
+  balance_after_seconds: number;
+  agent_name?: string;
+  campaign_id?: string;
+  date_key: string;
+  created_at: string;
+}
+
+export interface CreditAuditLog {
+  id: string;
+  organization_id: string;
+  action: 'assign' | 'add' | 'deduct' | 'reset' | 'plan_change' | 'toggle_enforcement';
+  previous_total_minutes: number;
+  new_total_minutes: number;
+  delta_minutes: number;
+  previous_used_seconds: number;
+  new_used_seconds: number;
+  assigned_by_user: string;
+  reason?: string;
+  created_at: string;
+}
+
+export interface OrgDashboardPayload extends OrgCreditStatus {
+  counters: ResourceCounters;
+  daily_metrics: DailyUsageMetric[];
+  recent_ledger: LedgerItem[];
+  projected_depletion_date?: string;
+}
+
+export interface SuperAdminOrgCreditItem extends OrgCreditStatus {
+  total_agents: number;
+  total_campaigns: number;
+  total_calls: number;
+  last_assigned_by?: string;
+  last_assigned_at?: string;
+}
+
 

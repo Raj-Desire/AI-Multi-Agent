@@ -204,6 +204,24 @@ class KnowledgeRepository:
 
         await asyncio.to_thread(_sync_save)
 
+    async def list_chunks_for_org(self, org_id: str) -> List[DocumentChunk]:
+        """All chunks of an organization (database copy merged with the in-memory store)."""
+        def _sync_fetch():
+            container = get_knowledge_chunks_container()
+            if not container:
+                return []
+            query = "SELECT * FROM c WHERE c.organization_id = @org_id"
+            params = [{"name": "@org_id", "value": org_id}]
+            try:
+                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=False))
+                return [DocumentChunk.model_validate(i) for i in items]
+            except Exception:
+                return []
+
+        merged: Dict[str, DocumentChunk] = {c.id: c for c in await asyncio.to_thread(_sync_fetch)}
+        merged.update(self._chunk_memory_store.get(org_id, {}))
+        return list(merged.values())
+
     async def search_vector_chunks(
         self,
         org_id: str,

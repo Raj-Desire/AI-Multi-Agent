@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { fetchApi } from "../api-client";
+import { fetchApi, LIVE } from "../api-client";
 import { TwilioConfig, CallRecord, AvailableAgentsResponse, AgentConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -31,6 +31,7 @@ import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
 import { Drawer } from "./ui/Drawer";
+import { TranscriptChat } from "./ui/TranscriptChat";
 
 function formatDuration(seconds: number) {
   if (!seconds || seconds <= 0) return "0s";
@@ -72,11 +73,15 @@ export function AIAgentDialerView({
   const [callDuration, setCallDuration] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeCallSid, setActiveCallSid] = useState<string | null>(null);
+  const [remoteHost, setRemoteHost] = useState<string | null>(null);
   const [transcriptMessages, setTranscriptMessages] = useState<ConversationTurnMessage[]>([]);
   const [latestLatency, setLatestLatency] = useState({ stt: 0, llm: 0, tts: 0, turn: 0 });
 
   // Inspection Drawer
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+
+  const [analyzingCall, setAnalyzingCall] = useState(false);
+  const analyzedCallIdsRef = useRef<Set<string>>(new Set());
 
   const timerRef = useRef<any>(null);
   const telemetryWsRef = useRef<WebSocket | null>(null);
@@ -102,13 +107,37 @@ export function AIAgentDialerView({
     }
   }, [transcriptMessages]);
 
+  // When a call is opened without a summary (e.g. analysis failed at hang-up), generate it from the transcript
+  useEffect(() => {
+    if (!selectedCall) return;
+    const hasCustomerSpeech = (selectedCall.transcript || []).some(
+      (t: any) => (t.role === "user" || t.role === "customer") && (t.content || "").trim()
+    );
+    if (selectedCall.summary || selectedCall.analytics_status === "pending" || !hasCustomerSpeech || analyzedCallIdsRef.current.has(selectedCall.id)) return;
+    analyzedCallIdsRef.current.add(selectedCall.id);
+    void handleGenerateSummary(selectedCall.id);
+  }, [selectedCall?.id, selectedCall?.analytics_status]);
+
+  async function handleGenerateSummary(callId: string) {
+    try {
+      setAnalyzingCall(true);
+      const updated = await fetchApi<CallRecord>(`/calls/${callId}/analyze`, { method: "POST" });
+      setSelectedCall((prev) => (prev && prev.id === callId ? { ...prev, ...updated } : prev));
+      setCalls((prev) => prev.map((c) => (c.id === callId ? { ...c, ...updated } : c)));
+    } catch (err: any) {
+      console.warn("Call summary generation failed:", err);
+    } finally {
+      setAnalyzingCall(false);
+    }
+  }
+
   async function loadData() {
     try {
       setLoading(true);
       const [twCfg, agentsRes, callList] = await Promise.all([
         fetchApi<TwilioConfig | null>("/twilio/configuration").catch(() => null),
         fetchApi<AvailableAgentsResponse>("/agents/available").catch(() => ({ my_agents: [], default_agents: [] })),
-        fetchApi<CallRecord[]>("/calls?type=ai").catch(() => []),
+        fetchApi<CallRecord[]>("/calls?type=ai", LIVE).catch(() => []),
       ]);
 
       setConfig(twCfg);
@@ -148,6 +177,23 @@ export function AIAgentDialerView({
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
+
+  function refreshCalls() {
+    return fetchApi<CallRecord[]>("/calls?type=ai", LIVE)
+      .then((list) => {
+        setCalls(list);
+        setSelectedCall((prev) => (prev ? list.find((c) => c.id === prev.id) ?? prev : prev));
+      })
+      .catch(() => { });
+  }
+
+  function resetLiveCallUi() {
+    setRemoteHost(null);
+    setCallState("idle");
+    setCalling(false);
+    setActiveCallSid(null);
+    stopTimer();
+  }
 
   function startTimer() {
     setCallDuration(0);
@@ -196,11 +242,22 @@ export function AIAgentDialerView({
             tts: event.payload.tts_latency_ms || 0,
             turn: event.payload.turn_latency_ms || 0,
           });
+        } else if (event.event_type === "StreamConnected") {
+          // Call answered: start the clock now so the timer matches the call duration measured by the backend
+          setCallState("connected");
+          startTimer();
+        } else if (event.event_type === "CallStatus") {
+          // Live carrier status from the provider webhook (ringing, answered, busy, no-answer, ...)
+          const st = String(event.payload?.status || "").toLowerCase();
+          if (st === "ringing") {
+            setCallState((prev) => (prev === "connected" ? prev : "ringing"));
+          }
         } else if (event.event_type === "CallEnded") {
-          setCallState("idle");
-          setCalling(false);
-          stopTimer();
-          fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
+          resetLiveCallUi();
+          refreshCalls();
+        } else if (event.event_type === "CallSaved" || event.event_type === "LeadIntelligenceUpdated") {
+          // Call record saved / summary and lead score finished generating in the background after hang-up
+          refreshCalls();
         }
       } catch (err) {
         console.error("Telemetry parse error:", err);
@@ -209,6 +266,74 @@ export function AIAgentDialerView({
 
     telemetryWsRef.current = ws;
   }
+
+  // Live state poll: the server's in-memory call state is the source of truth for status, duration,
+  // transcript and latency, so the screen never depends on catching a one-off websocket event
+  // (the media stream can start before the browser's telemetry socket is even open).
+  useEffect(() => {
+    if (!calling || !activeSessionId) return;
+    let stopped = false;
+    let busy = false;
+    let seenLive = false;
+    let connectedSeen = false;
+    const startedAt = Date.now();
+
+    const poll = async () => {
+      if (busy || stopped) return;
+      busy = true;
+      try {
+        const st = await fetchApi<{
+          phase: "dialing" | "ringing" | "connected" | "ended" | "unknown";
+          remote?: boolean;
+          remote_host?: string;
+          duration: number;
+          messages: ConversationTurnMessage[];
+          latency: { stt_latency_ms?: number; llm_latency_ms?: number; tts_latency_ms?: number; total_turn_latency_ms?: number };
+        }>(`/voice/session/${activeSessionId}/live`, LIVE);
+        if (stopped || !st) return;
+        if (st.remote) setRemoteHost(st.remote_host || "another server");
+
+        if (st.phase === "dialing" || st.phase === "ringing") {
+          seenLive = true;
+          setCallState((prev) => (prev === "connected" ? prev : st.phase === "ringing" ? "ringing" : "dialing"));
+        } else if (st.phase === "connected") {
+          seenLive = true;
+          if (!connectedSeen) {
+            connectedSeen = true;
+            setCallState("connected");
+            startTimer();
+          }
+          setCallDuration(st.duration || 0);
+          if (Array.isArray(st.messages)) {
+            setTranscriptMessages((prev) => (st.messages.length >= prev.length ? st.messages : prev));
+          }
+          if (st.latency) {
+            setLatestLatency({
+              stt: st.latency.stt_latency_ms || 0,
+              llm: st.latency.llm_latency_ms || 0,
+              tts: st.latency.tts_latency_ms || 0,
+              turn: st.latency.total_turn_latency_ms || 0,
+            });
+          }
+        } else if (st.phase === "ended" || (st.phase === "unknown" && (seenLive || Date.now() - startedAt > 15000))) {
+          stopped = true;
+          resetLiveCallUi();
+          refreshCalls();
+        }
+      } catch {
+        // transient network error: try again on the next tick
+      } finally {
+        busy = false;
+      }
+    };
+
+    poll();
+    const timer = setInterval(poll, 1000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [calling, activeSessionId]);
 
   async function handleStartAICall() {
     if (!toNumber.trim()) {
@@ -222,12 +347,32 @@ export function AIAgentDialerView({
 
     try {
       setMessage(null);
+
+      // Pre-flight Credit Limit Check
+      try {
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
+        if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+          window.dispatchEvent(
+            new CustomEvent("credit-limit-exceeded", {
+              detail: {
+                message:
+                  "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+              }
+            })
+          );
+          return;
+        }
+      } catch {
+        // Continue to server-side enforcement
+      }
+
       setCalling(true);
       setCallState("dialing");
       setTranscriptMessages([]);
       setLatestLatency({ stt: 0, llm: 0, tts: 0, turn: 0 });
 
-      const res = await fetchApi<{ call_session_id: string; call_sid: string }>("/voice/test-call", {
+      setRemoteHost(null);
+      const res = await fetchApi<{ call_session_id: string; call_sid: string; routes_to_this_server?: boolean; routed_host?: string | null }>("/voice/test-call", {
         method: "POST",
         body: JSON.stringify({
           to_number: toNumber.trim(),
@@ -239,10 +384,11 @@ export function AIAgentDialerView({
 
       setActiveSessionId(res.call_session_id);
       setActiveCallSid(res.call_sid);
-      setCallState("connected");
-      startTimer();
+      if (res.routes_to_this_server === false) setRemoteHost(res.routed_host || "another server");
+      // Still ringing: the timer starts when the "StreamConnected" telemetry event arrives (on answer)
+      setCallState("ringing");
       connectTelemetryStream(res.call_session_id);
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
+      refreshCalls();
     } catch (err: any) {
       setCalling(false);
       setCallState("idle");
@@ -269,7 +415,7 @@ export function AIAgentDialerView({
       setCallState("idle");
       stopTimer();
       if (telemetryWsRef.current) telemetryWsRef.current.close();
-      fetchApi<CallRecord[]>("/calls").then(setCalls).catch(() => { });
+      refreshCalls();
     }
   }
 
@@ -626,7 +772,12 @@ export function AIAgentDialerView({
                 <Radio className={`w-4 h-4 ${calling ? "text-emerald-500 animate-pulse" : "text-[var(--color-muted)]"}`} />
                 <h3 className="text-sm font-semibold text-[var(--color-heading)]">Live Telemetry & Spoken Turns</h3>
               </div>
-              {calling ? (
+              {calling && callState !== "connected" ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                  <span className="text-xs font-semibold text-amber-600">Ringing...</span>
+                </div>
+              ) : calling ? (
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <span className="font-mono text-xs font-semibold text-emerald-600">
@@ -638,6 +789,14 @@ export function AIAgentDialerView({
                 <span className="text-xs text-[var(--color-muted)]">Awaiting Call</span>
               )}
             </div>
+
+            {calling && remoteHost && (
+              <div className="text-[11px] leading-snug p-2.5 rounded-[var(--radius-main,0.375rem)] border border-amber-300 bg-amber-50 text-amber-800">
+                This call is being handled by <span className="font-semibold">{remoteHost}</span>, not this server, so only the live
+                call status is shown here. To see the live transcript and latency, point the Public Base URL at this
+                server (for example with a tunnel to port 8000).
+              </div>
+            )}
 
             {/* Live Spoken Transcript */}
             <div
@@ -741,6 +900,75 @@ export function AIAgentDialerView({
               </div>
             </div>
 
+            {/* Conversation Summary & Lead Intelligence */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  Conversation Summary
+                </h4>
+                {selectedCall.transcript && selectedCall.transcript.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateSummary(selectedCall.id)}
+                    disabled={analyzingCall}
+                    className="text-[11px] text-[var(--color-primary)] hover:underline disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${analyzingCall ? "animate-spin" : ""}`} />
+                    {analyzingCall ? "Analyzing..." : "Regenerate"}
+                  </button>
+                )}
+              </div>
+              <div className="p-3 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-3">
+                {selectedCall.summary ? (
+                  <p className="text-xs leading-relaxed text-[var(--color-heading)]">{selectedCall.summary}</p>
+                ) : (
+                  <p className="text-xs text-[var(--color-muted)]">
+                    {analyzingCall
+                      ? "Generating a summary of this conversation..."
+                      : selectedCall.transcript && selectedCall.transcript.length > 0
+                        ? "No summary yet. Use Regenerate to create one from the transcript."
+                        : "No conversation was recorded for this call, so there is nothing to summarize."}
+                  </p>
+                )}
+
+                {(selectedCall.business_outcome || selectedCall.outcome || selectedCall.interest_level || selectedCall.lead_score !== undefined) && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(selectedCall.business_outcome || selectedCall.outcome) && (
+                      <Badge variant="primary" size="sm">{selectedCall.business_outcome || selectedCall.outcome}</Badge>
+                    )}
+                    {selectedCall.interest_level && (
+                      <Badge variant="neutral" size="sm">{selectedCall.interest_level}</Badge>
+                    )}
+                    {selectedCall.lead_score !== undefined && selectedCall.lead_score !== null && (
+                      <Badge variant="neutral" size="sm">Lead score {selectedCall.lead_score}</Badge>
+                    )}
+                    {selectedCall.sentiment && (
+                      <Badge variant="neutral" size="sm">{selectedCall.sentiment}</Badge>
+                    )}
+                  </div>
+                )}
+
+                {selectedCall.next_action && (
+                  <div>
+                    <span className="text-[var(--color-muted)] block text-[11px]">Recommended next step</span>
+                    <span className="text-xs text-[var(--color-heading)]">{selectedCall.next_action}</span>
+                  </div>
+                )}
+
+                {selectedCall.key_insights && selectedCall.key_insights.length > 0 && (
+                  <div>
+                    <span className="text-[var(--color-muted)] block text-[11px] mb-1">Key points</span>
+                    <ul className="list-disc pl-4 space-y-0.5 text-xs text-[var(--color-heading)]">
+                      {selectedCall.key_insights.map((k, i) => (
+                        <li key={i}>{k}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Agent Snapshot Info */}
             <div className="space-y-2">
               <h4 className="text-xs font-semibold text-[var(--color-heading)]">AI Agent Profile (Snapshot)</h4>
@@ -764,21 +992,12 @@ export function AIAgentDialerView({
             {selectedCall.transcript && selectedCall.transcript.length > 0 && (
               <div className="space-y-1.5">
                 <h4 className="text-xs font-semibold text-[var(--color-heading)]">Conversation Transcript</h4>
-                <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] space-y-2 max-h-56 overflow-y-auto">
-                  {selectedCall.transcript.map((t, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-2 rounded text-xs ${t.role === "user"
-                          ? "bg-[var(--color-primary-light)] text-[var(--color-primary)] font-medium"
-                          : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)]"
-                        }`}
-                    >
-                      <div className="text-[10px] text-[var(--color-muted)] mb-0.5 capitalize">
-                        {t.role === "user" ? "Customer" : selectedCall.agent_name || "AI Agent"}
-                      </div>
-                      <div>{t.content}</div>
-                    </div>
-                  ))}
+                <div className="p-3 bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] max-h-96 overflow-y-auto">
+                  <TranscriptChat
+                    turns={selectedCall.transcript as any}
+                    agentName={selectedCall.agent_name || "AI Agent"}
+                    customerName="Customer"
+                  />
                 </div>
               </div>
             )}

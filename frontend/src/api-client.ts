@@ -28,8 +28,15 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Pass as the options of fetchApi for live / polled data (call status, active calls, stats, telemetry).
+ * GET responses are otherwise cached client-side for 60s, which makes polling return stale data.
+ */
+export const LIVE: RequestInit = { cache: "no-store" };
+
 export async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
+  const bypassCache = options.cache === "no-store" || options.cache === "reload";
   const token = localStorage.getItem("desire_token");
   const cacheKey = `${token ? "auth_" : "anon_"}${path}`;
 
@@ -41,7 +48,7 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
     } else {
       invalidateApiCache();
     }
-  } else {
+  } else if (!bypassCache) {
     // 1. Check in-memory cache for instant return (<1ms)
     const cached = _API_CACHE.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < DEFAULT_CACHE_TTL_MS) {
@@ -96,13 +103,21 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
         } else if (typeof errDetail === "object" && errDetail !== null) {
           errDetail = JSON.stringify(errDetail);
         }
+
+        // Trigger global credit exhausted modal on 402 or credit limit errors
+        if (res.status === 402 || (typeof errDetail === "string" && errDetail.toLowerCase().includes("credit"))) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("credit-limit-exceeded", { detail: { message: errDetail } }));
+          }
+        }
+
         throw new Error(errDetail || `API request failed with status ${res.status}`);
       }
 
-      const resultData = json.success !== undefined ? json.data : json;
+      const resultData = (json.success !== undefined && json.data !== undefined) ? json.data : json;
 
       // Cache successful GET results
-      if (method === "GET") {
+      if (method === "GET" && !bypassCache) {
         _API_CACHE.set(cacheKey, { data: resultData, timestamp: Date.now() });
       }
 
@@ -114,13 +129,13 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
       throw err;
     } finally {
       clearTimeout(timeoutId);
-      if (method === "GET") {
+      if (method === "GET" && !bypassCache) {
         _IN_FLIGHT_REQUESTS.delete(cacheKey);
       }
     }
   };
 
-  if (method === "GET") {
+  if (method === "GET" && !bypassCache) {
     const promise = executeFetch();
     _IN_FLIGHT_REQUESTS.set(cacheKey, promise);
     return promise;

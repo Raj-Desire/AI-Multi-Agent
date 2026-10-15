@@ -13,6 +13,8 @@ def _invalidate_calls_cache(org_id: Optional[str] = None):
         del _CALLS_CACHE[org_id]
     else:
         _CALLS_CACHE.clear()
+    from app.core.cache_events import notify_data_changed
+    notify_data_changed(org_id)
 
 class CallRepository:
     def __init__(self):
@@ -83,6 +85,15 @@ class CallRepository:
                         analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
+                        business_outcome=item.get("business_outcome"),
+                        key_requirements=item.get("key_requirements"),
+                        customer_questions=item.get("customer_questions"),
+                        objections=item.get("objections"),
+                        important_info=item.get("important_info"),
+                        next_action=item.get("next_action"),
+                        session_id=item.get("session_id"),
+                        call_session_id=item.get("call_session_id"),
+                        analytics_status=item.get("analytics_status") or "ready",
                         created_at=created_dt,
                         updated_at=updated_dt
                     ))
@@ -147,6 +158,15 @@ class CallRepository:
                         analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
+                        business_outcome=item.get("business_outcome"),
+                        key_requirements=item.get("key_requirements"),
+                        customer_questions=item.get("customer_questions"),
+                        objections=item.get("objections"),
+                        important_info=item.get("important_info"),
+                        next_action=item.get("next_action"),
+                        session_id=item.get("session_id"),
+                        call_session_id=item.get("call_session_id"),
+                        analytics_status=item.get("analytics_status") or "ready",
                         created_at=created_dt,
                         updated_at=updated_dt
                     )
@@ -200,6 +220,15 @@ class CallRepository:
                         analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
+                        business_outcome=item.get("business_outcome"),
+                        key_requirements=item.get("key_requirements"),
+                        customer_questions=item.get("customer_questions"),
+                        objections=item.get("objections"),
+                        important_info=item.get("important_info"),
+                        next_action=item.get("next_action"),
+                        session_id=item.get("session_id"),
+                        call_session_id=item.get("call_session_id"),
+                        analytics_status=item.get("analytics_status") or "ready",
                         created_at=created_dt,
                         updated_at=updated_dt
                     )
@@ -214,11 +243,16 @@ class CallRepository:
             self._memory_store[call.id] = call
             container = get_calls_container()
             if container:
-                try:
-                    doc = call.model_dump(mode="json")
-                    container.upsert_item(body=doc)
-                except Exception as e:
-                    print(f"[CallRepository Error] save: {e}")
+                doc = call.model_dump(mode="json")
+                # Retry transient database failures (throttling, timeouts) so a finished call is never lost silently
+                for attempt in range(1, 4):
+                    try:
+                        container.upsert_item(body=doc)
+                        break
+                    except Exception as e:
+                        print(f"[CallRepository Error] save attempt {attempt}/3 for call {call.id}: {e}")
+                        if attempt < 3:
+                            time.sleep(0.4 * attempt)
             _invalidate_calls_cache(call.organization_id)
             return call
         return await asyncio.to_thread(_sync_save)
@@ -276,6 +310,15 @@ class CallRepository:
                         analytics=item.get("analytics"),
                         latency_metrics=item.get("latency_metrics"),
                         error_information=item.get("error_information"),
+                        business_outcome=item.get("business_outcome"),
+                        key_requirements=item.get("key_requirements"),
+                        customer_questions=item.get("customer_questions"),
+                        objections=item.get("objections"),
+                        important_info=item.get("important_info"),
+                        next_action=item.get("next_action"),
+                        session_id=item.get("session_id"),
+                        call_session_id=item.get("call_session_id"),
+                        analytics_status=item.get("analytics_status") or "ready",
                         created_at=created_dt,
                         updated_at=updated_dt
                     ))

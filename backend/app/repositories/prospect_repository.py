@@ -14,6 +14,8 @@ def _invalidate_prospect_cache(org_id: Optional[str] = None):
         del _PROSPECT_CACHE[org_id]
     else:
         _PROSPECT_CACHE.clear()
+    from app.core.cache_events import notify_data_changed
+    notify_data_changed(org_id)
 
 
 class ProspectRepository:
@@ -31,13 +33,28 @@ class ProspectRepository:
             if not container:
                 return None
 
+            # 1 RU point read within tenant partition
+            try:
+                item = container.read_item(item=prospect_id, partition_key=organization_id)
+                p = Prospect.model_validate(item)
+                self._memory_store[p.id] = p
+                return p
+            except Exception:
+                pass
+
+            # Fallback query if needed
             query = "SELECT * FROM c WHERE c.id = @id AND c.organization_id = @organization_id"
             params = [
                 {"name": "@id", "value": prospect_id},
                 {"name": "@organization_id", "value": organization_id}
             ]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                items = list(container.query_items(
+                    query=query,
+                    parameters=params,
+                    partition_key=organization_id,
+                    enable_cross_partition_query=False
+                ))
                 if items:
                     p = Prospect.model_validate(items[0])
                     self._memory_store[p.id] = p
@@ -139,7 +156,12 @@ class ProspectRepository:
                     query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
                     params = [{"name": "@organization_id", "value": organization_id}]
                     try:
-                        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                        items = list(container.query_items(
+                            query=query,
+                            parameters=params,
+                            partition_key=organization_id,
+                            enable_cross_partition_query=False
+                        ))
                         for item in items:
                             p = Prospect.model_validate(item)
                             all_prospects_dict[p.id] = p
@@ -166,10 +188,18 @@ class ProspectRepository:
 
             if status and status.strip() and status.lower() != "all":
                 target_status = status.strip().lower()
+                # Treat 'interested', 'qualified', and 'converted' as matching when filtering by 'interested'
+                if target_status == "interested":
+                    allowed_statuses = {"interested", "qualified", "converted"}
+                elif target_status in ("qualified", "converted"):
+                    allowed_statuses = {"qualified", "converted", "interested"}
+                else:
+                    allowed_statuses = {target_status}
+
                 filtered = [
                     p for p in filtered
-                    if str(getattr(p.status, "value", p.status)).lower() == target_status
-                    or str(getattr(p.status, "name", "")).lower() == target_status
+                    if str(getattr(p.status, "value", p.status)).lower() in allowed_statuses
+                    or str(getattr(p.status, "name", "")).lower() in allowed_statuses
                 ]
 
             if tag and tag.strip():

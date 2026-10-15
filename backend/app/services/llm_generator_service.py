@@ -235,7 +235,7 @@ Return ONLY a valid JSON object matching this schema:
   ],
   "suggested_objective": string (1-sentence primary objective),
   "communication_style": string,
-  "recommended_voice": "aura-orion-en" | "aura-luna-en" | "aura-asteria-en" | "aura-stella-en" | "aura-arcas-en" | "aura-athena-en" | "aura-perseus-en",
+  "recommended_voice": "flux-hannah-en" | "flux-alexis-en" | "flux-sienna-en" | "flux-brooke-en" | "flux-cliff-en" | "flux-cole-en" | "flux-kit-en" | "flux-colin-en",
   "recommended_temperature": float (0.2 to 0.45),
   "positive_flow": string,
   "negative_flow": string
@@ -394,7 +394,7 @@ OBJECTIONS & PHONE RULES:
             "suggested_greetings": fallback_greetings,
             "suggested_objective": f"Assist customers effectively with {clean_desc.lower().rstrip('.')}.",
             "communication_style": tone,
-            "recommended_voice": "aura-orion-en",
+            "recommended_voice": "flux-hannah-en",
             "positive_flow": "Acknowledge interest warmly, verify key details, and lock in next steps.",
             "negative_flow": "Empathize with concerns, explain alternatives simply, and offer callback."
         }

@@ -595,40 +595,70 @@ class CampaignService:
     # -------------------------------------------------------------
     async def recalculate_campaign_stats(self, campaign_id: str) -> CampaignStats:
         members = await self.member_repo.get_all_by_campaign(campaign_id)
+        # Needed by the per-member call lookup below (previously referenced before assignment,
+        # which raised NameError that was silently swallowed). Re-fetched fresh before saving.
+        campaign = await self.campaign_repo.get_by_id("global", campaign_id)
         stats = CampaignStats()
         stats.total_prospects = len(members)
 
         total_duration = 0
         call_count_with_duration = 0
 
-        for m in members:
-            # Auto-sync rich outcome and true call ID from call record
-            if m.last_call_id or m.prospect_id:
-                try:
+        # Auto-sync rich outcome and true call ID from call records. Only members whose stored outcome
+        # can still be improved are looked up (concurrently), and only changed members are saved.
+        weak_outcomes = ["no_answer", "no answer", "failed", "unanswered", "completed", ""]
+        org_id = campaign.organization_id if campaign else "global"
+        fallback_calls: Optional[List[Any]] = None
+        fallback_lock = asyncio.Lock()
+        lookup_gate = asyncio.Semaphore(8)
+
+        async def _sync_member(m) -> bool:
+            nonlocal fallback_calls
+            needs_lookup = (
+                (not m.last_call_id and m.prospect_id and (m.attempts or 0) > 0)
+                or (m.last_call_id and (m.last_call_outcome or "").lower() in weak_outcomes)
+            )
+            if not needs_lookup:
+                return False
+            try:
+                async with lookup_gate:
                     call_rec = None
                     if m.last_call_id:
                         call_rec = await self.call_repo.get_by_id(m.last_call_id)
                     if not call_rec and m.prospect_id:
-                        # Fallback query by campaign and prospect
-                        org_id = campaign.organization_id if campaign else "global"
-                        calls = await self.call_repo.list_by_org(org_id)
-                        call_rec = next((c for c in calls if c.campaign_id == campaign_id and (c.prospect_id == m.prospect_id or c.to_number == m.phone_number)), None)
+                        async with fallback_lock:
+                            if fallback_calls is None:
+                                fallback_calls = await self.call_repo.list_by_org(org_id)
+                        call_rec = next((c for c in fallback_calls if c.campaign_id == campaign_id and (c.prospect_id == m.prospect_id or c.to_number == m.phone_number)), None)
+                if not call_rec:
+                    return False
 
-                    if call_rec:
-                        if m.last_call_id != call_rec.id:
-                            m.last_call_id = call_rec.id
-                        has_spoke = bool((call_rec.transcript and len(call_rec.transcript) > 0) or (call_rec.duration and call_rec.duration > 0))
-                        rich_outcome = call_rec.business_outcome or call_rec.outcome
-                        if has_spoke and rich_outcome and rich_outcome.lower() not in ["no_answer", "no answer", "failed", "busy", "unanswered"]:
-                            if (m.last_call_outcome or "").lower() in ["no_answer", "no answer", "failed", "unanswered", "completed", ""]:
-                                m.last_call_outcome = rich_outcome
-                                m.last_call_duration = max(m.last_call_duration or 0, call_rec.duration or 0)
-                                if m.status in [CampaignMemberStatus.UNANSWERED, CampaignMemberStatus.FAILED]:
-                                    m.status = CampaignMemberStatus.COMPLETED
-                        await self.member_repo.save(m)
-                except Exception:
-                    pass
+                changed = False
+                if m.last_call_id != call_rec.id:
+                    m.last_call_id = call_rec.id
+                    changed = True
+                has_spoke = bool((call_rec.transcript and len(call_rec.transcript) > 0) or (call_rec.duration and call_rec.duration > 0))
+                rich_outcome = call_rec.business_outcome or call_rec.outcome
+                if has_spoke and rich_outcome and rich_outcome.lower() not in ["no_answer", "no answer", "failed", "busy", "unanswered"]:
+                    if (m.last_call_outcome or "").lower() in weak_outcomes and m.last_call_outcome != rich_outcome:
+                        m.last_call_outcome = rich_outcome
+                        m.last_call_duration = max(m.last_call_duration or 0, call_rec.duration or 0)
+                        if m.status in [CampaignMemberStatus.UNANSWERED, CampaignMemberStatus.FAILED]:
+                            m.status = CampaignMemberStatus.COMPLETED
+                        changed = True
+                return changed
+            except Exception:
+                return False
 
+        sync_results = await asyncio.gather(*[_sync_member(m) for m in members])
+        changed_members = [m for m, changed in zip(members, sync_results) if changed]
+        if changed_members:
+            try:
+                await self.member_repo.save_bulk(changed_members)
+            except Exception:
+                pass
+
+        for m in members:
             st = str(getattr(m.status, "value", m.status)).lower()
             if st == "queued":
                 stats.queued += 1
@@ -877,7 +907,8 @@ class CampaignService:
         now = datetime.now(timezone.utc)
         for s in active_sessions._sessions.values():
             if s.campaign_id == campaign_id and (s.organization_id == ctx.organization_id or ctx.role == "superadmin"):
-                dur = int((now - s.started_at).total_seconds()) if s.started_at else 0
+                # Duration counts from pickup (stream connected), not from when the number was dialed
+                dur = int((now - s.connected_at).total_seconds()) if s.connected_at else 0
                 active_list.append({
                     "call_session_id": s.call_session_id,
                     "twilio_call_sid": s.twilio_call_sid,
@@ -889,6 +920,7 @@ class CampaignService:
                     "direction": s.direction,
                     "duration": dur,
                     "turn_count": s.turn_count,
-                    "started_at": s.started_at.isoformat() if s.started_at else None
+                    "started_at": s.started_at.isoformat() if s.started_at else None,
+                    "connected_at": s.connected_at.isoformat() if s.connected_at else None
                 })
         return active_list

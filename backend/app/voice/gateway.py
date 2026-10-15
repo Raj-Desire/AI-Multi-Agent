@@ -71,7 +71,9 @@ async def voice_stream_websocket(websocket: WebSocket):
     is_agent_speaking: bool = False
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
+    reprompt_injected_at: float = 0.0
     is_concluding_call: bool = False
+    org_credit_limit_sec: Optional[float] = None
     is_transferred: bool = False
     is_interrupted: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
@@ -90,6 +92,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     cached_inbound_forward_number: Optional[str] = None
 
     # Outbound audio metrics
+    startup_timing: dict = {}  # perf_counter marks for the answer -> first-greeting-audio path
     outbound_chunk_counter: int = 0
     total_outbound_audio_bytes: int = 0
     total_outbound_audio_duration_s: float = 0.0
@@ -112,16 +115,23 @@ async def voice_stream_websocket(websocket: WebSocket):
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
 
-            # Natural human conversational turn delay: If transitioning from silence/user turn,
-            # introduce calibrated conversational pause (turn_delay_ms) before outbound audio burst
+            # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
+            # Only apply turn_delay_ms if a positive delay is explicitly requested by runtime config.
             if not is_agent_speaking and user_spoke and outbound_chunk_counter > 0:
                 runtime = agent_config.runtime if agent_config else None
-                delay_ms = getattr(runtime, "turn_delay_ms", 250) if runtime else 250
+                delay_ms = getattr(runtime, "turn_delay_ms", 0) if runtime else 0
                 if delay_ms > 0:
                     delay_s = min(delay_ms / 1000.0, 0.45)
                     await asyncio.sleep(delay_s)
                     if is_interrupted or not websocket:
                         return
+
+            if "first_audio" not in startup_timing and "start" in startup_timing:
+                startup_timing["first_audio"] = time.perf_counter()
+                first_audio_ms = (startup_timing["first_audio"] - startup_timing["start"]) * 1000.0
+                logger.info(f"[VoiceGateway:Startup] First greeting audio sent to Twilio {first_audio_ms:.0f}ms after stream start")
+                if session:
+                    session.latest_latency.first_audio_latency_ms = round(first_audio_ms, 1)
 
             if last_agent_speech_done_time < now:
                 last_agent_speech_done_time = now + audio_duration
@@ -200,11 +210,11 @@ async def voice_stream_websocket(websocket: WebSocket):
                     if is_user_speaking or is_agent_speaking or is_concluding_call or is_interrupted:
                         return
                     phrases = getattr(runtime, "filler_phrases", None) or [
-                        "Let me check that for you...",
-                        "Got it, one moment please...",
-                        "Understood, looking into that right now...",
-                        "Sure thing, let me pull that up...",
-                        "Alright, let me see..."
+                        "Let me check that for you.",
+                        "Got it, one moment please.",
+                        "Understood, looking into that right now.",
+                        "Sure thing, let me pull that up.",
+                        "Alright, let me see."
                     ]
                     import random
                     filler = random.choice(phrases)
@@ -413,7 +423,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         Monitors Silence Timeout (2-Stage Recovery: Reprompt -> Conclude & End)
         and Dynamic Maximum Call Duration (180s active vs 60s silent).
         """
-        nonlocal is_concluding_call, has_reprompted_silence, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke
+        nonlocal is_concluding_call, has_reprompted_silence, reprompt_injected_at, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
@@ -421,16 +431,46 @@ async def voice_stream_websocket(websocket: WebSocket):
                     continue
 
                 runtime = agent_config.runtime or AgentRuntimeSettings()
+                now = time.time()
+                elapsed_call_time = now - call_start_time
+
                 silence_timeout = max(3, runtime.silence_timeout)
                 hangup_delay = max(2, runtime.silence_hangup_delay or 5)
                 max_duration = max(10, runtime.maximum_call_duration or 300)
+                if org_credit_limit_sec is not None:
+                    max_duration = max(3.0, min(float(max_duration), float(org_credit_limit_sec)))
+
                 active_limit = max_duration if user_spoke else min(60, max_duration)
                 
                 conclusion_msg = (runtime.conclusion_message or "Thank you for your time. We will connect with you shortly. Goodbye!").strip()
+                if org_credit_limit_sec is not None and elapsed_call_time >= max(1.0, org_credit_limit_sec - 10):
+                    conclusion_msg = "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account. Goodbye!"
+
                 reprompt_msg = (runtime.silence_reprompt_message or "Hello? Are you there? Are you available?").strip()
 
-                now = time.time()
-                elapsed_call_time = now - call_start_time
+                # 0. Maximum call duration. Evaluated BEFORE the speaking checks below so a long agent
+                # monologue or a noisy caller can never push the call past the configured limit.
+                # Elapsed time counts from pickup (stream start). The conclusion is spoken a few seconds
+                # early so the call is over by the limit; at the limit itself the call is cut regardless.
+                if not is_concluding_call:
+                    conclude_threshold = max(3, active_limit - 8) if active_limit >= 20 else max(1, active_limit - 2)
+                    hard_limit_reached = elapsed_call_time >= active_limit - 1.2  # terminate_call adds ~1.2s buffer
+                    if hard_limit_reached or (elapsed_call_time >= conclude_threshold and not is_user_speaking):
+                        norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
+                        logger.info(
+                            f"[VoiceGateway] Max call duration reached: elapsed={elapsed_call_time:.1f}s, "
+                            f"threshold={conclude_threshold}s, limit={active_limit}s, user_spoke={user_spoke}, "
+                            f"hard_limit={hard_limit_reached}. Ending call."
+                        )
+                        is_concluding_call = True
+                        if hard_limit_reached:
+                            await terminate_call()
+                            break
+                        await deepgram_client.inject_agent_message(norm_conclusion, behavior="interrupt")
+                        # Let the conclusion play (~4s), but never beyond the limit
+                        grace = max(1.0, min(4.5, active_limit - elapsed_call_time))
+                        asyncio.create_task(asyncio.sleep(grace)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
+                        break
 
                 # Check if agent is currently speaking or audio is still playing in user's speaker
                 if now < last_agent_speech_done_time:
@@ -457,25 +497,6 @@ async def voice_stream_websocket(websocket: WebSocket):
                                 await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
                                 last_backchannel_time = now
 
-                # 1. Smart Minute-Boundary Protection Check (conclude at selected_duration - 5s to avoid rolling into next billed minute)
-                # e.g., 1 min (60s) -> triggers conclusion at 55s, 3 min (180s) -> triggers conclusion at 175s, 5 min (300s) -> triggers at 295s
-                conclude_threshold = max(10, active_limit - 5) if active_limit >= 20 else active_limit
-                if elapsed_call_time >= conclude_threshold and not is_concluding_call:
-                    # If customer is actively speaking, allow current turn to finish naturally
-                    if is_user_speaking:
-                        continue
-
-                    norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
-                    logger.info(
-                        f"[VoiceGateway] Smart Minute-Boundary Protection triggered: elapsed={elapsed_call_time:.1f}s, "
-                        f"threshold={conclude_threshold}s (limit={active_limit}s, user_spoke={user_spoke}). Speaking conclusion message."
-                    )
-                    is_concluding_call = True
-                    await deepgram_client.inject_agent_message(norm_conclusion)
-                    # Allow 3.5s for audio playback, then hangup before the minute boundary
-                    asyncio.create_task(asyncio.sleep(3.5)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
-                    break
-
                 # 2. Silence Timeout Check (Starts ONLY after agent audio finishes playing)
                 if not is_concluding_call and not is_user_speaking:
                     last_activity = max(last_user_speech_time, last_agent_speech_done_time)
@@ -486,13 +507,13 @@ async def voice_stream_websocket(websocket: WebSocket):
                         norm_reprompt = PronunciationNormalizer.normalize(reprompt_msg, getattr(agent_config, "pronunciation_rules", None))
                         logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{norm_reprompt}'")
                         has_reprompted_silence = True
-                        last_agent_speech_done_time = now + 2.5
+                        reprompt_injected_at = now
                         await deepgram_client.inject_agent_message(norm_reprompt)
 
                     # Phase 2: If still silent after reprompt + hangup_delay, speak conclusion and hang up
-                    elif has_reprompted_silence and silence_elapsed >= (silence_timeout + hangup_delay):
+                    elif has_reprompted_silence and (now - max(last_activity, reprompt_injected_at)) >= hangup_delay:
                         norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
-                        logger.info(f"[VoiceGateway] Post-reprompt silence limit ({hangup_delay}s) reached. Speaking conclusion and concluding call.")
+                        logger.info(f"[VoiceGateway] No response {hangup_delay}s after the reprompt. Speaking conclusion and ending call.")
                         is_concluding_call = True
                         await deepgram_client.inject_agent_message(norm_conclusion)
                         asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
@@ -585,7 +606,12 @@ async def voice_stream_websocket(websocket: WebSocket):
                         agent_config_snapshot=agent_config.model_dump(mode="json")
                     )
 
+                startup_timing["start"] = time.perf_counter()
                 await call_session_service.attach_stream(session, stream_sid, call_sid=call_sid)
+                if session.connected_at and session.started_at:
+                    session.latest_latency.call_connection_time_ms = round(
+                        (session.connected_at - session.started_at).total_seconds() * 1000.0, 1
+                    )
 
                 # Reset timers
                 call_start_time = time.time()
@@ -613,17 +639,38 @@ async def voice_stream_websocket(websocket: WebSocket):
                 agent_config._call_direction = direction
                 agent_config._prospect_data = prospect_data or {}
 
-                # 2. Pre-fetch platform rules and Twilio configuration once per call at setup
+                # 2. Pre-fetch platform rules (in-memory) and start the Twilio config / credit lookups in the
+                # background so they overlap with the Voice Engine handshake instead of delaying the greeting.
                 cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
                 cached_rules_map = {r["id"]: True for r in cached_platform_rules} if cached_platform_rules else {}
                 cached_tw = None
-                if session and session.organization_id:
+
+                async def _load_twilio_cfg():
+                    if not (session and session.organization_id):
+                        return None
                     try:
-                        cached_tw = await twilio_repo.get_by_org(session.organization_id)
-                        if cached_tw and cached_tw.inbound_forward_global_number:
-                            cached_inbound_forward_number = cached_tw.inbound_forward_global_number
+                        return await twilio_repo.get_by_org(session.organization_id)
                     except Exception as tw_err:
                         logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
+                        return None
+
+                async def _load_credit_limit():
+                    # Fetch organization credit limit if strict enforcement is configured
+                    if not org_id or org_id == "default":
+                        return None
+                    try:
+                        from app.services.credit_service import credit_service
+                        org_cred = await credit_service.repo.get_or_create_org_credits(org_id)
+                        if org_cred and org_cred.is_credit_enforced and org_cred.credit_exhausted_action == "block":
+                            limit_sec = float(max(1, org_cred.remaining_credits_seconds))
+                            logger.info(f"[VoiceGateway] Org '{org_id}' credit limit active: {limit_sec:.1f}s remaining.")
+                            return limit_sec
+                    except Exception as c_err:
+                        logger.debug(f"[VoiceGateway] Notice checking org credit limit: {c_err}")
+                    return None
+
+                twilio_cfg_task = asyncio.create_task(_load_twilio_cfg())
+                credit_limit_task = asyncio.create_task(_load_credit_limit())
 
                 business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
@@ -668,6 +715,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                             # Think Proxy: route inside the LLM request path (falls back to UpdatePrompt without a public URL)
                             if think_proxy_requested(agent_config.orchestrator_config):
+                                cached_tw = await twilio_cfg_task
                                 def _on_think_proxy_committed(specialist_cfg: AgentConfiguration, decision, context):
                                     nonlocal agent_config
                                     agent_config = specialist_cfg
@@ -785,11 +833,20 @@ async def voice_stream_websocket(websocket: WebSocket):
                         raw_greeting,
                         getattr(agent_config, "pronunciation_rules", None)
                     ) if raw_greeting else None
+                    startup_timing["handshake_begin"] = time.perf_counter()
                     await deepgram_client.connect_and_configure(
                         settings=deepgram_settings,
                         greeting=norm_greeting
                     )
+                    startup_timing["handshake_done"] = time.perf_counter()
+                    handshake_ms = (startup_timing["handshake_done"] - startup_timing["handshake_begin"]) * 1000.0
+                    session.latest_latency.deepgram_connection_time_ms = round(handshake_ms, 1)
+                    logger.info(f"[VoiceGateway:Startup] Voice Engine handshake (connect + settings applied) took {handshake_ms:.0f}ms")
                     logger.info("[VoiceGateway] Deepgram Voice Agent successfully connected and ready.")
+                    cached_tw = await twilio_cfg_task
+                    if cached_tw and cached_tw.inbound_forward_global_number:
+                        cached_inbound_forward_number = cached_tw.inbound_forward_global_number
+                    org_credit_limit_sec = await credit_limit_task
 
                     # Calculate greeting duration to ensure silence monitor does not fire during opening statement
                     greeting_text = (agent_config.greeting or "").strip()
@@ -832,6 +889,14 @@ async def voice_stream_websocket(websocket: WebSocket):
             session.error_type = "stream_exception"
     finally:
         call_ended_event.set()
+        # Release the live status for every dashboard before any slow teardown (Voice Engine close,
+        # Twilio REST hangup, database persistence) so "ringing / in call" never lingers after hang-up.
+        if session:
+            _early_status = "failed" if session.last_error and session.error_type == "deepgram_connection_error" else "completed"
+            try:
+                await call_session_service.release_live_session(session, _early_status)
+            except Exception as rel_err:
+                logger.debug(f"[VoiceGateway] Early session release notice: {rel_err}")
         if handoff_controller:
             handoff_controller.close()
             handoff_controller = None

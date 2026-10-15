@@ -216,7 +216,7 @@ export function LeadFilterBar({
             onClick={() => onResetFilters()}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer ${
               filters.outcome === "all" && !filters.search && filters.interestLevel === "all" && filters.scoreRange === "all"
-                ? "bg-[var(--color-heading)] text-[var(--color-background)] font-semibold shadow-xs"
+                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs"
                 : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
             }`}
           >
@@ -226,44 +226,44 @@ export function LeadFilterBar({
             onClick={() => applyPreset("interested")}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
               filters.outcome === "Interested"
-                ? "bg-emerald-500 text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+            <Sparkles className={`w-3.5 h-3.5 ${filters.outcome === "Interested" ? "text-white" : "text-[var(--color-primary)]"}`} />
             <span>Interested</span>
           </button>
           <button
             onClick={() => applyPreset("callbacks")}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
               filters.outcome === "Callback Requested"
-                ? "bg-purple-500 text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-purple-500/50 hover:bg-purple-500/10"
+                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
             }`}
           >
-            <PhoneForwarded className="w-3.5 h-3.5 text-purple-500" />
+            <PhoneForwarded className={`w-3.5 h-3.5 ${filters.outcome === "Callback Requested" ? "text-white" : "text-[var(--color-primary)]"}`} />
             <span>Callbacks</span>
           </button>
           <button
             onClick={() => applyPreset("needs_followup")}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
               filters.outcome === "Information Requested"
-                ? "bg-blue-500 text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-blue-500/50 hover:bg-blue-500/10"
+                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
             }`}
           >
-            <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
+            <HelpCircle className={`w-3.5 h-3.5 ${filters.outcome === "Information Requested" ? "text-white" : "text-[var(--color-primary)]"}`} />
             <span>Needs Follow-up</span>
           </button>
           <button
             onClick={() => applyPreset("no_answer")}
             className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
               filters.outcome === "No Answer"
-                ? "bg-slate-600 text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-slate-500/50 hover:bg-slate-500/10"
+                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
+                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
             }`}
           >
-            <PhoneOff className="w-3.5 h-3.5 text-slate-500" />
+            <PhoneOff className={`w-3.5 h-3.5 ${filters.outcome === "No Answer" ? "text-white" : "text-[var(--color-primary)]"}`} />
             <span>No Answer</span>
           </button>
         </div>
@@ -275,7 +275,7 @@ export function LeadFilterBar({
               variant="outline"
               size="sm"
               onClick={onOpenRuleEditor}
-              leftIcon={<Sliders className="w-3.5 h-3.5 text-indigo-500" />}
+              leftIcon={<Sliders className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
               className="cursor-pointer font-medium"
             >
               Qualification Rules

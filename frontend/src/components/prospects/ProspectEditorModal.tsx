@@ -31,6 +31,8 @@ const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
   { value: "Contacted", label: "Contacted" },
   { value: "Connected", label: "Connected" },
   { value: "Interested", label: "Interested" },
+  { value: "Qualified", label: "Qualified" },
+  { value: "Converted", label: "Converted" },
   { value: "Not Interested", label: "Not Interested" },
   { value: "Callback Requested", label: "Callback Requested" },
   { value: "Do Not Contact", label: "Do Not Contact (DNC)" },

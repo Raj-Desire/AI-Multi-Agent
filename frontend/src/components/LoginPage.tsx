@@ -4,17 +4,26 @@ import { LoginForm } from "./auth/LoginForm";
 
 export const LoginPage: React.FC = () => {
   return (
-    <div className="min-h-screen w-screen overflow-x-hidden flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#f0f5fc] via-[#f7fafe] to-[#e8f1fb] select-none">
-      <div className="w-full max-w-[1400px] h-[92vh] max-h-[880px] min-h-[640px] flex flex-col lg:flex-row items-stretch rounded-[2rem] bg-white/40 backdrop-blur-md border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.06)] overflow-hidden">
-        {/* Left Product & Visual Experience Panel */}
-        <div className="hidden lg:flex lg:w-[60%] xl:w-[62%] h-full">
-          <ProductExperiencePanel />
-        </div>
+    <div className="min-h-screen w-screen overflow-x-hidden flex bg-white">
+      {/* Left: sign-in form */}
+      <div className="relative w-full lg:w-[44%] xl:w-[40%] min-h-screen flex flex-col px-6 sm:px-12 lg:px-14 py-8 bg-[#f4f7ff] overflow-hidden">
+        <div className="absolute -top-32 -left-32 w-[420px] h-[420px] rounded-full bg-indigo-200/40 blur-[110px] pointer-events-none" />
+        <div className="absolute -bottom-40 -right-24 w-[380px] h-[380px] rounded-full bg-cyan-200/50 blur-[110px] pointer-events-none" />
+        <div
+          className="absolute inset-0 opacity-[0.5] pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(99,102,241,0.18) 1px, transparent 1px)",
+            backgroundSize: "22px 22px",
+            maskImage: "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+            WebkitMaskImage: "radial-gradient(ellipse at center, black 30%, transparent 75%)",
+          }}
+        />
+        <LoginForm />
+      </div>
 
-        {/* Right Elevated Auth Form Card */}
-        <div className="flex-1 flex flex-col justify-center px-6 sm:px-10 lg:px-12 xl:px-14 py-8 h-full bg-white rounded-[2rem] lg:rounded-l-[2.5rem] lg:rounded-r-[2rem] shadow-[-15px_0_35px_rgba(0,0,0,0.03)] border-l border-slate-100/90 z-20 overflow-y-auto">
-          <LoginForm />
-        </div>
+      {/* Right: quiet product preview (desktop only) */}
+      <div className="hidden lg:flex flex-1">
+        <ProductExperiencePanel />
       </div>
     </div>
   );

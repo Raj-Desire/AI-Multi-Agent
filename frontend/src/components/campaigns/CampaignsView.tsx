@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { fetchApi } from "../../api-client";
+import { fetchApi, LIVE } from "../../api-client";
 import {
   Campaign,
   CampaignStatus,
@@ -69,7 +69,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
         params.set("status", statusFilter);
       }
 
-      const res = await fetchApi<CampaignPaginationResponse>(`/campaigns?${params.toString()}`);
+      const res = await fetchApi<CampaignPaginationResponse>(`/campaigns?${params.toString()}`, LIVE);
       if (res) {
         setCampaigns(res.items || []);
         setTotal(res.total || 0);
@@ -94,7 +94,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
 
     const interval = setInterval(() => {
       loadCampaigns(true);
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [campaigns, loadCampaigns]);
 
@@ -102,6 +102,22 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
   const handleStartCampaign = async (campaign: Campaign, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      // Pre-flight Credit Limit Check
+      try {
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
+        if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+          window.dispatchEvent(
+            new CustomEvent("credit-limit-exceeded", {
+              detail: {
+                message:
+                  "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+              }
+            })
+          );
+          return;
+        }
+      } catch {}
+
       await fetchApi(`/campaigns/${campaign.id}/start`, { method: "POST" });
       toast.success(`Campaign "${campaign.name}" started.`);
       loadCampaigns(true);
@@ -124,6 +140,22 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
   const handleResumeCampaign = async (campaign: Campaign, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      // Pre-flight Credit Limit Check
+      try {
+        const cred = await fetchApi<{ remaining_minutes: number; is_credit_enforced: boolean }>("/credits/my-org", LIVE);
+        if (cred && cred.is_credit_enforced && cred.remaining_minutes <= 0) {
+          window.dispatchEvent(
+            new CustomEvent("credit-limit-exceeded", {
+              detail: {
+                message:
+                  "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account."
+              }
+            })
+          );
+          return;
+        }
+      } catch {}
+
       await fetchApi(`/campaigns/${campaign.id}/resume`, { method: "POST" });
       toast.success(`Campaign "${campaign.name}" resumed.`);
       loadCampaigns(true);

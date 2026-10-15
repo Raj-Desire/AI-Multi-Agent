@@ -689,7 +689,7 @@ export function CampaignCreateWizardView({
         toast.error("Please specify a Caller ID phone number.");
         return;
       }
-      if (maxConcurrent < 1 || maxConcurrent > 50) {
+      if (maxConcurrent < 1 || maxConcurrent > 10) {
         toast.error("Max concurrent calls must be between 1 and 50.");
         return;
       }
@@ -850,13 +850,12 @@ export function CampaignCreateWizardView({
                 if (isPassed) setStep(s.num);
               }}
               disabled={!isPassed && !isCurrent}
-              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${
-                isCurrent
+              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between gap-1.5 ${isCurrent
                   ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)]"
                   : isPassed
-                  ? "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] cursor-pointer hover:bg-[var(--color-surface-muted)]"
-                  : "bg-[var(--color-surface-muted)]/50 border-[var(--color-border)]/50 text-[var(--color-muted)] opacity-60 cursor-not-allowed"
-              }`}
+                    ? "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] cursor-pointer hover:bg-[var(--color-surface-muted)]"
+                    : "bg-[var(--color-surface-muted)]/50 border-[var(--color-border)]/50 text-[var(--color-muted)] opacity-60 cursor-not-allowed"
+                }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold">0{s.num}</span>
@@ -943,11 +942,10 @@ export function CampaignCreateWizardView({
                       <div
                         key={agentId}
                         onClick={() => setSelectedAgentId(agentId)}
-                        className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between gap-3 ${
-                          isSelected
+                        className={`p-4 rounded-xl border cursor-pointer transition-all flex flex-col justify-between gap-3 ${isSelected
                             ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.06))] ring-1 ring-[var(--color-primary)] shadow-xs"
                             : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2.5">
@@ -1009,11 +1007,10 @@ export function CampaignCreateWizardView({
                     <button
                       type="button"
                       onClick={() => setSelectionMode("tags")}
-                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all flex items-center gap-1.5 ${
-                        selectionMode === "tags"
+                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all flex items-center gap-1.5 ${selectionMode === "tags"
                           ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
                           : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       <Folder className="w-3.5 h-3.5" />
                       <span>Contact Groups &amp; Lists ({availableTags.length})</span>
@@ -1021,22 +1018,20 @@ export function CampaignCreateWizardView({
                     <button
                       type="button"
                       onClick={() => setSelectionMode("all")}
-                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${
-                        selectionMode === "all"
+                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${selectionMode === "all"
                           ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
                           : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       All Contacts ({prospects.length})
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectionMode("manual")}
-                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${
-                        selectionMode === "manual"
+                      className={`px-3.5 py-1.5 text-xs rounded-md font-medium cursor-pointer transition-all ${selectionMode === "manual"
                           ? "bg-[var(--color-primary)] text-white shadow-2xs font-semibold"
                           : "bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                      }`}
+                        }`}
                     >
                       Manual Select ({selectedProspectIds.length})
                     </button>
@@ -1282,9 +1277,8 @@ export function CampaignCreateWizardView({
                                     setQuickGroup("");
                                     setQuickDropdownOpen(false);
                                   }}
-                                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-[var(--color-surface-muted)] ${
-                                    !quickGroup ? "text-[var(--color-primary)] font-semibold bg-[var(--color-primary-light)]/20" : "text-[var(--color-muted)]"
-                                  }`}
+                                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-[var(--color-surface-muted)] ${!quickGroup ? "text-[var(--color-primary)] font-semibold bg-[var(--color-primary-light)]/20" : "text-[var(--color-muted)]"
+                                    }`}
                                 >
                                   <span className="truncate">-- Unassigned (No Group) --</span>
                                   {!quickGroup && <Check className="w-3 h-3 text-[var(--color-primary)]" />}
@@ -1299,9 +1293,8 @@ export function CampaignCreateWizardView({
                                         setQuickGroup(grp);
                                         setQuickDropdownOpen(false);
                                       }}
-                                      className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-[var(--color-surface-muted)] ${
-                                        isSelected ? "text-[var(--color-primary)] font-semibold bg-[var(--color-primary-light)]/20" : "text-[var(--color-text)]"
-                                      }`}
+                                      className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-[var(--color-surface-muted)] ${isSelected ? "text-[var(--color-primary)] font-semibold bg-[var(--color-primary-light)]/20" : "text-[var(--color-text)]"
+                                        }`}
                                     >
                                       <span className="flex items-center gap-1.5 truncate">
                                         <Folder className="w-3 h-3 text-[var(--color-muted)] shrink-0" />
@@ -1406,11 +1399,10 @@ export function CampaignCreateWizardView({
                           <div
                             key={tag}
                             onClick={() => toggleTag(tag)}
-                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 group ${
-                              isSelected
+                            className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 group ${isSelected
                                 ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] border-[var(--color-primary)] ring-1 ring-[var(--color-primary)] text-[var(--color-primary)] shadow-xs"
                                 : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] hover:border-[var(--color-primary)]/40"
-                            }`}
+                              }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0 flex-1">
                               <Folder className={`w-4 h-4 shrink-0 ${isSelected ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"}`} />
@@ -1435,11 +1427,10 @@ export function CampaignCreateWizardView({
                               </button>
 
                               {/* Selection Indicator */}
-                              <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                                isSelected
+                              <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${isSelected
                                   ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
                                   : "border-[var(--color-border)] bg-[var(--color-surface)] group-hover:border-[var(--color-primary)]/50"
-                              }`}>
+                                }`}>
                                 {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                               </div>
                             </div>
@@ -1515,11 +1506,10 @@ export function CampaignCreateWizardView({
                                 key={grp}
                                 type="button"
                                 onClick={() => setProspectSearch(grp === prospectSearch ? "" : grp)}
-                                className={`px-2 py-0.5 rounded-full border transition-colors cursor-pointer flex items-center gap-1 ${
-                                  prospectSearch === grp
+                                className={`px-2 py-0.5 rounded-full border transition-colors cursor-pointer flex items-center gap-1 ${prospectSearch === grp
                                     ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-semibold"
                                     : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                                }`}
+                                  }`}
                               >
                                 <Folder className="w-2.5 h-2.5" />
                                 <span>{grp}</span>
@@ -1555,15 +1545,14 @@ export function CampaignCreateWizardView({
                             <div
                               key={p.id}
                               onClick={() => toggleProspectSelection(p.id)}
-                              className={`p-3 flex items-center justify-between cursor-pointer text-xs transition-colors ${
-                                isSelected ? "bg-[var(--color-primary-light)] text-[var(--color-primary)]" : "hover:bg-[var(--color-surface-muted)]"
-                              }`}
+                              className={`p-3 flex items-center justify-between cursor-pointer text-xs transition-colors ${isSelected ? "bg-[var(--color-primary-light)] text-[var(--color-primary)]" : "hover:bg-[var(--color-surface-muted)]"
+                                }`}
                             >
                               <div className="flex items-center gap-3">
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
-                                  onChange={() => {}}
+                                  onChange={() => { }}
                                   className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-0"
                                 />
                                 <div>
@@ -1571,7 +1560,7 @@ export function CampaignCreateWizardView({
                                     <span className="font-semibold text-[var(--color-heading)] block">{p.full_name}</span>
                                     {p.tags && p.tags.length > 0 && (
                                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] font-medium">
-                                         {p.tags.join(", ")}
+                                        {p.tags.join(", ")}
                                       </span>
                                     )}
                                   </div>
@@ -1641,12 +1630,12 @@ export function CampaignCreateWizardView({
                     <input
                       type="number"
                       min={1}
-                      max={50}
+                      max={10}
                       value={maxConcurrent}
                       onChange={(e) => setMaxConcurrent(parseInt(e.target.value) || 1)}
                       className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                     />
-                    <p className="text-[10px] text-[var(--color-muted)]">Parallel lines (1 - 50)</p>
+                    <p className="text-[10px] text-[var(--color-muted)]">Parallel lines (1 - 10)</p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1682,7 +1671,7 @@ export function CampaignCreateWizardView({
                         min={1}
                         max={1440}
                         value={retryDelayMinutes}
-                        onChange={(e) => setRetryDelayMinutes(parseInt(e.target.value) || 120)}
+                        onChange={(e) => setRetryDelayMinutes(parseInt(e.target.value) || 60)}
                         className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
                       />
                     )}
@@ -1715,11 +1704,10 @@ export function CampaignCreateWizardView({
                           setCallingDays([getWeekdayFromDate(startDate)]);
                         }
                       }}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        scheduleMode === "single_day"
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "single_day"
                           ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-[var(--color-heading)]">Single Specific Date</span>
@@ -1731,11 +1719,10 @@ export function CampaignCreateWizardView({
                     <button
                       type="button"
                       onClick={() => setScheduleMode("date_range")}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        scheduleMode === "date_range"
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "date_range"
                           ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-[var(--color-heading)]">Date Range Window</span>
@@ -1750,11 +1737,10 @@ export function CampaignCreateWizardView({
                         setScheduleMode("recurring");
                         setEndDate("");
                       }}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        scheduleMode === "recurring"
+                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "recurring"
                           ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
                           : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-bold text-[var(--color-heading)]">Ongoing Schedule</span>
@@ -1817,11 +1803,10 @@ export function CampaignCreateWizardView({
                           type="button"
                           disabled={scheduleMode === "single_day"}
                           onClick={() => toggleCallingDay(day)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                            isSelected
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${isSelected
                               ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-2xs font-semibold"
                               : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                          } ${scheduleMode === "single_day" ? "cursor-default" : "cursor-pointer"}`}
+                            } ${scheduleMode === "single_day" ? "cursor-default" : "cursor-pointer"}`}
                         >
                           {day.slice(0, 3)}
                         </button>
@@ -1918,11 +1903,10 @@ export function CampaignCreateWizardView({
                                       setIsTzDropdownOpen(false);
                                       toast.success(`Selected timezone: ${opt.label}`);
                                     }}
-                                    className={`p-2.5 text-xs cursor-pointer flex items-center justify-between transition-colors ${
-                                      isCur
+                                    className={`p-2.5 text-xs cursor-pointer flex items-center justify-between transition-colors ${isCur
                                         ? "bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold"
                                         : "hover:bg-[var(--color-surface-muted)] text-[var(--color-text)]"
-                                    }`}
+                                      }`}
                                   >
                                     <div className="flex items-center gap-2 truncate">
                                       <Globe className={`w-3.5 h-3.5 shrink-0 ${isCur ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"}`} />
@@ -1964,11 +1948,10 @@ export function CampaignCreateWizardView({
                             setIsTzDropdownOpen(false);
                             toast.success(`Selected timezone: ${item.name}`);
                           }}
-                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${
-                            timezone === item.tz
+                          className={`px-2 py-0.5 rounded text-[10px] border transition-colors cursor-pointer ${timezone === item.tz
                               ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] font-bold"
                               : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-heading)]"
-                          }`}
+                            }`}
                         >
                           {item.name}
                         </button>

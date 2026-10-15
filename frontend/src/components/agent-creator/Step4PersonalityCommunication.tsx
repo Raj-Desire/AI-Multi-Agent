@@ -811,7 +811,7 @@ export function Step4PersonalityCommunication({
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
 
   const currentStyles = (agentData.communication_style || "Professional").split("+").map((s) => s.trim());
@@ -897,7 +897,7 @@ export function Step4PersonalityCommunication({
       voice: {
         ...prev.voice,
         speed: matchedPurpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0,
-        voice: matchedPurpose.recommendedVoiceId || prev.voice?.voice || "aura-orion-en"
+        voice: matchedPurpose.recommendedVoiceId || prev.voice?.voice || "flux-hannah-en"
       },
       llm: {
         ...prev.llm,
@@ -1156,7 +1156,7 @@ export function Step4PersonalityCommunication({
     setIsLoadingAudio(true);
 
     const textToSpeak = getDialoguePreview().replace(/“|”/g, "");
-    const voiceId = agentData.voice?.voice || "aura-orion-en";
+    const voiceId = agentData.voice?.voice || "flux-hannah-en";
 
     try {
       const token = localStorage.getItem("desire_token");

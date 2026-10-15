@@ -11,6 +11,7 @@ Performs comprehensive post-call transcript analysis including:
 
 import os
 import json
+import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
@@ -93,6 +94,24 @@ class CallAnalyticsService:
 
         return None
 
+    @staticmethod
+    def _fallback_summary(transcript_array: List[Dict[str, Any]], outcome: str) -> str:
+        """Plain-language summary built from the transcript when the analysis model is unavailable."""
+        def _text(t):
+            return (t.get("content") or t.get("text", "")).strip()
+
+        customer_lines = [_text(t) for t in transcript_array if t.get("role") in ["user", "customer"] and _text(t)]
+        agent_lines = [_text(t) for t in transcript_array if t.get("role") in ["agent", "assistant"] and _text(t)]
+        parts = [f"The call had {len(customer_lines)} customer and {len(agent_lines)} agent turns."]
+        if customer_lines:
+            first = customer_lines[0][:160]
+            last = customer_lines[-1][:160]
+            parts.append(f"The customer first said: \"{first}\"." if len(customer_lines) == 1
+                         else f"The customer first said: \"{first}\" and last said: \"{last}\".")
+        if outcome:
+            parts.append(f"Outcome: {outcome}.")
+        return " ".join(parts)
+
     async def analyze_call_transcript(
         self,
         transcript_array: List[Dict[str, Any]],
@@ -120,7 +139,7 @@ class CallAnalyticsService:
         # Check if call was received/connected vs completely unanswered/failed
         is_connected = (
             call_duration > 0
-            or call_status in ["completed", "in-progress"]
+            or call_status == "in-progress"
             or len(transcript_array or []) > 0
         )
         is_unanswered = call_status in ["no-answer", "busy", "failed", "canceled"] and not customer_spoke
@@ -207,6 +226,14 @@ BUSINESS OUTCOME (Choose precisely one):
 - "Voicemail": Automated answering machine.
 - "No Answer": Unanswered or drop.
 
+RECORDING RETENTION RULES (Cost Optimization):
+- "needs_audio_recording" MUST BE true ONLY IF:
+  1. The call experienced human agent escalation, supervisor request, or handoff.
+  2. Customer expressed strong negative sentiment, anger, frustration, or severe complaint.
+  3. The AI misunderstood the user multiple times, gave contradictory answers, or got confused.
+  4. Dispute, legal, cancellation, or billing conflict keywords were raised.
+- For all other standard, successful, routine inquiries, answered questions, or voicemail drops, set "needs_audio_recording": false.
+
 JSON OUTPUT STRUCTURE:
 {
   "summary": "Concise 2-3 sentence overview of the conversation.",
@@ -223,11 +250,17 @@ JSON OUTPUT STRUCTURE:
   "next_action": "Clear, actionable recommended next step",
   "callback_datetime": "Parsed date/time string if customer requested callback, or null",
   "customer_name": "Customer name if mentioned or null",
-  "company_name": "Company name if mentioned or null"
+  "company_name": "Company name if mentioned or null",
+  "needs_audio_recording": false,
+  "recording_retention_reason": "Escalation / Negative Sentiment / AI Confusion / None"
 }"""
 
         user_prompt = f"TRANSCRIPT:\n{formatted_transcript}\n\nPlease output valid JSON."
         parsed = await self._execute_llm_json(system_prompt, user_prompt)
+        if not parsed:
+            logger.warning("[CallAnalytics] First analysis attempt returned nothing; retrying once.")
+            await asyncio.sleep(1.0)
+            parsed = await self._execute_llm_json(system_prompt, user_prompt)
 
         # Fallback heuristic calculation if LLM is unavailable or fails
         customer_full_text = " ".join(
@@ -384,8 +417,48 @@ JSON OUTPUT STRUCTURE:
         else:
             interest_lvl = parsed.get("interest_level") or ("Hot" if final_score >= 70 else ("Warm" if final_score >= 40 else "Cold"))
 
+        summary_text = parsed.get("summary", "")
+        if not summary_text and not is_machine and customer_words:
+            summary_text = self._fallback_summary(transcript_array, raw_outcome)
+
+        # Fallback heuristic for recording retention if LLM did not provide flag
+        has_escalation = any(
+            phrase in customer_full_text or phrase in agent_full_text
+            for phrase in [
+                "speak to a manager", "speak to human", "talk to human", "transfer me",
+                "supervisor", "human representative", "speak to representative"
+            ]
+        )
+        has_negative_sentiment = (parsed.get("sentiment") == "Negative") or any(
+            phrase in customer_full_text
+            for phrase in [
+                "angry", "furious", "unacceptable", "terrible service", "scam",
+                "lawyer", "sue you", "complaint", "fraud", "cancel my subscription", "cancel service"
+            ]
+        )
+        has_ai_confusion = any(
+            phrase in agent_full_text
+            for phrase in [
+                "i apologize, i did not understand", "i am having trouble understanding",
+                "could you repeat that again", "sorry, i didn't catch that"
+            ]
+        ) and (len(transcript_array) > 4)
+
+        needs_recording = bool(parsed.get("needs_audio_recording", False))
+        retention_reason = parsed.get("recording_retention_reason") or "None"
+
+        if has_escalation:
+            needs_recording = True
+            retention_reason = "Human Escalation / Supervisor Transfer"
+        elif has_negative_sentiment:
+            needs_recording = True
+            retention_reason = "Negative Sentiment / Customer Complaint"
+        elif has_ai_confusion and not needs_recording:
+            needs_recording = True
+            retention_reason = "AI Confusion / Misunderstanding"
+
         return {
-            "summary": parsed.get("summary", ""),
+            "summary": summary_text,
             "intent": parsed.get("intent", "General Inquiry"),
             "business_outcome": raw_outcome,
             "interest_level": interest_lvl,
@@ -402,4 +475,6 @@ JSON OUTPUT STRUCTURE:
             "customer_name": parsed.get("customer_name"),
             "company_name": parsed.get("company_name"),
             "business_requirements": parsed.get("business_requirements"),
+            "needs_audio_recording": needs_recording,
+            "recording_retention_reason": retention_reason,
         }

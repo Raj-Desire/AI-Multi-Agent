@@ -112,6 +112,34 @@ class KnowledgeService:
         saved_doc = await self.repo.save_document(metadata)
         return saved_doc
 
+    async def reindex_organization(self, organization_id: Union[str, TenantContext]) -> Dict[str, int]:
+        """
+        Re-embeds every stored chunk of the tenant with the current embedding provider.
+        Needed when documents were indexed with the non-semantic local fallback (no embedding provider
+        was configured at upload time), which makes every search return nothing useful.
+        """
+        org_id = organization_id.organization_id if isinstance(organization_id, TenantContext) else organization_id
+        if not await VectorEmbeddingService.semantic_provider_available():
+            raise ValueError("No embedding provider is available (configure the Azure OpenAI embeddings deployment).")
+
+        docs = {d.id: d for d in await self.repo.list_documents_by_org(org_id)}
+        chunks = await self.repo.list_chunks_for_org(org_id)
+        if not chunks:
+            return {"documents": len(docs), "chunks": 0}
+
+        texts = []
+        for c in chunks:
+            d = docs.get(c.document_id)
+            title = ((d.title or d.file_name) if d else "").replace("_", " ").replace("-", " ")
+            category = d.category if d else "General"
+            texts.append(f"Document: {title} | Category: {category}" + chr(10) + c.content)
+
+        embeddings = await VectorEmbeddingService.get_embeddings_batch(texts)
+        for c, emb in zip(chunks, embeddings):
+            c.embedding = emb
+        await self.repo.save_chunks(chunks)
+        return {"documents": len(docs), "chunks": len(chunks)}
+
     async def list_documents(self, organization_id: Union[str, TenantContext]) -> List[DocumentMetadata]:
         """Lists all indexed documents for the tenant."""
         org_id = organization_id.organization_id if isinstance(organization_id, TenantContext) else organization_id
@@ -127,7 +155,7 @@ class KnowledgeService:
         organization_id: Union[str, TenantContext],
         query: str,
         top_k: int = 3,
-        min_similarity: float = 0.45,
+        min_similarity: float = 0.30,
         category: Optional[str] = None,
         document_ids: Optional[List[str]] = None
     ) -> List[KnowledgeSearchResult]:
@@ -163,7 +191,7 @@ class KnowledgeService:
             organization_id=org_id,
             query=user_transcript,
             top_k=2,
-            min_similarity=0.45,
+            min_similarity=0.30,
             document_ids=document_ids
         )
         if not matches:

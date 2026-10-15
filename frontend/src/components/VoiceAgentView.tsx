@@ -29,16 +29,42 @@ import { Input } from "./ui/Input";
 import { Select } from "./ui/Select";
 
 const AURA_VOICES = [
-  { value: "aura-luna-en", label: "Luna (Female - Calm, Relaxed & Professional - Recommended for slower cadence)" },
-  { value: "aura-orion-en", label: "Orion (Male - Calm, Smooth & Measured - Recommended for slower cadence)" },
-  { value: "aura-asteria-en", label: "Asteria (Female - Warm & Natural)" },
-  { value: "aura-stella-en", label: "Stella (Female - Friendly & Clear)" },
-  { value: "aura-arcas-en", label: "Arcas (Male - Conversational & Grounded)" },
-  { value: "aura-athena-en", label: "Athena (Female - Authoritative)" },
-  { value: "aura-hera-en", label: "Hera (Female - Confident & Polished)" },
-  { value: "aura-perseus-en", label: "Perseus (Male - Energetic)" },
-  { value: "aura-angus-en", label: "Angus (Male - Deep & Formal)" },
-  { value: "aura-helios-en", label: "Helios (Male - Direct & Crisp)" }
+  { value: "flux-hannah-en", label: "Hannah (Female - Ultra-Natural, Expressive & Conversational • Flagship)" },
+  { value: "flux-alexis-en", label: "Alexis (Female - Confident, Clear & Professional)" },
+  { value: "flux-sienna-en", label: "Sienna (Female - Warm, Friendly & Empathetic)" },
+  { value: "flux-brooke-en", label: "Brooke (Female - Calm, Measured & Polished)" },
+  { value: "flux-cliff-en", label: "Cliff (Male - Conversational, Grounded & Confident)" },
+  { value: "flux-cole-en", label: "Cole (Male - Energetic, Dynamic & Relatable)" },
+  { value: "flux-kit-en", label: "Kit (Male - Articulate British Accent)" },
+  { value: "flux-colin-en", label: "Colin (Male - Direct British Accent)" },
+  { value: "flux-gemma-en", label: "Gemma (Female - Cheerful, gentle & easygoing, British Accent)" },
+  { value: "flux-haley-en", label: "Haley (Female - Articulate, polished & attentive, American Accent)" },
+  { value: "flux-heather-en", label: "Heather (Female - Articulate, animated & lively, American Accent)" },
+  { value: "flux-miles-en", label: "Miles (Male - Articulate, serene & polished, American Accent)" },
+  { value: "flux-sean-en", label: "Sean (Male - Amiable, gentle & attentive, British Accent)" },
+  { value: "flux-bree-en", label: "Bree (Female - Warm, gentle & considerate, American Accent)" },
+  { value: "flux-brittany-en", label: "Brittany (Female - Self-assured, caring & soft-spoken, American Accent)" },
+  { value: "flux-bruce-en", label: "Bruce (Male - Amiable, considerate & natural, American Accent)" },
+  { value: "flux-conor-en", label: "Conor (Male - Self-assured, low-pitched & approachable, British Accent)" },
+  { value: "flux-donovan-en", label: "Donovan (Male - Professional, serene & reflective, American Accent)" },
+  { value: "flux-drew-en", label: "Drew (Male - Self-assured, laid-back & gentle, American Accent)" },
+  { value: "flux-elise-en", label: "Elise (Female - Articulate, professional & serene, American Accent)" },
+  { value: "flux-jack-en", label: "Jack (Male - Self-assured, reflective & amiable, British Accent)" },
+  { value: "flux-kai-en", label: "Kai (Male - Articulate, serene & professional, Singaporean Accent)" },
+  { value: "flux-kelsey-en", label: "Kelsey (Female - Articulate, professional & attentive, American Accent)" },
+  { value: "flux-maeve-en", label: "Maeve (Female - Amiable, spirited & self-assured, Irish Accent)" },
+  { value: "flux-marcelo-en", label: "Marcelo (Male - Articulate, serene & professional, Filipino Accent)" },
+  { value: "flux-marcus-en", label: "Marcus (Male - Amiable, helpful & smooth, American Accent)" },
+  { value: "flux-meena-en", label: "Meena (Female - Empathetic, professional & serene, Indian Accent)" },
+  { value: "flux-meghan-en", label: "Meghan (Female - Amiable, pleasant & spirited, American Accent)" },
+  { value: "flux-naveen-en", label: "Naveen (Male - Articulate, professional & well-informed, Indian Accent)" },
+  { value: "flux-paige-en", label: "Paige (Female - Articulate, professional & serene, American Accent)" },
+  { value: "flux-priya-en", label: "Priya (Female - Self-assured, empathetic & professional, Indian Accent)" },
+  { value: "flux-rufus-en", label: "Rufus (Male - Amiable, self-assured & astute, British Accent)" },
+  { value: "flux-sharon-en", label: "Sharon (Female - Formal, serene & relaxed, Australian Accent)" },
+  { value: "flux-tanner-en", label: "Tanner (Male - Professional, serene & self-assured, British Accent)" },
+  { value: "flux-wade-en", label: "Wade (Male - Warm, self-assured & articulate, American Accent)" },
+  { value: "flux-wes-en", label: "Wes (Male - Reflective, amiable & warm, American Accent)" }
 ];
 
 const LLM_MODELS = [
@@ -525,12 +551,12 @@ export function VoiceAgentView() {
                     <Volume2 className="w-4 h-4 text-emerald-400" />
                     <CardTitle>Voice & LLM Model Settings</CardTitle>
                   </div>
-                  <CardDescription>Aura TTS voice and LLM inference configuration.</CardDescription>
+                  <CardDescription>Conversational voice synthesis and LLM inference configuration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-medium mb-1">Aura TTS Voice</label>
+                      <label className="block text-xs font-medium mb-1">Conversational Spoken Voice</label>
                       <Select
                         value={agent.voice.voice}
                         onChange={(e) =>

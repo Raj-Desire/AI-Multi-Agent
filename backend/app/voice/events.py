@@ -4,6 +4,8 @@ Defines internal schemas for call events, transcripts, latency points, and real-
 """
 
 import asyncio
+import time
+from collections import deque
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Set
 from pydantic import BaseModel, Field
@@ -28,6 +30,8 @@ class VoiceEventType:
     WARNING = "Warning"
     ERROR = "Error"
     CALL_ENDED = "CallEnded"
+    CALL_STATUS = "CallStatus"
+    CALL_SAVED = "CallSaved"
     LEAD_INTELLIGENCE_UPDATED = "LeadIntelligenceUpdated"
 
 
@@ -43,9 +47,15 @@ class VoiceEventMessage(BaseModel):
 
 class TelemetryBroadcaster:
     """In-memory pub/sub broadcaster for real-time developer view and dashboard."""
+    # Lifecycle events a late subscriber must still receive: the media stream can start before the
+    # browser has opened its telemetry socket, which would otherwise leave the UI stuck on "ringing".
+    REPLAY_EVENT_TYPES = {"StreamConnected", "CallStatus", "CallEnded", "CallSaved", "LeadIntelligenceUpdated"}
+    REPLAY_TTL_SECONDS = 300.0
+
     def __init__(self):
         self._subscribers: Dict[str, Set[asyncio.Queue]] = {}
         self._lock = asyncio.Lock()
+        self._replay: Dict[str, deque] = {}
 
     async def subscribe(self, call_session_id: str) -> asyncio.Queue:
         async with self._lock:
@@ -53,6 +63,8 @@ class TelemetryBroadcaster:
                 self._subscribers[call_session_id] = set()
             q: asyncio.Queue = asyncio.Queue()
             self._subscribers[call_session_id].add(q)
+            for _, event_data in self._replay.get(call_session_id, ()):
+                q.put_nowait(event_data)
             return q
 
     async def unsubscribe(self, call_session_id: str, q: asyncio.Queue):
@@ -64,6 +76,13 @@ class TelemetryBroadcaster:
 
     async def broadcast(self, event: VoiceEventMessage):
         async with self._lock:
+            if event.event_type in self.REPLAY_EVENT_TYPES:
+                now_ts = time.monotonic()
+                self._replay.setdefault(event.call_session_id, deque(maxlen=20)).append(
+                    (now_ts, event.model_dump(mode="json"))
+                )
+                for sid in [k for k, v in self._replay.items() if v and now_ts - v[-1][0] > self.REPLAY_TTL_SECONDS]:
+                    del self._replay[sid]
             queues = list(self._subscribers.get(event.call_session_id, []))
             # Also route to organization subscribers
             if event.organization_id:

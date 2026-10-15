@@ -21,12 +21,13 @@ import {
   BookOpen,
   UserCheck,
   Contact,
-  Sparkles
+  Sparkles,
+  Coins
 } from "lucide-react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin";
+export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin" | "usage_credits";
 
 export const TAB_ROUTE_MAP: Record<NavTab, string> = {
   dashboard: "/dashboard",
@@ -40,6 +41,7 @@ export const TAB_ROUTE_MAP: Record<NavTab, string> = {
   theme: "/theme",
   admin: "/team",
   superadmin: "/superadmin",
+  usage_credits: "/usage-credits",
 };
 
 export const ROUTE_TAB_MAP: Record<string, NavTab> = {
@@ -64,7 +66,56 @@ export const ROUTE_TAB_MAP: Record<string, NavTab> = {
   "/team": "admin",
   "/admin": "admin",
   "/superadmin": "superadmin",
+  "/usage-credits": "usage_credits",
+  "/credits": "usage_credits",
+  "/usage": "usage_credits",
 };
+
+/**
+ * Returns the proper URL for a navigation tab.
+ * For example: getTabRoute("campaigns", "org_123") -> "/org_123/campaigns"
+ */
+export function getTabRoute(tab: NavTab, orgId?: string): string {
+  if (tab === "superadmin") {
+    return "/superadmin";
+  }
+  const cleanOrgId = orgId?.trim();
+  const subRoute = TAB_ROUTE_MAP[tab] || "/dashboard";
+  return cleanOrgId ? `/${cleanOrgId}${subRoute}` : subRoute;
+}
+
+/**
+ * Parses the active NavTab and optional orgId from the browser pathname.
+ * Handles both scoped ("/org_123/campaigns") and flat legacy ("/campaigns") routes.
+ */
+export function parseActiveTabFromPath(pathname: string): { activeTab: NavTab; urlOrgId: string | null; subRoute: string } {
+  const cleanPath = pathname.toLowerCase().replace(/\/$/, "") || "/";
+  if (cleanPath === "/superadmin") {
+    return { activeTab: "superadmin", urlOrgId: null, subRoute: "superadmin" };
+  }
+
+  const parts = cleanPath.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return { activeTab: "dashboard", urlOrgId: null, subRoute: "dashboard" };
+  }
+
+  // Check if first segment is a direct known route (legacy flat URL)
+  const firstSegmentRoute = `/${parts[0]}`;
+  if (ROUTE_TAB_MAP[firstSegmentRoute]) {
+    return { activeTab: ROUTE_TAB_MAP[firstSegmentRoute], urlOrgId: null, subRoute: parts[0] };
+  }
+
+  // Otherwise, first segment is the orgId: e.g. "/org_123/campaigns"
+  const urlOrgId = parts[0];
+  if (parts.length >= 2) {
+    const rawSub = `/${parts.slice(1).join("/")}`;
+    const matchedTab = ROUTE_TAB_MAP[rawSub] || ROUTE_TAB_MAP[`/${parts[1]}`] || "dashboard";
+    return { activeTab: matchedTab, urlOrgId, subRoute: parts[1] };
+  }
+
+  // If only "/org_123", default to dashboard
+  return { activeTab: "dashboard", urlOrgId, subRoute: "dashboard" };
+}
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -174,6 +225,13 @@ export function Sidebar({
           label: "Team",
           icon: Users,
           visible: isAdmin,
+        },
+        {
+          id: "usage_credits",
+          label: "Usage & Credits",
+          icon: Coins,
+          visible: true,
+          badge: "Pool",
         },
         {
           id: "theme",

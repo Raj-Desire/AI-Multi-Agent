@@ -115,7 +115,7 @@ export function Step6PromptInstructions({
     setPlayingGreetingText(null);
   };
 
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
 
   // Effective company name resolved from business profile or fallback
@@ -424,7 +424,7 @@ export function Step6PromptInstructions({
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      const voiceId = agentData.voice?.voice || "aura-orion-en";
+      const voiceId = agentData.voice?.voice || "flux-hannah-en";
       const response = await fetch("http://localhost:8000/api/v1/voice/sample-speech", {
         method: "POST",
         headers,

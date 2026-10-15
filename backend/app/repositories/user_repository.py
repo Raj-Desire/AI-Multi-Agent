@@ -50,7 +50,13 @@ class UserRepository:
             query = "SELECT * FROM c WHERE c.email = @email"
             params = [{"name": "@email", "value": clean_email}]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                # Scoped directly to email partition key (0 cross-partition scan)
+                items = list(container.query_items(
+                    query=query,
+                    parameters=params,
+                    partition_key=clean_email,
+                    enable_cross_partition_query=False
+                ))
                 if items:
                     _set_cached_user(items[0]["id"], items[0])
                     return items[0]
@@ -203,6 +209,15 @@ class UserRepository:
                 })
 
         return list(org_map.values())
+
+    @staticmethod
+    async def get_organization(organization_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves summary details for a specific organization by its ID."""
+        orgs = await UserRepository.list_organizations()
+        for org in orgs:
+            if org["organization_id"] == organization_id:
+                return org
+        return None
 
     @staticmethod
     async def toggle_organization_status(organization_id: str, is_active: bool) -> int:

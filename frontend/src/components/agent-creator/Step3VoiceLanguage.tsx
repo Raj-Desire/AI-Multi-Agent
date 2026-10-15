@@ -27,6 +27,8 @@ import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import {
   AURA_VOICES,
+  VOICE_CATEGORIES,
+  getVoiceCategories,
   SUPPORTED_LANGUAGES,
   LLM_MODELS,
   AGENT_PURPOSES,
@@ -47,17 +49,45 @@ interface VoiceMetadata {
 }
 
 const VOICE_METADATA_MAP: Record<string, VoiceMetadata> = {
-  "aura-orion-en": { accent: "US English", tone: "Calm & Professional", bestFor: "B2B Sales & Execs" },
-  "aura-luna-en": { accent: "US English", tone: "Calm & Relaxed", bestFor: "Follow-Up & Support" },
-  "aura-asteria-en": { accent: "US English", tone: "Warm & Natural", bestFor: "Reception & Scheduling" },
-  "aura-stella-en": { accent: "US English", tone: "Friendly & Clear", bestFor: "Reminders & Outreach" },
-  "aura-arcas-en": { accent: "US English", tone: "Conversational & Steady", bestFor: "Customer Care & Surveys" },
-  "aura-athena-en": { accent: "US English", tone: "Authoritative & Crisp", bestFor: "Tech Support & Billing" },
-  "aura-hera-en": { accent: "US English", tone: "Confident & Polished", bestFor: "Corporate Consultation" },
-  "aura-perseus-en": { accent: "US English", tone: "Energetic & Direct", bestFor: "Outbound Lead Gen" },
-  "aura-angus-en": { accent: "US English", tone: "Deep & Formal", bestFor: "Healthcare & Legal" },
-  "aura-helios-en": { accent: "US English", tone: "Direct & Crisp", bestFor: "Logistics & Delivery" },
-  "aura-zeus-en": { accent: "US English", tone: "Deep & Resonant", bestFor: "Authority & Broadcast" },
+  // Flux Conversation-Native Voices
+  "flux-hannah-en": { accent: "US English", tone: "Ultra-Natural & Engaging", bestFor: "Reception, Support & High EQ" },
+  "flux-alexis-en": { accent: "US English", tone: "Confident & Professional", bestFor: "Executive & Consultation" },
+  "flux-sienna-en": { accent: "US English", tone: "Warm & Friendly", bestFor: "Healthcare, Wellness & Booking" },
+  "flux-brooke-en": { accent: "US English", tone: "Calm & Polished", bestFor: "Technical Advisory & Inquiries" },
+  "flux-cliff-en": { accent: "US English", tone: "Conversational & Grounded", bestFor: "B2B Sales & Follow-ups" },
+  "flux-cole-en": { accent: "US English", tone: "Energetic & Direct", bestFor: "Outbound Lead Gen & Surveys" },
+  "flux-kit-en": { accent: "British English", tone: "Articulate British", bestFor: "Global Enterprise & Luxury" },
+  "flux-colin-en": { accent: "British English", tone: "Executive British", bestFor: "Financial & Corporate Services" },
+  "flux-gemma-en": { accent: "British English", tone: "Cheerful & Gentle", bestFor: "Customer support, IVR" },
+  "flux-haley-en": { accent: "US English", tone: "Articulate & Polished", bestFor: "Customer support, financial services, IVR" },
+  "flux-heather-en": { accent: "US English", tone: "Articulate & Animated", bestFor: "Customer support, IVR" },
+  "flux-miles-en": { accent: "US English", tone: "Articulate & Serene", bestFor: "Customer support, financial services, informational" },
+  "flux-sean-en": { accent: "British English", tone: "Amiable & Gentle", bestFor: "IVR" },
+  "flux-bree-en": { accent: "US English", tone: "Warm & Gentle", bestFor: "Customer support, casual conversation" },
+  "flux-brittany-en": { accent: "US English", tone: "Self-assured & Caring", bestFor: "Casual conversation" },
+  "flux-bruce-en": { accent: "US English", tone: "Amiable & Considerate", bestFor: "Customer support, IVR" },
+  "flux-conor-en": { accent: "British English", tone: "Self-assured & Low-pitched", bestFor: "Customer support, IVR" },
+  "flux-donovan-en": { accent: "US English", tone: "Professional & Serene", bestFor: "IVR" },
+  "flux-drew-en": { accent: "US English", tone: "Self-assured & Laid-back", bestFor: "Healthcare, financial services, customer support, IVR" },
+  "flux-elise-en": { accent: "US English", tone: "Articulate & Professional", bestFor: "Customer support, financial services, IVR" },
+  "flux-jack-en": { accent: "British English", tone: "Self-assured & Reflective", bestFor: "Customer support, storytelling" },
+  "flux-kai-en": { accent: "Singaporean English", tone: "Articulate & Serene", bestFor: "Customer support, informational, IVR" },
+  "flux-kelsey-en": { accent: "US English", tone: "Articulate & Professional", bestFor: "Customer support, IVR, financial services" },
+  "flux-maeve-en": { accent: "Irish English", tone: "Amiable & Spirited", bestFor: "Customer support, IVR, narration" },
+  "flux-marcelo-en": { accent: "Filipino English", tone: "Articulate & Serene", bestFor: "Customer support, informational, IVR" },
+  "flux-marcus-en": { accent: "US English", tone: "Amiable & Helpful", bestFor: "Customer support, casual conversation" },
+  "flux-meena-en": { accent: "Indian English", tone: "Empathetic & Professional", bestFor: "Customer support, casual conversation" },
+  "flux-meghan-en": { accent: "US English", tone: "Amiable & Pleasant", bestFor: "Healthcare, financial services" },
+  "flux-naveen-en": { accent: "Indian English", tone: "Articulate & Professional", bestFor: "Customer support, IVR, informational" },
+  "flux-paige-en": { accent: "US English", tone: "Articulate & Professional", bestFor: "Customer support, financial services, IVR" },
+  "flux-priya-en": { accent: "Indian English", tone: "Self-assured & Empathetic", bestFor: "IVR" },
+  "flux-rufus-en": { accent: "British English", tone: "Amiable & Self-assured", bestFor: "Healthcare, financial services, storytelling" },
+  "flux-sharon-en": { accent: "Australian English", tone: "Formal & Serene", bestFor: "Healthcare, financial services" },
+  "flux-tanner-en": { accent: "British English", tone: "Professional & Serene", bestFor: "Customer support" },
+  "flux-wade-en": { accent: "US English", tone: "Warm & Self-assured", bestFor: "Customer support, casual conversation" },
+  "flux-wes-en": { accent: "US English", tone: "Reflective & Amiable", bestFor: "Customer support, casual conversation" },
+
+  // Multilingual Spoken Voices
   "aura-2-thalia-en": { accent: "US English (Gen-2)", tone: "Ultra-Natural & Warm", bestFor: "High-EQ Conversations" },
   "aura-2-andromeda-en": { accent: "US English (Gen-2)", tone: "Expressive & Natural", bestFor: "Concierge & Real Estate" },
   "aura-2-apollo-en": { accent: "US English (Gen-2)", tone: "Dynamic & Expressive", bestFor: "Interactive Pitching" },
@@ -82,6 +112,7 @@ export function Step3VoiceLanguage({
   // Filter & Search State for Voice Picker
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "female" | "male" | "english" | "multilingual">("all");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
 
   // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
@@ -150,7 +181,7 @@ export function Step3VoiceLanguage({
   }, [agentData.role, agentData.name]);
 
   // Selected Voice
-  const selectedVoiceId = agentData.voice?.voice || "aura-orion-en";
+  const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const isPlayingSample = playingVoiceId === selectedVoiceId;
 
   // Cleanup audio on unmount
@@ -206,7 +237,7 @@ export function Step3VoiceLanguage({
 
   // Pre-warm active voice and common voices in the background
   useEffect(() => {
-    const popularVoices = [selectedVoiceId, "aura-2-thalia-en", "aura-orion-en", "aura-luna-en", "aura-asteria-en", "aura-2-agustina-es", "aura-2-agathe-fr", "aura-2-aurelia-de"];
+    const popularVoices = [selectedVoiceId, "flux-hannah-en", "flux-alexis-en", "flux-cliff-en", "flux-sienna-en", "flux-cole-en", "flux-kit-en", "aura-2-agustina-es"];
     popularVoices.forEach((vId) => {
       prefetchVoiceSample(vId);
     });
@@ -379,7 +410,10 @@ export function Step3VoiceLanguage({
       if (activeFilter === "english" && (v.language !== "en" || v.id.startsWith("aura-2-a") || v.id.startsWith("aura-2-j") || v.id.startsWith("aura-2-c"))) return false;
       if (activeFilter === "multilingual" && v.language === "en" && !v.id.startsWith("aura-2")) return false;
 
-      // 2. Search query
+      // 2. Use-case category (sales, support, ...)
+      if (activeCategory !== "all" && !getVoiceCategories(v.id).includes(activeCategory as any)) return false;
+
+      // 3. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const meta = VOICE_METADATA_MAP[v.id];
@@ -389,11 +423,14 @@ export function Step3VoiceLanguage({
         const matchBest = (meta?.bestFor || "").toLowerCase().includes(q);
         const matchTone = (meta?.tone || "").toLowerCase().includes(q);
         const matchAccent = (meta?.accent || "").toLowerCase().includes(q);
-        return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent;
+        const matchCategory = getVoiceCategories(v.id).some((c) =>
+          (VOICE_CATEGORIES.find((x) => x.id === c)?.label || "").toLowerCase().includes(q)
+        );
+        return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent || matchCategory;
       }
       return true;
     });
-  }, [searchQuery, activeFilter]);
+  }, [searchQuery, activeFilter, activeCategory]);
 
   return (
     <div className="space-y-6 text-left">
@@ -520,13 +557,34 @@ export function Step3VoiceLanguage({
                       </button>
                     ))}
                   </div>
+
+                  {/* Use-case chips: pick the kind of agent and only matching voices are shown */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Use case</span>
+                    {[{ id: "all", label: "Any" }, ...VOICE_CATEGORIES].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setActiveCategory(c.id)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 ${
+                          activeCategory === c.id
+                            ? "bg-[var(--color-primary)] text-white shadow-2xs"
+                            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Scrollable Voice Cards List */}
                 <div className="max-h-[310px] overflow-y-auto divide-y divide-[var(--color-border)]/60 focus:outline-none scrollbar-thin">
                   {filteredVoices.length === 0 ? (
                     <div className="p-6 text-center text-xs text-[var(--color-muted)]">
-                      No voices found matching "{searchQuery}".
+                      {searchQuery.trim()
+                        ? `No voices found matching "${searchQuery}".`
+                        : "No voices match these filters. Try another use case or choose All Voices."}
                     </div>
                   ) : (
                     filteredVoices.map((v) => {
@@ -569,6 +627,22 @@ export function Step3VoiceLanguage({
                               <div className="text-[10px] text-[var(--color-muted)] truncate max-w-[220px]">
                                 {v.description || v.style}
                               </div>
+                              {getVoiceCategories(v.id).length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {getVoiceCategories(v.id).slice(0, 3).map((cid) => (
+                                    <span
+                                      key={cid}
+                                      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                                        activeCategory === cid
+                                          ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                                          : "bg-[var(--color-primary-light)] text-[var(--color-primary)] border-[var(--color-primary)]/20"
+                                      }`}
+                                    >
+                                      {VOICE_CATEGORIES.find((x) => x.id === cid)?.label}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
 
