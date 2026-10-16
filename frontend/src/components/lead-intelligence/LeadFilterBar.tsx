@@ -364,29 +364,17 @@ export function LeadFilterBar({
             ))}
           </select>
 
-          {/* Outcome Dropdown */}
+          {/* Outcome & Lead Interest Dropdown */}
           <select
             value={filters.outcome}
-            onChange={(e) => onFilterChange({ outcome: e.target.value })}
+            onChange={(e) => onFilterChange({ outcome: e.target.value, interestLevel: "all" })}
             className="px-2.5 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-text)] font-medium focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] cursor-pointer"
           >
             <option value="all">Outcome: All</option>
-            <option value="Interested">Interested</option>
+            <option value="Interested">Interested (Hot)</option>
             <option value="Callback Requested">Callback Requested</option>
-            <option value="Information Requested">Information Requested</option>
-            <option value="No Answer">No Answer</option>
-          </select>
-
-          {/* Interest Level Dropdown */}
-          <select
-            value={filters.interestLevel}
-            onChange={(e) => onFilterChange({ interestLevel: e.target.value })}
-            className="px-2.5 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-text)] font-medium focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] cursor-pointer"
-          >
-            <option value="all">Interest: All</option>
-            <option value="Interested">Interested</option>
-            <option value="Callback">Callback</option>
-            <option value="No Answer">No Answer</option>
+            <option value="Information Requested">Information Requested (Warm)</option>
+            <option value="No Answer">No Answer (Cold)</option>
           </select>
 
           {/* Toggle More Filters */}

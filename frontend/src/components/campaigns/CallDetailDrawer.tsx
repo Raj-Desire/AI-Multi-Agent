@@ -682,6 +682,60 @@ export function CallDetailDrawer({
                   </div>
                 </div>
 
+                {call.analytics?.score_breakdown && (() => {
+                  const bd = call.analytics!.score_breakdown as Record<string, any>;
+                  const rows: { label: string; value: number; max: number; hint: string }[] = [
+                    { label: "Engagement", value: bd.engagement ?? 0, max: 25, hint: "How much the customer actually spoke" },
+                    { label: "Buying intent", value: bd.intent ?? 0, max: 40, hint: "Demo, pricing, callback or detail requests" },
+                    { label: "Qualification", value: bd.qualification ?? 0, max: 20, hint: "Budget, timeline, decision-maker, requirements" },
+                    { label: "Sentiment", value: bd.sentiment ?? 0, max: 10, hint: "Tone of the conversation" },
+                  ];
+                  const objections = bd.objections ?? 0;
+                  return (
+                    <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-[var(--color-heading)] flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                          How this score was calculated
+                        </h4>
+                        <span className="font-bold text-indigo-600">{bd.total ?? call.lead_score ?? 0}/100</span>
+                      </div>
+                      {bd.reason && <p className="text-[var(--color-muted)]">{bd.reason}</p>}
+                      <div className="space-y-2">
+                        {rows.map((r) => (
+                          <div key={r.label} title={r.hint}>
+                            <div className="flex justify-between text-[11px] mb-1">
+                              <span className="text-[var(--color-heading)] font-medium">{r.label}</span>
+                              <span className="font-mono text-[var(--color-muted)]">{r.value}/{r.max}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-[var(--color-surface-muted)] overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-indigo-500"
+                                style={{ width: `${Math.min(100, (r.value / r.max) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                        {objections < 0 && (
+                          <div className="flex justify-between text-[11px]">
+                            <span className="text-[var(--color-heading)] font-medium">Objections</span>
+                            <span className="font-mono text-rose-600">{objections}</span>
+                          </div>
+                        )}
+                      </div>
+                      {typeof bd.customer_words === "number" && (
+                        <p className="text-[11px] text-[var(--color-muted)]">
+                          Based on {bd.customer_words} customer word{bd.customer_words === 1 ? "" : "s"} across{" "}
+                          {bd.customer_turns ?? 0} turn{bd.customer_turns === 1 ? "" : "s"}.
+                          {typeof bd.raw_total === "number" && bd.raw_total !== bd.total && (
+                            <> Adjusted from {bd.raw_total} to fit the "{call.business_outcome}" range.</>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {call.latency_metrics && (
                   <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-3">
                     <h4 className="font-bold text-[var(--color-heading)] flex items-center gap-2">

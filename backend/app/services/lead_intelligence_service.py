@@ -1160,7 +1160,7 @@ class LeadIntelligenceService:
 
             cmp = campaigns_dict.get(c.campaign_id or "")
             cmp_name = cmp.name if cmp else ("Direct Inbound/Outbound" if not c.campaign_id else f"Campaign {c.campaign_id[:8]}")
-            score = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None) or 50
+            score = c.lead_score if c.lead_score is not None else ((c.analytics.get("lead_score") if c.analytics else None) or 0)
 
             callback_items.append(CallbackListItem(
                 prospect_id=p_id,
@@ -1255,7 +1255,7 @@ class LeadIntelligenceService:
 
         # 4. Extract Analytics & Intelligence
         rules = await self.get_qualification_rules(ctx)
-        score = latest_call.lead_score if latest_call and latest_call.lead_score is not None else 50
+        score = latest_call.lead_score if latest_call and latest_call.lead_score is not None else 0
         outcome = normalize_outcome_bucket(
             latest_call.business_outcome or latest_call.outcome if latest_call else "Interested",
             score=score,

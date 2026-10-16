@@ -117,28 +117,28 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
 
   return (
     <div
-      className={`p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${className}`}
+      className={`p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs ${className}`}
     >
       {/* Left: Timezone & Live Clock */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-          <Globe className="w-5 h-5" />
+          <Globe className="w-4 h-4" />
         </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-[var(--color-heading)] text-sm">{cleanTzName}</span>
-            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-primary)] border border-[var(--color-border)]">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-[var(--color-heading)] text-sm tracking-tight">{cleanTzName}</span>
+            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-primary)] border border-[var(--color-border)] whitespace-nowrap">
               {currentTimeStr}
             </span>
           </div>
-          <p className="text-[11px] text-[var(--color-muted)] mt-0.5">{currentDateStr}</p>
+          <p className="text-[11px] text-[var(--color-muted)] mt-0.5 font-medium">{currentDateStr}</p>
         </div>
       </div>
 
       {/* Right: Calling Window Status */}
-      <div className="flex items-center gap-2 sm:self-center">
+      <div className="flex items-center gap-2 shrink-0 md:self-center">
         <div
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left max-w-full ${
             isInsideWindow
               ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
               : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800"
@@ -147,12 +147,16 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
           {isInsideWindow ? (
             <>
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>Inside Calling Window ({windowStatusReason})</span>
+              <span className="leading-snug">
+                Inside Calling Window <span className="font-normal opacity-90">({windowStatusReason})</span>
+              </span>
             </>
           ) : (
             <>
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>Outside Calling Window ({windowStatusReason})</span>
+              <span className="leading-snug">
+                Outside Calling Window <span className="font-normal opacity-90">({windowStatusReason})</span>
+              </span>
             </>
           )}
         </div>

@@ -66,6 +66,37 @@ interface TimezoneOption {
   region: string;
 }
 
+// Helper to format live time and readable date in any selected timezone
+const getTimezoneLiveDetails = (tz: string) => {
+  try {
+    const now = new Date();
+    const timeFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    return {
+      timeStr: timeFormatter.format(now),
+      dateStr: dateFormatter.format(now),
+    };
+  } catch {
+    const now = new Date();
+    return {
+      timeStr: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }),
+      dateStr: now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+    };
+  }
+};
+
 // Dynamically generate all 400+ real-time IANA timezones using the native Intl ECMAScript engine
 const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] => {
   try {
@@ -1614,9 +1645,19 @@ export function CampaignCreateWizardModal({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1">
-                      <Globe className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                      <span>Target Timezone</span>
+                    <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Globe className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                        <span>Target Timezone</span>
+                      </span>
+                      <div className="flex items-center gap-1.5 font-normal text-[11px]">
+                        <span className="font-mono font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1 py-0.2 rounded border border-[var(--color-primary)]/20">
+                          {getTimezoneLiveDetails(timezone).timeStr}
+                        </span>
+                        <span className="text-[10px] text-[var(--color-muted)]">
+                          {getTimezoneLiveDetails(timezone).dateStr}
+                        </span>
+                      </div>
                     </label>
                     <select
                       value={timezone}

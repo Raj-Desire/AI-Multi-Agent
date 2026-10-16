@@ -11,12 +11,45 @@ Performs comprehensive post-call transcript analysis including:
 
 import os
 import json
+import re
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 import httpx
 
 logger = logging.getLogger("call_analytics_service")
+
+
+def _compile(phrases: List[str]) -> List["re.Pattern[str]"]:
+    """Whole-word / whole-phrase patterns so 'dnc' never matches inside another word."""
+    return [re.compile(r"(?<![a-z0-9])" + re.escape(p) + r"(?![a-z0-9])") for p in phrases]
+
+
+def _matches(patterns: List["re.Pattern[str]"], text: str) -> bool:
+    return any(p.search(text) for p in patterns)
+
+
+_DNC_PATTERNS = _compile(["do not call", "remove my number", "don't call again", "stop calling", "remove me", "dnc"])
+_NOT_INTERESTED_PATTERNS = _compile(
+    ["not interested", "no interest", "don't need it", "not looking", "no thank you", "no thanks"]
+)
+_CALLBACK_PATTERNS = _compile(
+    ["call me back", "call back", "call later", "call tomorrow", "busy right now", "another time", "call next week"]
+)
+_BUYING_PATTERNS = _compile([
+    "book a demo", "schedule a demo", "book demo", "schedule demo", "want a demo", "set up a demo",
+    "ready to buy", "how much does it cost", "send proposal", "pricing quote", "sign up", "get started",
+    "book an appointment", "schedule a meeting", "let's do it", "sounds great let's connect", "can we meet",
+])
+_INQUIRY_PATTERNS = _compile([
+    "tell me more", "what do you do", "what services", "how does it work", "send details", "send me the details",
+    "send email", "send brochure", "send me the brochure", "more information", "what are your services",
+    "what kind of", "explain", "features",
+])
+_QUESTION_WORDS = _compile(["what", "how", "which", "why", "can you", "do you", "does", "could you", "is there"])
+_BUDGET_PATTERNS = _compile(["budget", "price", "pricing", "cost", "quote", "how much"])
+_TIMELINE_PATTERNS = _compile(["this week", "next week", "this month", "next month", "asap", "immediately", "by end of"])
+_AUTHORITY_PATTERNS = _compile(["my team", "our team", "i decide", "i'm the owner", "my manager", "we are looking", "we need"])
 
 
 class CallAnalyticsService:
@@ -111,6 +144,164 @@ class CallAnalyticsService:
         if outcome:
             parts.append(f"Outcome: {outcome}.")
         return " ".join(parts)
+
+    # ------------------------------------------------------------------
+    # Deterministic lead scoring
+    # ------------------------------------------------------------------
+    # The LLM supplies signals (outcome, sentiment, requirements, objections);
+    # the number itself is computed here so the same call always scores the same
+    # and every point can be explained to the end user via `score_breakdown`.
+    #
+    #   engagement (0-25) + intent (0-40) + qualification (0-20)
+    #   + sentiment (0-10) - objections (0-15)  ->  clamped to the outcome band
+
+    OUTCOME_BANDS = {
+        "Interested": (75, 95),
+        "Transferred to Specialist": (60, 80),
+        "Callback Requested": (45, 68),
+        "Asked Details": (40, 65),
+        "Minimal Engagement": (10, 25),
+        "Not Interested": (0, 20),
+        "Do Not Call": (0, 0),
+        "Voicemail": (0, 0),
+        "No Answer": (0, 0),
+        "Connected - No Dialogue": (10, 10),
+    }
+    OUTCOME_LEVEL = {
+        "Interested": "Hot",
+        "Transferred to Specialist": "Warm",
+        "Callback Requested": "Warm",
+        "Asked Details": "Warm",
+    }
+
+    @staticmethod
+    def _engagement_points(words: int, turns: int, duration: int) -> int:
+        pts = 0 if words < 4 else 5 if words < 10 else 10 if words < 25 else 15 if words < 60 else 18
+        pts += 5 if turns >= 4 else 3 if turns >= 2 else 0
+        pts += 2 if duration >= 30 else 0
+        return min(pts, 25)
+
+    def _score_call(
+        self,
+        *,
+        parsed: Dict[str, Any],
+        customer_text: str,
+        customer_word_count: int,
+        customer_turns: int,
+        call_duration: int,
+        is_machine: bool,
+        llm_available: bool,
+    ) -> Dict[str, Any]:
+        """Returns outcome, interest level, 0-100 score and an explainable breakdown."""
+        has_dnc = _matches(_DNC_PATTERNS, customer_text)
+        has_not_interested = _matches(_NOT_INTERESTED_PATTERNS, customer_text)
+        has_buying = _matches(_BUYING_PATTERNS, customer_text)
+        has_callback = _matches(_CALLBACK_PATTERNS, customer_text)
+        has_inquiry = _matches(_INQUIRY_PATTERNS, customer_text) or (
+            # A bare "?" is not intent: speech-to-text adds it to any short utterance.
+            # Only count a question when the customer said enough to mean it.
+            "?" in customer_text and customer_word_count >= 8 and _matches(_QUESTION_WORDS, customer_text)
+        )
+
+        llm_norm = str(parsed.get("business_outcome") or "").strip().lower()
+        engaged = customer_word_count >= 6
+
+        def result(outcome, score, breakdown, *, next_action=None, override_next=False, summary=None):
+            return {
+                "outcome": outcome,
+                "interest_level": self.OUTCOME_LEVEL.get(outcome, "Cold"),
+                "score": score,
+                "breakdown": breakdown,
+                "next_action": next_action,
+                "override_next": override_next,
+                "summary": summary,
+            }
+
+        def fixed(outcome, reason, **kw):
+            lo, _hi = self.OUTCOME_BANDS[outcome]
+            return result(outcome, lo, {"reason": reason, "total": lo}, **kw)
+
+        # --- Hard overrides: facts, not estimates ---------------------------
+        if is_machine:
+            return fixed("Voicemail", "Automated answering machine", summary="",
+                         next_action="Retry at next calling window", override_next=True)
+        if customer_word_count == 0:
+            return fixed("Connected - No Dialogue", "Customer did not speak",
+                         summary="Call connected but prospect disconnected without speaking.",
+                         next_action="Retry call later", override_next=True)
+        if has_dnc:
+            return fixed("Do Not Call", "Customer asked not to be contacted again",
+                         next_action="Mark contact as Do Not Contact (DNC)", override_next=True)
+
+        # --- Pick the outcome from the strongest evidence -------------------
+        if has_not_interested and not has_buying:
+            outcome, intent_pts = "Not Interested", 0
+            next_action, override = "No further outreach required", True
+        elif has_buying:
+            outcome, intent_pts = "Interested", 40
+            next_action, override = "Schedule demo presentation & send calendar invite", False
+        elif has_callback:
+            outcome, intent_pts = "Callback Requested", 20
+            next_action, override = "Call back customer as requested", False
+        elif has_inquiry and engaged:
+            outcome, intent_pts = "Asked Details", 15
+            next_action, override = "Send detailed product overview and follow up", False
+        elif engaged and "transfer" in llm_norm:
+            outcome, intent_pts = "Transferred to Specialist", 30
+            next_action, override = None, False
+        elif engaged and "interested" in llm_norm and "not interested" not in llm_norm:
+            outcome, intent_pts = "Interested", 35
+            next_action, override = None, False
+        elif engaged and "callback" in llm_norm:
+            outcome, intent_pts = "Callback Requested", 20
+            next_action, override = None, False
+        elif engaged and any(k in llm_norm for k in ("asked", "information", "detail", "follow")):
+            outcome, intent_pts = "Asked Details", 15
+            next_action, override = None, False
+        elif engaged and "not interested" in llm_norm:
+            outcome, intent_pts = "Not Interested", 0
+            next_action, override = "No further outreach required", True
+        else:
+            # Customer spoke, but nothing that shows buying interest (e.g. "eight and eight").
+            outcome, intent_pts = "Minimal Engagement", 0
+            next_action, override = "Retry call later or follow up via SMS", False
+
+        # --- Score components ----------------------------------------------
+        engagement = self._engagement_points(customer_word_count, customer_turns, call_duration)
+
+        qual_hits = [
+            bool(_matches(_BUDGET_PATTERNS, customer_text)),
+            bool(_matches(_TIMELINE_PATTERNS, customer_text)),
+            bool(_matches(_AUTHORITY_PATTERNS, customer_text)),
+            bool(parsed.get("key_requirements")),
+        ]
+        qualification = min(sum(qual_hits) * 5, 20) if outcome != "Minimal Engagement" else 0
+
+        sentiment_label = str(parsed.get("sentiment") or "Neutral")
+        sentiment = {"positive": 10, "neutral": 5, "negative": 0}.get(sentiment_label.lower(), 5)
+        if outcome in ("Minimal Engagement", "Not Interested"):
+            sentiment = 0
+
+        objections = parsed.get("objections") or []
+        objection_pts = -min(len(objections) * 5, 15) if isinstance(objections, list) else 0
+
+        raw = engagement + intent_pts + qualification + sentiment + objection_pts
+        lo, hi = self.OUTCOME_BANDS[outcome]
+        score = max(lo, min(raw, hi))
+
+        breakdown = {
+            "engagement": engagement,
+            "intent": intent_pts,
+            "qualification": qualification,
+            "sentiment": sentiment,
+            "objections": objection_pts,
+            "raw_total": raw,
+            "total": score,
+            "customer_words": customer_word_count,
+            "customer_turns": customer_turns,
+            "source": "llm+rules" if llm_available else "rules",
+        }
+        return result(outcome, score, breakdown, next_action=next_action, override_next=override)
 
     async def analyze_call_transcript(
         self,
@@ -285,137 +476,25 @@ JSON OUTPUT STRUCTURE:
             ]
         )
 
-        has_explicit_dnc = any(
-            phrase in customer_full_text
-            for phrase in ["do not call", "remove my number", "don't call again", "stop calling", "remove me", "dnc"]
-        )
-
-        has_explicit_not_interested = any(
-            phrase in customer_full_text
-            for phrase in ["not interested", "no interest", "don't need it", "not looking", "no thank you", "no thanks"]
-        )
-
-        has_explicit_callback = any(
-            phrase in customer_full_text
-            for phrase in ["call me back", "call back", "call later", "call tomorrow", "busy right now", "another time", "call next week"]
-        )
-
-        # High-intent signals: wants demo, pricing quote, book meeting, buy
-        has_positive_buying_signal = any(
-            phrase in customer_full_text
-            for phrase in [
-                "book a demo", "schedule a demo", "book demo", "schedule demo", "want a demo",
-                "set up a demo", "ready to buy", "how much does it cost", "send proposal",
-                "pricing quote", "sign up", "get started", "book an appointment", "schedule a meeting",
-                "let's do it", "sounds great let's connect", "can we meet"
-            ]
-        )
-
-        # Service inquiry signals: curious, asking about service/features, but not booking demo
-        has_service_inquiry = any(
-            phrase in customer_full_text
-            for phrase in [
-                "tell me more", "what do you do", "what services", "how does it work",
-                "send details", "send email", "send brochure", "explain", "features",
-                "more information", "what are your services", "what kind of"
-            ]
-        ) or "?" in customer_full_text
-
         if not parsed:
             parsed = {}
 
-        # Programmatic guardrails & score consistency
-        if is_machine:
-            parsed["business_outcome"] = "Voicemail"
-            parsed["interest_level"] = "Cold"
-            parsed["lead_score"] = 0
-            parsed["summary"] = ""
-            parsed["next_action"] = "Retry at next calling window"
-        elif len(customer_words) == 0:
-            parsed["business_outcome"] = "Connected - No Dialogue"
-            parsed["interest_level"] = "Cold"
-            parsed["lead_score"] = 10
-            parsed["summary"] = "Call connected but prospect disconnected without speaking."
-            parsed["next_action"] = "Retry call later"
-        elif has_explicit_dnc:
-            parsed["business_outcome"] = "Do Not Call"
-            parsed["interest_level"] = "Cold"
-            parsed["lead_score"] = 0
-            parsed["next_action"] = "Mark contact as Do Not Contact (DNC)"
-        elif has_explicit_not_interested and not has_positive_buying_signal:
-            parsed["business_outcome"] = "Not Interested"
-            parsed["interest_level"] = "Cold"
-            parsed["lead_score"] = min(int(parsed.get("lead_score") or 20), 20)
-            parsed["next_action"] = "No further outreach required"
-        elif has_positive_buying_signal:
-            # Positive demo or purchase intent MUST be high score (75-95) and Hot / Interested
-            parsed["business_outcome"] = "Interested"
-            parsed["interest_level"] = "Hot"
-            current_score = int(parsed.get("lead_score") or 0)
-            parsed["lead_score"] = max(current_score, 80)
-            if not parsed.get("next_action") or parsed.get("next_action") == "Follow up with prospect":
-                parsed["next_action"] = "Schedule demo presentation & send calendar invite"
-        elif has_explicit_callback:
-            parsed["business_outcome"] = "Callback Requested"
-            parsed["interest_level"] = "Warm"
-            current_score = int(parsed.get("lead_score") or 0)
-            parsed["lead_score"] = max(min(current_score or 55, 65), 50)
-            if not parsed.get("next_action") or parsed.get("next_action") == "None":
-                parsed["next_action"] = "Call back customer as requested"
-        elif has_service_inquiry:
-            # Curious about service but not booking demo -> Warm / Asked Details
-            if parsed.get("business_outcome") not in ["Interested", "Callback Requested"]:
-                parsed["business_outcome"] = "Asked Details"
-            parsed["interest_level"] = "Warm"
-            current_score = int(parsed.get("lead_score") or 0)
-            parsed["lead_score"] = max(min(current_score or 55, 65), 45)
-            if not parsed.get("next_action"):
-                parsed["next_action"] = "Send detailed product overview and follow up"
-
-        # Strict score enforcement:
-        # If outcome is Interested / positive demo, score MUST be at least 75
-        # If outcome is Warm / Asked Details / Callback, score should be between 45 and 68
-        # If outcome is Not Interested / Cold, score should be <= 25
-        raw_outcome = parsed.get("business_outcome") or "Interested"
-        norm = raw_outcome.strip().lower()
-
-        final_score = int(parsed.get("lead_score", 50) or 0)
-
-        if "not interested" in norm or "dnc" in norm or "do not" in norm:
-            raw_outcome = "Do Not Call" if ("dnc" in norm or "do not" in norm) else "Not Interested"
-            interest_lvl = "Cold"
-            final_score = min(final_score, 20)
-        elif "no answer" in norm:
-            raw_outcome = "No Answer"
-            interest_lvl = "Cold"
-            final_score = 0
-        elif "no dialogue" in norm or "connected - no" in norm:
-            raw_outcome = "Connected - No Dialogue"
-            interest_lvl = "Cold"
-            final_score = 10
-        elif "voicemail" in norm:
-            raw_outcome = "Voicemail"
-            interest_lvl = "Cold"
-            final_score = 0
-        elif "callback" in norm:
-            raw_outcome = "Callback Requested"
-            interest_lvl = "Warm"
-            final_score = max(min(final_score or 55, 68), 45)
-        elif "transfer" in norm:
-            raw_outcome = "Transferred to Specialist"
-            interest_lvl = "Warm"
-            final_score = max(min(final_score or 65, 80), 60)
-        elif "asked" in norm or "information" in norm or "detail" in norm or "follow" in norm:
-            raw_outcome = "Asked Details"
-            interest_lvl = "Warm"
-            final_score = max(min(final_score or 55, 68), 45)
-        elif "interested" in norm or "qualified" in norm or "converted" in norm or "meeting" in norm:
-            raw_outcome = "Interested"
-            interest_lvl = "Hot"
-            # Never let an interested lead with positive buying response have a low score like 50!
-            final_score = max(final_score, 75)
-        else:
-            interest_lvl = parsed.get("interest_level") or ("Hot" if final_score >= 70 else ("Warm" if final_score >= 40 else "Cold"))
+        scoring = self._score_call(
+            parsed=parsed,
+            customer_text=customer_full_text,
+            customer_word_count=len(customer_words),
+            customer_turns=len(user_messages),
+            call_duration=call_duration,
+            is_machine=is_machine,
+            llm_available=bool(parsed),
+        )
+        raw_outcome = scoring["outcome"]
+        interest_lvl = scoring["interest_level"]
+        final_score = scoring["score"]
+        if scoring.get("next_action") and (scoring.get("override_next") or not parsed.get("next_action")):
+            parsed["next_action"] = scoring["next_action"]
+        if scoring.get("summary") is not None:
+            parsed["summary"] = scoring["summary"]
 
         summary_text = parsed.get("summary", "")
         if not summary_text and not is_machine and customer_words:
@@ -464,6 +543,7 @@ JSON OUTPUT STRUCTURE:
             "interest_level": interest_lvl,
             "classification": interest_lvl,
             "lead_score": final_score,
+            "score_breakdown": scoring["breakdown"],
             "sentiment": parsed.get("sentiment", "Positive" if interest_lvl in ["Hot", "Warm"] else "Neutral"),
             "key_insights": parsed.get("key_insights", []),
             "key_requirements": parsed.get("key_requirements", []),

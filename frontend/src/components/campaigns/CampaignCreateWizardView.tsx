@@ -47,6 +47,7 @@ import {
   Eye,
   Plus,
 } from "lucide-react";
+import { TimezoneLiveClock } from "./TimezoneLiveClock";
 
 interface CampaignCreateWizardViewProps {
   onCancel: () => void;
@@ -68,7 +69,50 @@ interface TimezoneOption {
   label: string;
   value: string;
   region: string;
+  offsetStr: string;
+  city: string;
 }
+
+// Helpers to format live time and date in any selected timezone
+export const getTimezoneLiveDetails = (tz: string) => {
+  try {
+    const now = new Date();
+    const timeFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const offsetFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    const parts = offsetFormatter.formatToParts(now);
+    const tzPart = parts.find((p) => p.type === "timeZoneName");
+    const offsetStr = tzPart ? tzPart.value.replace("GMT", "UTC") : "";
+
+    return {
+      timeStr: timeFormatter.format(now),
+      dateStr: dateFormatter.format(now),
+      offsetStr,
+    };
+  } catch {
+    const now = new Date();
+    return {
+      timeStr: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }),
+      dateStr: now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+      offsetStr: "UTC",
+    };
+  }
+};
 
 // Dynamically generate all 400+ real-time IANA timezones using the native Intl ECMAScript engine
 const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] => {
@@ -98,6 +142,8 @@ const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] =
           value: tz,
           label: `(${offsetStr}) ${city} (${tz})`,
           region,
+          offsetStr,
+          city,
         };
       });
 
@@ -124,16 +170,16 @@ const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] =
     {
       region: "Global",
       options: [
-        { label: "(UTC+00:00) UTC (Universal Coordinated Time)", value: "UTC", region: "Global" },
-        { label: "(UTC+05:30) Asia/Kolkata (India Standard Time)", value: "Asia/Kolkata", region: "Asia" },
-        { label: "(UTC-05:00) America/New_York (US Eastern)", value: "America/New_York", region: "America" },
-        { label: "(UTC-08:00) America/Los_Angeles (US Pacific)", value: "America/Los_Angeles", region: "America" },
-        { label: "(UTC+00:00) Europe/London (GMT/BST)", value: "Europe/London", region: "Europe" },
-        { label: "(UTC+01:00) Europe/Paris (Central European)", value: "Europe/Paris", region: "Europe" },
-        { label: "(UTC+04:00) Asia/Dubai (Gulf Standard Time)", value: "Asia/Dubai", region: "Asia" },
-        { label: "(UTC+08:00) Asia/Singapore (SGT)", value: "Asia/Singapore", region: "Asia" },
-        { label: "(UTC+09:00) Asia/Tokyo (Japan Standard Time)", value: "Asia/Tokyo", region: "Asia" },
-        { label: "(UTC+10:00) Australia/Sydney (AEST)", value: "Australia/Sydney", region: "Australia" },
+        { label: "(UTC+00:00) UTC (Universal Coordinated Time)", value: "UTC", region: "Global", offsetStr: "UTC+0", city: "UTC" },
+        { label: "(UTC+05:30) Asia/Kolkata (India Standard Time)", value: "Asia/Kolkata", region: "Asia", offsetStr: "UTC+5:30", city: "Kolkata" },
+        { label: "(UTC-05:00) America/New_York (US Eastern)", value: "America/New_York", region: "America", offsetStr: "UTC-5", city: "New York" },
+        { label: "(UTC-08:00) America/Los_Angeles (US Pacific)", value: "America/Los_Angeles", region: "America", offsetStr: "UTC-8", city: "Los Angeles" },
+        { label: "(UTC+00:00) Europe/London (GMT/BST)", value: "Europe/London", region: "Europe", offsetStr: "UTC+0", city: "London" },
+        { label: "(UTC+01:00) Europe/Paris (Central European)", value: "Europe/Paris", region: "Europe", offsetStr: "UTC+1", city: "Paris" },
+        { label: "(UTC+04:00) Asia/Dubai (Gulf Standard Time)", value: "Asia/Dubai", region: "Asia", offsetStr: "UTC+4", city: "Dubai" },
+        { label: "(UTC+08:00) Asia/Singapore (SGT)", value: "Asia/Singapore", region: "Asia", offsetStr: "UTC+8", city: "Singapore" },
+        { label: "(UTC+09:00) Asia/Tokyo (Japan Standard Time)", value: "Asia/Tokyo", region: "Asia", offsetStr: "UTC+9", city: "Tokyo" },
+        { label: "(UTC+10:00) Australia/Sydney (AEST)", value: "Australia/Sydney", region: "Australia", offsetStr: "UTC+10", city: "Sydney" },
       ],
     },
   ];
@@ -1842,9 +1888,14 @@ export function CampaignCreateWizardView({
                         <Globe className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                         <span>Campaign Timezone *</span>
                       </span>
-                      <span className="text-[11px] text-[var(--color-primary)] font-mono font-medium truncate max-w-[200px]" title={timezone}>
-                        {timezone}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded border border-[var(--color-primary)]/20" title="Current regional time">
+                          {getTimezoneLiveDetails(timezone).timeStr}
+                        </span>
+                        <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                          {getTimezoneLiveDetails(timezone).dateStr}
+                        </span>
+                      </div>
                     </label>
 
                     {/* Search & Selection Box */}
@@ -1894,6 +1945,7 @@ export function CampaignCreateWizardView({
 
                               {matchingTzs.map((opt) => {
                                 const isCur = opt.value === timezone;
+                                const details = getTimezoneLiveDetails(opt.value);
                                 return (
                                   <div
                                     key={opt.value}
@@ -1908,11 +1960,23 @@ export function CampaignCreateWizardView({
                                       : "hover:bg-[var(--color-surface-muted)] text-[var(--color-text)]"
                                       }`}
                                   >
-                                    <div className="flex items-center gap-2 truncate">
+                                    <div className="flex items-center gap-2 truncate pr-2">
                                       <Globe className={`w-3.5 h-3.5 shrink-0 ${isCur ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"}`} />
-                                      <span className="truncate">{opt.label}</span>
+                                      <div className="truncate">
+                                        <div className="truncate text-xs font-medium">{opt.label}</div>
+                                        <div className="text-[10px] text-[var(--color-muted)] font-normal flex items-center gap-2 mt-0.5">
+                                          <span className="font-mono text-[var(--color-primary)]">{details.timeStr}</span>
+                                          <span>•</span>
+                                          <span>{details.dateStr}</span>
+                                        </div>
+                                      </div>
                                     </div>
-                                    {isCur && <Check className="w-3.5 h-3.5 shrink-0 text-[var(--color-primary)]" />}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-heading)]">
+                                        {details.timeStr.slice(0, 5)} {details.timeStr.slice(-2)}
+                                      </span>
+                                      {isCur && <Check className="w-3.5 h-3.5 shrink-0 text-[var(--color-primary)]" />}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1958,6 +2022,18 @@ export function CampaignCreateWizardView({
                       ))}
                     </div>
                   </div>
+
+                  {/* Real-time Timezone Clock & Window Status Indicator */}
+                  <TimezoneLiveClock
+                    schedule={{
+                      calling_days: callingDays,
+                      calling_start_time: startTime,
+                      calling_end_time: endTime,
+                      timezone: timezone,
+                      start_date: startDate,
+                      end_date: endDate,
+                    }}
+                  />
                 </div>
               </div>
             )}
@@ -2016,6 +2092,18 @@ export function CampaignCreateWizardView({
                     </div>
                   </div>
                 </div>
+
+                {/* Live Clock & Calling Window Status Banner */}
+                <TimezoneLiveClock
+                  schedule={{
+                    calling_days: callingDays,
+                    calling_start_time: startTime,
+                    calling_end_time: endTime,
+                    timezone: timezone,
+                    start_date: startDate,
+                    end_date: endDate,
+                  }}
+                />
 
                 <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-primary)]/30 rounded-xl flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
