@@ -58,11 +58,19 @@ class AgentRuntimeBuilder:
             )
 
         # 2. Listen configuration (STT) - defaults to latest Nova-3 with multilingual support
-        configured_lang = "en"
-        if config.listen and config.listen.language:
-            configured_lang = config.listen.language.lower().strip()
-        elif config.voice and config.voice.language:
-            configured_lang = config.voice.language.lower().strip()
+        # Synchronize listen language with voice language: if agent is configured for Hindi (or any target language),
+        # speech recognition MUST listen in that language so user speech is recognized immediately.
+        voice_lang = config.voice.language.lower().strip() if (config.voice and config.voice.language) else None
+        listen_lang = config.listen.language.lower().strip() if (config.listen and config.listen.language) else None
+
+        if voice_lang and voice_lang != "en":
+            configured_lang = voice_lang
+        elif listen_lang:
+            configured_lang = listen_lang
+        elif voice_lang:
+            configured_lang = voice_lang
+        else:
+            configured_lang = "en"
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
@@ -126,14 +134,38 @@ class AgentRuntimeBuilder:
             functions=[]
         )
 
-        # 4. Speak configuration (TTS)
+        # 4. Speak configuration (TTS - Flux vs Sonic)
         voice_model = config.voice.voice or "flux-hannah-en"
-        voice_version = getattr(config.voice, "version", "v2") or ("v2" if "flux" in voice_model else "v1")
-        speak_provider = DeepgramSpeakProvider(
-            type="deepgram",
-            version=voice_version,
-            model=voice_model
-        )
+        raw_provider = getattr(config.voice, "provider", "deepgram") or "deepgram"
+        # Determine if this is a Cartesia Sonic voice (either explicit provider or UUID-format voice ID)
+        is_cartesia = raw_provider.lower() in ["cartesia", "sonic"] or ("-" in voice_model and len(voice_model) == 36 and not voice_model.startswith("flux-") and not voice_model.startswith("aura-"))
+
+        if is_cartesia:
+            sonic_model_id = getattr(config.voice, "model", None)
+            if not sonic_model_id or sonic_model_id in ["flux", "aura", "deepgram", "v1", "v2"]:
+                sonic_model_id = "sonic-3.5"
+            speak_provider = DeepgramSpeakProvider(
+                type="cartesia",
+                model=None,
+                version=None,
+                model_id=sonic_model_id,
+                voice={
+                    "mode": "id",
+                    "id": voice_model
+                },
+                speed=float(getattr(config.voice, "speed", 1.0) or 1.0)
+            )
+        else:
+            voice_version = getattr(config.voice, "version", "v2") or ("v2" if "flux" in voice_model else "v1")
+            # Aura v1 models do NOT support the 'speed' parameter and return HTTP 400 'Requested model does not support the speed parameter'
+            supports_speed = voice_version == "v2" or "flux" in voice_model
+            configured_speed = float(getattr(config.voice, "speed", 1.0) or 1.0)
+            speak_provider = DeepgramSpeakProvider(
+                type="deepgram",
+                version=voice_version,
+                model=voice_model,
+                speed=configured_speed if supports_speed else None
+            )
         speak_config = DeepgramSpeakConfig(
             provider=speak_provider
         )

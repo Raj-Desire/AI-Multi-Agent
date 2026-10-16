@@ -884,18 +884,78 @@ export const VOICE_CATEGORY_MAP: Record<string, VoiceCategoryId[]> = {
   "aura-2-ama-ja": ["support", "finance"]
 };
 
+// -------------------------------------------------------------
+// Curated Cartesia Sonic Voices for instantaneous fallback / preview
+// -------------------------------------------------------------
+export const POPULAR_SONIC_VOICES = [
+  { id: "6c756032-11c3-4be8-a120-74f9673fb700", name: "Harlow - Warm Support", language: "en", gender: "Female", style: "Warm & Empathetic", description: "Offers a friendly yet professional presence, perfect for customer support & friendly conversation.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "15a13943-32a7-49a9-b944-d6062129c5a3", name: "Cillian - Corporate Presenter", language: "en", gender: "Male", style: "Authoritative & Polished", description: "This voice offers a confident, polished tone, ideal for corporate presentation, B2B sales and finance.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "f4c33650-23a7-43bd-8199-1af16815e58a", name: "Bronwen - Guidance Narrator", language: "en", gender: "Female", style: "Calm & Articulate", description: "Guides a listener through complex topics with a calm, confident pace and clear intonation.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "ca6e2abc-f3e6-4f62-9625-92fada58eb9b", name: "Declan - Clear Support", language: "en", gender: "Male", style: "Direct & Attentive", description: "Keeps support conversations clear, steady, and easy to follow.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "b2e12ebd-7bed-4d48-9243-0aa7acef4140", name: "Maren - Resourceful Guide", language: "en", gender: "Female", style: "Approachable & Dynamic", description: "Explains options clearly and helps someone find practical solutions smoothly.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4", name: "Skylar - Friendly Assistant", language: "en", gender: "Female", style: "Ultra-Natural Conversational", description: "Approachable conversational voice ideal for customer care, reception and high EQ support.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "47c38ca4-5f35-497b-b1a3-415245fb35e1", name: "Daniel - Modern Executive", language: "en", gender: "Male", style: "Crisp & Professional", description: "Clear, crisp male voice designed for modern digital assistants and corporate inquiries.", sampleText: "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?", engine: "sonic" },
+  { id: "692279a6-ebcc-4735-a21e-9b8e31f6b3de", name: "Gael - Spanish Support", language: "es", gender: "Male", style: "Native Spanish • Clear", description: "Natural, articulate Spanish male voice ideal for Latin American and European callers.", sampleText: "¡Hola! Soy tu asistente de voz inteligente con tecnología Sonic. ¿En qué puedo ayudarte?", engine: "sonic" },
+  { id: "6acedd3e-bac4-41bc-8c7c-ef560d27e778", name: "Clémence - French Facilitator", language: "fr", gender: "Female", style: "Native French • Warm", description: "Warm, articulate French female voice for customer support and hospitality.", sampleText: "Bonjour ! Je suis votre assistante vocale intelligente avec Sonic. Comment puis-je vous aider ?", engine: "sonic" },
+  { id: "7f822e9a-d00c-45fe-84e4-d59a3ac664d4", name: "Hina - Courteous Facilitator", language: "ja", gender: "Female", style: "Native Japanese • Polite", description: "Offers polite and efficient assistance with natural Japanese intonations.", sampleText: "こんにちは！Sonic音声エンジンを搭載したAIアシスタントです。本日はどのようなご用件でしょうか？", engine: "sonic" },
+  { id: "57a3a9e0-a91c-4c94-a2bb-e6cbab3ae649", name: "Clemens - German Instructor", language: "de", gender: "Male", style: "Native German • Precise", description: "Clear and precise German male voice for corporate and customer guidance.", sampleText: "Hallo! Ich bin Ihr KI-Sprachassistent mit Sonic-Technologie. Wie kann ich Ihnen helfen?", engine: "sonic" },
+  { id: "c8403b5c-6465-4396-9065-a440d376528a", name: "Alessio - Italian Anchor", language: "it", gender: "Male", style: "Native Italian • Warm", description: "Engaging and clear Italian male voice for customer interactions.", sampleText: "Ciao! Sono il tuo assistente vocale intelligente con motore Sonic. Come posso aiutarti?", engine: "sonic" },
+  { id: "2c5dc34c-50e9-4e93-9a87-08e81ad8b4bd", name: "Clara - Portuguese Support", language: "pt", gender: "Female", style: "Native Portuguese • Warm", description: "Warm and friendly Portuguese female voice for support and sales.", sampleText: "Olá! Sou a sua assistente de voz inteligente com tecnologia Sonic. Como posso ajudar?", engine: "sonic" },
+  { id: "ce45ddca-5f4b-4047-ada3-3fce2bc78acd", name: "Kavya - Hindi Briefing", language: "hi", gender: "Female", style: "Native Hindi • Clear", description: "Natural, articulate Hindi female voice with lifelike conversational pacing.", sampleText: "नमस्ते! मैं सॉनिक तकनीक द्वारा संचालित आपका एआई वॉयस असिस्टेंट हूँ। मैं आपकी क्या मदद कर सकता हूँ?", engine: "sonic" },
+  { id: "d663e679-b321-43f5-8c98-3f41172a9480", name: "Jana - Arabic Advisor", language: "ar", gender: "Female", style: "Native Arabic • Professional", description: "Articulate and pleasant Arabic female voice for customer care.", sampleText: "مرحباً! أنا مساعدك الصوتي الذكي المدعوم بمحرك سونيك. كيف يمكنني مساعدتك اليوم؟", engine: "sonic" },
+  { id: "0f5ac064-30c7-4cf6-8748-d275f682a0d5", name: "Yu-Hsin - Chinese Facilitator", language: "zh", gender: "Female", style: "Native Mandarin • Polite", description: "Polite and clear Mandarin voice for business reception.", sampleText: "您好！我是搭载Sonic语音引擎的AI语音助手。请问今天有什么可以帮您的？", engine: "sonic" },
+  { id: "d6d687b4-5d1e-4eb7-8c5a-1eb608532772", name: "Junho - Korean Communicator", language: "ko", gender: "Male", style: "Native Korean • Professional", description: "Crisp and courteous Korean voice for inquiries.", sampleText: "안녕하세요! 소닉 엔진을 탑재한 AI 음성 어시스턴트입니다. 오늘 어떤 도움이 필요하신가요?", engine: "sonic" },
+  { id: "80589fbe-9893-45f7-9c35-13555f8fd02d", name: "Shai - Hebrew Administrator", language: "he", gender: "Male", style: "Native Hebrew • Focused", description: "Clear and focused Hebrew male voice for support.", sampleText: "שלום! אני עוזר הקול שלך המופעל באמצעות מנוע סוניק. איך אוכל לעזור לך היום?", engine: "sonic" },
+  { id: "3528e5c3-02d3-4a43-ac10-e1b3f1f6277d", name: "Arvid - Swedish Host", language: "sv", gender: "Male", style: "Native Swedish • Briefing", description: "Approachable Swedish male voice for customer interactions.", sampleText: "Hej! Jag är din AI-röstassistent med Sonic-teknik. Hur kan jag hjälpa dig idag?", engine: "sonic" },
+  { id: "d358377a-cd1d-45c5-abd0-701314e36cbe", name: "Marcin - Polish Presenter", language: "pl", gender: "Male", style: "Native Polish • Charismatic", description: "Polished Polish voice for customer service.", sampleText: "Cześć! Jestem Twoim inteligentnym asystentem głosowym z silnikiem Sonic. W czym mogę pomóc?", engine: "sonic" },
+  { id: "8036098f-cff4-401e-bfba-f0a6a6e5e49b", name: "Elif - Turkish Supporter", language: "tr", gender: "Female", style: "Native Turkish • Structured", description: "Warm and structured Turkish female voice.", sampleText: "Merhaba! Sonic ses motoruyla desteklenen yapay zeka ses asistanınızım. Bugün size nasıl yardımcı olabilirim?", engine: "sonic" },
+  { id: "f3b7c445-d015-40f7-a665-9595e0bc0c90", name: "Intan - Indonesian Representative", language: "id", gender: "Female", style: "Native Indonesian • Helpful", description: "Courteous Indonesian female voice for inquiries.", sampleText: "Halo! Saya asisten suara AI Anda dengan teknologi Sonic. Ada yang bisa saya bantu hari ini?", engine: "sonic" },
+  { id: "d051b675-6863-44cc-b7ba-356858ed7df8", name: "Nisa - Thai Navigator", language: "th", gender: "Female", style: "Native Thai • Clear", description: "Gentle and clear Thai female voice.", sampleText: "สวัสดีค่ะ! ฉันคือผู้ช่วยเสียง AI ของคุณ ขับเคลื่อนด้วย Sonic วันนี้มีอะไรให้ช่วยไหมคะ?", engine: "sonic" },
+  { id: "6599f426-765e-4b73-8c5d-9f7250af3c88", name: "Nila - Tamil Narrator", language: "ta", gender: "Female", style: "Native Tamil • Articulate", description: "Clear and articulate Tamil voice.", sampleText: "வணக்கம்! சோனிக் தொழில்நுட்பத்தால் இயங்கும் உங்கள் AI குரல் உதவியாளர் நான். இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?", engine: "sonic" },
+  { id: "292708e4-1200-4214-a3b7-f522a88c7284", name: "Divya - Telugu Support", language: "te", gender: "Female", style: "Native Telugu • Pleasant", description: "Warm Telugu conversational voice.", sampleText: "నమస్కారం! సోనిక్ టెక్నాలజీతో పనిచేసే మీ AI వాయిస్ అసిస్టెంట్‌ని నేను. ఈరోజు మీకు ఎలా సహాయపడగలను?", engine: "sonic" }
+];
+
 export function getVoiceCategories(voiceId: string): VoiceCategoryId[] {
   return VOICE_CATEGORY_MAP[voiceId] || [];
 }
 
 export const SUPPORTED_LANGUAGES = [
-  { code: "en", label: "English (US / Global Standard)", native: "English", defaultVoice: "flux-hannah-en" },
-  { code: "es", label: "Spanish (Español)", native: "Español", defaultVoice: "aura-2-agustina-es" },
-  { code: "fr", label: "French (Français)", native: "Français", defaultVoice: "aura-2-agathe-fr" },
-  { code: "de", label: "German (Deutsch)", native: "Deutsch", defaultVoice: "aura-2-aurelia-de" },
-  { code: "it", label: "Italian (Italiano)", native: "Italiano", defaultVoice: "aura-2-cesare-it" },
-  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands", defaultVoice: "flux-hannah-en" },
-  { code: "ja", label: "Japanese (日本語)", native: "日本語", defaultVoice: "aura-2-ama-ja" }
+  // Flagship Global Languages (Supported across both Flux & Sonic 3.5)
+  { code: "en", label: "English (US / Global)", native: "English", defaultVoice: "flux-hannah-en", defaultSonicVoice: "6c756032-11c3-4be8-a120-74f9673fb700" },
+  { code: "es", label: "Spanish (Español)", native: "Español", defaultVoice: "aura-2-agustina-es", defaultSonicVoice: "692279a6-ebcc-4735-a21e-9b8e31f6b3de" },
+  { code: "fr", label: "French (Français)", native: "Français", defaultVoice: "aura-2-agathe-fr", defaultSonicVoice: "6acedd3e-bac4-41bc-8c7c-ef560d27e778" },
+  { code: "de", label: "German (Deutsch)", native: "Deutsch", defaultVoice: "aura-2-aurelia-de", defaultSonicVoice: "57a3a9e0-a91c-4c94-a2bb-e6cbab3ae649" },
+  { code: "it", label: "Italian (Italiano)", native: "Italiano", defaultVoice: "aura-2-cesare-it", defaultSonicVoice: "c8403b5c-6465-4396-9065-a440d376528a" },
+  { code: "pt", label: "Portuguese (Português)", native: "Português", defaultVoice: "flux-hannah-en", defaultSonicVoice: "2c5dc34c-50e9-4e93-9a87-08e81ad8b4bd" },
+  { code: "ja", label: "Japanese (日本語)", native: "日本語", defaultVoice: "aura-2-ama-ja", defaultSonicVoice: "7f822e9a-d00c-45fe-84e4-d59a3ac664d4" },
+  { code: "hi", label: "Hindi (हिन्दी)", native: "हिन्दी", defaultVoice: "flux-priya-en", defaultSonicVoice: "ce45ddca-5f4b-4047-ada3-3fce2bc78acd" },
+  { code: "gu", label: "Gujarati (ગુજરાતી)", native: "ગુજરાતી", defaultVoice: "flux-priya-en", defaultSonicVoice: "ce45ddca-5f4b-4047-ada3-3fce2bc78acd" },
+  { code: "zh", label: "Chinese (中文 - Mandarin)", native: "中文", defaultVoice: "flux-hannah-en", defaultSonicVoice: "0f5ac064-30c7-4cf6-8748-d275f682a0d5" },
+  { code: "ko", label: "Korean (한국어)", native: "한국어", defaultVoice: "flux-hannah-en", defaultSonicVoice: "d6d687b4-5d1e-4eb7-8c5a-1eb608532772" },
+  { code: "ar", label: "Arabic (العربية)", native: "العربية", defaultVoice: "flux-hannah-en", defaultSonicVoice: "d663e679-b321-43f5-8c98-3f41172a9480" },
+  { code: "nl", label: "Dutch (Nederlands)", native: "Nederlands", defaultVoice: "flux-hannah-en", defaultSonicVoice: "4fbae271-89c4-494d-8181-6eddca393453" },
+  { code: "he", label: "Hebrew (עברית)", native: "עברית", defaultVoice: "flux-hannah-en", defaultSonicVoice: "80589fbe-9893-45f7-9c35-13555f8fd02d" },
+  { code: "sv", label: "Swedish (Svenska)", native: "Svenska", defaultVoice: "flux-hannah-en", defaultSonicVoice: "3528e5c3-02d3-4a43-ac10-e1b3f1f6277d" },
+  { code: "pl", label: "Polish (Polski)", native: "Polski", defaultVoice: "flux-hannah-en", defaultSonicVoice: "d358377a-cd1d-45c5-abd0-701314e36cbe" },
+  { code: "tr", label: "Turkish (Türkçe)", native: "Türkçe", defaultVoice: "flux-hannah-en", defaultSonicVoice: "8036098f-cff4-401e-bfba-f0a6a6e5e49b" },
+  { code: "id", label: "Indonesian (Bahasa Indonesia)", native: "Bahasa Indonesia", defaultVoice: "flux-hannah-en", defaultSonicVoice: "f3b7c445-d015-40f7-a665-9595e0bc0c90" },
+  { code: "th", label: "Thai (ไทย)", native: "ไทย", defaultVoice: "flux-hannah-en", defaultSonicVoice: "d051b675-6863-44cc-b7ba-356858ed7df8" },
+  { code: "ru", label: "Russian (Русский)", native: "Русский", defaultVoice: "flux-hannah-en", defaultSonicVoice: "7a62541e-5492-410e-95ff-3abd096fce87" },
+  { code: "vi", label: "Vietnamese (Tiếng Việt)", native: "Tiếng Việt", defaultVoice: "flux-hannah-en", defaultSonicVoice: "8e8f222d-c817-4cc5-822b-8bf76ca7e98d" },
+  { code: "tl", label: "Tagalog (Filipino)", native: "Filipino", defaultVoice: "flux-marcelo-en", defaultSonicVoice: "6d14ac2a-4dda-46f8-bd6f-0722db08ec00" },
+  { code: "ta", label: "Tamil (தமிழ்)", native: "தமிழ்", defaultVoice: "flux-priya-en", defaultSonicVoice: "6599f426-765e-4b73-8c5d-9f7250af3c88" },
+  { code: "te", label: "Telugu (తెలుగు)", native: "తెలుగు", defaultVoice: "flux-priya-en", defaultSonicVoice: "292708e4-1200-4214-a3b7-f522a88c7284" },
+  { code: "bn", label: "Bengali (বাংলা)", native: "বাংলা", defaultVoice: "flux-hannah-en", defaultSonicVoice: "ddf9ec71-3337-4a8a-a318-9a42f72433e2" },
+  { code: "pa", label: "Punjabi (ਪੰਜਾਬੀ)", native: "ਪੰਜਾਬੀ", defaultVoice: "flux-hannah-en", defaultSonicVoice: "cf7254bf-2649-41d2-a8b8-23348e824408" },
+  { code: "ur", label: "Urdu (اردو)", native: "اردو", defaultVoice: "flux-hannah-en", defaultSonicVoice: "d463004e-0353-4063-80d4-2fabbf1c5dcb" },
+  { code: "el", label: "Greek (Ελληνικά)", native: "Ελληνικά", defaultVoice: "flux-hannah-en", defaultSonicVoice: "50849023-76e9-46c7-af52-9ec39888a165" },
+  { code: "da", label: "Danish (Dansk)", native: "Dansk", defaultVoice: "flux-hannah-en", defaultSonicVoice: "eb929394-68e7-4e08-bd2f-e7055728a5e1" },
+  { code: "fi", label: "Finnish (Suomi)", native: "Suomi", defaultVoice: "flux-hannah-en", defaultSonicVoice: "2835e382-643b-4ac6-8f6c-74df549a7ad0" },
+  { code: "no", label: "Norwegian (Norsk)", native: "Norsk", defaultVoice: "flux-hannah-en", defaultSonicVoice: "4f7b1820-6263-4615-87a7-b105768d8f64" },
+  { code: "cs", label: "Czech (Čeština)", native: "Čeština", defaultVoice: "flux-hannah-en", defaultSonicVoice: "82db1f84-5b96-4364-b04a-4c7ff80e2f8a" },
+  { code: "hu", label: "Hungarian (Magyar)", native: "Magyar", defaultVoice: "flux-hannah-en", defaultSonicVoice: "4c5c7be8-6b3b-4c62-b915-c54d049c198f" },
+  { code: "ro", label: "Romanian (Română)", native: "Română", defaultVoice: "flux-hannah-en", defaultSonicVoice: "34acfaee-c556-41ee-a5f6-c687fb20357c" },
+  { code: "uk", label: "Ukrainian (Українська)", native: "Українська", defaultVoice: "flux-hannah-en", defaultSonicVoice: "05ffab9c-d380-4909-8375-cd12f59238c3" }
 ];
 
 export const LLM_MODELS = [

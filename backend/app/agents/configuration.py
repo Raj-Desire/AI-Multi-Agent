@@ -225,9 +225,9 @@ class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
     turn_delay_ms: int = Field(default=0, description="Natural conversational acoustic delay before speech synthesis output begins (ms)")
-    silence_timeout: int = 5  # Seconds of silence before asking reprompt message
+    silence_timeout: int = 8  # Seconds of silence before asking reprompt message (natural telephone pacing)
     silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
-    silence_hangup_delay: int = 5  # Seconds after reprompt before concluding and hanging up
+    silence_hangup_delay: int = 6  # Seconds after reprompt before concluding and hanging up
     maximum_call_duration: int = 300  # Max total call duration in seconds
     conclusion_message: Optional[str] = "Thank you for your time. Have a great day!"
     customer_response_timeout: int = 15

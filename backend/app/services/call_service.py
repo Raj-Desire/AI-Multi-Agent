@@ -106,7 +106,7 @@ class CallService:
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
         # Build Media Stream TwiML connecting to Real-Time Voice Agent
-        base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
+        base_url = (getattr(tw_cfg, "public_base_url", None) or os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
         stream_url = f"{ws_base}/api/v1/voice/stream"
 

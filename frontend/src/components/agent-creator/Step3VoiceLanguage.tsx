@@ -27,6 +27,7 @@ import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import {
   AURA_VOICES,
+  POPULAR_SONIC_VOICES,
   VOICE_CATEGORIES,
   getVoiceCategories,
   SUPPORTED_LANGUAGES,
@@ -103,6 +104,47 @@ export function Step3VoiceLanguage({
   agentData,
   setAgentData
 }: Step3VoiceLanguageProps) {
+  // Voice Engine Toggle State ("flux" | "sonic")
+  const currentVoiceId = agentData.voice?.voice || "flux-hannah-en";
+  const initialEngine = (agentData.voice?.provider === "cartesia" || (!currentVoiceId.startsWith("flux-") && !currentVoiceId.startsWith("aura-") && currentVoiceId.includes("-"))) ? "sonic" : "flux";
+  const [selectedEngine, setSelectedEngine] = useState<"flux" | "sonic">(initialEngine);
+
+  // Cartesia Sonic dynamic voices list
+  const [sonicVoices, setSonicVoices] = useState<any[]>(POPULAR_SONIC_VOICES);
+  const [isLoadingSonic, setIsLoadingSonic] = useState(false);
+
+  // Selected Language filter for Sonic
+  const [sonicLangFilter, setSonicLangFilter] = useState<string>("all");
+
+  // Fetch dynamic Sonic voices from backend endpoint
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSonicVoices() {
+      setIsLoadingSonic(true);
+      try {
+        const token = localStorage.getItem("desire_token");
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+        const url = apiBase.endsWith("/api/v1") ? `${apiBase}/voice/cartesia-voices` : `${apiBase}/api/v1/voice/cartesia-voices`;
+        const res = await fetch(url, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.data) && data.data.length > 0 && isMounted) {
+            setSonicVoices(data.data);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote Sonic voices, using local catalog:", err);
+      } finally {
+        if (isMounted) setIsLoadingSonic(false);
+      }
+    }
+    loadSonicVoices();
+    return () => { isMounted = false; };
+  }, []);
+
   // Voice Preview State & Instant Audio Cache
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -198,7 +240,11 @@ export function Step3VoiceLanguage({
 
   // Prefetch voice sample audio into memory for instantaneous (0ms) playback on click
   const prefetchVoiceSample = async (voiceId: string, customText?: string): Promise<string | undefined> => {
-    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+    const voiceObj =
+      sonicVoices.find((v) => v.id === voiceId) ||
+      POPULAR_SONIC_VOICES.find((v) => v.id === voiceId) ||
+      AURA_VOICES.find((v) => v.id === voiceId);
+
     const sampleText =
       customText ||
       (voiceObj as any)?.sampleText ||
@@ -215,12 +261,15 @@ export function Step3VoiceLanguage({
       const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
       const sampleUrl = apiBase.endsWith("/api/v1") ? `${apiBase}/voice/sample-speech` : `${apiBase}/api/v1/voice/sample-speech`;
 
+      const isSonicVoice = (voiceObj as any)?.engine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
+
       const response = await fetch(sampleUrl, {
         method: "POST",
         headers,
         body: JSON.stringify({
           text: sampleText,
-          voice: voiceId
+          voice: voiceId,
+          provider: isSonicVoice ? "cartesia" : "deepgram"
         })
       });
 
@@ -237,7 +286,7 @@ export function Step3VoiceLanguage({
 
   // Pre-warm active voice and common voices in the background
   useEffect(() => {
-    const popularVoices = [selectedVoiceId, "flux-hannah-en", "flux-alexis-en", "flux-cliff-en", "flux-sienna-en", "flux-cole-en", "flux-kit-en", "aura-2-agustina-es"];
+    const popularVoices = [selectedVoiceId, "flux-hannah-en", "6c756032-11c3-4be8-a120-74f9673fb700", "15a13943-32a7-49a9-b944-d6062129c5a3"];
     popularVoices.forEach((vId) => {
       prefetchVoiceSample(vId);
     });
@@ -265,7 +314,11 @@ export function Step3VoiceLanguage({
     setAudioError(null);
 
     try {
-      const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+      const voiceObj =
+        sonicVoices.find((v) => v.id === voiceId) ||
+        POPULAR_SONIC_VOICES.find((v) => v.id === voiceId) ||
+        AURA_VOICES.find((v) => v.id === voiceId);
+
       const sampleText =
         customText ||
         (voiceObj as any)?.sampleText ||
@@ -320,28 +373,52 @@ export function Step3VoiceLanguage({
   };
 
   const handleVoiceChange = (voiceId: string) => {
-    const voiceObj = AURA_VOICES.find((v) => v.id === voiceId);
+    const isSonic = selectedEngine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
+    const voiceObj = isSonic
+      ? (sonicVoices.find((v) => v.id === voiceId) || POPULAR_SONIC_VOICES.find((v) => v.id === voiceId))
+      : AURA_VOICES.find((v) => v.id === voiceId);
+
     setAgentData((prev) => ({
       ...prev,
       voice: {
         ...prev.voice,
-        provider: "deepgram",
+        provider: isSonic ? "cartesia" : "deepgram",
+        model: isSonic ? "sonic-3.5" : "flux",
         voice: voiceId,
         language: voiceObj?.language || prev.voice?.language || "en"
       }
     }));
   };
 
+  const handleEngineSwitch = (engine: "flux" | "sonic") => {
+    setSelectedEngine(engine);
+    // Switch default voice for that engine if needed
+    if (engine === "sonic") {
+      const defaultSonicId = "6c756032-11c3-4be8-a120-74f9673fb700"; // Harlow - Warm Support
+      handleVoiceChange(defaultSonicId);
+      prefetchVoiceSample(defaultSonicId);
+    } else {
+      const defaultFluxId = "flux-hannah-en";
+      handleVoiceChange(defaultFluxId);
+      prefetchVoiceSample(defaultFluxId);
+    }
+  };
+
   const handleLanguageChange = (lang: string) => {
     // 1. Find matching native voice for the selected language
-    const currentVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId);
+    const currentVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || sonicVoices.find((v) => v.id === selectedVoiceId);
     let targetVoiceId = selectedVoiceId;
 
-    // If current voice does not support the newly selected language, automatically switch to the native voice
-    if (currentVoiceObj?.language !== lang) {
-      const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
-      const nativeVoice = AURA_VOICES.find((v) => v.language === lang);
-      targetVoiceId = (langConfig as any)?.defaultVoice || nativeVoice?.id || "aura-2-thalia-en";
+    if (selectedEngine === "sonic") {
+      const nativeSonic = sonicVoices.find((v) => v.language === lang);
+      if (nativeSonic) targetVoiceId = nativeSonic.id;
+    } else {
+      // If current voice does not support the newly selected language, automatically switch to the native voice
+      if (currentVoiceObj?.language !== lang) {
+        const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
+        const nativeVoice = AURA_VOICES.find((v) => v.language === lang);
+        targetVoiceId = (langConfig as any)?.defaultVoice || nativeVoice?.id || "aura-2-thalia-en";
+      }
     }
 
     // 2. Stop any currently playing preview
@@ -350,23 +427,76 @@ export function Step3VoiceLanguage({
     // 3. Clear audio cache to avoid stale language previews
     audioBlobCacheRef.current.clear();
 
-    // 4. Update Agent configuration with synchronized voice and listen language
-    setAgentData((prev) => ({
-      ...prev,
-      voice: {
-        ...prev.voice,
-        voice: targetVoiceId,
-        language: lang
-      },
-      listen: {
-        ...prev.listen,
-        provider: prev.listen?.provider || "deepgram",
-        model: prev.listen?.model || "nova-3",
-        language: lang
-      }
-    }));
+    // 4. Determine authentic native greeting translation for the newly selected language
+    const NATIVE_DEFAULT_GREETINGS: Record<string, string> = {
+      en: "Hi! Thanks for connecting. How can I help you today?",
+      hi: "नमस्ते! बात करने के लिए धन्यवाद। आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?",
+      gu: "નમસ્તે! વાત કરવા બદલ આભાર. આજે હું તમને કેવી રીતે મદદ કરી શકું?",
+      es: "¡Hola! Gracias por comunicarte. ¿En qué puedo ayudarte hoy?",
+      fr: "Bonjour ! Merci de nous contacter. Comment puis-je vous aider aujourd'hui ?",
+      de: "Hallo! Vielen Dank für Ihre Kontaktaufnahme. Wie kann ich Ihnen heute helfen?",
+      it: "Ciao! Grazie per averci contattato. Come posso aiutarti oggi?",
+      pt: "Olá! Obrigado por entrar em contato. Como posso ajudar você hoje?",
+      ja: "こんにちは！お電話ありがとうございます。本日はどのようなご用件でしょうか？",
+      zh: "您好！感谢您的致电。请问今天有什么我可以帮您的？",
+      ko: "안녕하세요! 연결해 주셔서 감사합니다. 오늘 어떤 도움이 필요하신가요?",
+      ar: "مرحباً! شكراً لاتصالك بنا. كيف يمكنني مساعدتك اليوم؟",
+      nl: "Hallo! Bedankt voor het contact opnemen. Hoe kan ik u vandaag helpen?",
+      he: "שלום! תודה שפנית אלינו. איך אוכל לעזור לך היום?",
+      sv: "Hej! Tack för att du kontaktar oss. Hur kan jag hjälpa dig idag?",
+      pl: "Cześć! Dziękujemy za kontakt. W czym mogę Ci dzisiaj pomóc?",
+      tr: "Merhaba! Bize ulaştığınız için teşekkürler. Bugün size nasıl yardımcı olabilirim?",
+      id: "Halo! Terima kasih telah menghubungi kami. Ada yang bisa saya bantu hari ini?",
+      th: "สวัสดีค่ะ! ขอบคุณที่ติดต่อเรานะคะ วันนี้มีอะไรให้ช่วยไหมคะ?",
+      ru: "Здравствуйте! Спасибо за обращение. Чем я могу помочь вам сегодня?",
+      vi: "Xin chào! Cảm ơn bạn đã liên hệ. Tôi có thể giúp gì cho bạn hôm nay?",
+      tl: "Kamusta! Salamat sa pagtawag. Paano kita matutulungan ngayon?",
+      ta: "வணக்கம்! எங்களைத் தொடர்பு கொண்டதற்கு நன்றி. இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?",
+      te: "నమస్కారం! మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు. ఈరోజు మీకు ఎలా సహాయపడగలను?",
+      bn: "নমস্কার! যোগাযোগ করার জন্য ধন্যবাদ। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?",
+      pa: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਸਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰਨ ਲਈ ਧੰਨਵਾਦ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
+      ur: "السلام علیکم! رابطہ کرنے کا شکریہ۔ آج میں آپ کی کیا مدد کر سکتا ہوں؟",
+      el: "Γεια σας! Ευχαριστούμε που επικοινωνήσατε μαζί μας. Πώς μπορώ να σας βοηθήσω σήμερα;",
+      da: "Hej! Tak fordi du kontakter os. Hvordan kan jeg hjælpe dig i dag?",
+      fi: "Hei! Kiitos yhteydenotostasi. Kuinka voin auttaa sinua tänään?",
+      no: "Hei! Takk for at du kontakter oss. Hvordan kan jeg hjelpe deg i dag?",
+      cs: "Dobrý den! Děkujeme, že jste se ozvali. Jak vám mohu dnes pomoci?",
+      hu: "Üdvözlöm! Köszönjük megkeresését. Miben segíthetek ma?",
+      ro: "Bună! Îți mulțumim că ne-ai contactat. Cu ce te pot ajuta astăzi?",
+      uk: "Вітаю! Дякуємо за звернення. Чим можу допомогти вам сьогодні?"
+    };
 
-    // 5. Pre-warm preview for newly selected voice in the target language
+    const translatedGreeting = NATIVE_DEFAULT_GREETINGS[lang] || NATIVE_DEFAULT_GREETINGS["en"];
+
+    // 5. Update Agent configuration with synchronized voice, listen language, and translated greeting
+    setAgentData((prev) => {
+      // If current greeting is empty or matches another default English greeting pattern, adapt to translated greeting
+      const isDefaultOrGeneric = !prev.greeting ||
+        prev.greeting.includes("How can I help you today?") ||
+        prev.greeting.includes("How can I assist you?") ||
+        prev.greeting.includes("reaching out to support") ||
+        prev.greeting.includes("AI voice assistant") ||
+        Object.values(NATIVE_DEFAULT_GREETINGS).includes(prev.greeting);
+
+      return {
+        ...prev,
+        greeting: isDefaultOrGeneric ? translatedGreeting : prev.greeting,
+        voice: {
+          ...prev.voice,
+          provider: selectedEngine === "sonic" ? "cartesia" : "deepgram",
+          voice: targetVoiceId,
+          language: lang
+        },
+        listen: {
+          ...prev.listen,
+          provider: prev.listen?.provider || "deepgram",
+          model: prev.listen?.model || "nova-3",
+          language: lang
+        }
+      };
+    });
+
+    // 6. Pre-warm preview for newly selected voice in the target language
     prefetchVoiceSample(targetVoiceId);
   };
 
@@ -394,43 +524,79 @@ export function Step3VoiceLanguage({
     };
   }, []);
 
-  const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
-  const selectedMetadata = VOICE_METADATA_MAP[selectedVoiceId] || {
-    accent: "US English",
-    tone: selectedVoiceObj.style,
-    bestFor: "General Telephony"
-  };
+  const selectedVoiceObj = useMemo(() => {
+    if (selectedEngine === "sonic") {
+      return (
+        sonicVoices.find((v) => v.id === selectedVoiceId) ||
+        POPULAR_SONIC_VOICES.find((v) => v.id === selectedVoiceId) ||
+        POPULAR_SONIC_VOICES[0]
+      );
+    }
+    return AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
+  }, [selectedEngine, selectedVoiceId, sonicVoices]);
+
+  const selectedMetadata = useMemo(() => {
+    if (selectedEngine === "sonic") {
+      return {
+        accent: (selectedVoiceObj.language || "en").toUpperCase(),
+        tone: selectedVoiceObj.style || "Ultra-Natural",
+        bestFor: "Customer Care & Sales"
+      };
+    }
+    return VOICE_METADATA_MAP[selectedVoiceId] || {
+      accent: "US English",
+      tone: selectedVoiceObj.style,
+      bestFor: "General Telephony"
+    };
+  }, [selectedEngine, selectedVoiceId, selectedVoiceObj]);
+
+  // Unique languages available in Sonic voices
+  const availableSonicLanguages = useMemo(() => {
+    const set = new Set<string>();
+    sonicVoices.forEach((v) => {
+      if (v.language) set.add(v.language);
+    });
+    return Array.from(set).sort();
+  }, [sonicVoices]);
 
   // Filtered voice list for the rich dropdown catalog
   const filteredVoices = useMemo(() => {
-    return AURA_VOICES.filter((v) => {
+    const rawList = selectedEngine === "sonic" ? sonicVoices : AURA_VOICES;
+
+    return rawList.filter((v) => {
+      // Sonic language filter
+      if (selectedEngine === "sonic" && sonicLangFilter !== "all" && v.language !== sonicLangFilter) {
+        return false;
+      }
+
       // 1. Gender / Language filter
-      if (activeFilter === "female" && v.gender.toLowerCase() !== "female") return false;
-      if (activeFilter === "male" && v.gender.toLowerCase() !== "male") return false;
-      if (activeFilter === "english" && (v.language !== "en" || v.id.startsWith("aura-2-a") || v.id.startsWith("aura-2-j") || v.id.startsWith("aura-2-c"))) return false;
+      if (activeFilter === "female" && (v.gender || "").toLowerCase() !== "female") return false;
+      if (activeFilter === "male" && (v.gender || "").toLowerCase() !== "male") return false;
+      if (activeFilter === "english" && (v.language !== "en" || (v.id.startsWith("aura-2-") && !v.id.endsWith("-en")))) return false;
       if (activeFilter === "multilingual" && v.language === "en" && !v.id.startsWith("aura-2")) return false;
 
-      // 2. Use-case category (sales, support, ...)
-      if (activeCategory !== "all" && !getVoiceCategories(v.id).includes(activeCategory as any)) return false;
+      // 2. Use-case category (sales, support, ...) for Flux
+      if (selectedEngine === "flux" && activeCategory !== "all" && !getVoiceCategories(v.id).includes(activeCategory as any)) return false;
 
       // 3. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const meta = VOICE_METADATA_MAP[v.id];
-        const matchName = v.name.toLowerCase().includes(q);
+        const matchName = (v.name || "").toLowerCase().includes(q);
         const matchDesc = (v.description || "").toLowerCase().includes(q);
         const matchStyle = (v.style || "").toLowerCase().includes(q);
         const matchBest = (meta?.bestFor || "").toLowerCase().includes(q);
         const matchTone = (meta?.tone || "").toLowerCase().includes(q);
         const matchAccent = (meta?.accent || "").toLowerCase().includes(q);
-        const matchCategory = getVoiceCategories(v.id).some((c) =>
+        const matchLang = (v.language || "").toLowerCase().includes(q);
+        const matchCategory = selectedEngine === "flux" ? getVoiceCategories(v.id).some((c) =>
           (VOICE_CATEGORIES.find((x) => x.id === c)?.label || "").toLowerCase().includes(q)
-        );
-        return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent || matchCategory;
+        ) : false;
+        return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent || matchCategory || matchLang;
       }
       return true;
     });
-  }, [searchQuery, activeFilter, activeCategory]);
+  }, [selectedEngine, sonicVoices, sonicLangFilter, searchQuery, activeFilter, activeCategory]);
 
   return (
     <div className="space-y-6 text-left">
@@ -454,20 +620,73 @@ export function Step3VoiceLanguage({
 
       {/* Section 1: Rich Production Voice Picker */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--color-border)]/60 pb-3">
           <div>
             <div className="flex items-center gap-1.5">
               <label className="block text-xs font-semibold text-[var(--color-heading)]">
-                Voice Model
+                Voice Model Engine
               </label>
               <InfoTooltip
-                content="Aura voices provide human-like tone, natural breathing, and ~200ms ultra-low latency for seamless telephone conversations."
+                content="Choose between Flux Conversation Engine for standard clarity or Sonic Engine for hyper-realistic human prosody, breathing, and sub-100ms ultra-low latency."
                 position="top"
               />
             </div>
+            <p className="text-[11px] text-[var(--color-muted)] mt-0.5">
+              Select your conversational synthesis architecture
+            </p>
           </div>
-          <span className="text-[10px] text-[var(--color-muted)] font-medium">
-            20 Enterprise Spoken Voices Available
+
+          {/* Engine Dual Toggle: Flux vs Sonic */}
+          <div className="inline-flex p-1 bg-[var(--color-surface-muted)] rounded-lg border border-[var(--color-border)] self-start sm:self-center shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleEngineSwitch("flux")}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedEngine === "flux"
+                  ? "bg-[var(--color-surface)] text-[var(--color-primary)] shadow-xs border border-[var(--color-border)]"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <span>Flux Engine</span>
+              <span className="text-[9px] px-1 py-0.2 bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] rounded font-medium">Standard</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleEngineSwitch("sonic")}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                selectedEngine === "sonic"
+                  ? "bg-[var(--color-surface)] text-[var(--color-primary)] shadow-xs border border-[var(--color-border)]"
+                  : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+              <span>Sonic Engine</span>
+              <span className="text-[9px] px-1 py-0.2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded font-bold border border-emerald-500/20">Hyper-Real</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Engine Subheader & Stats */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+          <span className="text-[var(--color-muted)]">
+            {selectedEngine === "sonic" ? (
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Cartesia Sonic Active • Sub-100ms streaming TTS &amp; natural breathing
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[var(--color-muted)] font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
+                Flux Spoken AI Active • Reliable low-latency conversational telephony
+              </span>
+            )}
+          </span>
+          <span className="text-[10px] text-[var(--color-muted)] font-mono">
+            {selectedEngine === "sonic"
+              ? `${sonicVoices.length} Sonic Voices Available`
+              : `${AURA_VOICES.length} Flux Voices Available`}
           </span>
         </div>
 
@@ -486,13 +705,26 @@ export function Step3VoiceLanguage({
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
                 {/* Voice Avatar Badge */}
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 border ${
+                  selectedEngine === "sonic"
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                    : "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20"
+                }`}>
                   {selectedVoiceObj.name[0]}
                 </div>
 
                 <div className="min-w-0 flex items-center gap-2 flex-wrap truncate">
                   <span className="font-bold text-xs text-[var(--color-heading)]">
                     {selectedVoiceObj.name}
+                  </span>
+
+                  {/* Engine Badge */}
+                  <span className={`inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${
+                    selectedEngine === "sonic"
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                      : "bg-[var(--color-primary-light)] text-[var(--color-primary)] border-[var(--color-primary)]/20"
+                  }`}>
+                    {selectedEngine.toUpperCase()}
                   </span>
 
                   {/* Accent Tag */}
@@ -506,7 +738,7 @@ export function Step3VoiceLanguage({
                     {selectedMetadata.tone}
                   </span>
 
-                  {/* Best For Tag (fills space smoothly) */}
+                  {/* Best For Tag */}
                   <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] bg-[var(--color-primary-light)]/20 px-2 py-0.5 rounded border border-[var(--color-primary)]/20">
                     <Sparkles className="w-2.5 h-2.5 shrink-0" />
                     <span>{selectedMetadata.bestFor}</span>
@@ -529,19 +761,18 @@ export function Step3VoiceLanguage({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search voice by name, tone, accent, or use-case..."
+                      placeholder={`Search ${selectedEngine === "sonic" ? "Sonic" : "Flux"} voices by name, language, or tone...`}
                       className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                     />
                   </div>
 
-                  {/* Filter Chips */}
+                  {/* Filter Chips: Gender & Common Presets */}
                   <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Gender</span>
                     {[
-                      { id: "all", label: "All Voices" },
+                      { id: "all", label: "All" },
                       { id: "female", label: "Female" },
-                      { id: "male", label: "Male" },
-                      { id: "english", label: "English (US)" },
-                      { id: "multilingual", label: "Multilingual" }
+                      { id: "male", label: "Male" }
                     ].map((f) => (
                       <button
                         key={f.id}
@@ -556,26 +787,49 @@ export function Step3VoiceLanguage({
                         {f.label}
                       </button>
                     ))}
+
+                    {/* Sonic Languages Filter */}
+                    {selectedEngine === "sonic" && (
+                      <>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0 ml-2">Language</span>
+                        {["all", "en", "es", "fr", "de", "ja", "it", "hi", "ar", "pt"].map((langCode) => (
+                          <button
+                            key={langCode}
+                            type="button"
+                            onClick={() => setSonicLangFilter(langCode)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 uppercase ${
+                              sonicLangFilter === langCode
+                                ? "bg-emerald-600 text-white shadow-2xs"
+                                : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
+                            }`}
+                          >
+                            {langCode === "all" ? "All Languages" : langCode}
+                          </button>
+                        ))}
+                      </>
+                    )}
                   </div>
 
-                  {/* Use-case chips: pick the kind of agent and only matching voices are shown */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Use case</span>
-                    {[{ id: "all", label: "Any" }, ...VOICE_CATEGORIES].map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setActiveCategory(c.id)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 ${
-                          activeCategory === c.id
-                            ? "bg-[var(--color-primary)] text-white shadow-2xs"
-                            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
-                        }`}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Use-case chips for Flux */}
+                  {selectedEngine === "flux" && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Use case</span>
+                      {[{ id: "all", label: "Any" }, ...VOICE_CATEGORIES].map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setActiveCategory(c.id)}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 ${
+                            activeCategory === c.id
+                              ? "bg-[var(--color-primary)] text-white shadow-2xs"
+                              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Scrollable Voice Cards List */}

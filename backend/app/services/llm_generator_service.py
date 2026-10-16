@@ -170,8 +170,42 @@ class LLMGeneratorService:
             intent_guidance = "INTENT: CUSTOM BUSINESS ASSISTANT\n- Deliver a tailored conversational workflow."
             greeting_instruction = "Clear, friendly telephone greeting"
 
-        # Language directive
-        lang_note = f"Language: {language}" if language and language != "en" else "Language: English (with multilingual mirroring)"
+        # Language directive mapping
+        LANG_NAMES = {
+            "hi": "Hindi (हिन्दी)",
+            "gu": "Gujarati (ગુજરાતી)",
+            "es": "Spanish (Español)",
+            "fr": "French (Français)",
+            "de": "German (Deutsch)",
+            "it": "Italian (Italiano)",
+            "pt": "Portuguese (Português)",
+            "ja": "Japanese (日本語)",
+            "zh": "Chinese (Mandarin / 中文)",
+            "ko": "Korean (한국어)",
+            "ar": "Arabic (العربية)",
+            "ru": "Russian (Русский)",
+            "ta": "Tamil (தமிழ்)",
+            "te": "Telugu (తెలుగు)",
+            "bn": "Bengali (বাংলা)",
+            "pa": "Punjabi (ਪੰਜਾਬੀ)",
+            "ur": "Urdu (اردو)",
+            "nl": "Dutch (Nederlands)",
+            "tr": "Turkish (Türkçe)",
+            "vi": "Vietnamese (Tiếng Việt)",
+            "th": "Thai (ไทย)",
+            "pl": "Polish (Polski)",
+            "sv": "Swedish (Svenska)",
+            "id": "Indonesian (Bahasa Indonesia)"
+        }
+        target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
+        if language and language != "en":
+            lang_note = (
+                f"MANDATORY LANGUAGE RULE: The agent MUST speak and converse in {target_lang_name}.\n"
+                f"- 'suggested_greeting' and ALL 'suggested_greetings' MUST be written authentically in {target_lang_name} (using its native script/characters, e.g. Devanagari for Hindi).\n"
+                f"- Any spoken telephone dialogue examples or openers inside 'system_prompt' MUST be written in {target_lang_name}."
+            )
+        else:
+            lang_note = "Language: English (with multilingual mirroring)"
 
         system_instruction = f"""You are an elite conversational AI voice architect for real-time telephone voice agents.
 Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response Length, synthesize complete spoken telephone system prompt instructions and 3 distinct opening greeting options.
@@ -416,8 +450,14 @@ OBJECTIONS & PHONE RULES:
         type_key = (agent_type or "marketing").lower()
         clean_name = name.strip() or "Voice Assistant"
         clean_desc = (objective or description).strip() or "Customer outreach and support."
-        clean_role = (role or "Representative").strip()
-        lang_note = f"Language: {language}" if language and language != "en" else "Language: English"
+        target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
+        if language and language != "en":
+            lang_note = (
+                f"MANDATORY LANGUAGE: Generate ALL 3 opening greeting lines strictly in authentic, natural spoken {target_lang_name} "
+                f"using its native script/characters (e.g. Devanagari script for Hindi, not English transliteration)."
+            )
+        else:
+            lang_note = "Language: English"
 
         system_instruction = f"""You are an elite conversational AI voice architect.
 Your task is to generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective.

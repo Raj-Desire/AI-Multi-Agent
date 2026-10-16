@@ -202,7 +202,8 @@ export function Step6PromptInstructions({
             system_prompt: res.system_prompt,
             greeting: chosenGreeting,
             objective: res.suggested_objective || prev.objective || desc,
-            voice: res.recommended_voice ? { ...(prev.voice as any), voice: res.recommended_voice } : prev.voice
+            // Keep user-configured voice and language; only fallback to recommended if no voice was set
+            voice: prev.voice?.voice ? prev.voice : (res.recommended_voice ? { ...(prev.voice as any), voice: res.recommended_voice } : prev.voice)
           }));
 
           if (!silent) {

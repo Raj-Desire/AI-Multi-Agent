@@ -70,6 +70,8 @@ class DeepgramVoiceAgentClient:
         self._is_ready = False
         self._session_id: Optional[str] = None
 
+        self._audio_received_event = asyncio.Event()
+
     @property
     def is_ready(self) -> bool:
         return self._is_ready and self._is_connected
@@ -151,9 +153,21 @@ class DeepgramVoiceAgentClient:
             self._is_ready = True
             logger.info("Deepgram Voice Agent initialized successfully.")
 
-            # Step 5: Inject initial greeting only if not already declared in settings.agent.greeting
-            if not getattr(settings.agent, "greeting", None) and greeting and greeting.strip():
-                await self.inject_agent_message(greeting.strip())
+            # Step 5: Deliver opening greeting
+            # If settings.agent.greeting was not declared, or if third-party TTS engine requires explicit injection,
+            # wait briefly (up to 1.2s) for server-side greeting audio to start. If no audio frames arrive, explicitly inject it.
+            if greeting and greeting.strip():
+                clean_greeting = greeting.strip()
+                if not getattr(settings.agent, "greeting", None):
+                    logger.info(f"Explicitly injecting agent greeting: '{clean_greeting[:40]}...'")
+                    await self.inject_agent_message(clean_greeting)
+                else:
+                    try:
+                        await asyncio.wait_for(self._audio_received_event.wait(), timeout=1.2)
+                        logger.info("Server-side greeting audio confirmed flowing from engine.")
+                    except asyncio.TimeoutError:
+                        logger.warning("No initial greeting audio detected after 1.2s; fallback injecting greeting.")
+                        await self.inject_agent_message(clean_greeting)
 
             return True
 
@@ -270,6 +284,7 @@ class DeepgramVoiceAgentClient:
 
                 # Handle binary audio frame from TTS
                 if isinstance(msg, bytes):
+                    self._audio_received_event.set()
                     if self.on_audio:
                         await self.on_audio(msg)
                     continue
@@ -358,6 +373,7 @@ class DeepgramVoiceAgentClient:
         self._closed_event.set()
         self._welcome_event.set()
         self._settings_applied_event.set()
+        self._audio_received_event.set()
         # Note: Do not set _prompt_updated_event on close, so update_prompt_and_wait_ack returns False
         if self._receive_task:
             self._receive_task.cancel()

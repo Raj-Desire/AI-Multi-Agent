@@ -254,49 +254,74 @@ class VoicePromptBuilder:
         elif config.listen and config.listen.language:
             lang = config.listen.language.lower().strip()
 
-        if lang in ["gu", "gujarati", "gu-in"]:
+        # Comprehensive language metadata map: (Code, English Name, Native Name, Native Example Greeting/Phrase)
+        LANGUAGE_SPECS = {
+            "gu": ("Gujarati", "ગુજરાતી", "હા, ચોક્કસ! તમને કેવા પ્રકારની સહાયતા જોઈએ છે?"),
+            "hi": ("Hindi", "हिन्दी", "नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की सहायता चाहिए?"),
+            "es": ("Spanish", "Español", "¡Hola! Por supuesto, ¿en qué puedo ayudarte hoy?"),
+            "fr": ("French", "Français", "Bonjour ! Absolument, comment puis-je vous aider aujourd'hui ?"),
+            "de": ("German", "Deutsch", "Hallo! Sehr gerne, wie kann ich Ihnen heute helfen?"),
+            "it": ("Italian", "Italiano", "Ciao! Certamente, come posso aiutarti oggi?"),
+            "pt": ("Portuguese", "Português", "Olá! Com certeza, como posso ajudar você hoje?"),
+            "ja": ("Japanese", "日本語", "こんにちは！はい、かしこまりました。本日はどのようなご用件でしょうか？"),
+            "zh": ("Chinese (Mandarin)", "中文", "您好！没问题，请问有什么我可以协助您的？"),
+            "ko": ("Korean", "한국어", "안녕하세요! 네, 무엇을 도와드릴까요?"),
+            "ar": ("Arabic", "العربية", "أهلاً وسهلاً! بالتأكيد، كيف يمكنني مساعدتك اليوم؟"),
+            "nl": ("Dutch", "Nederlands", "Hallo! Zeker, hoe kan ik u vandaag helpen?"),
+            "he": ("Hebrew", "עברית", "שלום! בהחלט, איך אוכל לעזור לך היום?"),
+            "sv": ("Swedish", "Svenska", "Hej! Absolut, vad kan jag hjälpa dig med idag?"),
+            "pl": ("Polish", "Polski", "Cześć! Oczywiście, w czym mogę Ci dzisiaj pomóc?"),
+            "tr": ("Turkish", "Türkçe", "Merhaba! Elbette, bugün size nasıl yardımcı olabilirim?"),
+            "id": ("Indonesian", "Bahasa Indonesia", "Halo! Tentu saja, ada yang bisa saya bantu hari ini?"),
+            "th": ("Thai", "ไทย", "สวัสดีค่ะ ยินดีเลยค่ะ วันนี้มีอะไรให้ช่วยไหมคะ?"),
+            "ru": ("Russian", "Русский", "Здравствуйте! Конечно, чем я могу вам помочь сегодня?"),
+            "vi": ("Vietnamese", "Tiếng Việt", "Xin chào! Rất sẵn lòng, tôi có thể giúp gì cho bạn hôm nay?"),
+            "tl": ("Tagalog (Filipino)", "Filipino", "Kamusta! Walang problema, paano kita matutulungan ngayon?"),
+            "ta": ("Tamil", "தமிழ்", "வணக்கம்! நிச்சயமாக, இன்று உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"),
+            "te": ("Telugu", "తెలుగు", "నమస్కారం! తప్పకుండా, ఈరోజు మీకు నేను ఎలా సహాయపడగలను?"),
+            "bn": ("Bengali", "বাংলা", "নমস্কার! হ্যাঁ নিশ্চয়ই, আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?"),
+            "pa": ("Punjabi", "ਪੰਜਾਬੀ", "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਹਾਂਜੀ ਜ਼ਰੂਰ, ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?"),
+            "ur": ("Urdu", "اردو", "السلام علیکم! جی بالکل، آج میں آپ کی کیا مدد کر سکتا ہوں؟"),
+            "el": ("Greek", "Ελληνικά", "Γεια σας! Βεβαίως, πώς μπορώ να σας βοηθήσω σήμερα;"),
+            "da": ("Danish", "Dansk", "Hej! Selvfølgelig, hvordan kan jeg hjælpe dig i dag?"),
+            "fi": ("Finnish", "Suomi", "Hei! Totta kai, kuinka voin auttaa sinua tänään?"),
+            "no": ("Norwegian", "Norsk", "Hei! Selvfølgelig, hvordan kan jeg hjelpe deg i dag?"),
+            "cs": ("Czech", "Čeština", "Dobrý den! Jistě, jak vám mohu dnes pomoci?"),
+            "hu": ("Hungarian", "Magyar", "Üdvözlöm! Természetesen, miben segíthetek ma?"),
+            "ro": ("Romanian", "Română", "Bună! Sigur că da, cu ce te pot ajuta astăzi?"),
+            "uk": ("Ukrainian", "Українська", "Вітаю! Звісно, чим я можу допомогти вам сьогодні?")
+        }
+
+        # Normalize prefix (e.g. "es-es" -> "es", "hi-in" -> "hi")
+        base_code = lang.split("-")[0].split("_")[0].strip()
+
+        # Match specific languages
+        for code, (eng_name, native_name, sample_phrase) in LANGUAGE_SPECS.items():
+            if lang == code or base_code == code or lang == eng_name.lower():
+                return (
+                    f"[MANDATORY LANGUAGE DIRECTIVE: {eng_name.upper()} ({native_name})]\n"
+                    f"- PRIMARY CONVERSATIONAL LANGUAGE: The caller expects you to converse EXCLUSIVELY in {eng_name} ({native_name}).\n"
+                    f"- LIVE TOKEN GENERATION: You MUST think, comprehend, and generate every single response token directly in natural, authentic spoken {eng_name} ({native_name}).\n"
+                    f"- SPOKEN IDIOMATIC FLUENCY: Use natural everyday phrasing, polite conversational markers, and correct grammar suitable for a real telephone call (e.g. '{sample_phrase}').\n"
+                    f"- STRICT NO-ENGLISH RULE: NEVER revert to English, reply in English, or mix English sentences when the caller speaks {eng_name}. Stay 100% in {eng_name}.\n"
+                    f"- ADAPTIVE CODE-SWITCHING: If the caller introduces bilingual loan words or code-switches (e.g. mixing everyday technical or local terms), understand them effortlessly and respond naturally in {eng_name} without breaking flow.\n"
+                    f"- BREVITY IN {eng_name.upper()}: Respect the strict 1-2 sentence conversational limit in {eng_name}. Do NOT output long paragraphs."
+                )
+
+        if lang.startswith("en") or lang == "english":
             return (
-                "[MANDATORY LANGUAGE DIRECTIVE: GUJARATI (ગુજરાતી)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, fluent spoken Gujarati (ગુજરાતી).\n"
-                "- When the customer speaks Gujarati (e.g. 'અરે અમદાવાદ માં પ્રોપર્ટી જોઈએ છે'), ALWAYS answer in fluent, polite Gujarati (e.g., 'હા, ચોક્કસ! અમદાવાદમાં તમને કેવા પ્રકારની પ્રોપર્ટીમાં રસ છે?').\n"
-                "- NEVER reply in English when Gujarati is configured or when the customer speaks Gujarati."
+                "[MANDATORY LANGUAGE DIRECTIVE: ENGLISH]\n"
+                "- PRIMARY CONVERSATIONAL LANGUAGE: Converse and respond in natural, fluent spoken English.\n"
+                "- If the caller switches to another language, seamlessly adapt and respond in that language if you understand it."
             )
-        elif lang in ["hi", "hindi", "hi-in"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: HINDI (हिन्दी)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, polite spoken Hindi (हिन्दी).\n"
-                "- When the customer speaks Hindi, ALWAYS answer in clear, friendly Hindi (e.g., 'नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की प्रॉपर्टी चाहिए?').\n"
-                "- NEVER reply in English when Hindi is configured or when the customer speaks Hindi."
-            )
-        elif lang in ["es", "spanish", "es-es", "es-us"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: SPANISH (ESPAÑOL)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent Spanish (Español).\n"
-                "- When the customer speaks Spanish, answer in polite, clear Spanish."
-            )
-        elif lang in ["fr", "french", "fr-fr"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: FRENCH (FRANÇAIS)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent French (Français)."
-            )
-        elif lang in ["de", "german", "de-de"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: GERMAN (DEUTSCH)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural German (Deutsch)."
-            )
-        elif lang in ["ja", "japanese", "ja-jp"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: JAPANESE (日本語)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, polite Japanese (日本語)."
-            )
-        else:
-            return (
-                "[LANGUAGE MIRRORING DIRECTIVE]\n"
-                "- If the customer speaks in Gujarati (ગુજરાતી), answer in natural Gujarati.\n"
-                "- If the customer speaks in Hindi (हिन्दी), answer in natural Hindi.\n"
-                "- If the customer speaks in English, answer in English.\n"
-                "- Always seamlessly match and mirror the language spoken by the customer."
-            )
+
+        # Fallback mirroring directive for unlisted or custom locales
+        return (
+            "[LANGUAGE MIRRORING & COMPREHENSION DIRECTIVE]\n"
+            "- Understand caller speech in whatever language they speak.\n"
+            "- ALWAYS seamlessly match and mirror the caller's spoken language in your response.\n"
+            "- Speak naturally, politely, and maintain the 1-2 sentence spoken phone brevity."
+        )
 
     @staticmethod
     def _build_business_knowledge_section(
@@ -724,7 +749,6 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
         few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
-        # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & DIRECT ANSWERING RULES]
 1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Deliver facts immediately without unnecessary introductory fluff.
 2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller! If a price or detail is NOT written in your facts, never guess or estimate it; say you'll check that detail and ask one short follow-up question instead. Never send the caller to an email address, website or another team unless that exact contact is in your facts.
@@ -736,23 +760,28 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 - If in a live browser test preview: "I understand completely! In this live preview environment, direct telephone transfers are simulated, but on a live inbound call you will be immediately transferred to our specialist."
 Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
 7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
-8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
+8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
+9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
+10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation."""
 
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
 
-        # If custom system_prompt is provided, prioritize it directly to avoid truncation
+        # If custom system_prompt is provided, prioritize it directly while ensuring language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
             parts = [
                 temporal_rule,
+                language_rule,
                 config.system_prompt.strip(),
                 workflow_stages_rule,
                 knowledge_section,
+                length_rule,
                 acoustics_rule,
                 turn_taking_rule,
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
-                telephony_rules
+                telephony_rules,
+                platform_rules_text
             ]
         else:
             role_directives = VoicePromptBuilder._build_role_intent_directives(config)
@@ -793,7 +822,14 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             compiled_prompt,
             config=config,
             business_profile=business_profile
-        )
-        return resolved_prompt.strip()
+        ).strip()
+
+        # Telephony Performance Optimization: Deepgram managed LLMs have a hard 25,000 character limit.
+        # Keeping the active prompt under 16,000 characters eliminates LLM prefill delay, reduces TTFT (Time-To-First-Token)
+        # by 2-3x, and ensures instantaneous conversational replies.
+        if len(resolved_prompt) > 18000:
+            resolved_prompt = resolved_prompt[:18000]
+
+        return resolved_prompt
 
 
