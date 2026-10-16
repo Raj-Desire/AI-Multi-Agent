@@ -163,7 +163,7 @@ class AgentRepository:
                 query = "SELECT * FROM c WHERE c.organization_id = @org_id"
                 params = [{"name": "@org_id", "value": organization_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                     for item in items:
                         cfg = AgentConfiguration.model_validate(item)
                         if cfg.agent_id not in seen_agent_ids:

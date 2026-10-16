@@ -1,4 +1,5 @@
 import time
+from app.schemas.call import slim_call_dict
 import asyncio
 import math
 from typing import Optional, List, Dict, Any
@@ -309,7 +310,7 @@ async def list_campaign_calls(
     )
     total_pages = max(1, math.ceil(total / page_size))
     return ApiResponse.ok({
-        "items": [c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in items],
+        "items": [slim_call_dict(c) if hasattr(c, "model_dump") else c for c in items],
         "total": total,
         "page": page,
         "page_size": page_size,

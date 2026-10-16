@@ -82,7 +82,7 @@ class ProspectRepository:
                 {"name": "@phone", "value": normalized_phone}
             ]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                 if items:
                     p = Prospect.model_validate(items[0])
                     self._memory_store[p.id] = p
@@ -113,7 +113,7 @@ class ProspectRepository:
                 {"name": "@email", "value": target_email}
             ]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                 if items:
                     p = Prospect.model_validate(items[0])
                     self._memory_store[p.id] = p
@@ -432,7 +432,7 @@ class ProspectRepository:
                 query = "SELECT c.group_name, c.tags FROM c WHERE c.organization_id = @organization_id"
                 params = [{"name": "@organization_id", "value": organization_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                     for item in items:
                         gn = item.get("group_name")
                         if gn and str(gn).strip():

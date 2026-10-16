@@ -848,7 +848,7 @@ class CampaignService:
     ) -> Tuple[List[Any], int]:
         """Returns single-source-of-truth call records for this campaign."""
         await self.get_campaign(ctx, campaign_id)
-        all_calls = await self.call_repo.list_by_org(ctx.organization_id)
+        all_calls = await self.call_repo.list_summaries_by_org(ctx.organization_id)
         raw_campaign_calls = [c for c in all_calls if c.campaign_id == campaign_id]
 
         # Deduplicate calls by call_sid (if available) or id, prioritizing richer intelligence records

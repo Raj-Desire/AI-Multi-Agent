@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, Request, Query
 from app.core.dependencies import TenantContext, get_tenant_context
-from app.schemas.call import MakeCallRequest, CallResponse
+from app.schemas.call import MakeCallRequest, CallResponse, slim_call_dict
 from app.schemas.common import ApiResponse
 from app.services.call_service import CallService
 from app.api.v1.twilio import twilio_repo
@@ -146,11 +146,12 @@ async def analyze_call(
     return ApiResponse.ok(CallResponse.model_validate(call))
 
 
-@router.get("", response_model=ApiResponse[List[CallResponse]])
+@router.get("", response_model=ApiResponse[List[Dict[str, Any]]])
 async def list_calls(
     type: Optional[str] = None,  # "simple" | "ai" | None
     campaign_id: Optional[str] = None,
     prospect_id: Optional[str] = None,
+    full: bool = False,  # True returns transcripts, agent snapshots and analytics for every row (slow, large)
     ctx: TenantContext = Depends(get_tenant_context),
     service: CallService = Depends(get_call_service)
 ):
@@ -163,9 +164,12 @@ async def list_calls(
     - `campaign_id`: filter by campaign
     - `prospect_id`: filter by prospect
     """
-    calls = await service.list_calls(ctx, call_type=type)
+    calls = await service.list_calls(ctx, call_type=type, light=not full)
     if campaign_id:
         calls = [c for c in calls if c.campaign_id == campaign_id]
     if prospect_id:
         calls = [c for c in calls if c.prospect_id == prospect_id]
-    return ApiResponse.ok([CallResponse.model_validate(c) for c in calls])
+    if full:
+        return ApiResponse.ok([CallResponse.model_validate(c).model_dump(mode="json") for c in calls])
+    # Summary rows only: open a call (GET /calls/{id}) to load its transcript, analytics and agent snapshot
+    return ApiResponse.ok([slim_call_dict(c) for c in calls])

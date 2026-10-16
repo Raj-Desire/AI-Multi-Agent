@@ -8,6 +8,7 @@ load_dotenv()
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from app.api.v1.twilio import router as twilio_router
 from app.api.v1.calls import router as calls_router
 from app.api.v1.auth import router as auth_router
@@ -80,6 +81,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Compress JSON responses (agent lists, call lists, theme ...): ~80% smaller over the network
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=".*",

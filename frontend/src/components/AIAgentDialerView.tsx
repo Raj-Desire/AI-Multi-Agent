@@ -107,6 +107,21 @@ export function AIAgentDialerView({
     }
   }, [transcriptMessages]);
 
+  // The call list only carries summary rows, so load the full record (transcript, analytics) when a call is opened
+  useEffect(() => {
+    const id = selectedCall?.id;
+    if (!id) return;
+    let cancelled = false;
+    fetchApi<CallRecord>(`/calls/${id}`, LIVE)
+      .then((full) => {
+        if (!cancelled) setSelectedCall((prev) => (prev && prev.id === id ? { ...prev, ...full } : prev));
+      })
+      .catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCall?.id]);
+
   // When a call is opened without a summary (e.g. analysis failed at hang-up), generate it from the transcript
   useEffect(() => {
     if (!selectedCall) return;
@@ -116,7 +131,7 @@ export function AIAgentDialerView({
     if (selectedCall.summary || selectedCall.analytics_status === "pending" || !hasCustomerSpeech || analyzedCallIdsRef.current.has(selectedCall.id)) return;
     analyzedCallIdsRef.current.add(selectedCall.id);
     void handleGenerateSummary(selectedCall.id);
-  }, [selectedCall?.id, selectedCall?.analytics_status]);
+  }, [selectedCall?.id, selectedCall?.analytics_status, selectedCall?.transcript?.length]);
 
   async function handleGenerateSummary(callId: string) {
     try {
@@ -182,7 +197,11 @@ export function AIAgentDialerView({
     return fetchApi<CallRecord[]>("/calls?type=ai", LIVE)
       .then((list) => {
         setCalls(list);
-        setSelectedCall((prev) => (prev ? list.find((c) => c.id === prev.id) ?? prev : prev));
+        setSelectedCall((prev) => {
+          if (!prev) return prev;
+          const row = list.find((c) => c.id === prev.id);
+          return row ? { ...prev, ...row } : prev;
+        });
       })
       .catch(() => { });
   }

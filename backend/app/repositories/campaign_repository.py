@@ -427,7 +427,12 @@ class CampaignMemberRepository:
                 query = "SELECT VALUE COUNT(1) FROM c WHERE c.campaign_id = @campaign_id AND c.status = 'calling'"
                 params = [{"name": "@campaign_id", "value": campaign_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    # Single-partition query when the campaign's organization is known (members are partitioned by organization)
+                    _camp = _CAMPAIGNS_MEM_STORE.get(campaign_id)
+                    if _camp and _camp.organization_id:
+                        items = list(container.query_items(query=query, parameters=params, partition_key=_camp.organization_id, enable_cross_partition_query=False))
+                    else:
+                        items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                     if items:
                         in_mem = int(items[0])
                 except Exception:
@@ -491,7 +496,7 @@ class CampaignMemberRepository:
                     {"name": "@organization_id", "value": organization_id}
                 ]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                     for it in items:
                         container.delete_item(item=it["id"], partition_key=organization_id)
                         count += 1
@@ -552,7 +557,7 @@ class CampaignEventRepository:
                     {"name": "@organization_id", "value": organization_id}
                 ]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                     loaded = [CampaignEvent.model_validate(it) for it in items]
                     # Merge unique by ID
                     event_map = {e.id: e for e in events}

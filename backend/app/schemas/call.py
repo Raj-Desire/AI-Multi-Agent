@@ -52,3 +52,16 @@ class CallResponse(BaseModel):
     error_information: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+
+
+# Heavy fields that list views never need. They are OMITTED (not nulled) so a client can merge a list row
+# over an already-loaded full record without wiping its details.
+HEAVY_CALL_FIELDS = {
+    "agent_config_snapshot", "transcript", "analytics", "latency_metrics", "error_information",
+    "key_insights", "key_requirements", "customer_questions", "objections", "important_info",
+}
+
+
+def slim_call_dict(call) -> dict:
+    """Summary row for call tables: everything except the heavy payload fields."""
+    return CallResponse.model_validate(call).model_dump(mode="json", exclude=HEAVY_CALL_FIELDS)
