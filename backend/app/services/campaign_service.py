@@ -179,7 +179,11 @@ class CampaignService:
             selected = all_prospects
             if filter_spec.tags:
                 tag_set = {t.lower() for t in filter_spec.tags}
-                selected = [p for p in selected if any(t.lower() in tag_set for t in p.tags)]
+                selected = [
+                    p for p in selected
+                    if (p.group_name and p.group_name.strip().lower() in tag_set)
+                    or any(t.lower() in tag_set for t in (p.tags or []))
+                ]
             if filter_spec.statuses:
                 status_set = {s.lower() for s in filter_spec.statuses}
                 selected = [p for p in selected if str(getattr(p.status, "value", p.status)).lower() in status_set]

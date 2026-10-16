@@ -168,6 +168,18 @@ const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] =
 
 const ALL_SYSTEM_TIMEZONES = getSystemTimezones();
 
+const calculateWindowDurationMinutes = (start: string, end: string): number => {
+  try {
+    const [startH, startM] = (start || "09:00").split(":").map(Number);
+    const [endH, endM] = (end || "18:00").split(":").map(Number);
+    const startTotal = (startH || 0) * 60 + (startM || 0);
+    const endTotal = (endH || 0) * 60 + (endM || 0);
+    return endTotal > startTotal ? endTotal - startTotal : 0;
+  } catch {
+    return 0;
+  }
+};
+
 export function CampaignCreateWizardModal({
   isOpen,
   onClose,
@@ -300,14 +312,17 @@ export function CampaignCreateWizardModal({
       }
 
       // 3. Fetch Prospects
-      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=100");
+      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=500");
       if (prspRes && prspRes.items) {
         setProspects(prspRes.items);
         setProspectTotal(prspRes.total);
 
-        // Extract distinct tags
+        // Extract distinct contact groups and tags
         const tagsSet = new Set<string>();
-        prspRes.items.forEach((p) => (p.tags || []).forEach((t) => tagsSet.add(t)));
+        prspRes.items.forEach((p) => {
+          if (p.group_name && p.group_name.trim()) tagsSet.add(p.group_name.trim());
+          (p.tags || []).forEach((t) => { if (t && t.trim()) tagsSet.add(t.trim()); });
+        });
         setAvailableTags(Array.from(tagsSet));
       }
     } catch (err: any) {
@@ -558,7 +573,9 @@ export function CampaignCreateWizardModal({
     if (selectionMode === "tags") {
       if (selectedTags.length === 0) return 0;
       return prospects.filter((p) => {
-        const matchesTag = (p.tags || []).some((t) => selectedTags.includes(t));
+        const matchesTag =
+          (p.group_name && selectedTags.includes(p.group_name.trim())) ||
+          (p.tags || []).some((t) => selectedTags.includes(t));
         const notDnc = !excludeDnc || (!p.is_dnc && p.status !== "Do Not Contact");
         return matchesTag && notDnc;
       }).length;
@@ -591,12 +608,6 @@ export function CampaignCreateWizardModal({
       }
     }
     if (currentStep === 4) {
-      if (!callerNumber.trim()) {
-        toast.error("Please specify a valid Twilio Caller ID number.");
-        return false;
-      }
-    }
-    if (currentStep === 5) {
       if (!startDate) {
         toast.error("Please select a Campaign Start Date.");
         return false;
@@ -611,6 +622,12 @@ export function CampaignCreateWizardModal({
       }
       if (startTime >= endTime) {
         toast.error("Calling start time must be earlier than end time.");
+        return false;
+      }
+    }
+    if (currentStep === 5) {
+      if (!callerNumber.trim()) {
+        toast.error("Please specify a valid Twilio Caller ID number.");
         return false;
       }
     }
@@ -716,8 +733,8 @@ export function CampaignCreateWizardModal({
             { num: 1, label: "Details", icon: Megaphone },
             { num: 2, label: "Voice Agent", icon: Bot },
             { num: 3, label: "Audience", icon: Users },
-            { num: 4, label: "Calling Rules", icon: Sliders },
-            { num: 5, label: "Schedule", icon: Calendar },
+            { num: 4, label: "Schedule", icon: Calendar },
+            { num: 5, label: "Calling Rules", icon: Sliders },
             { num: 6, label: "Review", icon: CheckCircle2 },
           ].map((item) => {
             const Icon = item.icon;
@@ -1265,7 +1282,9 @@ export function CampaignCreateWizardModal({
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-[180px] overflow-y-auto pr-1">
                       {availableTags.map((tag) => {
                         const isSelected = selectedTags.includes(tag);
-                        const groupCount = prospects.filter((p) => (p.tags || []).includes(tag)).length;
+                        const groupCount = prospects.filter(
+                          (p) => (p.group_name && p.group_name.trim() === tag) || (p.tags || []).includes(tag)
+                        ).length;
 
                         return (
                           <div
@@ -1348,138 +1367,8 @@ export function CampaignCreateWizardModal({
               </div>
             )}
 
-            {/* Step 4: Calling & Concurrency Rules */}
+            {/* Step 4: Schedule & Timezone */}
             {step === 4 && (
-              <div className="space-y-4 animate-in fade-in duration-200 text-left">
-                <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md flex items-center gap-3">
-                  <Sliders className="w-5 h-5 text-[var(--color-primary)] shrink-0" />
-                  <p className="text-xs text-[var(--color-muted)]">
-                    Configure caller ID, live line concurrency, maximum retry attempts, and ring timeout.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Caller ID Phone Number */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[var(--color-heading)]">
-                      Caller ID Number <span className="text-red-500">*</span>
-                    </label>
-                    {availableNumbers.length > 0 ? (
-                      <select
-                        value={callerNumber}
-                        onChange={(e) => setCallerNumber(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono"
-                      >
-                        {availableNumbers.map((num) => (
-                          <option key={num} value={num}>
-                            {num}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={callerNumber}
-                        onChange={(e) => setCallerNumber(e.target.value)}
-                        placeholder="+14155552671"
-                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono"
-                      />
-                    )}
-                  </div>
-
-                  {/* Max Concurrency Slider */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-[var(--color-heading)]">Max Concurrent Calls</span>
-                      <span className="px-2 py-0.5 rounded bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold">
-                        {maxConcurrent} live lines
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={20}
-                      value={maxConcurrent}
-                      onChange={(e) => setMaxConcurrent(Number(e.target.value))}
-                      className="w-full accent-[var(--color-primary)] cursor-pointer"
-                    />
-                    <div className="flex justify-between text-[10px] text-[var(--color-muted)]">
-                      <span>1 (Gentle)</span>
-                      <span>10 (Standard)</span>
-                      <span>20 (Fast)</span>
-                    </div>
-                  </div>
-
-                  {/* Max Attempts */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[var(--color-heading)]">
-                      Max Attempts Per Contact
-                    </label>
-                    <select
-                      value={maxAttempts}
-                      onChange={(e) => setMaxAttempts(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
-                    >
-                      <option value={1}>1 Attempt (No Retries)</option>
-                      <option value={2}>2 Attempts</option>
-                      <option value={3}>3 Attempts (Recommended)</option>
-                      <option value={4}>4 Attempts</option>
-                      <option value={5}>5 Attempts</option>
-                    </select>
-                    {maxAttempts === 1 && (
-                      <p className="text-[11px] text-[var(--color-muted)]">
-                        Each contact is dialed exactly once. Unanswered calls will not be retried.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Retry Delay - Automatically disabled when 1 attempt */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className={`text-xs font-semibold ${maxAttempts === 1 ? "text-[var(--color-muted)] opacity-60" : "text-[var(--color-heading)]"}`}>
-                        Retry Delay on Unanswered
-                      </label>
-                      {maxAttempts === 1 && (
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]">
-                          Disabled
-                        </span>
-                      )}
-                    </div>
-                    <select
-                      value={maxAttempts === 1 ? 0 : retryDelayMinutes}
-                      disabled={maxAttempts === 1}
-                      onChange={(e) => setRetryDelayMinutes(Number(e.target.value))}
-                      className={`w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] transition-all ${
-                        maxAttempts === 1
-                          ? "opacity-50 bg-[var(--color-surface-muted)] cursor-not-allowed text-[var(--color-muted)]"
-                          : "cursor-pointer"
-                      }`}
-                    >
-                      {maxAttempts === 1 ? (
-                        <option value={0}>Disabled (1 Attempt / No Retries)</option>
-                      ) : (
-                        <>
-                          <option value={15}>15 Minutes</option>
-                          <option value={30}>30 Minutes</option>
-                          <option value={60}>1 Hour</option>
-                          <option value={120}>2 Hours (Recommended)</option>
-                          <option value={240}>4 Hours</option>
-                          <option value={1440}>Next Day (24 Hours)</option>
-                        </>
-                      )}
-                    </select>
-                    {maxAttempts > 1 && (
-                      <p className="text-[11px] text-[var(--color-muted)]">
-                        Time to wait before queuing next attempt when contact does not answer.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 5: Schedule & Timezone */}
-            {step === 5 && (
               <div className="space-y-4 animate-in fade-in duration-200 text-left">
                 <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-[var(--color-primary)] shrink-0" />
@@ -1711,6 +1600,194 @@ export function CampaignCreateWizardModal({
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Step 5: Calling & Concurrency Rules */}
+            {step === 5 && (
+              <div className="space-y-4 animate-in fade-in duration-200 text-left">
+                <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md flex items-center gap-3">
+                  <Sliders className="w-5 h-5 text-[var(--color-primary)] shrink-0" />
+                  <p className="text-xs text-[var(--color-muted)]">
+                    Configure caller ID, live line concurrency, maximum retry attempts, and ring timeout.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Caller ID Phone Number */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[var(--color-heading)]">
+                      Caller ID Number <span className="text-red-500">*</span>
+                    </label>
+                    {availableNumbers.length > 0 ? (
+                      <select
+                        value={callerNumber}
+                        onChange={(e) => setCallerNumber(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono"
+                      >
+                        {availableNumbers.map((num) => (
+                          <option key={num} value={num}>
+                            {num}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={callerNumber}
+                        onChange={(e) => setCallerNumber(e.target.value)}
+                        placeholder="+14155552671"
+                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono"
+                      />
+                    )}
+                  </div>
+
+                  {/* Max Concurrency Slider */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[var(--color-heading)]">Max Concurrent Calls</span>
+                      <span className="px-2 py-0.5 rounded bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-bold">
+                        {maxConcurrent} live lines
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={20}
+                      value={maxConcurrent}
+                      onChange={(e) => setMaxConcurrent(Number(e.target.value))}
+                      className="w-full accent-[var(--color-primary)] cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-[var(--color-muted)]">
+                      <span>1 (Gentle)</span>
+                      <span>10 (Standard)</span>
+                      <span>20 (Fast)</span>
+                    </div>
+                  </div>
+
+                  {/* Max Attempts */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[var(--color-heading)]">
+                      Max Attempts Per Contact
+                    </label>
+                    <select
+                      value={maxAttempts}
+                      onChange={(e) => setMaxAttempts(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)]"
+                    >
+                      <option value={1}>1 Attempt (No Retries)</option>
+                      <option value={2}>2 Attempts</option>
+                      <option value={3}>3 Attempts (Recommended)</option>
+                      <option value={4}>4 Attempts</option>
+                      <option value={5}>5 Attempts</option>
+                    </select>
+                    {maxAttempts === 1 && (
+                      <p className="text-[11px] text-[var(--color-muted)]">
+                        Each contact is dialed exactly once. Unanswered calls will not be retried.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Retry Delay - Automatically disabled when 1 attempt */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className={`text-xs font-semibold ${maxAttempts === 1 ? "text-[var(--color-muted)] opacity-60" : "text-[var(--color-heading)]"}`}>
+                        Retry Delay on Unanswered
+                      </label>
+                      {maxAttempts === 1 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)]">
+                          Disabled
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={maxAttempts === 1 ? 0 : retryDelayMinutes}
+                      disabled={maxAttempts === 1}
+                      onChange={(e) => setRetryDelayMinutes(Number(e.target.value))}
+                      className={`w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] transition-all ${
+                        maxAttempts === 1
+                          ? "opacity-50 bg-[var(--color-surface-muted)] cursor-not-allowed text-[var(--color-muted)]"
+                          : "cursor-pointer"
+                      }`}
+                    >
+                      {maxAttempts === 1 ? (
+                        <option value={0}>Disabled (1 Attempt / No Retries)</option>
+                      ) : (
+                        (() => {
+                          const windowDuration = calculateWindowDurationMinutes(startTime, endTime);
+                          const standardOptions = [
+                            { value: 15, label: "15 Minutes" },
+                            { value: 30, label: "30 Minutes" },
+                            { value: 60, label: "1 Hour" },
+                            { value: 120, label: "2 Hours (Recommended)" },
+                            { value: 240, label: "4 Hours" },
+                            { value: 1440, label: "Next Active Day (24 Hours)" },
+                          ];
+
+                          return standardOptions.map((opt) => {
+                            const exceedsSameDay = windowDuration > 0 && opt.value !== 1440 && opt.value > windowDuration;
+                            return (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label} {exceedsSameDay ? `(Exceeds daily ${Math.floor(windowDuration / 60)}h ${windowDuration % 60}m window)` : ""}
+                              </option>
+                            );
+                          });
+                        })()
+                      )}
+                    </select>
+                    {maxAttempts > 1 && (
+                      <p className="text-[11px] text-[var(--color-muted)]">
+                        Time to wait before queuing next attempt when contact does not answer.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Professional Window vs Retry Delay Warning & Calculation */}
+                {(() => {
+                  if (maxAttempts <= 1) return null;
+                  const windowMinutes = calculateWindowDurationMinutes(startTime, endTime);
+                  const isLongerThanDailyWindow = windowMinutes > 0 && retryDelayMinutes !== 1440 && retryDelayMinutes > windowMinutes;
+                  const isCloseToWindowEnd = windowMinutes > 0 && retryDelayMinutes !== 1440 && retryDelayMinutes > (windowMinutes * 0.7) && !isLongerThanDailyWindow;
+
+                  const winHours = Math.floor(windowMinutes / 60);
+                  const winMins = windowMinutes % 60;
+                  const winStr = `${winHours > 0 ? `${winHours}h ` : ""}${winMins > 0 ? `${winMins}m` : ""}`.trim() || `${windowMinutes}m`;
+
+                  if (isLongerThanDailyWindow) {
+                    return (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 text-xs text-amber-700 dark:text-amber-300 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold">
+                            Retry delay ({retryDelayMinutes} min) exceeds daily calling window ({winStr}: {startTime} - {endTime})
+                          </p>
+                          <p className="text-[11px] opacity-90 leading-relaxed">
+                            Calls made during the active window will not retry on the same day if unanswered. Since the calling window will close before the delay expires, the automated dialer will safely hold retries and dispatch them during the <strong>next scheduled active day&apos;s calling window</strong>.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isCloseToWindowEnd) {
+                    return (
+                      <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-start gap-3 text-xs text-blue-700 dark:text-blue-300 animate-in fade-in">
+                        <Info className="w-4 h-4 shrink-0 text-blue-500 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold">
+                            Calling window calculation: {winStr} operational period ({startTime} - {endTime})
+                          </p>
+                          <p className="text-[11px] opacity-90 leading-relaxed">
+                            With a {retryDelayMinutes}-minute delay, retries scheduled after the window closes will automatically pause and resume on the next allowed calling day.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
               </div>
             )}
 
