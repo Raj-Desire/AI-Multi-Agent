@@ -326,7 +326,7 @@ export const ThemeDiagnosticsTab: React.FC<{ theme: OrganizationThemeConfig }> =
           isOpen={true}
           onClose={() => setSelectedInspectionPage(null)}
           title={`Theme Sandbox: ${selectedInspectionPage.name}`}
-          size="lg"
+          maxWidth="lg"
         >
           <div className="space-y-4 text-left">
             <div className="p-3 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-xs text-[var(--color-muted)]">
