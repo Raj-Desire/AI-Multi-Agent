@@ -352,11 +352,11 @@ export function VoiceAgentView() {
       )}
 
       {/* Live Test Call & Telemetry Launcher */}
-      <Card className="border-indigo-500/30 bg-gradient-to-br from-[var(--color-surface)] to-indigo-950/20">
+      <Card className="border-[var(--color-primary-ring)] bg-gradient-to-br from-[var(--color-surface)] to-[var(--color-primary-subtle)]">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-indigo-400" />
+              <Sparkles className="w-5 h-5 text-[var(--color-primary)]" />
               <CardTitle>Real-Time AI Voice Test Call</CardTitle>
             </div>
             {activeSessionId && (
@@ -448,7 +448,7 @@ export function VoiceAgentView() {
           <div className="border border-[var(--color-border)] rounded-lg p-3.5 bg-[var(--color-surface)]/60">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-indigo-400" />
+                <MessageSquare className="w-4 h-4 text-[var(--color-primary)]" />
                 <span className="text-xs font-semibold text-[var(--color-heading)]">
                   Custom Test Call Instructions / Prompt (Optional Override)
                 </span>

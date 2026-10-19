@@ -236,7 +236,7 @@ export function CampaignCharts({ stats, calls = [] }: CampaignChartsProps) {
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-heading)] inline-flex items-center gap-2 whitespace-nowrap">
-            <BarChart3 className="w-4 h-4 text-indigo-500 shrink-0" />
+            <BarChart3 className="w-4 h-4 text-[var(--color-primary)] shrink-0" />
             <span>Calls Distribution Over Time (Hourly Velocity)</span>
           </h3>
           <span className="text-xs text-[var(--color-muted)] font-mono">

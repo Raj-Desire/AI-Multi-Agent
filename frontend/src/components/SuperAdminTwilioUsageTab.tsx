@@ -424,10 +424,10 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
       )}
 
       {/* Smart Recording Retention & 28-Day Purge Optimizer */}
-      <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-indigo-500/20 bg-indigo-500/5 space-y-3">
+      <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-primary-ring)] bg-[var(--color-primary-subtle)] space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded bg-indigo-500/10 text-indigo-500 mt-0.5">
+            <div className="p-2 rounded bg-[var(--color-primary-light)] text-[var(--color-primary)] mt-0.5">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
@@ -463,7 +463,7 @@ export const SuperAdminTwilioUsageTab: React.FC = () => {
         </div>
 
         {/* Live Recording Inventory Counters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-500/15">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[var(--color-border)]">
           <div className="p-2.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-between">
             <div>
               <span className="text-[10px] text-[var(--color-muted)] uppercase tracking-wider block">

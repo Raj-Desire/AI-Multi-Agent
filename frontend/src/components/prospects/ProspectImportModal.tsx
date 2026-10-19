@@ -665,9 +665,9 @@ export function ProspectImportModal({
                 <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{importSummary.imported_count}</div>
                 <div className="text-[10px] text-emerald-600 dark:text-emerald-400">Imported</div>
               </div>
-              <div className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-indigo-500/10 border border-indigo-500/30">
-                <div className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{importSummary.updated_count}</div>
-                <div className="text-[10px] text-indigo-600 dark:text-indigo-400">Updated</div>
+              <div className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary-light)] border border-[var(--color-primary-ring)]">
+                <div className="text-lg font-bold text-[var(--color-primary)]">{importSummary.updated_count}</div>
+                <div className="text-[10px] text-[var(--color-primary)]">Updated</div>
               </div>
               <div className="p-2.5 rounded-[var(--radius-main,0.375rem)] bg-amber-500/10 border border-amber-500/30">
                 <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{importSummary.skipped_count}</div>

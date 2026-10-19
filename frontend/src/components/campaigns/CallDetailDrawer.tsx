@@ -242,8 +242,8 @@ export function CallDetailDrawer({
     }
     if (raw.includes("callback")) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
-          <RotateCcw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary-ring)]">
+          <RotateCcw className="w-3.5 h-3.5 text-[var(--color-primary)]" />
           Callback Requested
         </span>
       );
@@ -379,8 +379,8 @@ export function CallDetailDrawer({
                   <>
                     <span className="opacity-30">•</span>
                     <div className="flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Lead Score: <strong className="text-indigo-600 font-bold">{call.lead_score}/100</strong></span>
+                      <TrendingUp className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                      <span>Lead Score: <strong className="text-[var(--color-primary)] font-bold">{call.lead_score}/100</strong></span>
                     </div>
                   </>
                 )}
@@ -634,11 +634,11 @@ export function CallDetailDrawer({
 
                   <div className="p-3 bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-lg space-y-2">
                     <span className="font-semibold text-[var(--color-heading)] block flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                      <Calendar className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                       Callback / Follow-up Details
                     </span>
                     {call.callback_datetime ? (
-                      <div className="p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-semibold text-indigo-600 dark:text-indigo-400">
+                      <div className="p-2 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-semibold text-[var(--color-primary)]">
                         {call.callback_datetime}
                       </div>
                     ) : (
@@ -674,7 +674,7 @@ export function CallDetailDrawer({
                   </div>
                   <div className="p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
                     <span className="text-[11px] text-[var(--color-muted)]">Lead Score</span>
-                    <p className="text-base font-bold text-indigo-600 mt-1">{call.lead_score || 0}/100</p>
+                    <p className="text-base font-bold text-[var(--color-primary)] mt-1">{call.lead_score || 0}/100</p>
                   </div>
                   <div className="p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
                     <span className="text-[11px] text-[var(--color-muted)]">Call Status</span>
@@ -695,10 +695,10 @@ export function CallDetailDrawer({
                     <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="font-bold text-[var(--color-heading)] flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4 text-indigo-600" />
+                          <TrendingUp className="w-4 h-4 text-[var(--color-primary)]" />
                           How this score was calculated
                         </h4>
-                        <span className="font-bold text-indigo-600">{bd.total ?? call.lead_score ?? 0}/100</span>
+                        <span className="font-bold text-[var(--color-primary)]">{bd.total ?? call.lead_score ?? 0}/100</span>
                       </div>
                       {bd.reason && <p className="text-[var(--color-muted)]">{bd.reason}</p>}
                       <div className="space-y-2">
@@ -710,7 +710,7 @@ export function CallDetailDrawer({
                             </div>
                             <div className="h-1.5 rounded-full bg-[var(--color-surface-muted)] overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-indigo-500"
+                                className="h-full rounded-full bg-[var(--color-primary)]"
                                 style={{ width: `${Math.min(100, (r.value / r.max) * 100)}%` }}
                               />
                             </div>

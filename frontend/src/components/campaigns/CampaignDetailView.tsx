@@ -497,7 +497,7 @@ export function CampaignDetailView({
       return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800";
     }
     if (raw.includes("callback")) {
-      return "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800";
+      return "bg-[var(--color-primary-light)] text-[var(--color-primary)] border-[var(--color-primary-ring)]";
     }
     if (raw.includes("info") || raw.includes("asked") || raw.includes("follow")) {
       return "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-300 dark:border-blue-800";
@@ -703,9 +703,9 @@ export function CampaignDetailView({
         <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xs">
           <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)]">
             <span>Interested</span>
-            <Flame className="w-3.5 h-3.5 text-indigo-500" />
+            <Flame className="w-3.5 h-3.5 text-[var(--color-primary)]" />
           </div>
-          <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{stats.interested}</p>
+          <p className="text-xl font-bold text-[var(--color-primary)] mt-1">{stats.interested}</p>
           <span className="text-[10px] text-[var(--color-muted)]">{stats.warm_interested || 0} warm leads</span>
         </div>
 

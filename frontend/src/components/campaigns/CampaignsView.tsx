@@ -402,9 +402,9 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
         <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
             <span>Avg Connection Rate</span>
-            <Activity className="w-4 h-4 text-indigo-500" />
+            <Activity className="w-4 h-4 text-[var(--color-primary)]" />
           </div>
-          <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 mt-1">{avgConnectionRate}%</p>
+          <p className="text-2xl font-bold text-[var(--color-primary)] mt-1">{avgConnectionRate}%</p>
           {/* <span className="text-[11px] text-[var(--color-muted)]">Across all campaigns</span> */}
         </div>
       </div>
