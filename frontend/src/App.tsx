@@ -329,7 +329,7 @@ function MainContent() {
             {/* Tenant Organization */}
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
-              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{user.org_name || draftTheme.identity.org_name || "AI Voice Platform"}</strong></span>
+              <span>Org: <strong className="text-[var(--color-heading)] font-medium">{draftTheme.identity.org_name || user.org_name || "AI Voice Platform"}</strong></span>
             </div>
           </div>
         </header>

@@ -409,7 +409,7 @@ export function Sidebar({
             </>
           ) : userPreferences.color_mode === "dark" ? (
             <>
-              <Moon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <Moon className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
               {!collapsed && <span className="capitalize text-xs">Dark</span>}
             </>
           ) : (
