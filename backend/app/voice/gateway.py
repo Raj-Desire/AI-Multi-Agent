@@ -93,6 +93,28 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     # Outbound audio metrics
     startup_timing: dict = {}  # perf_counter marks for the answer -> first-greeting-audio path
+    # Per-turn response-latency marks (perf_counter): user_start -> user_final -> thinking -> first_audio.
+    # Logged once per turn so we can see which stage (endpointing, LLM, TTS) dominates the reply delay.
+    turn_marks: dict = {}
+
+    def _mark_turn(stage: str) -> None:
+        turn_marks[stage] = time.perf_counter()
+
+    def _log_turn_latency() -> None:
+        m = turn_marks
+        if "user_final" not in m or "first_audio" not in m or m.get("logged"):
+            return
+        m["logged"] = True
+        ms = lambda a, b: round((m[b] - m[a]) * 1000.0) if a in m and b in m else None
+        logger.info(
+            f"[VoiceGateway:TurnLatency] reply_delay={ms('user_final', 'first_audio')}ms "
+            f"(final_transcript->thinking={ms('user_final', 'thinking')}ms, "
+            f"thinking->first_audio={ms('thinking', 'first_audio')}ms, "
+            f"speech_start->final_transcript={ms('user_start', 'user_final')}ms)"
+        )
+        if session:
+            session.latest_latency.reply_delay_ms = float(ms("user_final", "first_audio") or 0.0)
+
     outbound_chunk_counter: int = 0
     total_outbound_audio_bytes: int = 0
     total_outbound_audio_duration_s: float = 0.0
@@ -123,16 +145,15 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 outbound_audio_queue.task_done()
                 
-                # Telephony Jitter Buffer Optimization:
-                # Prime Twilio's jitter buffer immediately with the first 2 chunks (~80ms of audio),
-                # so the caller hears speech instantaneously with ZERO startup latency.
                 chunk_duration_s = len(chunk) / 8000.0
                 now = time.perf_counter()
                 
-                # Reset wall-clock anchor when restarting speech after a pause
-                if next_frame_time == 0.0 or (now - next_frame_time) > 0.20:
-                    # Allow 80ms lead burst for instant playback start
-                    next_frame_time = now
+                # Telephony Jitter Buffer Optimization:
+                # Reset wall-clock anchor when restarting speech after a pause (>150ms).
+                # Giving a ~120ms lead burst fills Twilio's audio player buffer instantaneously,
+                # eliminating any startup delay or stutter when the agent begins speaking.
+                if next_frame_time == 0.0 or (now - next_frame_time) > 0.15:
+                    next_frame_time = now - (chunk_duration_s * 2.0)
                 else:
                     next_frame_time += chunk_duration_s
 
@@ -165,6 +186,10 @@ async def voice_stream_websocket(websocket: WebSocket):
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
 
+            if "user_final" in turn_marks and "first_audio" not in turn_marks:
+                _mark_turn("first_audio")
+                _log_turn_latency()
+
             # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
             if "first_audio" not in startup_timing and "start" in startup_timing:
                 startup_timing["first_audio"] = time.perf_counter()
@@ -194,6 +219,8 @@ async def voice_stream_websocket(websocket: WebSocket):
     async def handle_user_speaking():
         """Barge-in: Interrupt audio immediately when user starts speaking."""
         nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, is_interrupted, last_agent_speech_done_time
+        turn_marks.clear()
+        _mark_turn("user_start")
         user_speech_start_time = time.time()
         is_user_speaking = True
         user_spoke = True
@@ -236,6 +263,8 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_agent_thinking(data: dict):
         nonlocal thinking_filler_task, deepgram_client
+        if "thinking" not in turn_marks:
+            _mark_turn("thinking")
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
@@ -249,11 +278,19 @@ async def voice_stream_websocket(websocket: WebSocket):
                     await asyncio.sleep(filler_delay)
                     if is_user_speaking or is_agent_speaking or is_concluding_call or is_interrupted:
                         return
-                    phrases = getattr(runtime, "filler_phrases", None) or [
-                        "Let me check that for you.",
-                        "Got it, one moment please.",
-                        "Understood, looking into that right now."
-                    ]
+                    agent_voice_lang = getattr(getattr(agent_config, "voice", None), "language", "en") or "en"
+                    if "hi" in agent_voice_lang.lower():
+                        phrases = getattr(runtime, "filler_phrases", None) or [
+                            "हाँ जी, एक पल दीजिए...",
+                            "समझ गया, मैं चेक कर रहा हूँ...",
+                            "बिल्कुल, एक सेकंड रुकिए..."
+                        ]
+                    else:
+                        phrases = getattr(runtime, "filler_phrases", None) or [
+                            "Let me check that for you.",
+                            "Got it, one moment please.",
+                            "Understood, looking into that right now."
+                        ]
                     import random
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
@@ -297,6 +334,12 @@ async def voice_stream_websocket(websocket: WebSocket):
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
 
         if role == "user":
+            if "user_start" not in turn_marks:
+                turn_marks.clear()
+            turn_marks.pop("first_audio", None)
+            turn_marks.pop("logged", None)
+            turn_marks.pop("thinking", None)
+            turn_marks["user_final"] = now
             turn_start_time = now
             last_user_speech_time = time.time()
             is_user_speaking = False
@@ -369,7 +412,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                 return
 
             from app.api.v1.voice import detect_conversation_conclusion
-            if detect_conversation_conclusion(content):
+            # Never conclude on initial greeting (turn 0) or before the user has even spoken!
+            if user_spoke and turn_counter >= 1 and detect_conversation_conclusion(content):
                 lower_content = content.lower()
                 is_voicemail_or_machine = (
                     "voicemail detected" in lower_content or

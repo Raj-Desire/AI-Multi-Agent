@@ -74,17 +74,18 @@ class AgentRuntimeBuilder:
 
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
-        # Snappy endpointing calculation for natural human turn taking (300ms - 380ms)
+        # Ultra-responsive endpointing calculation for instantaneous human-level turn-taking
         mode = getattr(config.listen, "endpointing_mode", "balanced") if config.listen else "balanced"
         if mode == "rapid":
-            listen_endpointing = getattr(config.listen, "rapid_endpointing", 280) or 280
+            listen_endpointing = getattr(config.listen, "rapid_endpointing", 220) or 220
         elif mode == "dictation":
-            listen_endpointing = getattr(config.listen, "dictation_endpointing", 650) or 650
+            listen_endpointing = getattr(config.listen, "dictation_endpointing", 500) or 500
         elif mode == "balanced":
-            listen_endpointing = getattr(config.listen, "endpointing", 340) or 340
+            raw_ep = getattr(config.listen, "endpointing", 250) or 250
+            listen_endpointing = min(raw_ep, 260)
         else:
-            # Ultra-responsive conversational default: 340ms prevents noticeable delays
-            listen_endpointing = min(getattr(config.listen, "endpointing", 340) or 340, 400)
+            # Ultra-responsive conversational default: 250ms guarantees human-level responsiveness
+            listen_endpointing = min(getattr(config.listen, "endpointing", 250) or 250, 260)
 
         # Merge keyterms from listen config, router high-weight terms, and pronunciation rules
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []

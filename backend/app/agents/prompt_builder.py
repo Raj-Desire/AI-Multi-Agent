@@ -228,6 +228,7 @@ class VoicePromptBuilder:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: DETAILED (3–4 SENTENCES)]\n"
                 "- Response Length: 3 to 4 comprehensive, detailed spoken sentences per turn (around 50-75 words total).\n"
+                "- FIRST SENTENCE SPEED BURST: Keep your very first sentence short and punchy (under 8 words) so speech playback begins instantly on the caller's phone.\n"
                 "- Deliver thorough explanations, step-by-step answers, and complete context.\n"
                 "- Keep the conversation natural and interactive without interrogating the caller."
             )
@@ -235,12 +236,14 @@ class VoicePromptBuilder:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: BALANCED (2–3 SENTENCES)]\n"
                 "- Response Length: 2 to 3 well-structured, clear spoken sentences per turn (around 35-45 words total).\n"
+                "- FIRST SENTENCE SPEED BURST: Start your response with an immediate, short conversational phrase or direct answer (under 7 words) so audio synthesizes instantly without hesitation.\n"
                 "- Provide helpful context directly. Only ask a question if you need caller confirmation."
             )
         else:
             return (
-                "[MANDATORY SPOKEN LENGTH CONSTRAINT: SHORT (1–2 SENTENCES)]\n"
-                "- Response Length: 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (around 25-35 words total). Vary sentence length so it sounds like a real person, not a script.\n"
+                "[MANDATORY SPOKEN LENGTH CONSTRAINT: ULTRA-CRISP (1–2 SENTENCES)]\n"
+                "- Response Length: 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (around 15-25 words total).\n"
+                "- INSTANT FIRST CLAUSE (ZERO LATENCY): Start immediately with a brief confirmation or direct answer (under 6-8 words) so speech synthesis streams to the caller instantly without delay.\n"
                 "- NEVER produce 3 or more sentences in a single turn.\n"
                 "- NEVER give long explanations, monologues, or multiple paragraphs.\n"
                 "- Deliver information directly as a clear, confident statement. Do NOT force a question at the end of every turn unless needed."
@@ -302,6 +305,7 @@ class VoicePromptBuilder:
                     f"[MANDATORY LANGUAGE DIRECTIVE: {eng_name.upper()} ({native_name})]\n"
                     f"- PRIMARY CONVERSATIONAL LANGUAGE: The caller expects you to converse EXCLUSIVELY in {eng_name} ({native_name}).\n"
                     f"- LIVE TOKEN GENERATION: You MUST think, comprehend, and generate every single response token directly in natural, authentic spoken {eng_name} ({native_name}).\n"
+                    f"- INSTANT CONVERSATIONAL BRIDGE (ZERO LATENCY): Start your turn immediately with a natural 1-2 word spoken bridge or acknowledgment (e.g. for Hindi: 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर', 'जी', 'अच्छा') so speech begins instantaneously with real human cadence.\n"
                     f"- SPOKEN IDIOMATIC FLUENCY: Use natural everyday phrasing, polite conversational markers, and correct grammar suitable for a real telephone call (e.g. '{sample_phrase}').\n"
                     f"- STRICT NO-ENGLISH RULE: NEVER revert to English, reply in English, or mix English sentences when the caller speaks {eng_name}. Stay 100% in {eng_name}.\n"
                     f"- ADAPTIVE CODE-SWITCHING: If the caller introduces bilingual loan words or code-switches (e.g. mixing everyday technical or local terms), understand them effortlessly and respond naturally in {eng_name} without breaking flow.\n"
@@ -581,10 +585,9 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
             f"{pacing_line}"
             "- SPOKEN FORMAT: Write everything the way it is said aloud. Say prices in words ('two hundred fifty dollars', not '$250'), say dates as 'March third', say phone numbers as digit words in comma-separated groups (for example 'nine eight seven six five, four three two one zero'), and never use symbols, abbreviations like 'approx.', URLs read character by character, markdown, or emojis.\n"
-            "- IMMEDIATE CONVERSATIONAL BRIDGES: When asked a multi-part question or lookup, begin your turn immediately with a natural human bridge (e.g., "
-            f"{phrases_example}) so the caller experiences instant acknowledgement without dead silence.\n"
+            "- IMMEDIATE CONVERSATIONAL BRIDGES (ZERO DEAD AIR): Always begin your turn immediately with a quick, natural human acknowledgment or conversational bridge (such as 'Got it', 'Sure', 'Understood', 'Right', or in Hindi 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर') before delivering the core answer. This eliminates dead air so the caller hears speech instantaneously.\n"
             "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
-            "- FLUID INTER-SENTENCE PACING (ZERO DEAD AIR): Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
+            "- FLUID INTER-SENTENCE PACING: Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
             "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
             "- CONVERSATIONAL FLOW: Never produce dense paragraphs or list bullet points aloud. Speak warmly, articulately, and casually like an experienced human executive on the telephone."
         )
@@ -722,6 +725,35 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         return "\n".join(lines)
 
     @staticmethod
+    def _build_guardrails_section(config: AgentConfiguration) -> str:
+        """Injects agent-specific allowed actions, restricted actions, and boundary enforcement."""
+        gr = getattr(config, "guardrails", None)
+        if not gr:
+            return ""
+
+        allowed = getattr(gr, "allowed_actions", []) or []
+        restricted = getattr(gr, "restricted_actions", []) or []
+
+        lines = ["[STRICT BEHAVIORAL BOUNDARIES & SCOPE ENFORCEMENT]"]
+        if allowed:
+            lines.append("AUTHORIZED SCOPE ONLY:")
+            for a in allowed:
+                lines.append(f"- {a}")
+        if restricted:
+            lines.append("FORBIDDEN / OUT-OF-SCOPE TOPICS:")
+            for r in restricted:
+                lines.append(f"- {r}")
+
+        lines.append(
+            "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
+            "  * You represent and assist strictly within your defined business services and expertise.\n"
+            "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call.\n"
+            "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and keep the dialogue open for their actual business needs:\n"
+            "    - In Hindi: 'माफ़ कीजिए, हम बैंक या लोन सेवाओं में डील नहीं करते हैं, हम केवल बिज़नेस सॉफ़्टवेयर और ऑटोमेशन में मदद करते हैं। क्या आपके बिज़नेस में ऑटोमेशन से संबंधित कोई ज़रूरत है?'\n"
+            "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. Is there anything related to that I can assist you with today?'\n"
+            "  * Keep the tone helpful, warm, and conversational. Always gently bridge back to what you can help with rather than abruptly ending the call."
+        )
+        return "\n".join(lines)
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
@@ -762,8 +794,15 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
 8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
 9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
-10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation."""
+10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation.
+11. POLITE SERVICE BOUNDARY & REDIRECTION (NEVER HANG UP ON OFF-TOPIC QUESTIONS): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
+- NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call.
+- Politely clarify that this specific service is not available and ask how you can help with your actual services:
+  * Hindi: "माफ़ कीजिए, हम [असंबंधित सेवा] में डील नहीं करते हैं, हम केवल [कंपनी की सेवाएं] में सहायता करते हैं। क्या आपके बिज़नेस में इससे संबंधित कोई आवश्यकता है?"
+  * English: "I'm sorry, we do not provide or deal with [unrelated topic]; our team specializes in [authorized services]. How can I assist you with [your services] today?"
+- Always keep the conversation active, polite, and helpful!"""
 
+        guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
 
         # If custom system_prompt is provided, prioritize it directly while ensuring language and length directives apply
@@ -772,6 +811,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 temporal_rule,
                 language_rule,
                 config.system_prompt.strip(),
+                guardrails_section,
                 workflow_stages_rule,
                 knowledge_section,
                 length_rule,
@@ -798,10 +838,12 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 
             parts = [
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
+                f"PRIMARY GOAL: {config.objective}",
+                guardrails_section,
+                telephony_rules,
                 temporal_rule,
                 language_rule,
                 role_directives,
-                f"PRIMARY GOAL: {config.objective}",
                 workflow_stages_rule,
                 knowledge_section,
                 f"STYLE: {config.communication_style}\n{personality_text}",
@@ -812,7 +854,6 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
-                telephony_rules,
                 platform_rules_text
             ]
 

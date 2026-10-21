@@ -131,7 +131,8 @@ def detect_conversation_conclusion(text: str) -> bool:
         r"\b(goodbye|good\s*bye|bye\s*bye|bye\s*now|bye|cya)\b",
         r"\b(have\s+a\s+(great|good|wonderful|nice|fantastic|pleasant|blessed)\s+(day|evening|night|weekend|rest\s+of\s+(your\s+)?day))\b",
         r"\b(take\s*care|see\s*you|talk\s*to\s*you\s*later|catch\s*you\s*later)\b",
-        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling|thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
+        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling)\b.*(?:\b(goodbye|bye|take\s*care|have\s+a\s+good|have\s+a\s+great)\b|\Z)",
+        r"\b(thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
         r"\b(disconnect(ing)?\s*now|hang(ing)?\s*up\s*now|end\s*the\s*call|ending\s*the\s*call)\b",
         r"\b(reached\s*(your\s*)?voicemail|leave\s+a\s+message\s+after)\b",
         r"\b(we\s+will\s+follow\s+up\s+at\s+a\s+convenient\s+time)\b",
@@ -879,11 +880,21 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
             }
         }
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(cartesia_url, json=body, headers=headers)
-                if resp.status_code != 200:
-                    logger.error(f"[SampleSpeech Error] Cartesia Sonic TTS returned {resp.status_code}: {resp.text}")
-                    raise HTTPException(status_code=resp.status_code, detail=f"Sonic synthesis error: {resp.text}")
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = None
+                for attempt in range(3):
+                    resp = await client.post(cartesia_url, json=body, headers=headers)
+                    if resp.status_code == 429:
+                        wait_time = 0.6 * (attempt + 1)
+                        logger.warning(f"[SampleSpeech] Cartesia 429 concurrency limit hit. Retrying attempt {attempt+1}/3 in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    break
+
+                if not resp or resp.status_code != 200:
+                    err_msg = resp.text if resp else "No response"
+                    logger.error(f"[SampleSpeech Error] Cartesia Sonic TTS returned {resp.status_code if resp else 'None'}: {err_msg}")
+                    raise HTTPException(status_code=resp.status_code if resp else 500, detail=f"Sonic synthesis error: {err_msg}")
 
                 SAMPLE_SPEECH_CACHE[cache_key] = resp.content
                 # Save to disk permanently

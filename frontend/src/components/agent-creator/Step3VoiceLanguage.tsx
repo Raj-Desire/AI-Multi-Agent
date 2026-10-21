@@ -20,7 +20,10 @@ import {
   BookOpen,
   Plus,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  Bookmark,
+  MoreVertical,
+  X
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -100,6 +103,179 @@ const VOICE_METADATA_MAP: Record<string, VoiceMetadata> = {
   "aura-2-ama-ja": { accent: "Japanese (JA)", tone: "Polite & Natural", bestFor: "Japanese Business Care" }
 };
 
+// Language to Primary Country Code Mapping for Authentic Regional Flag Rendering
+export const LANG_TO_COUNTRY_CODE: Record<string, string> = {
+  en: "us",
+  es: "es",
+  fr: "fr",
+  de: "de",
+  it: "it",
+  pt: "br",
+  ja: "jp",
+  hi: "in",
+  gu: "in",
+  ta: "in",
+  te: "in",
+  bn: "in",
+  pa: "in",
+  ur: "pk",
+  zh: "cn",
+  ko: "kr",
+  ar: "sa",
+  nl: "nl",
+  he: "il",
+  sv: "se",
+  pl: "pl",
+  tr: "tr",
+  id: "id",
+  th: "th",
+  ru: "ru",
+  vi: "vn",
+  tl: "ph",
+  el: "gr",
+  da: "dk",
+  fi: "fi",
+  no: "no",
+  cs: "cz",
+  hu: "hu",
+  ro: "ro",
+  uk: "ua"
+};
+
+// Vector-Clean Cross-Platform Country Flag Component with Zero-Jank Fallback
+export function CountryFlag({
+  code,
+  className = "w-4 h-3 rounded-[2px] object-cover inline-block shrink-0 shadow-2xs border border-black/10"
+}: {
+  code: string;
+  className?: string;
+}) {
+  const cleanCode = (code || "us").toLowerCase();
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <span className="inline-flex items-center justify-center w-4 h-3 rounded-[2px] bg-slate-200 dark:bg-slate-700 text-[8px] font-mono font-bold uppercase text-slate-700 dark:text-slate-300 shrink-0">
+        {cleanCode.slice(0, 2)}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={`https://flagcdn.com/24x18/${cleanCode}.png`}
+      srcSet={`https://flagcdn.com/48x36/${cleanCode}.png 2x`}
+      alt={cleanCode.toUpperCase()}
+      className={className}
+      loading="lazy"
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
+// Precise Country Code Mapping for Voice Models based on Accent & Regional Dialect
+export function getVoiceCountryCode(voiceId: string, langCode?: string): string {
+  const meta = VOICE_METADATA_MAP[voiceId];
+  const accent = (meta?.accent || "").toLowerCase();
+  const lang = (langCode || "").toLowerCase();
+
+  if (accent.includes("british") || accent.includes("uk")) return "gb";
+  if (accent.includes("indian") || lang === "hi" || lang === "gu" || lang === "ta" || lang === "te" || lang === "pa" || lang === "bn") return "in";
+  if (accent.includes("australian")) return "au";
+  if (accent.includes("irish")) return "ie";
+  if (accent.includes("singaporean")) return "sg";
+  if (accent.includes("filipino") || lang === "tl") return "ph";
+  if (accent.includes("mexican") || accent.includes("mexico")) return "mx";
+  if (lang === "es" || accent.includes("spanish")) return "es";
+  if (lang === "fr" || accent.includes("french")) return "fr";
+  if (lang === "de" || accent.includes("german")) return "de";
+  if (lang === "it" || accent.includes("italian")) return "it";
+  if (lang === "pt" || accent.includes("portuguese")) return "br";
+  if (lang === "ja" || accent.includes("japanese")) return "jp";
+  if (lang === "zh" || accent.includes("chinese")) return "cn";
+  if (lang === "ko" || accent.includes("korean")) return "kr";
+  if (lang === "ar" || accent.includes("arabic")) return "sa";
+  if (lang === "he" || accent.includes("hebrew")) return "il";
+  if (lang === "sv" || accent.includes("swedish")) return "se";
+  if (lang === "pl" || accent.includes("polish")) return "pl";
+  if (lang === "tr" || accent.includes("turkish")) return "tr";
+  if (lang === "id" || accent.includes("indonesian")) return "id";
+  if (lang === "th" || accent.includes("thai")) return "th";
+  if (lang === "ru" || accent.includes("russian")) return "ru";
+  if (lang === "vi" || accent.includes("vietnamese")) return "vn";
+  if (lang === "ur") return "pk";
+  if (lang === "el") return "gr";
+  if (lang === "da") return "dk";
+  if (lang === "fi") return "fi";
+  if (lang === "no") return "no";
+  if (lang === "cs") return "cz";
+  if (lang === "hu") return "hu";
+  if (lang === "ro") return "ro";
+  if (lang === "uk") return "ua";
+  return "us";
+}
+
+// Complete 38 Dialect & Regional Language Set Supported by Sonic Models
+export const ALL_SONIC_SUPPORTED_LANGUAGES = [
+  { countryCode: "us", lang: "en", label: "English (American)" },
+  { countryCode: "gb", lang: "en", label: "English (British)" },
+  { countryCode: "in", lang: "hi", label: "Hindi (हिन्दी)" },
+  { countryCode: "es", lang: "es", label: "Spanish (Español)" },
+  { countryCode: "mx", lang: "es", label: "Spanish (Mexican)" },
+  { countryCode: "fr", lang: "fr", label: "French (Français)" },
+  { countryCode: "de", lang: "de", label: "German (Deutsch)" },
+  { countryCode: "it", lang: "it", label: "Italian (Italiano)" },
+  { countryCode: "br", lang: "pt", label: "Portuguese (Brazilian)" },
+  { countryCode: "pt", lang: "pt", label: "Portuguese (European)" },
+  { countryCode: "jp", lang: "ja", label: "Japanese (日本語)" },
+  { countryCode: "cn", lang: "zh", label: "Chinese (Mandarin)" },
+  { countryCode: "kr", lang: "ko", label: "Korean (한국어)" },
+  { countryCode: "sa", lang: "ar", label: "Arabic (العربية)" },
+  { countryCode: "nl", lang: "nl", label: "Dutch (Nederlands)" },
+  { countryCode: "il", lang: "he", label: "Hebrew (עברית)" },
+  { countryCode: "se", lang: "sv", label: "Swedish (Svenska)" },
+  { countryCode: "pl", lang: "pl", label: "Polish (Polski)" },
+  { countryCode: "tr", lang: "tr", label: "Turkish (Türkçe)" },
+  { countryCode: "id", lang: "id", label: "Indonesian (Bahasa)" },
+  { countryCode: "th", lang: "th", label: "Thai (ไทย)" },
+  { countryCode: "ru", lang: "ru", label: "Russian (Русский)" },
+  { countryCode: "vn", lang: "vi", label: "Vietnamese (Tiếng Việt)" },
+  { countryCode: "ph", lang: "tl", label: "Tagalog (Filipino)" },
+  { countryCode: "in", lang: "ta", label: "Tamil (தமிழ்)" },
+  { countryCode: "in", lang: "te", label: "Telugu (తెలుగు)" },
+  { countryCode: "in", lang: "bn", label: "Bengali (বাংলা)" },
+  { countryCode: "in", lang: "gu", label: "Gujarati (ગુજરાતી)" },
+  { countryCode: "in", lang: "pa", label: "Punjabi (ਪੰਜਾਬੀ)" },
+  { countryCode: "pk", lang: "ur", label: "Urdu (اردو)" },
+  { countryCode: "gr", lang: "el", label: "Greek (Ελληνικά)" },
+  { countryCode: "dk", lang: "da", label: "Danish (Dansk)" },
+  { countryCode: "fi", lang: "fi", label: "Finnish (Suomi)" },
+  { countryCode: "no", lang: "no", label: "Norwegian (Norsk)" },
+  { countryCode: "cz", lang: "cs", label: "Czech (Čeština)" },
+  { countryCode: "hu", lang: "hu", label: "Hungarian (Magyar)" },
+  { countryCode: "ro", lang: "ro", label: "Romanian (Română)" },
+  { countryCode: "ua", lang: "uk", label: "Ukrainian (Українська)" }
+];
+
+export function getVoiceSupportedList(voiceId: string, engine: string, langCode?: string): Array<{ countryCode: string; lang: string; label: string }> {
+  if (engine === "sonic") {
+    return ALL_SONIC_SUPPORTED_LANGUAGES;
+  }
+  if (voiceId.startsWith("aura-2")) {
+    return [
+      { countryCode: "us", lang: "en", label: "English (American)" },
+      { countryCode: "es", lang: "es", label: "Spanish (Español)" },
+      { countryCode: "fr", lang: "fr", label: "French (Français)" },
+      { countryCode: "de", lang: "de", label: "German (Deutsch)" },
+      { countryCode: "it", lang: "it", label: "Italian (Italiano)" },
+      { countryCode: "jp", lang: "ja", label: "Japanese (日本語)" }
+    ];
+  }
+  const countryCode = getVoiceCountryCode(voiceId, langCode);
+  const meta = VOICE_METADATA_MAP[voiceId];
+  return [{ countryCode, lang: langCode || "en", label: meta?.accent || "English (American)" }];
+}
+
 export function Step3VoiceLanguage({
   agentData,
   setAgentData
@@ -155,6 +331,28 @@ export function Step3VoiceLanguage({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "female" | "male" | "english" | "multilingual">("all");
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [voiceTab, setVoiceTab] = useState<"featured" | "all" | "saved">("featured");
+  const [savedVoiceIds, setSavedVoiceIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("preferred_saved_voices");
+      return stored ? new Set(JSON.parse(stored)) : new Set(["flux-hannah-en", "f5a7e270-a91b-463e-8997-8ed08b6a6a77"]);
+    } catch {
+      return new Set(["flux-hannah-en"]);
+    }
+  });
+
+  const toggleSaveVoice = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSavedVoiceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem("preferred_saved_voices", JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
 
   // Advanced AI Settings Collapsible
   const [showAdvancedAI, setShowAdvancedAI] = useState(false);
@@ -284,13 +482,12 @@ export function Step3VoiceLanguage({
     }
   };
 
-  // Pre-warm active voice and common voices in the background
+  // Audio preview playback stops when unmounting or switching steps
   useEffect(() => {
-    const popularVoices = [selectedVoiceId, "flux-hannah-en", "6c756032-11c3-4be8-a120-74f9673fb700", "15a13943-32a7-49a9-b944-d6062129c5a3"];
-    popularVoices.forEach((vId) => {
-      prefetchVoiceSample(vId);
-    });
-  }, [selectedVoiceId]);
+    return () => {
+      stopCurrentAudio();
+    };
+  }, []);
 
   const stopCurrentAudio = () => {
     if (audioElement) {
@@ -504,9 +701,16 @@ export function Step3VoiceLanguage({
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false);
   const voiceDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Custom Language Dropdown State
+  // Active Voice Language Flyout State (keeps popup open on click or hover)
+  const [openFlyoutVoiceId, setOpenFlyoutVoiceId] = useState<string | null>(null);
+
+  // Custom Language Dropdown State (Step 3 Main Selector)
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Modal Toolbar Language Filter Dropdown State
+  const [isModalLangFilterOpen, setIsModalLangFilterOpen] = useState(false);
+  const modalLangFilterRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -516,6 +720,13 @@ export function Step3VoiceLanguage({
       }
       if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
         setIsLangDropdownOpen(false);
+      }
+      if (modalLangFilterRef.current && !modalLangFilterRef.current.contains(event.target as Node)) {
+        setIsModalLangFilterOpen(false);
+      }
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-flyout-container]")) {
+        setOpenFlyoutVoiceId(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -594,9 +805,16 @@ export function Step3VoiceLanguage({
         ) : false;
         return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent || matchCategory || matchLang;
       }
+      // Tab Filter: featured vs all vs saved
+      if (voiceTab === "saved" && !savedVoiceIds.has(v.id)) return false;
+      if (voiceTab === "featured" && !searchQuery.trim()) {
+        const isFeatured = (v.id.startsWith("flux-") || v.id.startsWith("aura-2") || POPULAR_SONIC_VOICES.some(p => p.id === v.id));
+        if (!isFeatured) return false;
+      }
+
       return true;
     });
-  }, [selectedEngine, sonicVoices, sonicLangFilter, searchQuery, activeFilter, activeCategory]);
+  }, [selectedEngine, sonicVoices, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
 
   return (
     <div className="space-y-6 text-left">
@@ -749,96 +967,207 @@ export function Step3VoiceLanguage({
               <ChevronDown className={`w-4 h-4 text-[var(--color-muted)] shrink-0 transition-transform duration-200 ${isVoiceDropdownOpen ? "rotate-180 text-[var(--color-primary)]" : ""}`} />
             </button>
 
-            {/* Rich Dropdown Panel with Search, Filter Chips & Multi-Tag Voice Cards */}
+            {/* Rich Dropdown Panel matching Image 1 - Clean, Modern & Productive */}
             {isVoiceDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xl z-50 overflow-hidden animate-fade-in text-xs">
-                {/* Search & Category Filter Header Bar */}
-                <div className="p-2.5 bg-[var(--color-surface-muted)]/70 border-b border-[var(--color-border)] space-y-2">
-                  {/* Search Input */}
+              <div className="absolute left-0 top-full mt-1.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in text-xs font-sans">
+                {/* Top Bar with Selected Voice Pill and Close Icon */}
+                <div className="px-3.5 py-2.5 bg-[var(--color-surface-muted)]/50 border-b border-[var(--color-border)]/70 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">
+                      ✓
+                    </span>
+                    <span className="font-bold text-xs text-[var(--color-heading)]">
+                      {selectedVoiceObj.name}
+                    </span>
+                    <span className="text-[11px] text-[var(--color-muted)] flex items-center gap-1.5 font-medium bg-[var(--color-surface)] px-2 py-0.5 rounded border border-[var(--color-border)] shadow-2xs">
+                      <CountryFlag code={getVoiceCountryCode(selectedVoiceObj.id, selectedVoiceObj.language)} />
+                      <span>+{selectedEngine === "sonic" ? ALL_SONIC_SUPPORTED_LANGUAGES.length - 1 : (selectedVoiceObj.id.startsWith("aura-2") ? 5 : 0)}</span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsVoiceDropdownOpen(false)}
+                    className="w-6 h-6 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-muted)] hover:text-[var(--color-heading)] flex items-center justify-center transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div className="p-3 pb-2">
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder={`Search ${selectedEngine === "sonic" ? "Sonic" : "Flux"} voices by name, language, or tone...`}
-                      className="w-full h-8 pl-8 pr-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.25rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      placeholder="Search voices by name, accent, tone, or language..."
+                      className="w-full h-9 pl-9 pr-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] placeholder:text-[var(--color-muted)]"
                     />
                   </div>
-
-                  {/* Filter Chips: Gender & Common Presets */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Gender</span>
-                    {[
-                      { id: "all", label: "All" },
-                      { id: "female", label: "Female" },
-                      { id: "male", label: "Male" }
-                    ].map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setActiveFilter(f.id as any)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 ${
-                          activeFilter === f.id
-                            ? "bg-[var(--color-primary)] text-white shadow-2xs"
-                            : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-
-                    {/* Sonic Languages Filter */}
-                    {selectedEngine === "sonic" && (
-                      <>
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0 ml-2">Language</span>
-                        {["all", "en", "es", "fr", "de", "ja", "it", "hi", "ar", "pt"].map((langCode) => (
-                          <button
-                            key={langCode}
-                            type="button"
-                            onClick={() => setSonicLangFilter(langCode)}
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 uppercase ${
-                              sonicLangFilter === langCode
-                                ? "bg-emerald-600 text-white shadow-2xs"
-                                : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
-                            }`}
-                          >
-                            {langCode === "all" ? "All Languages" : langCode}
-                          </button>
-                        ))}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Use-case chips for Flux */}
-                  {selectedEngine === "flux" && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-muted)] shrink-0">Use case</span>
-                      {[{ id: "all", label: "Any" }, ...VOICE_CATEGORIES].map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setActiveCategory(c.id)}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition-all cursor-pointer shrink-0 ${
-                            activeCategory === c.id
-                              ? "bg-[var(--color-primary)] text-white shadow-2xs"
-                              : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-heading)] border border-[var(--color-border)]"
-                          }`}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
-                {/* Scrollable Voice Cards List */}
-                <div className="max-h-[310px] overflow-y-auto divide-y divide-[var(--color-border)]/60 focus:outline-none scrollbar-thin">
+                {/* Filter Toolbar & Tab Bar */}
+                <div className="px-3 pb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)]/70">
+                  {/* Select Dropdown Filters */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Direct Engine Switcher Pill (Sonic vs Flux) */}
+                    <div className="inline-flex p-0.5 bg-[var(--color-surface-muted)] rounded-md border border-[var(--color-border)] shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => handleEngineSwitch("flux")}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          selectedEngine === "flux"
+                            ? "bg-[var(--color-surface)] text-[var(--color-primary)] shadow-xs border border-[var(--color-border)]"
+                            : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                        }`}
+                      >
+                        <Zap className="w-3 h-3 text-[var(--color-primary)]" />
+                        <span>Flux</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEngineSwitch("sonic")}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          selectedEngine === "sonic"
+                            ? "bg-[var(--color-surface)] text-emerald-600 dark:text-emerald-400 shadow-xs border border-[var(--color-border)]"
+                            : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3 text-emerald-500" />
+                        <span>Sonic</span>
+                      </button>
+                    </div>
+
+                    {/* Gender Select with Icon */}
+                    <div className="relative">
+                      <select
+                        value={activeFilter}
+                        onChange={(e) => setActiveFilter(e.target.value as any)}
+                        className="h-7 pl-6 pr-6 text-[11px] font-medium bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] appearance-none cursor-pointer"
+                      >
+                        <option value="all">Any gender</option>
+                        <option value="female">Female (♀)</option>
+                        <option value="male">Male (♂)</option>
+                      </select>
+                      <User className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] pointer-events-none" />
+                      <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-muted)] pointer-events-none" />
+                    </div>
+
+                    {/* Language Filter Dropdown with Real Country Flags and Scrollable List */}
+                    <div className="relative" ref={modalLangFilterRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsModalLangFilterOpen(!isModalLangFilterOpen)}
+                        className="h-7 px-2 text-[11px] font-medium bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md text-[var(--color-heading)] flex items-center gap-1.5 hover:border-[var(--color-primary)] transition-all cursor-pointer"
+                      >
+                        {selectedEngine === "sonic" && sonicLangFilter !== "all" ? (
+                          <>
+                            <CountryFlag code={LANG_TO_COUNTRY_CODE[sonicLangFilter] || "us"} />
+                            <span className="truncate max-w-[85px]">
+                              {SUPPORTED_LANGUAGES.find((l) => l.code === sonicLangFilter)?.label.split(" (")[0] || sonicLangFilter.toUpperCase()}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="w-3 h-3 text-[var(--color-muted)] shrink-0" />
+                            <span>Any language</span>
+                          </>
+                        )}
+                        <ChevronDown className={`w-3 h-3 text-[var(--color-muted)] shrink-0 transition-transform ${isModalLangFilterOpen ? "rotate-180 text-[var(--color-primary)]" : ""}`} />
+                      </button>
+
+                      {isModalLangFilterOpen && (
+                        <div className="absolute left-0 top-full mt-1 w-56 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-xl p-1 z-50 max-h-60 overflow-y-auto scrollbar-thin space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-150">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedEngine === "sonic") setSonicLangFilter("all");
+                              else setActiveFilter("all");
+                              setIsModalLangFilterOpen(false);
+                            }}
+                            className={`w-full px-2 py-1.5 rounded text-[11px] flex items-center justify-between gap-1.5 cursor-pointer text-left transition-colors ${
+                              (selectedEngine === "sonic" ? sonicLangFilter === "all" : activeFilter === "all")
+                                ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] font-bold"
+                                : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Globe className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                              <span>Any language (All)</span>
+                            </div>
+                            {(selectedEngine === "sonic" ? sonicLangFilter === "all" : activeFilter === "all") && (
+                              <Check className="w-3 h-3 text-[var(--color-primary)]" />
+                            )}
+                          </button>
+
+                          {SUPPORTED_LANGUAGES.map((lang) => {
+                            const isSelected = selectedEngine === "sonic" ? sonicLangFilter === lang.code : false;
+                            const countryCode = LANG_TO_COUNTRY_CODE[lang.code] || "us";
+                            return (
+                              <button
+                                key={lang.code}
+                                type="button"
+                                onClick={() => {
+                                  if (selectedEngine === "sonic") setSonicLangFilter(lang.code);
+                                  else {
+                                    if (["es", "fr", "de", "it", "ja"].includes(lang.code)) {
+                                      setActiveFilter("multilingual");
+                                    } else {
+                                      setActiveFilter("all");
+                                    }
+                                  }
+                                  setIsModalLangFilterOpen(false);
+                                }}
+                                className={`w-full px-2 py-1.5 rounded text-[11px] flex items-center justify-between gap-1.5 cursor-pointer text-left transition-colors ${
+                                  isSelected
+                                    ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] font-bold"
+                                    : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <CountryFlag code={countryCode} />
+                                  <span className="truncate">{lang.label}</span>
+                                </div>
+                                {isSelected && <Check className="w-3 h-3 text-[var(--color-primary)] shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Clean Navigation Tabs: Featured | All voices | Saved */}
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
+                    {[
+                      { id: "featured", label: "Featured" },
+                      { id: "all", label: "All voices" },
+                      { id: "saved", label: `Saved (${savedVoiceIds.size})` }
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setVoiceTab(t.id as any)}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          voiceTab === t.id
+                            ? "text-[var(--color-primary)] font-bold border-b-2 border-[var(--color-primary)] bg-[var(--color-primary-light)]/20"
+                            : "hover:text-[var(--color-heading)]"
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Clean Scrollable List of Voice Items matching Image 1 */}
+                <div className="max-h-[360px] overflow-y-auto divide-y divide-[var(--color-border)]/50 focus:outline-none scrollbar-thin">
                   {filteredVoices.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-[var(--color-muted)]">
+                    <div className="p-8 text-center text-xs text-[var(--color-muted)]">
                       {searchQuery.trim()
                         ? `No voices found matching "${searchQuery}".`
-                        : "No voices match these filters. Try another use case or choose All Voices."}
+                        : "No voices found in this tab or filter. Try switching tabs."}
                     </div>
                   ) : (
                     filteredVoices.map((v) => {
@@ -846,9 +1175,14 @@ export function Step3VoiceLanguage({
                       const isVoicePlaying = playingVoiceId === v.id;
                       const meta = VOICE_METADATA_MAP[v.id] || {
                         accent: v.language === "en" ? "US English" : v.language.toUpperCase(),
-                        tone: v.style,
-                        bestFor: "General Telephony"
+                        tone: v.style || "Natural Conversational",
+                        bestFor: "Customer Care & Support"
                       };
+                      const isFemale = (v.gender || "").toLowerCase() === "female";
+                      const isSaved = savedVoiceIds.has(v.id);
+                      const primaryCountryCode = getVoiceCountryCode(v.id, v.language);
+                      const supportedList = getVoiceSupportedList(v.id, v.engine || (v.id.includes("-") && !v.id.startsWith("flux-") && !v.id.startsWith("aura-") ? "sonic" : "flux"), v.language);
+                      const extraCount = supportedList.length > 1 ? `+${supportedList.length - 1}` : "";
 
                       return (
                         <div
@@ -858,109 +1192,158 @@ export function Step3VoiceLanguage({
                             handleVoiceChange(v.id);
                             setIsVoiceDropdownOpen(false);
                           }}
-                          className={`px-3.5 py-2.5 flex items-center justify-between gap-3 cursor-pointer transition-all group select-none ${
+                          className={`px-4 py-3 flex items-center justify-between gap-3.5 cursor-pointer transition-all group select-none ${
                             isSelected
-                              ? "bg-[var(--color-primary-light)]/25 text-[var(--color-heading)] font-semibold border-l-2 border-[var(--color-primary)]"
-                              : "hover:bg-[var(--color-surface-muted)] text-[var(--color-heading)]"
+                              ? "bg-[var(--color-primary-light)]/25 text-[var(--color-heading)]"
+                              : "hover:bg-[var(--color-surface-muted)]/70 text-[var(--color-heading)]"
                           }`}
                         >
-                          {/* Left: Avatar + Name + Description */}
-                          <div className="flex items-center gap-3 min-w-0 max-w-[280px] shrink-0">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-transform bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">
-                              {v.name[0]}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold text-xs text-[var(--color-heading)] flex items-center gap-1.5">
-                                <span>{v.name}</span>
-                                {v.id.startsWith("aura-2") && (
-                                   <span className="text-[9px] font-semibold text-[var(--color-primary)] bg-[var(--color-primary-light)]/30 px-1.5 py-0.2 rounded">
-                                    Gen-2
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-[var(--color-muted)] truncate max-w-[220px]">
-                                {v.description || v.style}
-                              </div>
-                              {getVoiceCategories(v.id).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {getVoiceCategories(v.id).slice(0, 3).map((cid) => (
-                                    <span
-                                      key={cid}
-                                      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
-                                        activeCategory === cid
-                                          ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
-                                          : "bg-[var(--color-primary-light)] text-[var(--color-primary)] border-[var(--color-primary)]/20"
-                                      }`}
-                                    >
-                                      {VOICE_CATEGORIES.find((x) => x.id === cid)?.label}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Middle (Fills White Space with Rich Metadata Tags) */}
-                          <div className="hidden sm:flex items-center gap-2 flex-1 min-w-0 justify-start overflow-hidden">
-                            {/* Accent Tag */}
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[var(--color-surface-muted)] px-2 py-0.5 rounded border border-[var(--color-border)] text-[var(--color-muted)] shrink-0">
-                              <Globe className="w-2.5 h-2.5 text-[var(--color-muted)]" />
-                              <span>{meta.accent}</span>
-                            </span>
-
-                            {/* Gender Pill */}
-                            <span className="text-[10px] font-medium text-[var(--color-muted)] bg-[var(--color-surface-muted)] px-2 py-0.5 rounded border border-[var(--color-border)] shrink-0">
-                              {v.gender}
-                            </span>
-
-                            {/* Tone Tag */}
-                            <span className="hidden md:inline-flex text-[10px] font-medium text-[var(--color-heading)] bg-[var(--color-surface-muted)] px-2 py-0.5 rounded border border-[var(--color-border)] shrink-0 truncate max-w-[150px]">
-                              {meta.tone}
-                            </span>
-
-                            {/* Best For Tag */}
-                            <span className="hidden lg:inline-flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] bg-[var(--color-primary-light)]/20 px-2 py-0.5 rounded-full border border-[var(--color-primary)]/20 shrink-0">
-                              <Sparkles className="w-2.5 h-2.5 shrink-0" />
-                              <span>{meta.bestFor}</span>
-                            </span>
-                          </div>
-
-                          {/* Right: Soundwave Visualizer / Play Button + Active Check with strictly fixed width to prevent any UI shifts */}
-                          <div className="flex items-center gap-2 shrink-0 ml-auto w-20 justify-end">
-                            {/* Inline Voice Test Audio Button with integrated visualizer */}
+                          {/* Far Left: Prominent Circular Play/Stop Button with Primary Brand Color */}
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
                             <button
                               type="button"
-                              onMouseEnter={() => prefetchVoiceSample(v.id)}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 playVoiceSample(v.id);
                               }}
-                              className={`h-7 px-2 rounded-full border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer shadow-xs ${
                                 isVoicePlaying
-                                  ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-xs"
-                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:shadow-2xs"
+                                  ? "bg-[var(--color-primary)] text-white ring-2 ring-[var(--color-primary)]/40 animate-pulse"
+                                  : "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white border border-[var(--color-primary)]/30"
                               }`}
-                              title={isVoicePlaying ? "Stop voice preview" : `Preview ${v.name} voice`}
+                              title={isVoicePlaying ? "Stop audio" : `Play ${v.name} voice preview`}
                             >
                               {isVoicePlaying ? (
-                                <>
-                                  <div className="flex items-end gap-0.5 h-3">
-                                    <span className="w-0.5 bg-white rounded-full animate-wave-1" />
-                                    <span className="w-0.5 bg-white rounded-full animate-wave-2" />
-                                    <span className="w-0.5 bg-white rounded-full animate-wave-3" />
-                                  </div>
-                                  <Square className="w-2.5 h-2.5 fill-current" />
-                                </>
+                                <Square className="w-3.5 h-3.5 fill-current" />
                               ) : (
-                                <Play className="w-3 h-3 fill-current" />
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
                               )}
                             </button>
 
-                            {/* Selection Checkmark container with fixed width */}
-                            <div className="w-5 h-5 flex items-center justify-center shrink-0">
-                              {isSelected ? (
+                            {/* Middle Details: Name + Persona + Gender Glyph + Wave Effect + Description */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-xs text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition-colors">
+                                  {v.name}
+                                </span>
+                                <span className="text-[11px] text-[var(--color-muted)] font-normal">
+                                  - {meta.tone || meta.bestFor}
+                                </span>
+                                {/* Verified badge */}
+                                <span className="w-3.5 h-3.5 rounded-full bg-[var(--color-heading)] text-[var(--color-surface)] flex items-center justify-center text-[8px] font-bold shrink-0">
+                                  ✓
+                                </span>
+                                {/* Gender Icon */}
+                                <span className={`text-[11px] font-bold ${isFemale ? "text-pink-500" : "text-blue-500"}`}>
+                                  {isFemale ? "♀" : "♂"}
+                                </span>
+
+                                {/* Minimalist Live Soundwave effect when voice is playing */}
+                                {isVoicePlaying && (
+                                  <div className="flex items-end gap-0.5 h-3 ml-1">
+                                    <span className="w-0.5 h-2 bg-[var(--color-primary)] rounded-full animate-wave-1" />
+                                    <span className="w-0.5 h-3 bg-[var(--color-primary)] rounded-full animate-wave-2" />
+                                    <span className="w-0.5 h-1.5 bg-[var(--color-primary)] rounded-full animate-wave-3" />
+                                    <span className="w-0.5 h-2.5 bg-[var(--color-primary)] rounded-full animate-wave-2" />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Clean one-line human description on line 2 */}
+                              <div className="text-[11px] text-[var(--color-muted)] truncate max-w-[480px] mt-0.5">
+                                {v.description || `Ideal for ${meta.bestFor.toLowerCase()} and natural telephone dialogue.`}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Far Right: Multi-language Flag Pill + Bookmark Icon + Active Check */}
+                          <div className="flex items-center gap-3 shrink-0">
+                            {/* Multilingual Flag + Counter Pill with Zero-Gap Hover & Clickable Flyout */}
+                            <div className="relative group/flag" data-flyout-container>
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenFlyoutVoiceId(openFlyoutVoiceId === v.id ? null : v.id);
+                                }}
+                                className={`flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border shadow-2xs font-medium cursor-pointer transition-colors ${
+                                  openFlyoutVoiceId === v.id
+                                    ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20"
+                                    : "text-[var(--color-muted)] bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-heading)]"
+                                }`}
+                                title="Click or hover to select supported regional languages"
+                              >
+                                <CountryFlag code={primaryCountryCode} />
+                                {extraCount && <span className="font-semibold">{extraCount}</span>}
+                              </div>
+
+                              {/* Seamless Flyout Bridge (Zero-Gap) with Direct Selection */}
+                              <div
+                                className={`absolute right-0 top-full pt-1.5 w-60 z-50 ${
+                                  openFlyoutVoiceId === v.id ? "block" : "hidden group-hover/flag:block"
+                                }`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xl p-2.5 text-xs animate-in fade-in-50 zoom-in-95 duration-150">
+                                  <div className="text-[11px] font-semibold text-[var(--color-muted)] mb-2 pb-1.5 border-b border-[var(--color-border)] flex items-center justify-between">
+                                    <span>Select Language ({supportedList.length})</span>
+                                    <span className="font-mono text-[10px] bg-[var(--color-surface-muted)] px-1.5 py-0.2 rounded border border-[var(--color-border)]">
+                                      Active: {(agentData.voice?.language || "en").toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="max-h-56 overflow-y-auto scrollbar-thin space-y-0.5 pr-1">
+                                    {supportedList.map((item, idx) => {
+                                      const isLangActive = (agentData.voice?.language || "en") === item.lang;
+                                      return (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (item.lang) {
+                                              handleLanguageChange(item.lang);
+                                            }
+                                            handleVoiceChange(v.id);
+                                            setOpenFlyoutVoiceId(null);
+                                            setIsVoiceDropdownOpen(false);
+                                          }}
+                                          className={`w-full flex items-center justify-between gap-2 py-1.5 px-2 rounded-md text-xs transition-colors cursor-pointer text-left ${
+                                            isLangActive
+                                              ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] font-bold"
+                                              : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-primary)]"
+                                          }`}
+                                        >
+                                          <div className="flex items-center gap-2 truncate">
+                                            <CountryFlag code={item.countryCode} />
+                                            <span className="truncate">{item.label}</span>
+                                          </div>
+                                          {isLangActive && (
+                                            <Check className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Bookmark / Favorite Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => toggleSaveVoice(v.id, e)}
+                              className={`p-1 rounded hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer ${
+                                isSaved ? "text-amber-500" : "text-[var(--color-muted)] hover:text-[var(--color-heading)]"
+                              }`}
+                              title={isSaved ? "Remove from saved" : "Save this voice"}
+                            >
+                              <Bookmark className={`w-3.5 h-3.5 ${isSaved ? "fill-current" : ""}`} />
+                            </button>
+
+                            {/* Selection Indicator */}
+                            <div className="w-5 h-5 flex items-center justify-center">
+                              {isSelected && (
                                 <Check className="w-4 h-4 text-[var(--color-primary)] stroke-[2.5]" />
-                              ) : null}
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1049,14 +1432,17 @@ export function Step3VoiceLanguage({
             <button
               type="button"
               onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)}
-              className={`w-full h-8 px-2.5 text-xs bg-[var(--color-surface-muted)] border rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2 focus:outline-none cursor-pointer transition-all ${
+              className={`w-full h-9 px-3 text-xs bg-[var(--color-surface-muted)] border rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] font-semibold flex items-center justify-between gap-2 focus:outline-none cursor-pointer transition-all ${
                 isLangDropdownOpen
                   ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20 shadow-xs"
                   : "border-[var(--color-border)] hover:border-[var(--color-border-strong,var(--color-border))] focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15"
               }`}
             >
-              <div className="flex items-center gap-2 truncate">
-                <Globe className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+              <div className="flex items-center gap-2.5 truncate">
+                <CountryFlag
+                  code={LANG_TO_COUNTRY_CODE[agentData.voice?.language || "en"] || "us"}
+                  className="w-4 h-3 rounded-[2px] object-cover inline-block shadow-2xs border border-black/10 shrink-0"
+                />
                 <span className="truncate">
                   {SUPPORTED_LANGUAGES.find((l) => l.code === (agentData.voice?.language || "en"))?.label || "English (US / Global Standard)"}
                 </span>
@@ -1069,9 +1455,10 @@ export function Step3VoiceLanguage({
             </button>
 
             {isLangDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-xl z-50 max-h-56 overflow-y-auto p-1 space-y-0.5 animate-fade-in scrollbar-thin">
+              <div className="absolute left-0 top-full mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-xl z-50 max-h-64 overflow-y-auto p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95 duration-150 scrollbar-thin">
                 {SUPPORTED_LANGUAGES.map((lang) => {
                   const isSelected = (agentData.voice?.language || "en") === lang.code;
+                  const countryCode = LANG_TO_COUNTRY_CODE[lang.code] || "us";
                   return (
                     <div
                       key={lang.code}
@@ -1079,17 +1466,18 @@ export function Step3VoiceLanguage({
                         handleLanguageChange(lang.code);
                         setIsLangDropdownOpen(false);
                       }}
-                      className={`w-full px-2.5 py-1.5 rounded-[var(--radius-main,0.25rem)] text-xs flex items-center justify-between gap-2 cursor-pointer transition-all select-none ${
+                      className={`w-full px-2.5 py-2 rounded-[var(--radius-main,0.25rem)] text-xs flex items-center justify-between gap-2 cursor-pointer transition-all select-none ${
                         isSelected
                           ? "bg-[var(--color-primary)] text-white font-semibold shadow-2xs"
                           : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-[10px] font-mono opacity-80 uppercase w-4 shrink-0">
-                          {lang.code}
+                      <div className="flex items-center gap-2.5 truncate">
+                        <CountryFlag code={countryCode} />
+                        <span className="truncate font-medium">{lang.label}</span>
+                        <span className={`text-[10px] ${isSelected ? "text-white/80" : "text-[var(--color-muted)]"}`}>
+                          ({lang.native})
                         </span>
-                        <span className="truncate">{lang.label}</span>
                       </div>
                       {isSelected && (
                         <Check className="w-3.5 h-3.5 text-white stroke-[2.5] shrink-0" />

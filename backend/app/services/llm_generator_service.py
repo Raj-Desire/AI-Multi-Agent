@@ -11,6 +11,34 @@ import httpx
 from typing import Dict, Any, Optional
 
 
+LANG_NAMES = {
+    "hi": "Hindi (हिन्दी)",
+    "gu": "Gujarati (ગુજરાતી)",
+    "es": "Spanish (Español)",
+    "fr": "French (Français)",
+    "de": "German (Deutsch)",
+    "it": "Italian (Italiano)",
+    "pt": "Portuguese (Português)",
+    "ja": "Japanese (日本語)",
+    "zh": "Chinese (Mandarin / 中文)",
+    "ko": "Korean (한국어)",
+    "ar": "Arabic (العربية)",
+    "ru": "Russian (Русский)",
+    "ta": "Tamil (தமிழ்)",
+    "te": "Telugu (తెలుగు)",
+    "bn": "Bengali (বাংলা)",
+    "pa": "Punjabi (ਪੰਜਾਬੀ)",
+    "ur": "Urdu (اردو)",
+    "nl": "Dutch (Nederlands)",
+    "tr": "Turkish (Türkçe)",
+    "vi": "Vietnamese (Tiếng Việt)",
+    "th": "Thai (ไทย)",
+    "pl": "Polish (Polski)",
+    "sv": "Swedish (Svenska)",
+    "id": "Indonesian (Bahasa Indonesia)"
+}
+
+
 class LLMGeneratorService:
     """Service for AI-powered voice agent prompt generation and interactive refinement."""
 
@@ -171,32 +199,6 @@ class LLMGeneratorService:
             greeting_instruction = "Clear, friendly telephone greeting"
 
         # Language directive mapping
-        LANG_NAMES = {
-            "hi": "Hindi (हिन्दी)",
-            "gu": "Gujarati (ગુજરાતી)",
-            "es": "Spanish (Español)",
-            "fr": "French (Français)",
-            "de": "German (Deutsch)",
-            "it": "Italian (Italiano)",
-            "pt": "Portuguese (Português)",
-            "ja": "Japanese (日本語)",
-            "zh": "Chinese (Mandarin / 中文)",
-            "ko": "Korean (한국어)",
-            "ar": "Arabic (العربية)",
-            "ru": "Russian (Русский)",
-            "ta": "Tamil (தமிழ்)",
-            "te": "Telugu (తెలుగు)",
-            "bn": "Bengali (বাংলা)",
-            "pa": "Punjabi (ਪੰਜਾਬੀ)",
-            "ur": "Urdu (اردو)",
-            "nl": "Dutch (Nederlands)",
-            "tr": "Turkish (Türkçe)",
-            "vi": "Vietnamese (Tiếng Việt)",
-            "th": "Thai (ไทย)",
-            "pl": "Polish (Polski)",
-            "sv": "Swedish (Svenska)",
-            "id": "Indonesian (Bahasa Indonesia)"
-        }
         target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
         if language and language != "en":
             lang_note = (
@@ -449,6 +451,7 @@ OBJECTIONS & PHONE RULES:
         """
         type_key = (agent_type or "marketing").lower()
         clean_name = name.strip() or "Voice Assistant"
+        clean_role = (role or "Assistant").strip()
         clean_desc = (objective or description).strip() or "Customer outreach and support."
         target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
         if language and language != "en":
