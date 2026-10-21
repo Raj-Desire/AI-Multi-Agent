@@ -166,16 +166,6 @@ async def voice_stream_websocket(websocket: WebSocket):
             now = time.time()
 
             # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
-            # Only apply turn_delay_ms if a positive delay is explicitly requested by runtime config.
-            if not is_agent_speaking and user_spoke and outbound_chunk_counter > 0:
-                runtime = agent_config.runtime if agent_config else None
-                delay_ms = getattr(runtime, "turn_delay_ms", 0) if runtime else 0
-                if delay_ms > 0:
-                    delay_s = min(delay_ms / 1000.0, 0.45)
-                    await asyncio.sleep(delay_s)
-                    if is_interrupted or not websocket:
-                        return
-
             if "first_audio" not in startup_timing and "start" in startup_timing:
                 startup_timing["first_audio"] = time.perf_counter()
                 first_audio_ms = (startup_timing["first_audio"] - startup_timing["start"]) * 1000.0
@@ -638,13 +628,11 @@ async def voice_stream_websocket(websocket: WebSocket):
                     role="admin"
                 )
 
-                # Fetch or seed Agent Configuration
-                if session and session.agent_config_snapshot:
-                    agent_config = AgentConfiguration.model_validate(session.agent_config_snapshot)
-                    logger.info(f"[VoiceGateway] Using CallSession agent snapshot: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
-                else:
-                    agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
-                    logger.info(f"[VoiceGateway] Loaded Agent config: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
+                # Fetch fresh Agent Configuration from database (ensuring latest endpointing & speed settings apply)
+                agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+                logger.info(f"[VoiceGateway] Loaded Agent config: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}', Endpointing={agent_config.listen.endpointing if agent_config.listen else 'default'}ms")
+                if session:
+                    session.agent_config_snapshot = agent_config.model_dump(mode="json")
 
                 # Initialize or attach CallSession
                 if not session:
@@ -815,10 +803,9 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 logger.info(
                     f"[VoiceGateway] Initializing Voice Engine with Settings: "
-                    f"STT Model='{deepgram_settings.agent.listen.provider.model}', "
+                    f"STT Model='{deepgram_settings.agent.listen.provider.model}' (Lang='{deepgram_settings.agent.listen.provider.language}', Endpointing={deepgram_settings.agent.listen.provider.endpointing}ms), "
                     f"LLM Provider='{deepgram_settings.agent.think.provider.type}', "
                     f"LLM Model='{deepgram_settings.agent.think.provider.model}', "
-                    f"LLM Temp={deepgram_settings.agent.think.provider.temperature}, "
                     f"TTS Voice='{deepgram_settings.agent.speak.provider.model}'"
                 )
 
