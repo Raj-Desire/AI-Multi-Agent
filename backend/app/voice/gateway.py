@@ -93,18 +93,89 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     # Outbound audio metrics
     startup_timing: dict = {}  # perf_counter marks for the answer -> first-greeting-audio path
+    # Per-turn response-latency marks (perf_counter): user_start -> user_final -> thinking -> first_audio.
+    # Logged once per turn so we can see which stage (endpointing, LLM, TTS) dominates the reply delay.
+    turn_marks: dict = {}
+
+    def _mark_turn(stage: str) -> None:
+        turn_marks[stage] = time.perf_counter()
+
+    def _log_turn_latency() -> None:
+        m = turn_marks
+        if "user_final" not in m or "first_audio" not in m or m.get("logged"):
+            return
+        m["logged"] = True
+        ms = lambda a, b: round((m[b] - m[a]) * 1000.0) if a in m and b in m else None
+        logger.info(
+            f"[VoiceGateway:TurnLatency] reply_delay={ms('user_final', 'first_audio')}ms "
+            f"(final_transcript->thinking={ms('user_final', 'thinking')}ms, "
+            f"thinking->first_audio={ms('thinking', 'first_audio')}ms, "
+            f"speech_start->final_transcript={ms('user_start', 'user_final')}ms)"
+        )
+        if session:
+            session.latest_latency.reply_delay_ms = float(ms("user_final", "first_audio") or 0.0)
+
     outbound_chunk_counter: int = 0
     total_outbound_audio_bytes: int = 0
     total_outbound_audio_duration_s: float = 0.0
 
+    # Asynchronous outbound audio queue to pace packets at true telephony speed (40ms per 320 bytes)
+    # Drift-compensated wall-clock scheduling ensures EXACT 1.0x playback speed with zero slow-motion on Windows.
+    outbound_audio_queue: asyncio.Queue[bytes] = asyncio.Queue()
+    audio_pacer_task: Optional[asyncio.Task] = None
+
+    async def _audio_pacer_worker():
+        nonlocal outbound_chunk_counter
+        try:
+            next_frame_time = 0.0
+            while not call_ended_event.is_set():
+                chunk = await outbound_audio_queue.get()
+                if is_interrupted or not websocket:
+                    outbound_audio_queue.task_done()
+                    continue
+
+                outbound_chunk_counter += 1
+                twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
+                try:
+                    await websocket.send_text(json.dumps(twilio_msg))
+                except Exception as send_err:
+                    logger.debug(f"[VoiceGateway] Audio chunk send notice: {send_err}")
+                    outbound_audio_queue.task_done()
+                    break
+
+                outbound_audio_queue.task_done()
+                
+                chunk_duration_s = len(chunk) / 8000.0
+                now = time.perf_counter()
+                
+                # Telephony Jitter Buffer Optimization:
+                # Reset wall-clock anchor when restarting speech after a pause (>150ms).
+                # Giving a ~120ms lead burst fills Twilio's audio player buffer instantaneously,
+                # eliminating any startup delay or stutter when the agent begins speaking.
+                if next_frame_time == 0.0 or (now - next_frame_time) > 0.15:
+                    next_frame_time = now - (chunk_duration_s * 2.0)
+                else:
+                    next_frame_time += chunk_duration_s
+
+                # Sleep only when pacing exceeds current clock time
+                sleep_delay = next_frame_time - time.perf_counter()
+                if sleep_delay > 0.005:
+                    await asyncio.sleep(sleep_delay)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"[VoiceGateway] Audio pacer worker error: {e}")
+
+    audio_pacer_task = asyncio.create_task(_audio_pacer_worker())
+
     async def handle_deepgram_audio(raw_audio: bytes):
         """
-        Forward audio from Deepgram TTS to Twilio Media Stream in standard 160-byte (20ms) frames.
-        Preserves audio order, avoids buffer flooding or artificial sleep starvation,
+        Receive audio from speech engine TTS and enqueue in 320-byte (40ms) frames for paced delivery.
+        Preserves audio fidelity, avoids buffer flooding or packet starvation,
         and logs precise duration & byte metrics.
         """
         nonlocal is_agent_speaking, last_agent_speech_done_time, is_interrupted
-        nonlocal outbound_chunk_counter, total_outbound_audio_bytes, total_outbound_audio_duration_s
+        nonlocal total_outbound_audio_bytes, total_outbound_audio_duration_s
         if not stream_sid or not raw_audio:
             return
         
@@ -115,17 +186,11 @@ async def voice_stream_websocket(websocket: WebSocket):
             audio_duration = len(raw_audio) / 8000.0
             now = time.time()
 
-            # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
-            # Only apply turn_delay_ms if a positive delay is explicitly requested by runtime config.
-            if not is_agent_speaking and user_spoke and outbound_chunk_counter > 0:
-                runtime = agent_config.runtime if agent_config else None
-                delay_ms = getattr(runtime, "turn_delay_ms", 0) if runtime else 0
-                if delay_ms > 0:
-                    delay_s = min(delay_ms / 1000.0, 0.45)
-                    await asyncio.sleep(delay_s)
-                    if is_interrupted or not websocket:
-                        return
+            if "user_final" in turn_marks and "first_audio" not in turn_marks:
+                _mark_turn("first_audio")
+                _log_turn_latency()
 
+            # Conversational turn pacing: outbound audio starts immediately with zero artificial lag.
             if "first_audio" not in startup_timing and "start" in startup_timing:
                 startup_timing["first_audio"] = time.perf_counter()
                 first_audio_ms = (startup_timing["first_audio"] - startup_timing["start"]) * 1000.0
@@ -142,28 +207,20 @@ async def voice_stream_websocket(websocket: WebSocket):
             total_outbound_audio_bytes += len(raw_audio)
             total_outbound_audio_duration_s += audio_duration
 
-            # Split into 160-byte frames (20ms @ 8kHz mu-law) matching Twilio Media Streams specification
-            chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=160)
+            # Split into 320-byte frames (40ms @ 8kHz mu-law) for smooth, jitter-free playback on mobile networks
+            chunks = AudioAdapter.chunk_mulaw_audio(raw_audio, chunk_size=320)
             for chunk in chunks:
                 if is_interrupted:
                     break
-                outbound_chunk_counter += 1
-                chunk_duration_ms = (len(chunk) / 8000.0) * 1000.0
-                twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
-                await websocket.send_text(json.dumps(twilio_msg))
-
-                logger.debug(
-                    f"[VoiceGateway:OutboundAudio] Chunk #{outbound_chunk_counter} | "
-                    f"Bytes: {len(chunk)} | Duration: {chunk_duration_ms:.1f}ms | "
-                    f"SendTime: {time.time():.4f} | "
-                    f"CumulativeAudio: {total_outbound_audio_duration_s:.2f}s ({total_outbound_audio_bytes} B)"
-                )
+                await outbound_audio_queue.put(chunk)
         except Exception as e:
-            logger.error(f"[VoiceGateway] Error streaming audio chunk to Twilio: {e}")
+            logger.error(f"[VoiceGateway] Error enqueuing audio chunks: {e}")
 
     async def handle_user_speaking():
         """Barge-in: Interrupt audio immediately when user starts speaking."""
         nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, is_interrupted, last_agent_speech_done_time
+        turn_marks.clear()
+        _mark_turn("user_start")
         user_speech_start_time = time.time()
         is_user_speaking = True
         user_spoke = True
@@ -185,6 +242,14 @@ async def voice_stream_websocket(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
 
+        # Flush any unplayed chunks in the internal pacer queue
+        while not outbound_audio_queue.empty():
+            try:
+                outbound_audio_queue.get_nowait()
+                outbound_audio_queue.task_done()
+            except Exception:
+                break
+
         if session:
             await call_session_service.record_barge_in(session)
 
@@ -198,24 +263,34 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_agent_thinking(data: dict):
         nonlocal thinking_filler_task, deepgram_client
+        if "thinking" not in turn_marks:
+            _mark_turn("thinking")
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
+        # Thinking fillers: Disabled by default to prevent extra unnecessary turns ('बिल्कुल!', 'Got it, one moment please.')
+        # and eliminate delay so the model responds directly in a single, crisp turn.
         runtime = agent_config.runtime if agent_config else None
-        if runtime and getattr(runtime, "conversational_fillers_enabled", True):
+        if runtime and getattr(runtime, "conversational_fillers_enabled", False):
             async def _delayed_filler():
                 try:
-                    filler_delay = getattr(runtime, "filler_delay_seconds", 0.95) or 0.95
+                    filler_delay = getattr(runtime, "filler_delay_seconds", 1.8) or 1.8
                     await asyncio.sleep(filler_delay)
                     if is_user_speaking or is_agent_speaking or is_concluding_call or is_interrupted:
                         return
-                    phrases = getattr(runtime, "filler_phrases", None) or [
-                        "Let me check that for you.",
-                        "Got it, one moment please.",
-                        "Understood, looking into that right now.",
-                        "Sure thing, let me pull that up.",
-                        "Alright, let me see."
-                    ]
+                    agent_voice_lang = getattr(getattr(agent_config, "voice", None), "language", "en") or "en"
+                    if "hi" in agent_voice_lang.lower():
+                        phrases = getattr(runtime, "filler_phrases", None) or [
+                            "हाँ जी, एक पल दीजिए...",
+                            "समझ गया, मैं चेक कर रहा हूँ...",
+                            "बिल्कुल, एक सेकंड रुकिए..."
+                        ]
+                    else:
+                        phrases = getattr(runtime, "filler_phrases", None) or [
+                            "Let me check that for you.",
+                            "Got it, one moment please.",
+                            "Understood, looking into that right now."
+                        ]
                     import random
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
@@ -259,6 +334,12 @@ async def voice_stream_websocket(websocket: WebSocket):
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
 
         if role == "user":
+            if "user_start" not in turn_marks:
+                turn_marks.clear()
+            turn_marks.pop("first_audio", None)
+            turn_marks.pop("logged", None)
+            turn_marks.pop("thinking", None)
+            turn_marks["user_final"] = now
             turn_start_time = now
             last_user_speech_time = time.time()
             is_user_speaking = False
@@ -331,7 +412,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                 return
 
             from app.api.v1.voice import detect_conversation_conclusion
-            if detect_conversation_conclusion(content):
+            # Never conclude on initial greeting (turn 0) or before the user has even spoken!
+            if user_spoke and turn_counter >= 1 and detect_conversation_conclusion(content):
                 lower_content = content.lower()
                 is_voicemail_or_machine = (
                     "voicemail detected" in lower_content or
@@ -434,8 +516,13 @@ async def voice_stream_websocket(websocket: WebSocket):
                 now = time.time()
                 elapsed_call_time = now - call_start_time
 
-                silence_timeout = max(3, runtime.silence_timeout)
-                hangup_delay = max(2, runtime.silence_hangup_delay or 5)
+                # Ensure healthy, realistic telephone thresholds:
+                # - silence_timeout: minimum 8.0s (default configured in runtime or fallback to 8s)
+                # - hangup_delay: minimum 6.0s (give the caller time to react to the reprompt)
+                configured_silence = getattr(runtime, "silence_timeout", 8) or 8
+                silence_timeout = max(8.0, float(configured_silence))
+                configured_hangup = getattr(runtime, "silence_hangup_delay", 6) or 6
+                hangup_delay = max(6.0, float(configured_hangup))
                 max_duration = max(10, runtime.maximum_call_duration or 300)
                 if org_credit_limit_sec is not None:
                     max_duration = max(3.0, min(float(max_duration), float(org_credit_limit_sec)))
@@ -472,6 +559,13 @@ async def voice_stream_websocket(websocket: WebSocket):
                         asyncio.create_task(asyncio.sleep(grace)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
                         break
 
+                # CRITICAL TELEPHONY GUARD:
+                # Do NOT run silence timeouts if outbound greeting audio has not yet been delivered to Twilio.
+                # During initial call pickup, media streaming setup and TTS synthesis may take 1-3 seconds.
+                # Terminating a call before any agent audio is delivered is strictly prevented.
+                if outbound_chunk_counter == 0 and elapsed_call_time < 15.0:
+                    continue
+
                 # Check if agent is currently speaking or audio is still playing in user's speaker
                 if now < last_agent_speech_done_time:
                     is_agent_speaking = True
@@ -505,7 +599,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     # Phase 1: Ask reprompt message if silent for silence_timeout
                     if silence_elapsed >= silence_timeout and not has_reprompted_silence:
                         norm_reprompt = PronunciationNormalizer.normalize(reprompt_msg, getattr(agent_config, "pronunciation_rules", None))
-                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout}s) reached. Injecting reprompt: '{norm_reprompt}'")
+                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout:.1f}s) reached. Injecting reprompt: '{norm_reprompt}'")
                         has_reprompted_silence = True
                         reprompt_injected_at = now
                         await deepgram_client.inject_agent_message(norm_reprompt)
@@ -513,7 +607,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     # Phase 2: If still silent after reprompt + hangup_delay, speak conclusion and hang up
                     elif has_reprompted_silence and (now - max(last_activity, reprompt_injected_at)) >= hangup_delay:
                         norm_conclusion = PronunciationNormalizer.normalize(conclusion_msg, getattr(agent_config, "pronunciation_rules", None))
-                        logger.info(f"[VoiceGateway] No response {hangup_delay}s after the reprompt. Speaking conclusion and ending call.")
+                        logger.info(f"[VoiceGateway] No response {hangup_delay:.1f}s after reprompt. Speaking conclusion and ending call.")
                         is_concluding_call = True
                         await deepgram_client.inject_agent_message(norm_conclusion)
                         asyncio.create_task(asyncio.sleep(4.0)).add_done_callback(lambda _: asyncio.create_task(terminate_call()))
@@ -578,13 +672,11 @@ async def voice_stream_websocket(websocket: WebSocket):
                     role="admin"
                 )
 
-                # Fetch or seed Agent Configuration
-                if session and session.agent_config_snapshot:
-                    agent_config = AgentConfiguration.model_validate(session.agent_config_snapshot)
-                    logger.info(f"[VoiceGateway] Using CallSession agent snapshot: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
-                else:
-                    agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
-                    logger.info(f"[VoiceGateway] Loaded Agent config: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}'")
+                # Fetch fresh Agent Configuration from database (ensuring latest endpointing & speed settings apply)
+                agent_config = await agent_service.get_agent_by_id(ctx, agent_id)
+                logger.info(f"[VoiceGateway] Loaded Agent config: Name='{agent_config.name}', Model='{agent_config.llm.model}', Voice='{agent_config.voice.voice}', Endpointing={agent_config.listen.endpointing if agent_config.listen else 'default'}ms")
+                if session:
+                    session.agent_config_snapshot = agent_config.model_dump(mode="json")
 
                 # Initialize or attach CallSession
                 if not session:
@@ -755,10 +847,9 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 logger.info(
                     f"[VoiceGateway] Initializing Voice Engine with Settings: "
-                    f"STT Model='{deepgram_settings.agent.listen.provider.model}', "
+                    f"STT Model='{deepgram_settings.agent.listen.provider.model}' (Lang='{deepgram_settings.agent.listen.provider.language}', Endpointing={deepgram_settings.agent.listen.provider.endpointing}ms), "
                     f"LLM Provider='{deepgram_settings.agent.think.provider.type}', "
                     f"LLM Model='{deepgram_settings.agent.think.provider.model}', "
-                    f"LLM Temp={deepgram_settings.agent.think.provider.temperature}, "
                     f"TTS Voice='{deepgram_settings.agent.speak.provider.model}'"
                 )
 
@@ -852,9 +943,13 @@ async def voice_stream_websocket(websocket: WebSocket):
                     greeting_text = (agent_config.greeting or "").strip()
                     if greeting_text:
                         words_count = len(greeting_text.split())
-                        estimated_intro_duration = max(3.0, (words_count / 2.0))
+                        estimated_intro_duration = max(4.0, (words_count / 2.0))
                         last_agent_speech_done_time = time.time() + estimated_intro_duration
+                        last_user_speech_time = last_agent_speech_done_time
                         logger.info(f"[VoiceGateway] Initial greeting duration estimated: {estimated_intro_duration:.1f}s ({words_count} words)")
+                    else:
+                        last_agent_speech_done_time = time.time()
+                        last_user_speech_time = time.time()
 
                     # Start background call lifecycle monitor (silence & duration)
                     lifecycle_task = asyncio.create_task(call_lifecycle_monitor())
@@ -908,6 +1003,10 @@ async def voice_stream_websocket(websocket: WebSocket):
         if lifecycle_task:
             lifecycle_task.cancel()
             lifecycle_task = None
+
+        if audio_pacer_task:
+            audio_pacer_task.cancel()
+            audio_pacer_task = None
 
         if deepgram_client:
             try:

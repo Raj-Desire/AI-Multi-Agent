@@ -71,7 +71,7 @@ export const LoginForm: React.FC = () => {
             <img src={logoSrc} alt="" className="w-8 h-8 object-contain" />
           </span>
           <span className="flex flex-col leading-none">
-            <span className="text-[1.15rem] font-bold tracking-[-0.02em] bg-gradient-to-r from-slate-900 via-blue-800 to-indigo-600 bg-clip-text text-transparent">
+            <span className="text-[1.15rem] font-bold tracking-[-0.02em] bg-gradient-to-r from-slate-900 via-blue-800 to-[var(--color-primary)] bg-clip-text text-transparent">
               {orgName}
             </span>
             <span className="mt-1.5 text-[9.5px] font-semibold uppercase tracking-[0.28em] text-slate-400">
@@ -127,7 +127,7 @@ export const LoginForm: React.FC = () => {
 
                 <h1 className="lf-rise mt-5 text-[1.8rem] font-semibold tracking-tight text-slate-900" style={{ animationDelay: ".25s" }}>
                   Welcome{" "}
-                  <span className="bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-500 bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-[var(--color-primary)] via-blue-500 to-[var(--color-secondary)] bg-clip-text text-transparent">
                     back
                   </span>
                 </h1>
@@ -197,7 +197,7 @@ export const LoginForm: React.FC = () => {
                     size="lg"
                     isLoading={isSubmitting}
                     rightIcon={!isSubmitting ? <ArrowRight className="lf-arrow w-4 h-4 transition-transform duration-200" /> : undefined}
-                    className="lf-btn relative overflow-hidden w-full h-12 text-sm font-semibold rounded-2xl text-white cursor-pointer border-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 bg-[length:200%_100%] hover:bg-right shadow-[0_12px_28px_-8px_rgba(79,70,229,0.6),inset_0_1px_0_rgba(255,255,255,0.25)] active:scale-[0.985] transition-all duration-500"
+                    className="lf-btn relative overflow-hidden w-full h-12 text-sm font-semibold rounded-2xl text-white cursor-pointer border-0 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] shadow-[0_12px_28px_-8px_var(--color-primary-ring),inset_0_1px_0_rgba(255,255,255,0.25)] active:scale-[0.985] transition-all duration-300"
                   >
                     <span className="lf-shine pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-white/25 -translate-x-[120%]" />
                     <span className="relative">Sign in</span>

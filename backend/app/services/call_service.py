@@ -106,7 +106,7 @@ class CallService:
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
         # Build Media Stream TwiML connecting to Real-Time Voice Agent
-        base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
+        base_url = (getattr(tw_cfg, "public_base_url", None) or os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
         stream_url = f"{ws_base}/api/v1/voice/stream"
 
@@ -450,45 +450,71 @@ class CallService:
 
         return str(response)
 
-    async def list_calls(self, ctx: TenantContext, call_type: Optional[str] = None) -> List[Call]:
+    async def list_calls(self, ctx: TenantContext, call_type: Optional[str] = None, light: bool = False) -> List[Call]:
+        """Call history for the organization.
+
+        light=True returns summary rows only (no transcript / agent snapshot / analytics) and must be used for
+        tables; those objects are read-only views and are never written back.
+        """
         try:
-            calls = await self.call_repo.list_by_org(ctx.organization_id, call_type=call_type)
+            lister = self.call_repo.list_summaries_by_org if light else self.call_repo.list_by_org
+            calls = await lister(ctx.organization_id, call_type=call_type)
             if not calls and ctx.user_id and ctx.user_id != ctx.organization_id:
-                calls = await self.call_repo.list_by_org(ctx.user_id, call_type=call_type)
-                
-            tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
-            if not tw_cfg and ctx.user_id:
-                tw_cfg = await self.twilio_repo.get_by_org(ctx.user_id)
-            
-            if tw_cfg and calls:
-                def _sync_twilio_updates():
-                    try:
-                        if not tw_cfg.encrypted_auth_token:
-                            return
-                        auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
-                        client = Client(tw_cfg.account_sid, auth_token)
-                        for call in calls:
-                            if call.call_sid and call.status not in ["completed", "failed", "busy", "no-answer"]:
-                                try:
-                                    tw_fetch = client.calls(call.call_sid).fetch()
-                                    call.status = tw_fetch.status or call.status
-                                    if tw_fetch.duration and str(tw_fetch.duration).isdigit():
-                                        call.duration = int(tw_fetch.duration)
-                                except Exception:
-                                    pass
-                    except Exception as ex:
-                        print(f"[CallService Warning] _sync_twilio_updates: {ex}")
+                calls = await lister(ctx.user_id, call_type=call_type)
 
-                await asyncio.to_thread(_sync_twilio_updates)
-                
-                # Persist any updated statuses/durations to database
-                for call in calls:
-                    try:
-                        await self.call_repo.save(call)
-                    except Exception:
-                        pass
-
+            await self._sync_unfinished_calls_from_twilio(ctx, calls, light=light)
             return calls
         except Exception as e:
             print(f"[CallService Error] list_calls: {e}")
             return []
+
+    async def _sync_unfinished_calls_from_twilio(self, ctx: TenantContext, calls: List[Call], light: bool = False) -> None:
+        """Refreshes status/duration of calls that look unfinished by asking Twilio, and persists ONLY the calls
+        that actually changed (previously every listed call was re-written on every request)."""
+        finished = {"completed", "failed", "busy", "no-answer", "canceled"}
+        now = datetime.now(timezone.utc)
+
+        def _recent(c: Call) -> bool:
+            created = c.created_at if c.created_at.tzinfo else c.created_at.replace(tzinfo=timezone.utc)
+            return (now - created).total_seconds() < 6 * 3600
+
+        pending = [c for c in calls if c.call_sid and (c.status or "") not in finished and _recent(c)][:10]
+        if not pending:
+            return
+
+        tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
+        if not tw_cfg and ctx.user_id:
+            tw_cfg = await self.twilio_repo.get_by_org(ctx.user_id)
+        if not tw_cfg or not tw_cfg.encrypted_auth_token:
+            return
+
+        def _fetch_updates():
+            updates = []
+            try:
+                client = Client(tw_cfg.account_sid, decrypt_token(tw_cfg.encrypted_auth_token))
+            except Exception as ex:
+                print(f"[CallService Warning] twilio client: {ex}")
+                return updates
+            for c in pending:
+                try:
+                    tw = client.calls(c.call_sid).fetch()
+                    new_status = tw.status or c.status
+                    new_duration = int(tw.duration) if tw.duration and str(tw.duration).isdigit() else c.duration
+                    if new_status != c.status or new_duration != c.duration:
+                        updates.append((c, new_status, new_duration))
+                except Exception:
+                    pass
+            return updates
+
+        for c, new_status, new_duration in await asyncio.to_thread(_fetch_updates):
+            c.status = new_status
+            c.duration = new_duration
+            try:
+                # Summary rows must never be saved (that would overwrite the stored transcript); patch the full record
+                target = (await self.call_repo.get_by_id(c.id)) if light else c
+                if target:
+                    target.status = new_status
+                    target.duration = new_duration
+                    await self.call_repo.save(target)
+            except Exception:
+                pass

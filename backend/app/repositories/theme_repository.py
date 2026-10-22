@@ -103,7 +103,7 @@ class ThemeRepository:
             params = [{"name": "@org_id", "value": organization_id}]
             existing_doc = None
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                items = list(container.query_items(query=query, parameters=params, partition_key=organization_id, enable_cross_partition_query=False))
                 if items:
                     existing_doc = items[0]
             except Exception as e:

@@ -39,11 +39,11 @@ export function LeadCohortAnalyticsSection({ campaignId }: LeadCohortAnalyticsSe
   // Helper for heatmap cell color density
   const getCellBg = (pct: number) => {
     if (pct === 0) return "bg-slate-500/5 text-slate-400";
-    if (pct < 20) return "bg-indigo-500/10 text-indigo-600";
-    if (pct < 40) return "bg-indigo-500/20 text-indigo-700 font-medium";
-    if (pct < 60) return "bg-indigo-500/35 text-indigo-800 font-semibold";
-    if (pct < 80) return "bg-indigo-600/50 text-white font-bold";
-    return "bg-indigo-600 text-white font-bold";
+    if (pct < 20) return "bg-[var(--color-primary)]/10 text-[var(--color-primary)]";
+    if (pct < 40) return "bg-[var(--color-primary)]/20 text-[var(--color-primary)] font-medium";
+    if (pct < 60) return "bg-[var(--color-primary)]/35 text-[var(--color-primary)] font-semibold";
+    if (pct < 80) return "bg-[var(--color-primary)]/60 text-white font-bold";
+    return "bg-[var(--color-primary)] text-white font-bold";
   };
 
   return (
@@ -149,7 +149,7 @@ export function LeadCohortAnalyticsSection({ campaignId }: LeadCohortAnalyticsSe
             <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider block">
               Overall Conversion Rate
             </span>
-            <span className="text-xl font-bold text-indigo-600 mt-0.5 block">
+            <span className="text-xl font-bold text-[var(--color-primary)] mt-0.5 block">
               {data.overall_conversion_rate}%
             </span>
           </div>
@@ -226,10 +226,10 @@ export function LeadCohortAnalyticsSection({ campaignId }: LeadCohortAnalyticsSe
           <span>0%</span>
           <div className="flex items-center gap-0.5">
             <span className="w-4 h-3 rounded-xs bg-slate-500/10"></span>
-            <span className="w-4 h-3 rounded-xs bg-indigo-500/20"></span>
-            <span className="w-4 h-3 rounded-xs bg-indigo-500/40"></span>
-            <span className="w-4 h-3 rounded-xs bg-indigo-600/70"></span>
-            <span className="w-4 h-3 rounded-xs bg-indigo-600"></span>
+            <span className="w-4 h-3 rounded-xs bg-[var(--color-primary)]/20"></span>
+            <span className="w-4 h-3 rounded-xs bg-[var(--color-primary)]/40"></span>
+            <span className="w-4 h-3 rounded-xs bg-[var(--color-primary)]/70"></span>
+            <span className="w-4 h-3 rounded-xs bg-[var(--color-primary)]"></span>
           </div>
           <span>100%</span>
         </div>

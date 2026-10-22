@@ -26,6 +26,7 @@ import {
   Layout,
   Type,
   Eye,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -35,6 +36,7 @@ import { PageHeader } from "./ui/PageHeader";
 import { Tabs } from "./ui/Tabs";
 import { FormSection } from "./ui/FormSection";
 import { ThemePreview } from "./ui/ThemePreview";
+import { ThemeDiagnosticsTab } from "./theme/ThemeDiagnosticsTab";
 
 export const ThemeStudioView: React.FC = () => {
   const {
@@ -383,6 +385,7 @@ export const ThemeStudioView: React.FC = () => {
           { id: "identity", label: "Identity & Branding", icon: <Building2 className="w-3.5 h-3.5" /> },
           { id: "typography", label: "Typography & Radius", icon: <Type className="w-3.5 h-3.5" /> },
           { id: "preview", label: "Interactive Preview", icon: <Eye className="w-3.5 h-3.5" /> },
+          { id: "diagnostics", label: "Theme Diagnostics", icon: <ShieldCheck className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -803,6 +806,13 @@ export const ThemeStudioView: React.FC = () => {
             Live interactive sandbox testing the current draft theme tokens in real-time before saving.
           </div>
           <ThemePreview theme={draftTheme} />
+        </div>
+      )}
+
+      {/* TAB 6: THEME DIAGNOSTICS & AUDIT */}
+      {activeTab === "diagnostics" && (
+        <div className="space-y-4">
+          <ThemeDiagnosticsTab theme={draftTheme} />
         </div>
       )}
     </div>

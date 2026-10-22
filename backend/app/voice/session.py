@@ -39,6 +39,7 @@ class LatencyTelemetry(BaseModel):
     llm_latency_ms: float = 0.0
     tts_latency_ms: float = 0.0
     first_audio_latency_ms: float = 0.0
+    reply_delay_ms: float = 0.0  # final user transcript -> first agent audio byte, latest turn
     total_turn_latency_ms: float = 0.0
     call_connection_time_ms: float = 0.0
     deepgram_connection_time_ms: float = 0.0

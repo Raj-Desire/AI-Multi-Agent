@@ -543,6 +543,24 @@ class LeadIntelligenceService:
         is_hourly = (date_range or "").lower() in ["today", "yesterday"]
         buckets: Dict[str, Dict[str, Any]] = {}
 
+        # "All time" has no real bounds (year 1 .. year 9999). Building one bucket per day across that span took
+        # ~40s and then crashed with an OverflowError, so clamp to the span that actually contains data and cap
+        # the number of buckets for any very wide custom range.
+        now_utc = datetime.now(timezone.utc)
+        if start_dt.year < 2000 or end_dt.year > 3000:
+            call_dates = [
+                self._get_call_created_at(c) for c in calls
+                if not (campaign_id and campaign_id != "all" and c.campaign_id != campaign_id)
+            ]
+            start_dt = min(call_dates) if call_dates else now_utc - timedelta(days=30)
+            start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_dt = now_utc
+        if is_hourly:
+            if (end_dt - start_dt) > timedelta(hours=48):
+                start_dt = end_dt - timedelta(hours=48)
+        elif (end_dt - start_dt) > timedelta(days=366):
+            start_dt = (end_dt - timedelta(days=366)).replace(hour=0, minute=0, second=0, microsecond=0)
+
         # Initialize time buckets so every interval appears even if 0
         if is_hourly:
             curr = start_dt
@@ -1142,7 +1160,7 @@ class LeadIntelligenceService:
 
             cmp = campaigns_dict.get(c.campaign_id or "")
             cmp_name = cmp.name if cmp else ("Direct Inbound/Outbound" if not c.campaign_id else f"Campaign {c.campaign_id[:8]}")
-            score = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None) or 50
+            score = c.lead_score if c.lead_score is not None else ((c.analytics.get("lead_score") if c.analytics else None) or 0)
 
             callback_items.append(CallbackListItem(
                 prospect_id=p_id,
@@ -1237,7 +1255,7 @@ class LeadIntelligenceService:
 
         # 4. Extract Analytics & Intelligence
         rules = await self.get_qualification_rules(ctx)
-        score = latest_call.lead_score if latest_call and latest_call.lead_score is not None else 50
+        score = latest_call.lead_score if latest_call and latest_call.lead_score is not None else 0
         outcome = normalize_outcome_bucket(
             latest_call.business_outcome or latest_call.outcome if latest_call else "Interested",
             score=score,

@@ -1,3 +1,4 @@
+import asyncio
 import math
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
@@ -151,18 +152,18 @@ class CreditService:
 
     async def get_org_resource_counters(self, organization_id: str) -> OrgResourceCounters:
         """Aggregates live count of agents, campaigns, and total calls."""
-        agents = await self.agent_repo.list_agents(organization_id, include_global=False)
-
-        campaigns_res = await self.campaign_repo.list_by_org(organization_id)
+        agents, campaigns_res, creds, ledger = await asyncio.gather(
+            self.agent_repo.list_agents(organization_id, include_global=False),
+            self.campaign_repo.list_by_org(organization_id),
+            self.repo.get_or_create_org_credits(organization_id),
+            self.repo.list_ledger(organization_id, limit=1000),
+        )
         if isinstance(campaigns_res, tuple):
             campaigns_count = campaigns_res[1]
         elif isinstance(campaigns_res, list):
             campaigns_count = len(campaigns_res)
         else:
             campaigns_count = 0
-
-        creds = await self.repo.get_or_create_org_credits(organization_id)
-        ledger = await self.repo.list_ledger(organization_id, limit=1000)
 
         total_duration = sum(item.duration_seconds for item in ledger)
 
@@ -177,10 +178,13 @@ class CreditService:
 
     async def get_org_dashboard_data(self, organization_id: str, days: int = 30) -> Dict[str, Any]:
         """Aggregates all telemetry, credit status, counters, daily chart, and ledger for Org Dashboard."""
-        creds = await self.repo.get_or_create_org_credits(organization_id)
-        counters = await self.get_org_resource_counters(organization_id)
-        daily_breakdown = await self.repo.get_daily_usage_aggregates(organization_id, days=days)
-        recent_ledger = await self.repo.list_ledger(organization_id, limit=50)
+        # The four lookups are independent: run them concurrently instead of one after another
+        creds, counters, daily_breakdown, recent_ledger = await asyncio.gather(
+            self.repo.get_or_create_org_credits(organization_id),
+            self.get_org_resource_counters(organization_id),
+            self.repo.get_daily_usage_aggregates(organization_id, days=days),
+            self.repo.list_ledger(organization_id, limit=50),
+        )
 
         # Project depletion date
         projected_depletion_date = self._calculate_projected_depletion(

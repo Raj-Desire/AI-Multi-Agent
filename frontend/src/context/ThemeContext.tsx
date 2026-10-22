@@ -1,8 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { OrganizationThemeConfig, UserPreferences, ColorMode, UIDensity } from "../types";
 import { applyThemeToCss } from "../utils/themeUtils";
-import { fetchApi } from "../api-client";
+import { fetchApi, API_ORIGIN } from "../api-client";
 import { useAuth } from "./AuthContext";
+
+// Theme images are served by the API as cacheable files; the theme JSON carries server-relative paths for them
+function absolutizeTheme<T extends { identity?: any }>(theme: T): T {
+  if (!theme || !theme.identity) return theme;
+  const identity = { ...theme.identity };
+  for (const key of ["logo_url", "logo_dark_url", "favicon_url"]) {
+    const value = identity[key];
+    if (typeof value === "string" && value.startsWith("/api/")) identity[key] = `${API_ORIGIN}${value}`;
+  }
+  return { ...theme, identity };
+}
 
 export const DEFAULT_ORG_THEME: OrganizationThemeConfig = {
   organization_id: "default",
@@ -128,7 +139,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       try {
-        const data = await fetchApi<OrganizationThemeConfig>("/organization/theme");
+        const data = absolutizeTheme(await fetchApi<OrganizationThemeConfig>("/organization/theme"));
         if (data && data.colors && isMounted) {
           setTheme(data);
           setDraftTheme(data);
@@ -167,7 +178,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const saveTheme = async () => {
     try {
-      const updated = await fetchApi<OrganizationThemeConfig>("/organization/theme", {
+      const updated = absolutizeTheme(await fetchApi<OrganizationThemeConfig>("/organization/theme", {
         method: "PUT",
         body: JSON.stringify({
           identity: draftTheme.identity,
@@ -175,7 +186,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           appearance: draftTheme.appearance,
           typography: draftTheme.typography,
         }),
-      });
+      }));
       setTheme(updated);
       setDraftTheme(updated);
       try {
@@ -198,9 +209,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetToDefault = async () => {
     try {
-      const resetData = await fetchApi<OrganizationThemeConfig>("/organization/theme/reset", {
+      const resetData = absolutizeTheme(await fetchApi<OrganizationThemeConfig>("/organization/theme/reset", {
         method: "POST",
-      });
+      }));
       const res = resetData || DEFAULT_ORG_THEME;
       setTheme(res);
       setDraftTheme(res);

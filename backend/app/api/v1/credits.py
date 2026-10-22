@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Dict, Any, Optional
 from app.core.dependencies import get_tenant_context, require_admin, require_superadmin, TenantContext
@@ -94,14 +95,24 @@ async def list_all_org_credits(
     all_credits = await credit_service.repo.list_all_credits()
     credit_by_org = {c.organization_id: c for c in all_credits}
 
-    results = []
-    for org in orgs:
+    async def _load_org(org):
         org_id = org["organization_id"]
         creds = credit_by_org.get(org_id)
+        counters_task = credit_service.get_org_resource_counters(org_id)
         if not creds:
-            creds = await credit_service.repo.get_or_create_org_credits(org_id, org["org_name"])
+            creds, counters = await asyncio.gather(
+                credit_service.repo.get_or_create_org_credits(org_id, org["org_name"]), counters_task
+            )
+        else:
+            counters = await counters_task
+        return creds, counters
 
-        counters = await credit_service.get_org_resource_counters(org_id)
+    # Per-organization lookups are independent: run them concurrently instead of one organization at a time
+    loaded = await asyncio.gather(*[_load_org(o) for o in orgs])
+
+    results = []
+    for org, (creds, counters) in zip(orgs, loaded):
+        org_id = org["organization_id"]
 
         results.append(SuperAdminOrgCreditItem(
             organization_id=org_id,

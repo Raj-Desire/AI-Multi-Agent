@@ -47,6 +47,7 @@ import {
   Eye,
   Plus,
 } from "lucide-react";
+import { TimezoneLiveClock } from "./TimezoneLiveClock";
 
 interface CampaignCreateWizardViewProps {
   onCancel: () => void;
@@ -68,7 +69,50 @@ interface TimezoneOption {
   label: string;
   value: string;
   region: string;
+  offsetStr: string;
+  city: string;
 }
+
+// Helpers to format live time and date in any selected timezone
+export const getTimezoneLiveDetails = (tz: string) => {
+  try {
+    const now = new Date();
+    const timeFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const offsetFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    const parts = offsetFormatter.formatToParts(now);
+    const tzPart = parts.find((p) => p.type === "timeZoneName");
+    const offsetStr = tzPart ? tzPart.value.replace("GMT", "UTC") : "";
+
+    return {
+      timeStr: timeFormatter.format(now),
+      dateStr: dateFormatter.format(now),
+      offsetStr,
+    };
+  } catch {
+    const now = new Date();
+    return {
+      timeStr: now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }),
+      dateStr: now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+      offsetStr: "UTC",
+    };
+  }
+};
 
 // Dynamically generate all 400+ real-time IANA timezones using the native Intl ECMAScript engine
 const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] => {
@@ -98,6 +142,8 @@ const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] =
           value: tz,
           label: `(${offsetStr}) ${city} (${tz})`,
           region,
+          offsetStr,
+          city,
         };
       });
 
@@ -124,16 +170,16 @@ const getSystemTimezones = (): { region: string; options: TimezoneOption[] }[] =
     {
       region: "Global",
       options: [
-        { label: "(UTC+00:00) UTC (Universal Coordinated Time)", value: "UTC", region: "Global" },
-        { label: "(UTC+05:30) Asia/Kolkata (India Standard Time)", value: "Asia/Kolkata", region: "Asia" },
-        { label: "(UTC-05:00) America/New_York (US Eastern)", value: "America/New_York", region: "America" },
-        { label: "(UTC-08:00) America/Los_Angeles (US Pacific)", value: "America/Los_Angeles", region: "America" },
-        { label: "(UTC+00:00) Europe/London (GMT/BST)", value: "Europe/London", region: "Europe" },
-        { label: "(UTC+01:00) Europe/Paris (Central European)", value: "Europe/Paris", region: "Europe" },
-        { label: "(UTC+04:00) Asia/Dubai (Gulf Standard Time)", value: "Asia/Dubai", region: "Asia" },
-        { label: "(UTC+08:00) Asia/Singapore (SGT)", value: "Asia/Singapore", region: "Asia" },
-        { label: "(UTC+09:00) Asia/Tokyo (Japan Standard Time)", value: "Asia/Tokyo", region: "Asia" },
-        { label: "(UTC+10:00) Australia/Sydney (AEST)", value: "Australia/Sydney", region: "Australia" },
+        { label: "(UTC+00:00) UTC (Universal Coordinated Time)", value: "UTC", region: "Global", offsetStr: "UTC+0", city: "UTC" },
+        { label: "(UTC+05:30) Asia/Kolkata (India Standard Time)", value: "Asia/Kolkata", region: "Asia", offsetStr: "UTC+5:30", city: "Kolkata" },
+        { label: "(UTC-05:00) America/New_York (US Eastern)", value: "America/New_York", region: "America", offsetStr: "UTC-5", city: "New York" },
+        { label: "(UTC-08:00) America/Los_Angeles (US Pacific)", value: "America/Los_Angeles", region: "America", offsetStr: "UTC-8", city: "Los Angeles" },
+        { label: "(UTC+00:00) Europe/London (GMT/BST)", value: "Europe/London", region: "Europe", offsetStr: "UTC+0", city: "London" },
+        { label: "(UTC+01:00) Europe/Paris (Central European)", value: "Europe/Paris", region: "Europe", offsetStr: "UTC+1", city: "Paris" },
+        { label: "(UTC+04:00) Asia/Dubai (Gulf Standard Time)", value: "Asia/Dubai", region: "Asia", offsetStr: "UTC+4", city: "Dubai" },
+        { label: "(UTC+08:00) Asia/Singapore (SGT)", value: "Asia/Singapore", region: "Asia", offsetStr: "UTC+8", city: "Singapore" },
+        { label: "(UTC+09:00) Asia/Tokyo (Japan Standard Time)", value: "Asia/Tokyo", region: "Asia", offsetStr: "UTC+9", city: "Tokyo" },
+        { label: "(UTC+10:00) Australia/Sydney (AEST)", value: "Australia/Sydney", region: "Australia", offsetStr: "UTC+10", city: "Sydney" },
       ],
     },
   ];
@@ -177,6 +223,18 @@ const filterTimezonesList = (query: string): TimezoneOption[] => {
 
     return false;
   });
+};
+
+export const calculateWindowDurationMinutes = (start: string, end: string): number => {
+  try {
+    const [startH, startM] = (start || "09:00").split(":").map(Number);
+    const [endH, endM] = (end || "18:00").split(":").map(Number);
+    const startTotal = (startH || 0) * 60 + (startM || 0);
+    const endTotal = (endH || 0) * 60 + (endM || 0);
+    return endTotal > startTotal ? endTotal - startTotal : 0;
+  } catch {
+    return 0;
+  }
 };
 
 export function CampaignCreateWizardView({
@@ -393,16 +451,21 @@ export function CampaignCreateWizardView({
       }
 
       // 3. Fetch Prospects
-      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=200");
+      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=500");
       if (prspRes && prspRes.items) {
         setProspects(prspRes.items);
         setProspectTotal(prspRes.total);
 
-        // Extract available tags
+        // Extract available contact groups and tags
         const tagsSet = new Set<string>();
         prspRes.items.forEach((p) => {
+          if (p.group_name && p.group_name.trim()) {
+            tagsSet.add(p.group_name.trim());
+          }
           if (p.tags && Array.isArray(p.tags)) {
-            p.tags.forEach((t) => tagsSet.add(t));
+            p.tags.forEach((t) => {
+              if (t && t.trim()) tagsSet.add(t.trim());
+            });
           }
         });
         setAvailableTags(Array.from(tagsSet));
@@ -613,12 +676,15 @@ export function CampaignCreateWizardView({
       toast.success(`Imported ${res.imported_count} contacts into group "${cleanGroup}" with status "New Lead"!`);
 
       // Reload prospects list
-      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=300");
+      const prspRes = await fetchApi<{ items: Prospect[]; total: number }>("/prospects?page=1&page_size=500");
       if (prspRes && prspRes.items) {
         setProspects(prspRes.items);
         setProspectTotal(prspRes.total);
         const tagsSet = new Set<string>();
-        prspRes.items.forEach((p) => (p.tags || []).forEach((t) => tagsSet.add(t)));
+        prspRes.items.forEach((p) => {
+          if (p.group_name && p.group_name.trim()) tagsSet.add(p.group_name.trim());
+          (p.tags || []).forEach((t) => { if (t && t.trim()) tagsSet.add(t.trim()); });
+        });
         tagsSet.add(cleanGroup);
         setAvailableTags(Array.from(tagsSet));
       }
@@ -647,7 +713,9 @@ export function CampaignCreateWizardView({
     if (selectionMode === "tags") {
       if (selectedTags.length === 0) return 0;
       return prospects.filter((p) => {
-        const matchesTag = (p.tags || []).some((t) => selectedTags.includes(t));
+        const matchesTag =
+          (p.group_name && selectedTags.includes(p.group_name.trim())) ||
+          (p.tags || []).some((t) => selectedTags.includes(t));
         const notDnc = !excludeDnc || (!p.is_dnc && p.status !== "Do Not Contact");
         return matchesTag && notDnc;
       }).length;
@@ -685,15 +753,6 @@ export function CampaignCreateWizardView({
         toast.warning("Target audience has 0 eligible contacts. You may proceed, but no calls will be dispatched until contacts are enrolled.");
       }
     } else if (step === 4) {
-      if (!callerNumber.trim()) {
-        toast.error("Please specify a Caller ID phone number.");
-        return;
-      }
-      if (maxConcurrent < 1 || maxConcurrent > 10) {
-        toast.error("Max concurrent calls must be between 1 and 10.");
-        return;
-      }
-    } else if (step === 5) {
       if (!startDate) {
         toast.error("Please select a start date.");
         return;
@@ -704,6 +763,19 @@ export function CampaignCreateWizardView({
       }
       if (callingDays.length === 0) {
         toast.error("Please select at least one calling day.");
+        return;
+      }
+      if (startTime && endTime && startTime >= endTime) {
+        toast.error("Calling start time must be earlier than end time.");
+        return;
+      }
+    } else if (step === 5) {
+      if (!callerNumber.trim()) {
+        toast.error("Please specify a Caller ID phone number.");
+        return;
+      }
+      if (maxConcurrent < 1 || maxConcurrent > 10) {
+        toast.error("Max concurrent calls must be between 1 and 10.");
         return;
       }
     }
@@ -788,8 +860,8 @@ export function CampaignCreateWizardView({
     { num: 1, title: "Campaign Info", icon: Megaphone },
     { num: 2, title: "AI Agent", icon: Bot },
     { num: 3, title: "Audience", icon: Users },
-    { num: 4, title: "Concurrency", icon: Sliders },
-    { num: 5, title: "Schedule", icon: Calendar },
+    { num: 4, title: "Schedule", icon: Calendar },
+    { num: 5, title: "Concurrency", icon: Sliders },
     { num: 6, title: "Review & Launch", icon: Sparkles },
   ];
 
@@ -1392,7 +1464,9 @@ export function CampaignCreateWizardView({
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[320px] overflow-y-auto pr-1">
                       {availableTags.map((tag) => {
                         const isSelected = selectedTags.includes(tag);
-                        const groupContacts = prospects.filter((p) => (p.tags || []).includes(tag));
+                        const groupContacts = prospects.filter(
+                          (p) => (p.group_name && p.group_name.trim() === tag) || (p.tags || []).includes(tag)
+                        );
                         const groupCount = groupContacts.length;
 
                         return (
@@ -1449,16 +1523,17 @@ export function CampaignCreateWizardView({
                 {/* Manual Prospect Selection View with Group Search */}
                 {selectionMode === "manual" && (() => {
                   const query = prospectSearch.toLowerCase().trim();
-                  const filteredProspects = prospects.filter((p) => {
-                    if (!query) return true;
-                    const nameMatch = (p.full_name && p.full_name.toLowerCase().includes(query)) ||
-                      `${p.first_name || ""} ${p.last_name || ""}`.toLowerCase().includes(query);
-                    const phoneMatch = p.phone_number && p.phone_number.includes(query);
-                    const emailMatch = p.email && p.email.toLowerCase().includes(query);
-                    const companyMatch = p.company && p.company.toLowerCase().includes(query);
-                    const tagMatch = p.tags && Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(query));
-                    return nameMatch || phoneMatch || emailMatch || companyMatch || tagMatch;
-                  });
+                    const filteredProspects = prospects.filter((p) => {
+                      if (!query) return true;
+                      const nameMatch = (p.full_name && p.full_name.toLowerCase().includes(query)) ||
+                        `${p.first_name || ""} ${p.last_name || ""}`.toLowerCase().includes(query);
+                      const phoneMatch = p.phone_number && p.phone_number.includes(query);
+                      const emailMatch = p.email && p.email.toLowerCase().includes(query);
+                      const companyMatch = p.company && p.company.toLowerCase().includes(query);
+                      const groupMatch = p.group_name && p.group_name.toLowerCase().includes(query);
+                      const tagMatch = p.tags && Array.isArray(p.tags) && p.tags.some((t) => t.toLowerCase().includes(query));
+                      return nameMatch || phoneMatch || emailMatch || companyMatch || groupMatch || tagMatch;
+                    });
 
                   const allFilteredSelected = filteredProspects.length > 0 &&
                     filteredProspects.every((p) => selectedProspectIds.includes(p.id));
@@ -1556,14 +1631,20 @@ export function CampaignCreateWizardView({
                                   className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-0"
                                 />
                                 <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-[var(--color-heading)] block">{p.full_name}</span>
-                                    {p.tags && p.tags.length > 0 && (
-                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] font-medium">
-                                        {p.tags.join(", ")}
-                                      </span>
-                                    )}
-                                  </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-[var(--color-heading)] block">{p.full_name}</span>
+                                      {p.group_name && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] border border-[var(--color-primary)]/20 font-medium flex items-center gap-1">
+                                          <Folder className="w-2.5 h-2.5" />
+                                          <span>{p.group_name}</span>
+                                        </span>
+                                      )}
+                                      {p.tags && p.tags.length > 0 && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[var(--color-surface-muted)] text-[var(--color-muted)] border border-[var(--color-border)] font-medium">
+                                          {p.tags.join(", ")}
+                                        </span>
+                                      )}
+                                    </div>
                                   <span className="text-[11px] text-[var(--color-muted)]">{p.company || "Individual"} • <span className="font-mono">{p.phone_number}</span></span>
                                 </div>
                               </div>
@@ -1586,109 +1667,12 @@ export function CampaignCreateWizardView({
               </div>
             )}
 
-            {/* Step 4: Calling & Concurrency */}
+            {/* Step 4: Schedule & Timezone */}
             {step === 4 && (
               <div className="space-y-4 max-w-2xl text-left">
                 <h3 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-[var(--color-primary)]" />
-                  <span>Step 4: Outbound Calling Parameters &amp; Concurrency</span>
-                </h3>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[var(--color-heading)]">
-                    Caller ID / Outbound Phone Number <span className="text-red-500">*</span>
-                  </label>
-                  {availableNumbers.length > 0 ? (
-                    <select
-                      value={callerNumber}
-                      onChange={(e) => setCallerNumber(e.target.value)}
-                      className="w-full px-3.5 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                    >
-                      {availableNumbers.map((num) => (
-                        <option key={num} value={num}>
-                          {num}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={callerNumber}
-                      onChange={(e) => setCallerNumber(e.target.value)}
-                      placeholder="+14155552671"
-                      className="w-full px-3.5 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                    />
-                  )}
-                  <p className="text-[11px] text-[var(--color-muted)]">
-                    Verified phone number displayed on recipient caller IDs.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[var(--color-heading)]">Max Concurrent Calls</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={maxConcurrent}
-                      onChange={(e) => setMaxConcurrent(parseInt(e.target.value) || 1)}
-                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                    />
-                    <p className="text-[10px] text-[var(--color-muted)]">Parallel lines (1 - 10)</p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[var(--color-heading)]">Max Attempts per Contact</label>
-                    <select
-                      value={maxAttempts}
-                      onChange={(e) => setMaxAttempts(parseInt(e.target.value))}
-                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                    >
-                      <option value={1}>1 attempt (No retries)</option>
-                      <option value={2}>2 attempts</option>
-                      <option value={3}>3 attempts (Recommended)</option>
-                      <option value={4}>4 attempts</option>
-                      <option value={5}>5 attempts</option>
-                    </select>
-                    <p className="text-[10px] text-[var(--color-muted)]">Retries on unanswered/busy</p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className={`text-xs font-semibold ${maxAttempts === 1 ? "text-[var(--color-muted)] opacity-60" : "text-[var(--color-heading)]"}`}>
-                      Retry Delay (Minutes)
-                    </label>
-                    {maxAttempts === 1 ? (
-                      <input
-                        type="text"
-                        disabled
-                        value="Disabled (1 Attempt)"
-                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-muted)] cursor-not-allowed italic"
-                      />
-                    ) : (
-                      <input
-                        type="number"
-                        min={1}
-                        max={1440}
-                        value={retryDelayMinutes}
-                        onChange={(e) => setRetryDelayMinutes(parseInt(e.target.value) || 60)}
-                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
-                      />
-                    )}
-                    <p className="text-[10px] text-[var(--color-muted)]">
-                      {maxAttempts === 1 ? "Single call attempt only" : "Wait time before next attempt"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 5: Schedule & Timezone */}
-            {step === 5 && (
-              <div className="space-y-4 max-w-2xl text-left">
-                <h3 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-[var(--color-primary)]" />
-                  <span>Step 5: Automated Calling Schedule &amp; Timezone</span>
+                  <span>Step 4: Automated Calling Schedule &amp; Timezone</span>
                 </h3>
 
                 {/* Schedule Mode Selector */}
@@ -1842,9 +1826,14 @@ export function CampaignCreateWizardView({
                         <Globe className="w-3.5 h-3.5 text-[var(--color-primary)]" />
                         <span>Campaign Timezone *</span>
                       </span>
-                      <span className="text-[11px] text-[var(--color-primary)] font-mono font-medium truncate max-w-[200px]" title={timezone}>
-                        {timezone}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-bold text-[var(--color-primary)] bg-[var(--color-primary)]/10 px-1.5 py-0.5 rounded border border-[var(--color-primary)]/20" title="Current regional time">
+                          {getTimezoneLiveDetails(timezone).timeStr}
+                        </span>
+                        <span className="text-[10px] text-[var(--color-muted)] font-medium">
+                          {getTimezoneLiveDetails(timezone).dateStr}
+                        </span>
+                      </div>
                     </label>
 
                     {/* Search & Selection Box */}
@@ -1894,6 +1883,7 @@ export function CampaignCreateWizardView({
 
                               {matchingTzs.map((opt) => {
                                 const isCur = opt.value === timezone;
+                                const details = getTimezoneLiveDetails(opt.value);
                                 return (
                                   <div
                                     key={opt.value}
@@ -1908,11 +1898,23 @@ export function CampaignCreateWizardView({
                                       : "hover:bg-[var(--color-surface-muted)] text-[var(--color-text)]"
                                       }`}
                                   >
-                                    <div className="flex items-center gap-2 truncate">
+                                    <div className="flex items-center gap-2 truncate pr-2">
                                       <Globe className={`w-3.5 h-3.5 shrink-0 ${isCur ? "text-[var(--color-primary)]" : "text-[var(--color-muted)]"}`} />
-                                      <span className="truncate">{opt.label}</span>
+                                      <div className="truncate">
+                                        <div className="truncate text-xs font-medium">{opt.label}</div>
+                                        <div className="text-[10px] text-[var(--color-muted)] font-normal flex items-center gap-2 mt-0.5">
+                                          <span className="font-mono text-[var(--color-primary)]">{details.timeStr}</span>
+                                          <span>•</span>
+                                          <span>{details.dateStr}</span>
+                                        </div>
+                                      </div>
                                     </div>
-                                    {isCur && <Check className="w-3.5 h-3.5 shrink-0 text-[var(--color-primary)]" />}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] text-[var(--color-heading)]">
+                                        {details.timeStr.slice(0, 5)} {details.timeStr.slice(-2)}
+                                      </span>
+                                      {isCur && <Check className="w-3.5 h-3.5 shrink-0 text-[var(--color-primary)]" />}
+                                    </div>
                                   </div>
                                 );
                               })}
@@ -1959,6 +1961,184 @@ export function CampaignCreateWizardView({
                     </div>
                   </div>
                 </div>
+
+                {/* Real-time Timezone Clock & Window Status Indicator (Full width below inputs) */}
+                <TimezoneLiveClock
+                  schedule={{
+                    calling_days: callingDays,
+                    calling_start_time: startTime,
+                    calling_end_time: endTime,
+                    timezone: timezone,
+                    start_date: startDate,
+                    end_date: endDate,
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Step 5: Calling & Concurrency */}
+            {step === 5 && (
+              <div className="space-y-4 max-w-2xl text-left">
+                <h3 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-[var(--color-primary)]" />
+                  <span>Step 5: Outbound Calling Parameters &amp; Concurrency</span>
+                </h3>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[var(--color-heading)]">
+                    Caller ID / Outbound Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  {availableNumbers.length > 0 ? (
+                    <select
+                      value={callerNumber}
+                      onChange={(e) => setCallerNumber(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    >
+                      {availableNumbers.map((num) => (
+                        <option key={num} value={num}>
+                          {num}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={callerNumber}
+                      onChange={(e) => setCallerNumber(e.target.value)}
+                      placeholder="+14155552671"
+                      className="w-full px-3.5 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    />
+                  )}
+                  <p className="text-[11px] text-[var(--color-muted)]">
+                    Verified phone number displayed on recipient caller IDs.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[var(--color-heading)]">Max Concurrent Calls</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={maxConcurrent}
+                      onChange={(e) => setMaxConcurrent(parseInt(e.target.value) || 1)}
+                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    />
+                    <p className="text-[10px] text-[var(--color-muted)]">Parallel lines (1 - 10)</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[var(--color-heading)]">Max Attempts per Contact</label>
+                    <select
+                      value={maxAttempts}
+                      onChange={(e) => setMaxAttempts(parseInt(e.target.value))}
+                      className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+                    >
+                      <option value={1}>1 attempt (No retries)</option>
+                      <option value={2}>2 attempts</option>
+                      <option value={3}>3 attempts (Recommended)</option>
+                      <option value={4}>4 attempts</option>
+                      <option value={5}>5 attempts</option>
+                    </select>
+                    <p className="text-[10px] text-[var(--color-muted)]">Retries on unanswered/busy</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className={`text-xs font-semibold ${maxAttempts === 1 ? "text-[var(--color-muted)] opacity-60" : "text-[var(--color-heading)]"}`}>
+                      Retry Delay (Minutes)
+                    </label>
+                    {maxAttempts === 1 ? (
+                      <input
+                        type="text"
+                        disabled
+                        value="Disabled (1 Attempt)"
+                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-muted)] cursor-not-allowed italic"
+                      />
+                    ) : (
+                      <select
+                        value={retryDelayMinutes}
+                        onChange={(e) => setRetryDelayMinutes(parseInt(e.target.value) || 60)}
+                        className="w-full px-3 py-2 text-xs rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] cursor-pointer"
+                      >
+                        {(() => {
+                          const windowDuration = calculateWindowDurationMinutes(startTime, endTime);
+                          const standardOptions = [
+                            { value: 15, label: "15 Minutes" },
+                            { value: 30, label: "30 Minutes" },
+                            { value: 45, label: "45 Minutes" },
+                            { value: 60, label: "1 Hour" },
+                            { value: 90, label: "1.5 Hours" },
+                            { value: 120, label: "2 Hours" },
+                            { value: 180, label: "3 Hours" },
+                            { value: 240, label: "4 Hours" },
+                            { value: 360, label: "6 Hours" },
+                            { value: 480, label: "8 Hours" },
+                            { value: 1440, label: "Next Active Day (24h)" },
+                          ];
+
+                          return standardOptions.map((opt) => {
+                            const exceedsSameDay = windowDuration > 0 && opt.value !== 1440 && opt.value > windowDuration;
+                            return (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label} {exceedsSameDay ? `(Exceeds daily ${Math.floor(windowDuration / 60)}h ${windowDuration % 60}m window)` : ""}
+                              </option>
+                            );
+                          });
+                        })()}
+                      </select>
+                    )}
+                    <p className="text-[10px] text-[var(--color-muted)]">
+                      {maxAttempts === 1 ? "Single call attempt only" : "Wait time before next attempt"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Professional Window vs Retry Delay Warning & Calculation */}
+                {(() => {
+                  if (maxAttempts <= 1) return null;
+                  const windowMinutes = calculateWindowDurationMinutes(startTime, endTime);
+                  const isLongerThanDailyWindow = windowMinutes > 0 && retryDelayMinutes !== 1440 && retryDelayMinutes > windowMinutes;
+                  const isCloseToWindowEnd = windowMinutes > 0 && retryDelayMinutes !== 1440 && retryDelayMinutes > (windowMinutes * 0.7) && !isLongerThanDailyWindow;
+
+                  const winHours = Math.floor(windowMinutes / 60);
+                  const winMins = windowMinutes % 60;
+                  const winStr = `${winHours > 0 ? `${winHours}h ` : ""}${winMins > 0 ? `${winMins}m` : ""}`.trim() || `${windowMinutes}m`;
+
+                  if (isLongerThanDailyWindow) {
+                    return (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 text-xs text-amber-700 dark:text-amber-300 animate-in fade-in">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold">
+                            Retry delay ({retryDelayMinutes} min) exceeds daily calling window ({winStr}: {startTime} - {endTime})
+                          </p>
+                          <p className="text-[11px] opacity-90 leading-relaxed">
+                            Calls made during the active window will not retry on the same day if unanswered. Since the calling window will close before the delay expires, the automated dialer will safely hold retries and dispatch them during the <strong>next scheduled active day&apos;s calling window</strong>.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isCloseToWindowEnd) {
+                    return (
+                      <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-start gap-3 text-xs text-blue-700 dark:text-blue-300 animate-in fade-in">
+                        <Info className="w-4 h-4 shrink-0 text-blue-500 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold">
+                            Calling window calculation: {winStr} operational period ({startTime} - {endTime})
+                          </p>
+                          <p className="text-[11px] opacity-90 leading-relaxed">
+                            With a {retryDelayMinutes}-minute delay, retries scheduled after the window closes will automatically pause and resume on the next allowed calling day.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
               </div>
             )}
 
@@ -2016,6 +2196,18 @@ export function CampaignCreateWizardView({
                     </div>
                   </div>
                 </div>
+
+                {/* Live Clock & Calling Window Status Banner */}
+                <TimezoneLiveClock
+                  schedule={{
+                    calling_days: callingDays,
+                    calling_start_time: startTime,
+                    calling_end_time: endTime,
+                    timezone: timezone,
+                    start_date: startDate,
+                    end_date: endDate,
+                  }}
+                />
 
                 <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-primary)]/30 rounded-xl flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
@@ -2155,7 +2347,9 @@ export function CampaignCreateWizardView({
           maxWidth="lg"
         >
           {(() => {
-            const groupContacts = prospects.filter((p) => (p.tags || []).includes(inspectingGroup));
+            const groupContacts = prospects.filter(
+              (p) => (p.group_name && p.group_name.trim() === inspectingGroup) || (p.tags || []).includes(inspectingGroup)
+            );
             const isGroupSelected = selectedTags.includes(inspectingGroup);
 
             return (

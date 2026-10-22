@@ -60,7 +60,7 @@ export function LeadTable({
     }
     if (o.includes("transfer")) {
       return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary-light)] text-[var(--color-primary)] border border-[var(--color-primary-ring)]">
           <PhoneForwarded className="w-3 h-3" />
           <span>Transferred to Specialist</span>
         </span>

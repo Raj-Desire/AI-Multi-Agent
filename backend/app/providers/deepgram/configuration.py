@@ -55,9 +55,12 @@ class DeepgramThinkConfig(BaseModel):
 
 
 class DeepgramSpeakProvider(BaseModel):
-    type: str = "deepgram"
+    type: str = "deepgram"  # "deepgram" | "cartesia"
     version: Optional[str] = "v2"
-    model: str = "flux-hannah-en"
+    model: Optional[str] = "flux-hannah-en"
+    model_id: Optional[str] = None
+    voice: Optional[Dict[str, Any]] = None
+    speed: Optional[float] = 1.0
 
 
 class DeepgramSpeakConfig(BaseModel):
@@ -65,7 +68,10 @@ class DeepgramSpeakConfig(BaseModel):
 
     @property
     def model(self) -> str:
-        return self.provider.model
+        if self.provider.type == "cartesia":
+            voice_id = self.provider.voice.get("id", "") if isinstance(self.provider.voice, dict) else ""
+            return f"sonic:{voice_id}"
+        return self.provider.model or "flux-hannah-en"
 
 
 class DeepgramAgentConfig(BaseModel):

@@ -1,5 +1,8 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
 
+// Server origin without the /api/v1 suffix; used to turn server-relative asset paths into absolute URLs
+export const API_ORIGIN = API_BASE.replace(/\/api\/v1\/?$/, "");
+
 // Fast client-side cache: { url: { data: any, timestamp: number } }
 const _API_CACHE = new Map<string, { data: any; timestamp: number }>();
 // In-flight Promise tracker to deduplicate simultaneous identical requests

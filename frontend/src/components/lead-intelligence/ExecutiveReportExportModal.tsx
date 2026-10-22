@@ -335,7 +335,7 @@ export function ExecutiveReportExportModal({
               <div>&bull; Total Calls Analyzed: <strong className="text-[var(--color-text)]">{summary?.total_leads || 0}</strong></div>
               <div>&bull; Qualified / Interested: <strong className="text-emerald-600">{summary?.interested || 0}</strong></div>
               <div>&bull; Callbacks Scheduled: <strong className="text-purple-600">{summary?.callback_requested || 0}</strong></div>
-              <div>&bull; Avg Lead Score: <strong className="text-indigo-600">{summary?.avg_lead_score || 0}/100</strong></div>
+              <div>&bull; Avg Lead Score: <strong className="text-[var(--color-primary)]">{summary?.avg_lead_score || 0}/100</strong></div>
             </div>
             {filters.outcome !== "all" || filters.campaignId !== "all" || filters.scoreRange !== "all" || filters.search.trim() ? (
               <div className="pt-1.5 border-t border-[var(--color-border)] text-[10px] text-[var(--color-muted)] flex flex-wrap gap-1.5 items-center">

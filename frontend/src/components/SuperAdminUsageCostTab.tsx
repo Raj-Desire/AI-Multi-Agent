@@ -108,7 +108,7 @@ export const SuperAdminUsageCostTab: React.FC = () => {
       render: (org) => (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded bg-[var(--color-surface-muted)] text-[var(--color-heading)] flex items-center justify-center font-medium text-xs border border-[var(--color-border)]">
-            <Building2 className="w-4 h-4 text-indigo-500" />
+            <Building2 className="w-4 h-4 text-[var(--color-primary)]" />
           </div>
           <div>
             <div className="font-medium text-xs text-[var(--color-heading)] flex items-center gap-1.5">
@@ -295,10 +295,10 @@ export const SuperAdminUsageCostTab: React.FC = () => {
 
       {/* Optional Markup & Rates Config Drawer */}
       {showRateSettings && (
-        <div className="p-4 rounded-lg border border-indigo-500/20 bg-indigo-500/5 space-y-3 transition-all">
+        <div className="p-4 rounded-lg border border-[var(--color-primary-ring)] bg-[var(--color-primary-subtle)] space-y-3 transition-all">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-500" />
+              <ShieldCheck className="w-4 h-4 text-[var(--color-primary)]" />
               <span className="text-xs font-semibold text-[var(--color-heading)]">
                 Billing Rate & Profit Margin Settings
               </span>
@@ -422,7 +422,7 @@ export const SuperAdminUsageCostTab: React.FC = () => {
         <div className="p-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--color-heading)]">
             <div className="flex items-center gap-1.5">
-              <PieChart className="w-3.5 h-3.5 text-indigo-500" />
+              <PieChart className="w-3.5 h-3.5 text-[var(--color-primary)]" />
               <span>Provider Cost Distribution</span>
             </div>
             <span className="text-[var(--color-muted)] font-mono">

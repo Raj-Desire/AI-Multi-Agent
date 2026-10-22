@@ -131,7 +131,8 @@ def detect_conversation_conclusion(text: str) -> bool:
         r"\b(goodbye|good\s*bye|bye\s*bye|bye\s*now|bye|cya)\b",
         r"\b(have\s+a\s+(great|good|wonderful|nice|fantastic|pleasant|blessed)\s+(day|evening|night|weekend|rest\s+of\s+(your\s+)?day))\b",
         r"\b(take\s*care|see\s*you|talk\s*to\s*you\s*later|catch\s*you\s*later)\b",
-        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling|thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
+        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling)\b.*(?:\b(goodbye|bye|take\s*care|have\s+a\s+good|have\s+a\s+great)\b|\Z)",
+        r"\b(thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
         r"\b(disconnect(ing)?\s*now|hang(ing)?\s*up\s*now|end\s*the\s*call|ending\s*the\s*call)\b",
         r"\b(reached\s*(your\s*)?voicemail|leave\s+a\s+message\s+after)\b",
         r"\b(we\s+will\s+follow\s+up\s+at\s+a\s+convenient\s+time)\b",
@@ -692,17 +693,119 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
 class SampleSpeechRequest(BaseModel):
     voice: str = "flux-hannah-en"
+    provider: Optional[str] = None  # "deepgram" | "cartesia"
     text: Optional[str] = None
-    speed: Optional[float] = 0.95
+    speed: Optional[float] = 1.0
 
 
 SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
+CARTESIA_VOICES_CACHE: Dict[str, Any] = {"timestamp": 0.0, "voices": []}
+
+
+@router.get("/cartesia-voices")
+async def list_cartesia_voices():
+    """
+    Returns curated, categorized Cartesia Sonic voices with high-speed in-memory caching.
+    Includes gender, language, accent, and conversational suitability tags.
+    """
+    import os
+    import time
+    import httpx
+
+    now = time.time()
+    # Cache for 1 hour to prevent redundant API calls
+    if CARTESIA_VOICES_CACHE["voices"] and (now - CARTESIA_VOICES_CACHE["timestamp"]) < 3600:
+        return {"status": "success", "data": CARTESIA_VOICES_CACHE["voices"]}
+
+    api_key = (os.getenv("CARTESIA_API_KEY", "")).strip()
+    if not api_key:
+        return {"status": "error", "message": "Cartesia API key is not configured in .env", "data": []}
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Cartesia-Version": "2024-06-10"
+        }
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            resp = await client.get("https://api.cartesia.ai/voices", headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"[CartesiaVoices Error] Failed to fetch voices: {resp.status_code} - {resp.text}")
+                return {"status": "error", "message": f"Cartesia API returned {resp.status_code}", "data": []}
+
+            raw_voices = resp.json()
+            formatted = []
+            for v in raw_voices:
+                if v.get("is_archived"):
+                    continue
+                # Map gender
+                raw_gender = (v.get("gender") or "").lower()
+                gender = "Female" if "fem" in raw_gender else ("Male" if "masc" in raw_gender else "Neutral")
+                lang = v.get("language") or "en"
+                name = v.get("name") or "Sonic Voice"
+                desc = v.get("description") or "Lifelike expressive Sonic voice."
+
+                # Map authentic native sample greetings per language
+                NATIVE_SAMPLE_TEXTS: Dict[str, str] = {
+                    "en": "Hello! I am your AI voice assistant powered by Sonic. How can I help you today?",
+                    "es": "¡Hola! Soy tu asistente de voz con tecnología Sonic. ¿En qué puedo ayudarte hoy?",
+                    "fr": "Bonjour ! Je suis votre assistante vocale avec Sonic. Comment puis-je vous aider aujourd'hui ?",
+                    "de": "Hallo! Ich bin Ihr KI-Sprachassistent mit Sonic. Wie kann ich Ihnen heute helfen?",
+                    "it": "Ciao! Sono il tuo assistente vocale intelligente con Sonic. Come posso aiutarti oggi?",
+                    "pt": "Olá! Sou o seu assistente de voz com tecnologia Sonic. Como posso ajudar você hoje?",
+                    "ja": "こんにちは！Sonic音声エンジンを搭載したAIアシスタントです。本日はどのようなご用件でしょうか？",
+                    "hi": "नमस्ते! मैं सॉनिक तकनीक द्वारा संचालित आपका एआई वॉयस असिस्टेंट हूँ। आज मैं आपकी क्या मदद कर सकता हूँ?",
+                    "gu": "નમસ્તે! હું સોનિક ટેકનોલોજી દ્વારા સંચાલિત તમારો એઆઈ વોઇસ આસિસ્ટન્ટ છું. આજે હું તમને કેવી રીતે મદદ કરી શકું?",
+                    "zh": "您好！我是搭载Sonic语音引擎的AI助手。请问今天有什么我可以帮您的？",
+                    "ko": "안녕하세요! 소닉 엔진을 탑재한 AI 음성 어시스턴트입니다. 오늘 어떤 도움이 필요하신가요?",
+                    "ar": "مرحباً! أنا مساعدك الصوتي الذكي المدعوم بمحرك سونيك. كيف يمكنني مساعدتك اليوم؟",
+                    "nl": "Hallo! Ik ben uw virtuele spraakassistent met Sonic. Hoe kan ik u vandaag helpen?",
+                    "he": "שלום! אני עוזר הקול שלך המופעל באמצעות סוניק. איך אוכל לעזור לך היום?",
+                    "sv": "Hej! Jag är din AI-röstassistent med Sonic. Hur kan jag hjälpa dig idag?",
+                    "pl": "Cześć! Jestem Twoim inteligentnym asystentem głosowym z silnikiem Sonic. W czym mogę pomóc?",
+                    "tr": "Merhaba! Sonic ses motoruyla desteklenen yapay zeka ses asistanınızım. Bugün size nasıl yardımcı olabilirim?",
+                    "id": "Halo! Saya asisten suara AI Anda dengan teknologi Sonic. Ada yang bisa saya bantu hari ini?",
+                    "th": "สวัสดีค่ะ! ฉันคือผู้ช่วยเสียง AI ของคุณ ขับเคลื่อนด้วย Sonic วันนี้มีอะไรให้ช่วยไหมคะ?",
+                    "ru": "Здравствуйте! Я ваш голосовой ассистент с искусственным интеллектом Sonic. Чем могу помочь?",
+                    "vi": "Xin chào! Tôi là trợ lý giọng nói AI của bạn với công nghệ Sonic. Tôi có thể giúp gì cho bạn hôm nay?",
+                    "tl": "Kamusta! Ako ang iyong AI voice assistant gamit ang Sonic. Paano kita matutulungan ngayon?",
+                    "ta": "வணக்கம்! சோனிக் தொழில்நுட்பத்தால் இயங்கும் உங்கள் AI குரல் உதவியாளர் நான். இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?",
+                    "te": "నమస్కారం! సోనిక్ టెక్నాలజీతో పనిచేసే మీ AI వాయిస్ అసిస్టెంట్‌ని నేను. ఈరోజు మీకు ఎలా సహాయపడగలను?",
+                    "bn": "নমস্কার! আমি সনিক প্রযুক্তি দ্বারা পরিচালিত আপনার এআই ভয়েস সহকারী। আজ আমি আপনাকে কিভাবে সাহায্য করতে পারি?",
+                    "pa": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ ਸੋਨਿਕ ਤਕਨਾਲੋਜੀ ਦੁਆਰਾ ਸੰਚਾਲਿਤ ਤੁਹਾਡਾ ਏਆਈ ਵੌਇਸ ਅਸਿਸਟੈਂਟ ਹਾਂ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
+                    "ur": "السلام علیکم! میں سونک ٹیکنالوجی سے لیس آپ کا اے آئی وائس اسسٹنٹ ہوں۔ آج میں آپ کی کیا مدد کر سکتا ہوں?",
+                    "el": "Γεια σας! Είμαι ο φωνητικός σας βοηθός AI με τεχνολογία Sonic. Πώς μπορώ να σας βοηθήσω σήμερα;",
+                    "da": "Hej! Jeg er din AI-stemmeassistent med Sonic. Hvordan kan jeg hjælpe dig i dag?",
+                    "fi": "Hei! Olen tekoäly-ääniavustajasi Sonic-teknologialla. Kuinka voin auttaa sinua tänään?",
+                    "no": "Hei! Jeg er din AI-stemmeassistent med Sonic. Hvordan kan jeg hjelpe deg i dag?",
+                    "cs": "Dobrý den! Jsem váš hlasový asistent AI s technologií Sonic. Jak vám mohu dnes pomoci?",
+                    "hu": "Üdvözlöm! Én vagyok az Ön Sonic-alapú mesterséges intelligencia hangasszisztense. Miben segíthetek ma?",
+                    "ro": "Bună! Sunt asistentul tău vocal inteligent cu tehnologia Sonic. Cu ce te pot ajuta astăzi?",
+                    "uk": "Вітаю! Я ваш голосовий асистент зі штучним інтелектом на базі Sonic. Чим можу допомогти?"
+                }
+
+                formatted.append({
+                    "id": v.get("id"),
+                    "name": name,
+                    "gender": gender,
+                    "language": lang,
+                    "description": desc,
+                    "style": "Ultra-Natural & Lifelike",
+                    "engine": "sonic",
+                    "sampleText": NATIVE_SAMPLE_TEXTS.get(lang, f"Hello! I am your AI voice assistant powered by Sonic in {lang.upper()}. How can I help you today?")
+                })
+
+            CARTESIA_VOICES_CACHE["voices"] = formatted
+            CARTESIA_VOICES_CACHE["timestamp"] = now
+            return {"status": "success", "data": formatted}
+    except Exception as e:
+        logger.error(f"[CartesiaVoices Error] Exception fetching voices: {e}")
+        return {"status": "error", "message": str(e), "data": []}
 
 
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
-    Synthesizes a sample audio snippet using Conversational Text-to-Speech.
+    Synthesizes a sample audio snippet using Conversational Text-to-Speech (Flux or Sonic).
     Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
     import os
@@ -721,10 +824,97 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
         return Response(
             content=SAMPLE_SPEECH_CACHE[cache_key],
             media_type="audio/mp3",
-            headers={"Cache-Control": "public, max-age=86400", "X-Cache": "HIT"}
+            headers={"Cache-Control": "public, max-age=86400", "X-Cache": "RAM-HIT"}
         )
 
-    # Conversational Speech Synthesis Preview (Flux / Spoken Engine)
+    # 1. Check persistent disk cache (zero credit deduction on all subsequent requests & server restarts)
+    import hashlib
+    from pathlib import Path
+    samples_dir = Path("static/voice_previews")
+    samples_dir.mkdir(parents=True, exist_ok=True)
+    hash_sig = hashlib.md5(f"{voice}:{sample_text}".encode("utf-8")).hexdigest()[:12]
+    safe_voice_filename = voice.replace("/", "_").replace("\\", "_")
+    disk_file = samples_dir / f"{safe_voice_filename}_{hash_sig}.mp3"
+
+    if disk_file.exists():
+        try:
+            cached_bytes = disk_file.read_bytes()
+            if len(cached_bytes) > 500:
+                SAMPLE_SPEECH_CACHE[cache_key] = cached_bytes
+                return Response(
+                    content=cached_bytes,
+                    media_type="audio/mp3",
+                    headers={"Cache-Control": "public, max-age=86400", "X-Cache": "DISK-HIT"}
+                )
+        except Exception as read_err:
+            logger.debug(f"[SampleSpeech] Notice reading disk cache: {read_err}")
+
+    # Detect if Sonic (UUID format or explicit cartesia provider)
+    is_sonic = (
+        payload.provider == "cartesia" or
+        ("-" in voice and len(voice) == 36 and not voice.startswith("flux-") and not voice.startswith("aura-"))
+    )
+
+    if is_sonic:
+        cartesia_key = (os.getenv("CARTESIA_API_KEY", "")).strip()
+        if not cartesia_key:
+            raise HTTPException(status_code=400, detail="Cartesia Sonic API key is not configured in .env.")
+
+        cartesia_url = "https://api.cartesia.ai/tts/bytes"
+        headers = {
+            "X-API-Key": cartesia_key,
+            "Cartesia-Version": "2024-06-10",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model_id": "sonic-3.5",
+            "transcript": sample_text,
+            "voice": {
+                "mode": "id",
+                "id": voice
+            },
+            "output_format": {
+                "container": "mp3",
+                "sample_rate": 44100,
+                "bit_rate": 128000
+            }
+        }
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                resp = None
+                for attempt in range(3):
+                    resp = await client.post(cartesia_url, json=body, headers=headers)
+                    if resp.status_code == 429:
+                        wait_time = 0.6 * (attempt + 1)
+                        logger.warning(f"[SampleSpeech] Cartesia 429 concurrency limit hit. Retrying attempt {attempt+1}/3 in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    break
+
+                if not resp or resp.status_code != 200:
+                    err_msg = resp.text if resp else "No response"
+                    logger.error(f"[SampleSpeech Error] Cartesia Sonic TTS returned {resp.status_code if resp else 'None'}: {err_msg}")
+                    raise HTTPException(status_code=resp.status_code if resp else 500, detail=f"Sonic synthesis error: {err_msg}")
+
+                SAMPLE_SPEECH_CACHE[cache_key] = resp.content
+                # Save to disk permanently
+                try:
+                    disk_file.write_bytes(resp.content)
+                except Exception as save_err:
+                    logger.debug(f"[SampleSpeech] Notice writing disk cache: {save_err}")
+
+                return Response(
+                    content=resp.content,
+                    media_type="audio/mp3",
+                    headers={"Cache-Control": "public, max-age=86400", "X-Cache": "MISS"}
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[SampleSpeech Error] Failed to synthesize Sonic speech: {e}")
+            raise HTTPException(status_code=500, detail=f"Sonic TTS synthesis failed: {str(e)}")
+
+    # Default: Conversational Speech Synthesis Preview (Flux / Spoken Engine)
     api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
@@ -847,7 +1037,9 @@ async def initiate_ai_test_call(
         )
 
     # Determine public stream URL
-    base_url = (os.getenv("PUBLIC_BASE_URL") or tw_cfg.public_base_url or str(request.base_url)).strip().rstrip("/")
+    # Prioritize active tunnel configured in Twilio Settings (e.g. ngrok for local development),
+    # then fallback to environment variable, then request base url.
+    base_url = ((tw_cfg.public_base_url if tw_cfg and tw_cfg.public_base_url else None) or os.getenv("PUBLIC_BASE_URL") or str(request.base_url)).strip().rstrip("/")
     if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
         raise HTTPException(
             status_code=400,

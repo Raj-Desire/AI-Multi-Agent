@@ -16,7 +16,10 @@ export interface HSL {
   l: number;
 }
 
-export function hexToRgb(hex: string): RGB {
+export function hexToRgb(hex?: string | null): RGB {
+  if (!hex || typeof hex !== "string") {
+    return { r: 79, g: 70, b: 229 }; // Fallback indigo
+  }
   let cleanHex = hex.replace("#", "").trim();
   if (cleanHex.length === 3) {
     cleanHex = cleanHex
@@ -507,22 +510,26 @@ export function applyThemeToCss(
   const isDark = effectiveMode === "dark";
   const effectiveDensity = userPrefs?.ui_density || appearance.ui_density || "comfortable";
 
-  const primaryRgb = hexToRgb(colors.primary);
-  const secondaryRgb = hexToRgb(colors.secondary);
-  const accentRgb = hexToRgb(colors.accent);
+  const primaryHex = colors.primary || "#4f46e5";
+  const secondaryHex = colors.secondary || "#0ea5e9";
+  const accentHex = colors.accent || "#8b5cf6";
 
-  root.style.setProperty("--color-primary", colors.primary);
+  const primaryRgb = hexToRgb(primaryHex);
+  const secondaryRgb = hexToRgb(secondaryHex);
+  const accentRgb = hexToRgb(accentHex);
+
+  root.style.setProperty("--color-primary", primaryHex);
   root.style.setProperty("--color-primary-rgb", `${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}`);
   root.style.setProperty("--color-primary-light", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.12)`);
   root.style.setProperty("--color-primary-subtle", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.05)`);
   root.style.setProperty("--color-primary-ring", `rgba(${primaryRgb.r}, ${primaryRgb.g}, ${primaryRgb.b}, 0.25)`);
-  root.style.setProperty("--color-primary-hover", colors.primary_hover || autoFixContrast(colors.primary, isDark ? "#000000" : "#ffffff"));
+  root.style.setProperty("--color-primary-hover", colors.primary_hover || autoFixContrast(primaryHex, isDark ? "#000000" : "#ffffff"));
   
-  root.style.setProperty("--color-secondary", colors.secondary);
+  root.style.setProperty("--color-secondary", secondaryHex);
   root.style.setProperty("--color-secondary-rgb", `${secondaryRgb.r}, ${secondaryRgb.g}, ${secondaryRgb.b}`);
   root.style.setProperty("--color-secondary-light", `rgba(${secondaryRgb.r}, ${secondaryRgb.g}, ${secondaryRgb.b}, 0.12)`);
 
-  root.style.setProperty("--color-accent", colors.accent);
+  root.style.setProperty("--color-accent", accentHex);
   root.style.setProperty("--color-accent-rgb", `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
   root.style.setProperty("--color-accent-light", `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`);
 
@@ -625,9 +632,13 @@ export function getThemeCssVariables(
   const isDark = effectiveMode === "dark";
   const effectiveDensity = userPrefs?.ui_density || appearance.ui_density || "comfortable";
 
-  const primaryRgb = hexToRgb(colors.primary);
-  const secondaryRgb = hexToRgb(colors.secondary);
-  const accentRgb = hexToRgb(colors.accent);
+  const primaryHex = colors.primary || "#4f46e5";
+  const secondaryHex = colors.secondary || "#0ea5e9";
+  const accentHex = colors.accent || "#8b5cf6";
+
+  const primaryRgb = hexToRgb(primaryHex);
+  const secondaryRgb = hexToRgb(secondaryHex);
+  const accentRgb = hexToRgb(accentHex);
 
   const surfaceLum = getLuminance(colors.surface || (isDark ? "#111827" : "#ffffff"));
   const isSurfaceDark = surfaceLum < 0.45;

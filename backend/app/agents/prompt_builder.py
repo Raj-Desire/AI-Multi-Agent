@@ -228,6 +228,7 @@ class VoicePromptBuilder:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: DETAILED (3–4 SENTENCES)]\n"
                 "- Response Length: 3 to 4 comprehensive, detailed spoken sentences per turn (around 50-75 words total).\n"
+                "- FIRST SENTENCE SPEED BURST: Keep your very first sentence short and punchy (under 8 words) so speech playback begins instantly on the caller's phone.\n"
                 "- Deliver thorough explanations, step-by-step answers, and complete context.\n"
                 "- Keep the conversation natural and interactive without interrogating the caller."
             )
@@ -235,12 +236,14 @@ class VoicePromptBuilder:
             return (
                 "[MANDATORY SPOKEN LENGTH CONSTRAINT: BALANCED (2–3 SENTENCES)]\n"
                 "- Response Length: 2 to 3 well-structured, clear spoken sentences per turn (around 35-45 words total).\n"
+                "- FIRST SENTENCE SPEED BURST: Start your response with an immediate, short conversational phrase or direct answer (under 7 words) so audio synthesizes instantly without hesitation.\n"
                 "- Provide helpful context directly. Only ask a question if you need caller confirmation."
             )
         else:
             return (
-                "[MANDATORY SPOKEN LENGTH CONSTRAINT: SHORT (1–2 SENTENCES)]\n"
-                "- Response Length: 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (around 25-35 words total). Vary sentence length so it sounds like a real person, not a script.\n"
+                "[MANDATORY SPOKEN LENGTH CONSTRAINT: ULTRA-CRISP (1–2 SENTENCES)]\n"
+                "- Response Length: 1 OR AT MOST 2 SHORT SPOKEN SENTENCES PER TURN (around 15-25 words total).\n"
+                "- INSTANT FIRST CLAUSE (ZERO LATENCY): Start immediately with a brief confirmation or direct answer (under 6-8 words) so speech synthesis streams to the caller instantly without delay.\n"
                 "- NEVER produce 3 or more sentences in a single turn.\n"
                 "- NEVER give long explanations, monologues, or multiple paragraphs.\n"
                 "- Deliver information directly as a clear, confident statement. Do NOT force a question at the end of every turn unless needed."
@@ -254,49 +257,75 @@ class VoicePromptBuilder:
         elif config.listen and config.listen.language:
             lang = config.listen.language.lower().strip()
 
-        if lang in ["gu", "gujarati", "gu-in"]:
+        # Comprehensive language metadata map: (Code, English Name, Native Name, Native Example Greeting/Phrase)
+        LANGUAGE_SPECS = {
+            "gu": ("Gujarati", "ગુજરાતી", "હા, ચોક્કસ! તમને કેવા પ્રકારની સહાયતા જોઈએ છે?"),
+            "hi": ("Hindi", "हिन्दी", "नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की सहायता चाहिए?"),
+            "es": ("Spanish", "Español", "¡Hola! Por supuesto, ¿en qué puedo ayudarte hoy?"),
+            "fr": ("French", "Français", "Bonjour ! Absolument, comment puis-je vous aider aujourd'hui ?"),
+            "de": ("German", "Deutsch", "Hallo! Sehr gerne, wie kann ich Ihnen heute helfen?"),
+            "it": ("Italian", "Italiano", "Ciao! Certamente, come posso aiutarti oggi?"),
+            "pt": ("Portuguese", "Português", "Olá! Com certeza, como posso ajudar você hoje?"),
+            "ja": ("Japanese", "日本語", "こんにちは！はい、かしこまりました。本日はどのようなご用件でしょうか？"),
+            "zh": ("Chinese (Mandarin)", "中文", "您好！没问题，请问有什么我可以协助您的？"),
+            "ko": ("Korean", "한국어", "안녕하세요! 네, 무엇을 도와드릴까요?"),
+            "ar": ("Arabic", "العربية", "أهلاً وسهلاً! بالتأكيد، كيف يمكنني مساعدتك اليوم؟"),
+            "nl": ("Dutch", "Nederlands", "Hallo! Zeker, hoe kan ik u vandaag helpen?"),
+            "he": ("Hebrew", "עברית", "שלום! בהחלט, איך אוכל לעזור לך היום?"),
+            "sv": ("Swedish", "Svenska", "Hej! Absolut, vad kan jag hjälpa dig med idag?"),
+            "pl": ("Polish", "Polski", "Cześć! Oczywiście, w czym mogę Ci dzisiaj pomóc?"),
+            "tr": ("Turkish", "Türkçe", "Merhaba! Elbette, bugün size nasıl yardımcı olabilirim?"),
+            "id": ("Indonesian", "Bahasa Indonesia", "Halo! Tentu saja, ada yang bisa saya bantu hari ini?"),
+            "th": ("Thai", "ไทย", "สวัสดีค่ะ ยินดีเลยค่ะ วันนี้มีอะไรให้ช่วยไหมคะ?"),
+            "ru": ("Russian", "Русский", "Здравствуйте! Конечно, чем я могу вам помочь сегодня?"),
+            "vi": ("Vietnamese", "Tiếng Việt", "Xin chào! Rất sẵn lòng, tôi có thể giúp gì cho bạn hôm nay?"),
+            "tl": ("Tagalog (Filipino)", "Filipino", "Kamusta! Walang problema, paano kita matutulungan ngayon?"),
+            "ta": ("Tamil", "தமிழ்", "வணக்கம்! நிச்சயமாக, இன்று உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"),
+            "te": ("Telugu", "తెలుగు", "నమస్కారం! తప్పకుండా, ఈరోజు మీకు నేను ఎలా సహాయపడగలను?"),
+            "bn": ("Bengali", "বাংলা", "নমস্কার! হ্যাঁ নিশ্চয়ই, আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?"),
+            "pa": ("Punjabi", "ਪੰਜਾਬੀ", "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਹਾਂਜੀ ਜ਼ਰੂਰ, ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?"),
+            "ur": ("Urdu", "اردو", "السلام علیکم! جی بالکل، آج میں آپ کی کیا مدد کر سکتا ہوں؟"),
+            "el": ("Greek", "Ελληνικά", "Γεια σας! Βεβαίως, πώς μπορώ να σας βοηθήσω σήμερα;"),
+            "da": ("Danish", "Dansk", "Hej! Selvfølgelig, hvordan kan jeg hjælpe dig i dag?"),
+            "fi": ("Finnish", "Suomi", "Hei! Totta kai, kuinka voin auttaa sinua tänään?"),
+            "no": ("Norwegian", "Norsk", "Hei! Selvfølgelig, hvordan kan jeg hjelpe deg i dag?"),
+            "cs": ("Czech", "Čeština", "Dobrý den! Jistě, jak vám mohu dnes pomoci?"),
+            "hu": ("Hungarian", "Magyar", "Üdvözlöm! Természetesen, miben segíthetek ma?"),
+            "ro": ("Romanian", "Română", "Bună! Sigur că da, cu ce te pot ajuta astăzi?"),
+            "uk": ("Ukrainian", "Українська", "Вітаю! Звісно, чим я можу допомогти вам сьогодні?")
+        }
+
+        # Normalize prefix (e.g. "es-es" -> "es", "hi-in" -> "hi")
+        base_code = lang.split("-")[0].split("_")[0].strip()
+
+        # Match specific languages
+        for code, (eng_name, native_name, sample_phrase) in LANGUAGE_SPECS.items():
+            if lang == code or base_code == code or lang == eng_name.lower():
+                return (
+                    f"[MANDATORY LANGUAGE DIRECTIVE: {eng_name.upper()} ({native_name})]\n"
+                    f"- PRIMARY CONVERSATIONAL LANGUAGE: The caller expects you to converse EXCLUSIVELY in {eng_name} ({native_name}).\n"
+                    f"- LIVE TOKEN GENERATION: You MUST think, comprehend, and generate every single response token directly in natural, authentic spoken {eng_name} ({native_name}).\n"
+                    f"- INSTANT CONVERSATIONAL BRIDGE (ZERO LATENCY): Start your turn immediately with a natural 1-2 word spoken bridge or acknowledgment (e.g. for Hindi: 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर', 'जी', 'अच्छा') so speech begins instantaneously with real human cadence.\n"
+                    f"- SPOKEN IDIOMATIC FLUENCY: Use natural everyday phrasing, polite conversational markers, and correct grammar suitable for a real telephone call (e.g. '{sample_phrase}').\n"
+                    f"- STRICT NO-ENGLISH RULE: NEVER revert to English, reply in English, or mix English sentences when the caller speaks {eng_name}. Stay 100% in {eng_name}.\n"
+                    f"- ADAPTIVE CODE-SWITCHING: If the caller introduces bilingual loan words or code-switches (e.g. mixing everyday technical or local terms), understand them effortlessly and respond naturally in {eng_name} without breaking flow.\n"
+                    f"- BREVITY IN {eng_name.upper()}: Respect the strict 1-2 sentence conversational limit in {eng_name}. Do NOT output long paragraphs."
+                )
+
+        if lang.startswith("en") or lang == "english":
             return (
-                "[MANDATORY LANGUAGE DIRECTIVE: GUJARATI (ગુજરાતી)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, fluent spoken Gujarati (ગુજરાતી).\n"
-                "- When the customer speaks Gujarati (e.g. 'અરે અમદાવાદ માં પ્રોપર્ટી જોઈએ છે'), ALWAYS answer in fluent, polite Gujarati (e.g., 'હા, ચોક્કસ! અમદાવાદમાં તમને કેવા પ્રકારની પ્રોપર્ટીમાં રસ છે?').\n"
-                "- NEVER reply in English when Gujarati is configured or when the customer speaks Gujarati."
+                "[MANDATORY LANGUAGE DIRECTIVE: ENGLISH]\n"
+                "- PRIMARY CONVERSATIONAL LANGUAGE: Converse and respond in natural, fluent spoken English.\n"
+                "- If the caller switches to another language, seamlessly adapt and respond in that language if you understand it."
             )
-        elif lang in ["hi", "hindi", "hi-in"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: HINDI (हिन्दी)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse, respond, and speak EXCLUSIVELY in natural, polite spoken Hindi (हिन्दी).\n"
-                "- When the customer speaks Hindi, ALWAYS answer in clear, friendly Hindi (e.g., 'नमस्ते! हाँ जी, बिल्कुल! आपको किस प्रकार की प्रॉपर्टी चाहिए?').\n"
-                "- NEVER reply in English when Hindi is configured or when the customer speaks Hindi."
-            )
-        elif lang in ["es", "spanish", "es-es", "es-us"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: SPANISH (ESPAÑOL)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent Spanish (Español).\n"
-                "- When the customer speaks Spanish, answer in polite, clear Spanish."
-            )
-        elif lang in ["fr", "french", "fr-fr"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: FRENCH (FRANÇAIS)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, fluent French (Français)."
-            )
-        elif lang in ["de", "german", "de-de"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: GERMAN (DEUTSCH)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural German (Deutsch)."
-            )
-        elif lang in ["ja", "japanese", "ja-jp"]:
-            return (
-                "[MANDATORY LANGUAGE DIRECTIVE: JAPANESE (日本語)]\n"
-                "- PRIMARY SPOKEN LANGUAGE: You MUST converse and respond EXCLUSIVELY in natural, polite Japanese (日本語)."
-            )
-        else:
-            return (
-                "[LANGUAGE MIRRORING DIRECTIVE]\n"
-                "- If the customer speaks in Gujarati (ગુજરાતી), answer in natural Gujarati.\n"
-                "- If the customer speaks in Hindi (हिन्दी), answer in natural Hindi.\n"
-                "- If the customer speaks in English, answer in English.\n"
-                "- Always seamlessly match and mirror the language spoken by the customer."
-            )
+
+        # Fallback mirroring directive for unlisted or custom locales
+        return (
+            "[LANGUAGE MIRRORING & COMPREHENSION DIRECTIVE]\n"
+            "- Understand caller speech in whatever language they speak.\n"
+            "- ALWAYS seamlessly match and mirror the caller's spoken language in your response.\n"
+            "- Speak naturally, politely, and maintain the 1-2 sentence spoken phone brevity."
+        )
 
     @staticmethod
     def _build_business_knowledge_section(
@@ -556,10 +585,9 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
             f"{pacing_line}"
             "- SPOKEN FORMAT: Write everything the way it is said aloud. Say prices in words ('two hundred fifty dollars', not '$250'), say dates as 'March third', say phone numbers as digit words in comma-separated groups (for example 'nine eight seven six five, four three two one zero'), and never use symbols, abbreviations like 'approx.', URLs read character by character, markdown, or emojis.\n"
-            "- IMMEDIATE CONVERSATIONAL BRIDGES: When asked a multi-part question or lookup, begin your turn immediately with a natural human bridge (e.g., "
-            f"{phrases_example}) so the caller experiences instant acknowledgement without dead silence.\n"
+            "- IMMEDIATE CONVERSATIONAL BRIDGES (ZERO DEAD AIR): Always begin your turn immediately with a quick, natural human acknowledgment or conversational bridge (such as 'Got it', 'Sure', 'Understood', 'Right', or in Hindi 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर') before delivering the core answer. This eliminates dead air so the caller hears speech instantaneously.\n"
             "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
-            "- FLUID INTER-SENTENCE PACING (ZERO DEAD AIR): Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
+            "- FLUID INTER-SENTENCE PACING: Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
             "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
             "- CONVERSATIONAL FLOW: Never produce dense paragraphs or list bullet points aloud. Speak warmly, articulately, and casually like an experienced human executive on the telephone."
         )
@@ -697,6 +725,35 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         return "\n".join(lines)
 
     @staticmethod
+    def _build_guardrails_section(config: AgentConfiguration) -> str:
+        """Injects agent-specific allowed actions, restricted actions, and boundary enforcement."""
+        gr = getattr(config, "guardrails", None)
+        if not gr:
+            return ""
+
+        allowed = getattr(gr, "allowed_actions", []) or []
+        restricted = getattr(gr, "restricted_actions", []) or []
+
+        lines = ["[STRICT BEHAVIORAL BOUNDARIES & SCOPE ENFORCEMENT]"]
+        if allowed:
+            lines.append("AUTHORIZED SCOPE ONLY:")
+            for a in allowed:
+                lines.append(f"- {a}")
+        if restricted:
+            lines.append("FORBIDDEN / OUT-OF-SCOPE TOPICS:")
+            for r in restricted:
+                lines.append(f"- {r}")
+
+        lines.append(
+            "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
+            "  * You represent and assist strictly within your defined business services and expertise.\n"
+            "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call.\n"
+            "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and keep the dialogue open for their actual business needs:\n"
+            "    - In Hindi: 'माफ़ कीजिए, हम बैंक या लोन सेवाओं में डील नहीं करते हैं, हम केवल बिज़नेस सॉफ़्टवेयर और ऑटोमेशन में मदद करते हैं। क्या आपके बिज़नेस में ऑटोमेशन से संबंधित कोई ज़रूरत है?'\n"
+            "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. Is there anything related to that I can assist you with today?'\n"
+            "  * Keep the tone helpful, warm, and conversational. Always gently bridge back to what you can help with rather than abruptly ending the call."
+        )
+        return "\n".join(lines)
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
@@ -724,7 +781,6 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
         few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
-        # Spoken telephony behavioral rules
         telephony_rules = """[CRITICAL SPOKEN TELEPHONY & DIRECT ANSWERING RULES]
 1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Deliver facts immediately without unnecessary introductory fluff.
 2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller! If a price or detail is NOT written in your facts, never guess or estimate it; say you'll check that detail and ask one short follow-up question instead. Never send the caller to an email address, website or another team unless that exact contact is in your facts.
@@ -736,23 +792,36 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 - If in a live browser test preview: "I understand completely! In this live preview environment, direct telephone transfers are simulated, but on a live inbound call you will be immediately transferred to our specialist."
 Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
 7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
-8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits."""
+8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
+9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
+10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation.
+11. POLITE SERVICE BOUNDARY & REDIRECTION (NEVER HANG UP ON OFF-TOPIC QUESTIONS): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
+- NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call.
+- Politely clarify that this specific service is not available and ask how you can help with your actual services:
+  * Hindi: "माफ़ कीजिए, हम [असंबंधित सेवा] में डील नहीं करते हैं, हम केवल [कंपनी की सेवाएं] में सहायता करते हैं। क्या आपके बिज़नेस में इससे संबंधित कोई आवश्यकता है?"
+  * English: "I'm sorry, we do not provide or deal with [unrelated topic]; our team specializes in [authorized services]. How can I assist you with [your services] today?"
+- Always keep the conversation active, polite, and helpful!"""
 
+        guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
 
-        # If custom system_prompt is provided, prioritize it directly to avoid truncation
+        # If custom system_prompt is provided, prioritize it directly while ensuring language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
             parts = [
                 temporal_rule,
+                language_rule,
                 config.system_prompt.strip(),
+                guardrails_section,
                 workflow_stages_rule,
                 knowledge_section,
+                length_rule,
                 acoustics_rule,
                 turn_taking_rule,
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
-                telephony_rules
+                telephony_rules,
+                platform_rules_text
             ]
         else:
             role_directives = VoicePromptBuilder._build_role_intent_directives(config)
@@ -769,10 +838,12 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 
             parts = [
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
+                f"PRIMARY GOAL: {config.objective}",
+                guardrails_section,
+                telephony_rules,
                 temporal_rule,
                 language_rule,
                 role_directives,
-                f"PRIMARY GOAL: {config.objective}",
                 workflow_stages_rule,
                 knowledge_section,
                 f"STYLE: {config.communication_style}\n{personality_text}",
@@ -783,7 +854,6 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
-                telephony_rules,
                 platform_rules_text
             ]
 
@@ -793,7 +863,14 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             compiled_prompt,
             config=config,
             business_profile=business_profile
-        )
-        return resolved_prompt.strip()
+        ).strip()
+
+        # Telephony Performance Optimization: Deepgram managed LLMs have a hard 25,000 character limit.
+        # Keeping the active prompt under 16,000 characters eliminates LLM prefill delay, reduces TTFT (Time-To-First-Token)
+        # by 2-3x, and ensures instantaneous conversational replies.
+        if len(resolved_prompt) > 18000:
+            resolved_prompt = resolved_prompt[:18000]
+
+        return resolved_prompt
 
 

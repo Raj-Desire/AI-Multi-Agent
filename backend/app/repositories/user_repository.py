@@ -11,6 +11,11 @@ _USER_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
 _USER_EMAIL_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
 CACHE_TTL_SECONDS = 60.0
 
+# list_users() is a cross-partition scan and get_organization()/list_organizations() are built on top of it,
+# so a loop that resolves organizations (e.g. one lookup per Twilio config) re-scanned all users every time.
+_USERS_LIST_CACHE: Dict[tuple, Tuple[List[Dict[str, Any]], float]] = {}
+USERS_LIST_TTL_SECONDS = 10.0
+
 def _get_cached_user(user_id: str) -> Optional[Dict[str, Any]]:
     cached = _USER_CACHE.get(user_id)
     if cached:
@@ -27,6 +32,7 @@ def _set_cached_user(user_id: str, data: Dict[str, Any]):
         _USER_EMAIL_CACHE[data["email"].lower().strip()] = (data, now)
 
 def _invalidate_user_cache(user_id: Optional[str] = None, email: Optional[str] = None):
+    _USERS_LIST_CACHE.clear()
     if user_id and user_id in _USER_CACHE:
         del _USER_CACHE[user_id]
     if email and email.lower().strip() in _USER_EMAIL_CACHE:
@@ -98,6 +104,7 @@ class UserRepository:
         organization_id: Optional[str] = None,
         org_name: Optional[str] = None
     ) -> Dict[str, Any]:
+        _USERS_LIST_CACHE.clear()
         existing = await UserRepository.get_by_email(email)
         if existing:
             raise ValueError(f"User with email {email} already exists")
@@ -131,6 +138,11 @@ class UserRepository:
         organization_id: Optional[str] = None,
         role: Optional[str] = None
     ) -> List[Dict[str, Any]]:
+        cache_key = (organization_id, role)
+        cached = _USERS_LIST_CACHE.get(cache_key)
+        if cached and time.time() - cached[1] < USERS_LIST_TTL_SECONDS:
+            return cached[0]
+
         def _sync_list():
             container = get_users_container()
             if not container:
@@ -152,6 +164,7 @@ class UserRepository:
 
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                _USERS_LIST_CACHE[cache_key] = (items, time.time())
                 return items
             except Exception as e:
                 print(f"[UserRepository Error] list_users: {e}")
@@ -221,6 +234,7 @@ class UserRepository:
 
     @staticmethod
     async def toggle_organization_status(organization_id: str, is_active: bool) -> int:
+        _USERS_LIST_CACHE.clear()
         """Enables or disables all user accounts belonging to an organization."""
         def _sync_toggle():
             container = get_users_container()
@@ -249,6 +263,7 @@ class UserRepository:
 
     @staticmethod
     async def delete_organization(organization_id: str) -> int:
+        _USERS_LIST_CACHE.clear()
         """Completely removes all users belonging to an organization."""
         org_users = await UserRepository.list_users(organization_id=organization_id)
         if not org_users:

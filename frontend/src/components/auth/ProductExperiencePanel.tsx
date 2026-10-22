@@ -177,7 +177,7 @@ export const ProductExperiencePanel: React.FC = () => {
   return (
     <div ref={wrapRef} className="relative w-full h-full overflow-hidden bg-[#070b1d] text-white cursor-pointer select-none">
       {/* Corner glows mirror the blue and cyan glows on the sign-in side */}
-      <div className="absolute -top-40 -right-32 w-[520px] h-[520px] rounded-full bg-indigo-600/20 blur-[130px] pointer-events-none" />
+      <div className="absolute -top-40 -right-32 w-[520px] h-[520px] rounded-full bg-[var(--color-primary-light)] blur-[130px] pointer-events-none" />
       <div className="absolute -bottom-48 -left-24 w-[480px] h-[480px] rounded-full bg-cyan-500/15 blur-[130px] pointer-events-none" />
 
       <canvas ref={canvasRef} className="absolute inset-0" />
@@ -208,7 +208,7 @@ export const ProductExperiencePanel: React.FC = () => {
           </div>
         </div>
         <div className="flex items-start gap-2.5 justify-end">
-          <div className="rounded-2xl rounded-tr-md bg-gradient-to-r from-blue-600/80 to-indigo-600/80 border border-blue-300/20 px-3.5 py-2 text-[13px] text-blue-50">
+          <div className="rounded-2xl rounded-tr-md bg-[var(--color-primary)] border border-white/20 px-3.5 py-2 text-[13px] text-white">
             {EXCHANGES[exIdx].agent}
           </div>
         </div>
@@ -218,7 +218,7 @@ export const ProductExperiencePanel: React.FC = () => {
         <h2 className="text-3xl xl:text-4xl font-semibold tracking-tight leading-[1.12] text-slate-50">
           Every call answered.
           <br />
-          <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-cyan-300 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-cyan-300 bg-clip-text text-transparent">
             Every lead qualified.
           </span>
         </h2>

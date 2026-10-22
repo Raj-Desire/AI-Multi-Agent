@@ -44,7 +44,7 @@ async def list_prospects(
     group_name: Optional[str] = Query(None, description="Filter by group name"),
     assigned_owner: Optional[str] = Query(None, description="Filter by assigned owner"),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(25, ge=1, le=500, description="Items per page"),
+    page_size: int = Query(25, ge=1, le=1000, description="Items per page"),
     sort_by: str = Query("created_at", description="Field to sort by (created_at, name, company, status, last_contacted_at, total_calls)"),
     sort_order: str = Query("desc", description="Sort direction (asc or desc)"),
     ctx: TenantContext = Depends(get_tenant_context),

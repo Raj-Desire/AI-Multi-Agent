@@ -495,7 +495,7 @@ export function ProspectDetailDrawer({
                         </span>
                       )}
                       {call.lead_score !== undefined && call.lead_score !== null && (
-                        <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-medium">
+                        <span className="px-2 py-0.5 rounded bg-[var(--color-primary-light)] text-[var(--color-primary)] font-medium">
                           Lead Score: {call.lead_score}/100
                         </span>
                       )}
