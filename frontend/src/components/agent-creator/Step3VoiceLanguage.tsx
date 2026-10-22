@@ -276,6 +276,51 @@ export function getVoiceSupportedList(voiceId: string, engine: string, langCode?
   return [{ countryCode, lang: langCode || "en", label: meta?.accent || "English (American)" }];
 }
 
+// Global Set of Featured Voice IDs for O(1) instantaneous lookup
+const FEATURED_VOICE_IDS = new Set([
+  ...AURA_VOICES.map((v) => v.id),
+  ...POPULAR_SONIC_VOICES.map((v) => v.id)
+]);
+
+// Authentic Native Greeting Translations for Synchronized Voice & Listening Experience
+export const NATIVE_DEFAULT_GREETINGS: Record<string, string> = {
+  en: "Hi! Thanks for connecting. How can I help you today?",
+  hi: "नमस्ते! बात करने के लिए धन्यवाद। आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?",
+  gu: "નમસ્તે! વાત કરવા બદલ આભાર. આજે હું તમને કેવી રીતે મદદ કરી શકું?",
+  es: "¡Hola! Gracias por comunicarte. ¿En qué puedo ayudarte hoy?",
+  fr: "Bonjour ! Merci de nous contacter. Comment puis-je vous aider aujourd'hui ?",
+  de: "Hallo! Vielen Dank für Ihre Kontaktaufnahme. Wie kann ich Ihnen heute helfen?",
+  it: "Ciao! Grazie per averci contattato. Come posso aiutarti oggi?",
+  pt: "Olá! Obrigado por entrar em contato. Como posso ajudar você hoje?",
+  ja: "こんにちは！お電話ありがとうございます。本日はどのようなご用件でしょうか？",
+  zh: "您好！感谢您的致电。请问今天有什么我可以帮您的？",
+  ko: "안녕하세요! 연결해 주셔서 감사합니다. 오늘 어떤 도움이 필요하신가요?",
+  ar: "مرحباً! شكراً لاتصالك بنا. كيف يمكنني مساعدتك اليوم؟",
+  nl: "Hallo! Bedankt voor het contact opnemen. Hoe kan ik u vandaag helpen?",
+  he: "שלום! תודה שפנית אלינו. איך אוכל לעזור לך היום?",
+  sv: "Hej! Tack för att du kontaktar oss. Hur kan jag hjälpa dig idag?",
+  pl: "Cześć! Dziękujemy za kontakt. W czym mogę Ci dzisiaj pomóc?",
+  tr: "Merhaba! Bize ulaştığınız için teşekkürler. Bugün size nasıl yardımcı olabilirim?",
+  id: "Halo! Terima kasih telah menghubungi kami. Ada yang bisa saya bantu hari ini?",
+  th: "สวัสดีค่ะ! ขอบคุณที่ติดต่อเรานะคะ วันนี้มีอะไรให้ช่วยไหมคะ?",
+  ru: "Здравствуйте! Спасибо за обращение. Чем я могу помочь вам сегодня?",
+  vi: "Xin chào! Cảm ơn bạn đã liên hệ. Tôi có thể giúp gì cho bạn hôm nay?",
+  tl: "Kamusta! Salamat sa pagtawag. Paano kita matutulungan ngayon?",
+  ta: "வணக்கம்! எங்களைத் தொடர்பு கொண்டதற்கு நன்றி. இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?",
+  te: "నమస్కారం! మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు. ఈరోజు మీకు ఎలా సహాయపడగలను?",
+  bn: "নমস্কার! যোগাযোগ করার জন্য ধন্যবাদ। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?",
+  pa: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਸਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰਨ ਲਈ ਧੰਨਵਾਦ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
+  ur: "السلام علیکم! رابطہ کرنے کا شکریہ۔ آج میں آپ کی کیا مدد کر سکتا ہوں؟",
+  el: "Γεια σας! Ευχαριστούμε που επικοινωνήσατε μαζί μας. Πώς μπορώ να σας βοηθήσω σήμερα;",
+  da: "Hej! Tak fordi du kontakter os. Hvordan kan jeg hjælpe dig i dag?",
+  fi: "Hei! Kiitos yhteydenotostasi. Kuinka voin auttaa sinua tänään?",
+  no: "Hei! Takk for at du kontakter oss. Hvordan kan jeg hjelpe deg i dag?",
+  cs: "Dobrý den! Děkujeme, že jste se ozvali. Jak vám mohu dnes pomoci?",
+  hu: "Üdvözlöm! Köszönjük megkeresését. Miben segíthetek ma?",
+  ro: "Bună! Îți mulțumim că ne-ai contactat. Cu ce te pot ajuta astăzi?",
+  uk: "Вітаю! Дякуємо за звернення. Чим можу допомогти вам сьогодні?"
+};
+
 export function Step3VoiceLanguage({
   agentData,
   setAgentData
@@ -331,7 +376,14 @@ export function Step3VoiceLanguage({
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "female" | "male" | "english" | "multilingual">("all");
   const [activeCategory, setActiveCategory] = useState<string>("all");
-  const [voiceTab, setVoiceTab] = useState<"featured" | "all" | "saved">("featured");
+  const [voiceTab, setVoiceTab] = useState<"featured" | "saved">("featured");
+  const [visibleLimit, setVisibleLimit] = useState(40);
+
+  // Instantly reset visibleLimit to 40 on any filter/tab switch to keep DOM rendering under 10ms
+  useEffect(() => {
+    setVisibleLimit(40);
+  }, [voiceTab, selectedEngine, searchQuery, sonicLangFilter, activeFilter, activeCategory]);
+
   const [savedVoiceIds, setSavedVoiceIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem("preferred_saved_voices");
@@ -569,35 +621,60 @@ export function Step3VoiceLanguage({
     playVoiceSample(selectedVoiceId);
   };
 
-  const handleVoiceChange = (voiceId: string) => {
+  const handleVoiceChange = (voiceId: string, explicitLang?: string) => {
     const isSonic = selectedEngine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
     const voiceObj = isSonic
       ? (sonicVoices.find((v) => v.id === voiceId) || POPULAR_SONIC_VOICES.find((v) => v.id === voiceId))
       : AURA_VOICES.find((v) => v.id === voiceId);
 
-    setAgentData((prev) => ({
-      ...prev,
-      voice: {
-        ...prev.voice,
-        provider: isSonic ? "cartesia" : "deepgram",
-        model: isSonic ? "sonic-3.5" : "flux",
-        voice: voiceId,
-        language: voiceObj?.language || prev.voice?.language || "en"
-      }
-    }));
+    // Prioritize explicit language (e.g. from regional flyout selector), then voice's native language, then existing agent language, falling back to English
+    const targetLang = explicitLang || voiceObj?.language || agentData.voice?.language || "en";
+    const translatedGreeting = NATIVE_DEFAULT_GREETINGS[targetLang] || NATIVE_DEFAULT_GREETINGS["en"];
+
+    setAgentData((prev) => {
+      const isDefaultOrGeneric =
+        !prev.greeting ||
+        prev.greeting.includes("How can I help you today?") ||
+        prev.greeting.includes("How can I assist you?") ||
+        prev.greeting.includes("reaching out to support") ||
+        prev.greeting.includes("AI voice assistant") ||
+        Object.values(NATIVE_DEFAULT_GREETINGS).includes(prev.greeting);
+
+      return {
+        ...prev,
+        greeting: isDefaultOrGeneric ? translatedGreeting : prev.greeting,
+        voice: {
+          ...prev.voice,
+          provider: isSonic ? "cartesia" : "deepgram",
+          model: isSonic ? "sonic-3.5" : "flux",
+          voice: voiceId,
+          language: targetLang
+        },
+        listen: {
+          ...prev.listen,
+          provider: prev.listen?.provider || "deepgram",
+          model: prev.listen?.model || "nova-3",
+          language: targetLang
+        }
+      };
+    });
   };
 
   const handleEngineSwitch = (engine: "flux" | "sonic") => {
     setSelectedEngine(engine);
-    // Switch default voice for that engine if needed
+    const currentLang = agentData.voice?.language || "en";
     if (engine === "sonic") {
-      const defaultSonicId = "6c756032-11c3-4be8-a120-74f9673fb700"; // Harlow - Warm Support
-      handleVoiceChange(defaultSonicId);
-      prefetchVoiceSample(defaultSonicId);
+      // Find a Sonic voice matching current language if possible, else default to Harlow
+      const matchingSonic = sonicVoices.find((v) => v.language === currentLang);
+      const targetSonicId = matchingSonic ? matchingSonic.id : "6c756032-11c3-4be8-a120-74f9673fb700";
+      handleVoiceChange(targetSonicId, matchingSonic ? currentLang : undefined);
+      prefetchVoiceSample(targetSonicId);
     } else {
-      const defaultFluxId = "flux-hannah-en";
-      handleVoiceChange(defaultFluxId);
-      prefetchVoiceSample(defaultFluxId);
+      // Find a Flux voice matching current language if possible, else default to Hannah
+      const matchingFlux = AURA_VOICES.find((v) => v.language === currentLang);
+      const targetFluxId = matchingFlux ? matchingFlux.id : "flux-hannah-en";
+      handleVoiceChange(targetFluxId, matchingFlux ? currentLang : "en");
+      prefetchVoiceSample(targetFluxId);
     }
   };
 
@@ -624,76 +701,10 @@ export function Step3VoiceLanguage({
     // 3. Clear audio cache to avoid stale language previews
     audioBlobCacheRef.current.clear();
 
-    // 4. Determine authentic native greeting translation for the newly selected language
-    const NATIVE_DEFAULT_GREETINGS: Record<string, string> = {
-      en: "Hi! Thanks for connecting. How can I help you today?",
-      hi: "नमस्ते! बात करने के लिए धन्यवाद। आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?",
-      gu: "નમસ્તે! વાત કરવા બદલ આભાર. આજે હું તમને કેવી રીતે મદદ કરી શકું?",
-      es: "¡Hola! Gracias por comunicarte. ¿En qué puedo ayudarte hoy?",
-      fr: "Bonjour ! Merci de nous contacter. Comment puis-je vous aider aujourd'hui ?",
-      de: "Hallo! Vielen Dank für Ihre Kontaktaufnahme. Wie kann ich Ihnen heute helfen?",
-      it: "Ciao! Grazie per averci contattato. Come posso aiutarti oggi?",
-      pt: "Olá! Obrigado por entrar em contato. Como posso ajudar você hoje?",
-      ja: "こんにちは！お電話ありがとうございます。本日はどのようなご用件でしょうか？",
-      zh: "您好！感谢您的致电。请问今天有什么我可以帮您的？",
-      ko: "안녕하세요! 연결해 주셔서 감사합니다. 오늘 어떤 도움이 필요하신가요?",
-      ar: "مرحباً! شكراً لاتصالك بنا. كيف يمكنني مساعدتك اليوم؟",
-      nl: "Hallo! Bedankt voor het contact opnemen. Hoe kan ik u vandaag helpen?",
-      he: "שלום! תודה שפנית אלינו. איך אוכל לעזור לך היום?",
-      sv: "Hej! Tack för att du kontaktar oss. Hur kan jag hjälpa dig idag?",
-      pl: "Cześć! Dziękujemy za kontakt. W czym mogę Ci dzisiaj pomóc?",
-      tr: "Merhaba! Bize ulaştığınız için teşekkürler. Bugün size nasıl yardımcı olabilirim?",
-      id: "Halo! Terima kasih telah menghubungi kami. Ada yang bisa saya bantu hari ini?",
-      th: "สวัสดีค่ะ! ขอบคุณที่ติดต่อเรานะคะ วันนี้มีอะไรให้ช่วยไหมคะ?",
-      ru: "Здравствуйте! Спасибо за обращение. Чем я могу помочь вам сегодня?",
-      vi: "Xin chào! Cảm ơn bạn đã liên hệ. Tôi có thể giúp gì cho bạn hôm nay?",
-      tl: "Kamusta! Salamat sa pagtawag. Paano kita matutulungan ngayon?",
-      ta: "வணக்கம்! எங்களைத் தொடர்பு கொண்டதற்கு நன்றி. இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?",
-      te: "నమస్కారం! మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు. ఈరోజు మీకు ఎలా సహాయపడగలను?",
-      bn: "নমস্কার! যোগাযোগ করার জন্য ধন্যবাদ। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?",
-      pa: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਸਾਡੇ ਨਾਲ ਸੰਪਰਕ ਕਰਨ ਲਈ ਧੰਨਵਾਦ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
-      ur: "السلام علیکم! رابطہ کرنے کا شکریہ۔ آج میں آپ کی کیا مدد کر سکتا ہوں؟",
-      el: "Γεια σας! Ευχαριστούμε που επικοινωνήσατε μαζί μας. Πώς μπορώ να σας βοηθήσω σήμερα;",
-      da: "Hej! Tak fordi du kontakter os. Hvordan kan jeg hjælpe dig i dag?",
-      fi: "Hei! Kiitos yhteydenotostasi. Kuinka voin auttaa sinua tänään?",
-      no: "Hei! Takk for at du kontakter oss. Hvordan kan jeg hjelpe deg i dag?",
-      cs: "Dobrý den! Děkujeme, že jste se ozvali. Jak vám mohu dnes pomoci?",
-      hu: "Üdvözlöm! Köszönjük megkeresését. Miben segíthetek ma?",
-      ro: "Bună! Îți mulțumim că ne-ai contactat. Cu ce te pot ajuta astăzi?",
-      uk: "Вітаю! Дякуємо за звернення. Чим можу допомогти вам сьогодні?"
-    };
+    // 4. Update voice and listen atomically
+    handleVoiceChange(targetVoiceId, lang);
 
-    const translatedGreeting = NATIVE_DEFAULT_GREETINGS[lang] || NATIVE_DEFAULT_GREETINGS["en"];
-
-    // 5. Update Agent configuration with synchronized voice, listen language, and translated greeting
-    setAgentData((prev) => {
-      // If current greeting is empty or matches another default English greeting pattern, adapt to translated greeting
-      const isDefaultOrGeneric = !prev.greeting ||
-        prev.greeting.includes("How can I help you today?") ||
-        prev.greeting.includes("How can I assist you?") ||
-        prev.greeting.includes("reaching out to support") ||
-        prev.greeting.includes("AI voice assistant") ||
-        Object.values(NATIVE_DEFAULT_GREETINGS).includes(prev.greeting);
-
-      return {
-        ...prev,
-        greeting: isDefaultOrGeneric ? translatedGreeting : prev.greeting,
-        voice: {
-          ...prev.voice,
-          provider: selectedEngine === "sonic" ? "cartesia" : "deepgram",
-          voice: targetVoiceId,
-          language: lang
-        },
-        listen: {
-          ...prev.listen,
-          provider: prev.listen?.provider || "deepgram",
-          model: prev.listen?.model || "nova-3",
-          language: lang
-        }
-      };
-    });
-
-    // 6. Pre-warm preview for newly selected voice in the target language
+    // 5. Pre-warm preview for newly selected voice in the target language
     prefetchVoiceSample(targetVoiceId);
   };
 
@@ -770,9 +781,9 @@ export function Step3VoiceLanguage({
     return Array.from(set).sort();
   }, [sonicVoices]);
 
-  // Filtered voice list for the rich dropdown catalog
+  // Filtered voice list for the rich dropdown catalog (Featuring flagship calibrated voices)
   const filteredVoices = useMemo(() => {
-    const rawList = selectedEngine === "sonic" ? sonicVoices : AURA_VOICES;
+    const rawList = selectedEngine === "sonic" ? POPULAR_SONIC_VOICES : AURA_VOICES;
 
     return rawList.filter((v) => {
       // Sonic language filter
@@ -805,16 +816,12 @@ export function Step3VoiceLanguage({
         ) : false;
         return matchName || matchDesc || matchStyle || matchBest || matchTone || matchAccent || matchCategory || matchLang;
       }
-      // Tab Filter: featured vs all vs saved
+      // Tab Filter: featured vs saved
       if (voiceTab === "saved" && !savedVoiceIds.has(v.id)) return false;
-      if (voiceTab === "featured" && !searchQuery.trim()) {
-        const isFeatured = (v.id.startsWith("flux-") || v.id.startsWith("aura-2") || POPULAR_SONIC_VOICES.some(p => p.id === v.id));
-        if (!isFeatured) return false;
-      }
 
       return true;
     });
-  }, [selectedEngine, sonicVoices, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
+  }, [selectedEngine, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
 
   return (
     <div className="space-y-6 text-left">
@@ -903,8 +910,8 @@ export function Step3VoiceLanguage({
           </span>
           <span className="text-[10px] text-[var(--color-muted)] font-mono">
             {selectedEngine === "sonic"
-              ? `${sonicVoices.length} Sonic Voices Available`
-              : `${AURA_VOICES.length} Flux Voices Available`}
+              ? `${POPULAR_SONIC_VOICES.length} Featured Sonic Voices Available`
+              : `${AURA_VOICES.length} Featured Flux Voices Available`}
           </span>
         </div>
 
@@ -1138,11 +1145,10 @@ export function Step3VoiceLanguage({
                     </div>
                   </div>
 
-                  {/* Clean Navigation Tabs: Featured | All voices | Saved */}
+                  {/* Clean Navigation Tabs: Featured | Saved */}
                   <div className="flex items-center gap-1 text-[11px] font-semibold text-[var(--color-muted)]">
                     {[
-                      { id: "featured", label: "Featured" },
-                      { id: "all", label: "All voices" },
+                      { id: "featured", label: `Featured (${selectedEngine === "sonic" ? POPULAR_SONIC_VOICES.length : AURA_VOICES.length})` },
                       { id: "saved", label: `Saved (${savedVoiceIds.size})` }
                     ].map((t) => (
                       <button
@@ -1162,7 +1168,15 @@ export function Step3VoiceLanguage({
                 </div>
 
                 {/* Clean Scrollable List of Voice Items matching Image 1 */}
-                <div className="max-h-[360px] overflow-y-auto divide-y divide-[var(--color-border)]/50 focus:outline-none scrollbar-thin">
+                <div
+                  onScroll={(e) => {
+                    const target = e.currentTarget;
+                    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 150) {
+                      setVisibleLimit((prev) => Math.min(prev + 40, filteredVoices.length));
+                    }
+                  }}
+                  className="max-h-[360px] overflow-y-auto divide-y divide-[var(--color-border)]/50 focus:outline-none scrollbar-thin"
+                >
                   {filteredVoices.length === 0 ? (
                     <div className="p-8 text-center text-xs text-[var(--color-muted)]">
                       {searchQuery.trim()
@@ -1170,7 +1184,7 @@ export function Step3VoiceLanguage({
                         : "No voices found in this tab or filter. Try switching tabs."}
                     </div>
                   ) : (
-                    filteredVoices.map((v) => {
+                    filteredVoices.slice(0, visibleLimit).map((v) => {
                       const isSelected = selectedVoiceId === v.id;
                       const isVoicePlaying = playingVoiceId === v.id;
                       const meta = VOICE_METADATA_MAP[v.id] || {
@@ -1181,7 +1195,8 @@ export function Step3VoiceLanguage({
                       const isFemale = (v.gender || "").toLowerCase() === "female";
                       const isSaved = savedVoiceIds.has(v.id);
                       const primaryCountryCode = getVoiceCountryCode(v.id, v.language);
-                      const supportedList = getVoiceSupportedList(v.id, v.engine || (v.id.includes("-") && !v.id.startsWith("flux-") && !v.id.startsWith("aura-") ? "sonic" : "flux"), v.language);
+                      const voiceEngine = (v as any).engine || (v.id.includes("-") && !v.id.startsWith("flux-") && !v.id.startsWith("aura-") ? "sonic" : "flux");
+                      const supportedList = getVoiceSupportedList(v.id, voiceEngine, v.language);
                       const extraCount = supportedList.length > 1 ? `+${supportedList.length - 1}` : "";
 
                       return (
@@ -1299,10 +1314,7 @@ export function Step3VoiceLanguage({
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            if (item.lang) {
-                                              handleLanguageChange(item.lang);
-                                            }
-                                            handleVoiceChange(v.id);
+                                            handleVoiceChange(v.id, item.lang);
                                             setOpenFlyoutVoiceId(null);
                                             setIsVoiceDropdownOpen(false);
                                           }}
