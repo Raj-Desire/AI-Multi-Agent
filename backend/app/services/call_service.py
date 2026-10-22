@@ -105,8 +105,8 @@ class CallService:
         agent_version = agent_config.version if agent_config else 1
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
-        # Build Media Stream TwiML connecting to Real-Time Voice Agent
-        base_url = (getattr(tw_cfg, "public_base_url", None) or os.getenv("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+        # Build Media Stream TwiML connecting to Real-Time Voice Agent (Env var takes priority over DB for multi-environment support)
+        base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
         stream_url = f"{ws_base}/api/v1/voice/stream"
 
@@ -212,8 +212,10 @@ class CallService:
         auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
         api_key_secret = decrypt_token(tw_cfg.encrypted_api_key_secret) if tw_cfg.encrypted_api_key_secret else None
 
-        if not tw_cfg.twiml_app_sid:
-            raise HTTPException(status_code=400, detail="TwiML App SID is missing. Please add it in Twilio Settings.")
+        # Allow TWIML_APP_SID from environment to override DB for multi-environment support (e.g. Local vs Azure)
+        effective_twiml_app_sid = (os.getenv("TWIML_APP_SID") or tw_cfg.twiml_app_sid or "").strip()
+        if not effective_twiml_app_sid:
+            raise HTTPException(status_code=400, detail="TwiML App SID is missing. Please add it in Twilio Settings or set TWIML_APP_SID in .env.")
         if not tw_cfg.api_key_sid or not api_key_secret:
             raise HTTPException(status_code=400, detail="Twilio API Key SID & Secret are required for WebRTC browser calling. Add them in Twilio Settings.")
 
@@ -224,9 +226,9 @@ class CallService:
             try:
                 def _sync_url():
                     client = Client(tw_cfg.account_sid, auth_token)
-                    app = client.applications(tw_cfg.twiml_app_sid).fetch()
+                    app = client.applications(effective_twiml_app_sid).fetch()
                     if not app.voice_url or "/api/v1/twilio/voice/twiml" not in app.voice_url:
-                        client.applications(tw_cfg.twiml_app_sid).update(
+                        client.applications(effective_twiml_app_sid).update(
                             voice_url=expected_url,
                             voice_method="POST",
                             voice_fallback_url=expected_url,
@@ -247,7 +249,7 @@ class CallService:
         )
         
         voice_grant = VoiceGrant(
-            outgoing_application_sid=tw_cfg.twiml_app_sid,
+            outgoing_application_sid=effective_twiml_app_sid,
             outgoing_application_params={"userId": ctx.user_id},
             incoming_allow=False
         )

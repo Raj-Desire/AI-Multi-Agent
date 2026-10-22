@@ -87,24 +87,25 @@ class TwilioService:
                 print(f"[TwilioService Warning] Could not auto-fetch phone numbers: {e}")
 
         # Auto-sync TwiML App voiceUrl AND incoming phone numbers webhook if public_base_url is provided
-        effective_base_url = req.public_base_url or (existing.public_base_url if existing else None)
+        effective_base_url = (os.getenv("PUBLIC_BASE_URL") or req.public_base_url or (existing.public_base_url if existing else None) or "").strip().rstrip("/")
         if effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
-            cleaned_url = effective_base_url.strip().rstrip("/")
+            cleaned_url = effective_base_url
             expected_voice_url = f"{cleaned_url}/api/v1/twilio/voice/twiml"
             
             # 1. Sync TwiML App
-            if req.twiml_app_sid:
+            target_twiml_sid = (os.getenv("TWIML_APP_SID") or req.twiml_app_sid or (existing.twiml_app_sid if existing else None) or "").strip()
+            if target_twiml_sid:
                 try:
                     def _sync_twiml_app():
                         client = Client(req.account_sid, real_auth_token)
-                        client.applications(req.twiml_app_sid).update(
+                        client.applications(target_twiml_sid).update(
                             voice_url=expected_voice_url,
                             voice_method="POST",
                             voice_fallback_url=expected_voice_url,
                             voice_fallback_method="POST"
                         )
                     await asyncio.to_thread(_sync_twiml_app)
-                    print(f"[TwilioService] Auto-synced TwiML App {req.twiml_app_sid} voice_url -> {expected_voice_url}")
+                    print(f"[TwilioService] Auto-synced TwiML App {target_twiml_sid} voice_url -> {expected_voice_url}")
                 except Exception as e:
                     print(f"[TwilioService Warning] Could not auto-sync TwiML App: {e}")
 

@@ -1037,9 +1037,8 @@ async def initiate_ai_test_call(
         )
 
     # Determine public stream URL
-    # Prioritize active tunnel configured in Twilio Settings (e.g. ngrok for local development),
-    # then fallback to environment variable, then request base url.
-    base_url = ((tw_cfg.public_base_url if tw_cfg and tw_cfg.public_base_url else None) or os.getenv("PUBLIC_BASE_URL") or str(request.base_url)).strip().rstrip("/")
+    # Prioritize environment variable (e.g. Azure App Service setting or local .env) over DB
+    base_url = (os.getenv("PUBLIC_BASE_URL") or (tw_cfg.public_base_url if tw_cfg and tw_cfg.public_base_url else None) or str(request.base_url)).strip().rstrip("/")
     if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
         raise HTTPException(
             status_code=400,
