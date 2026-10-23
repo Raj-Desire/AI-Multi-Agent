@@ -104,6 +104,81 @@ class SmartIVRDetector:
         r"\bplease\s+state\s+(?:the\s+reason\s+for\s+)?your\s+call\s+to\s+be\s+connected\b",
     ]
 
+    # 6. Native-script (Devanagari / Gujarati) machine cues. No \b: combining vowel marks are not \w.
+    INDIC_DTMF_PATTERNS = [
+        r"(?:दबाएं|दबाएँ|दबाइए|दबाये|डायल करें)",
+        r"(?:દબાવો|દબાવ્યા|ડાયલ કરો)",
+    ]
+    INDIC_VOICEMAIL_PATTERNS = [
+        r"बीप\s*(?:के बाद|की आवाज़? के बाद)",
+        r"(?:संदेश|मैसेज)\s*(?:रिकॉर्ड|छोड़ें|छोड़िए)",
+        r"वॉयस\s*मेल|वॉइस\s*मेल",
+        r"(?:आपके द्वारा डायल किया गया नंबर|यह नंबर)\s*(?:अभी\s*)?(?:बंद|उपलब्ध नहीं|पहुँच से बाहर|पहुंच से बाहर)",
+        r"બીપ\s*પછી",
+        r"વોઇસ\s*મેઇલ|વૉઇસ\s*મેલ",
+    ]
+
+    # 7. Caller clearly refusing to continue (any language) -> conclude politely and hang up.
+    REFUSAL_PATTERNS = [
+        r"\b(?:not\s+interested|no\s+thanks|don'?t\s+call\s+(?:me\s+)?again|stop\s+calling|do\s+not\s+call)\b",
+        r"\b(?:i\s+)?(?:don'?t|do\s+not)\s+(?:want|wish|need)\s+to\s+(?:talk|speak|continue)\b",
+        r"\b(?:baat|bat)\s+nahi\s+kar(?:ni|na|ta|ti)\b",
+        r"\b(?:mujhe\s+)?(?:koi\s+)?(?:zaroorat|jarurat)\s+nahi\b",
+        r"\b(?:interested|intrest)\s+nahi\b",
+        r"\bphone\s+(?:mat\s+karo|nahi\s+karna)\b",
+        r"\bno\s+me\s+interesa\b|\bno\s+quiero\s+hablar\b|\bno\s+llame\s+m[aá]s\b",
+        r"मुझे\s*(?:कोई\s*)?(?:बात|बातचीत)\s*नहीं\s*(?:करनी|करना)",
+        r"(?:बात|बातचीत)\s*नहीं\s*(?:करनी|करना)",
+        r"(?:मुझे\s*)?(?:कोई\s*)?(?:ज़रूरत|जरूरत)\s*नहीं",
+        r"(?:इंटरेस्टेड|रुचि)\s*नहीं",
+        r"फोन\s*(?:मत|ना)\s*करो",
+        r"મારે\s*(?:કોઈ\s*)?(?:વાત|જરૂર)\s*નથી",
+        r"(?:વાત\s*નથી\s*કરવી|રસ\s*નથી)",
+    ]
+
+    _COMPILED_INDIC_DTMF = [re.compile(p) for p in INDIC_DTMF_PATTERNS]
+    _COMPILED_INDIC_VOICEMAIL = [re.compile(p) for p in INDIC_VOICEMAIL_PATTERNS]
+    _COMPILED_REFUSAL = [re.compile(p, re.IGNORECASE) for p in REFUSAL_PATTERNS]
+
+    _CLOSINGS = {
+        "hi": "समझ गया, आपके समय के लिए धन्यवाद। यदि भविष्य में किसी मदद की ज़रूरत हो तो कृपया संपर्क करें। अलविदा!",
+        "gu": "સમજી ગયો, તમારા સમય માટે આભાર. ભવિષ્યમાં કોઈ મદદ જોઈએ તો કૃપા કરીને સંપર્ક કરજો. આવજો!",
+        "es": "Entendido, gracias por su tiempo. Si necesita ayuda en el futuro, no dude en contactarnos. ¡Adiós!",
+        "hinglish": "Samajh gaya, aapke samay ke liye dhanyavaad. Future mein kisi madad ki zaroorat ho to kripya sampark karein. Alvida!",
+        "en": "Understood, thank you for your time. If you need any help in the future, please get in touch. Goodbye!",
+    }
+
+    @classmethod
+    def detect_language(cls, text: str) -> str:
+        """Cheap script/keyword language guess used only to pick a closing message."""
+        if re.search(r"[઀-૿]", text):
+            return "gu"
+        if re.search(r"[ऀ-ॿ]", text):
+            return "hi"
+        low = text.lower()
+        if re.search(r"\b(?:nahi|nahin|hai|mujhe|aap|kripya|dhanyavaad|baat|zaroorat|jarurat)\b", low):
+            return "hinglish"
+        if re.search(r"[¿¡ñáéíóú]|\b(?:no\s+quiero|gracias|hola|por\s+favor|mensaje|tono)\b", low):
+            return "es"
+        return "en"
+
+    @classmethod
+    def closing_for_code(cls, code: Optional[str]) -> str:
+        """Static closing for a configured language code (e.g. 'hi', 'es-MX'); English if unknown."""
+        return cls._CLOSINGS.get((code or "en").split("-")[0].lower(), cls._CLOSINGS["en"])
+
+    @classmethod
+    def closing_message(cls, text: str) -> str:
+        """Conclusion message in the same language as the given transcript turn."""
+        return cls._CLOSINGS[cls.detect_language(text)]
+
+    @classmethod
+    def is_user_refusal(cls, text: str) -> bool:
+        if not text or not text.strip():
+            return False
+        clean = " ".join(text.lower().split())
+        return any(p.search(clean) for p in cls._COMPILED_REFUSAL)
+
     # Compile regexes for ultra-fast matching
     _COMPILED_DTMF = [re.compile(p, re.IGNORECASE) for p in DTMF_PATTERNS]
     _COMPILED_VOICEMAIL = [re.compile(p, re.IGNORECASE) for p in VOICEMAIL_PATTERNS]
@@ -162,6 +237,30 @@ class SmartIVRDetector:
                         symptom_type="DTMF_IVR_MENU",
                         matched_phrase=match.group(0),
                         confidence=0.96,
+                        recommended_action="conclude_and_hangup"
+                    )
+
+        if check_dtmf:
+            for pattern in cls._COMPILED_INDIC_DTMF:
+                match = pattern.search(clean_text)
+                if match:
+                    return IVRDetectionResult(
+                        is_ivr=True,
+                        symptom_type="DTMF_IVR_MENU",
+                        matched_phrase=match.group(0),
+                        confidence=0.94,
+                        recommended_action="conclude_and_hangup"
+                    )
+
+        if check_voicemail:
+            for pattern in cls._COMPILED_INDIC_VOICEMAIL:
+                match = pattern.search(clean_text)
+                if match:
+                    return IVRDetectionResult(
+                        is_ivr=True,
+                        symptom_type="VOICEMAIL_MACHINE",
+                        matched_phrase=match.group(0),
+                        confidence=0.93,
                         recommended_action="conclude_and_hangup"
                     )
 

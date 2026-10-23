@@ -39,6 +39,7 @@ import {
   DEFAULT_PRONUNCIATION_RULES
 } from "./constants";
 import { AgentConfig, PronunciationRule } from "../../types";
+import { MultilingualSettings } from "./MultilingualSettings";
 
 interface Step3VoiceLanguageProps {
   agentData: AgentConfig;
@@ -519,7 +520,9 @@ export function Step3VoiceLanguage({
         body: JSON.stringify({
           text: sampleText,
           voice: voiceId,
-          provider: isSonicVoice ? "cartesia" : "deepgram"
+          provider: isSonicVoice ? "cartesia" : "deepgram",
+          // Sonic needs the language to pronounce non-English text correctly
+          language: customText ? agentData.voice?.language || "en" : (voiceObj as any)?.language || "en"
         })
       });
 
@@ -1502,6 +1505,8 @@ export function Step3VoiceLanguage({
           </div>
         </div>
       </div>
+
+      <MultilingualSettings agentData={agentData} setAgentData={setAgentData} />
 
       {/* Section 3: Advanced AI Model Settings (Collapsible) */}
       <div className="border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] overflow-hidden shadow-2xs">

@@ -4,9 +4,12 @@ Translates high-level platform AgentConfiguration into provider-specific Deepgra
 SettingsConfiguration, ensuring decoupled architecture and future extensibility.
 """
 
+import os
 from typing import Optional, Dict, Any
 from app.agents.configuration import AgentConfiguration
 from app.agents.prompt_builder import VoicePromptBuilder
+from app.voice.language_support import resolve_multilingual
+from app.voice.language_switcher import sonic_language_mode
 from app.providers.deepgram.configuration import (
     DeepgramSettingsConfiguration,
     DeepgramAudioConfig,
@@ -21,6 +24,25 @@ from app.providers.deepgram.configuration import (
     DeepgramSpeakConfig,
     DeepgramSpeakProvider
 )
+
+
+RAPID_ENDPOINTING_MS = 100
+
+
+def use_flux_multilingual() -> bool:
+    """Flux multilingual recognizer for multi-language agents (STT_MULTI_ENGINE=nova switches back to nova-3 multi)."""
+    return os.getenv("STT_MULTI_ENGINE", "flux").strip().lower() != "nova"
+BALANCED_ENDPOINTING_MS = 160
+
+
+def _sonic_language(multilingual: bool, voice_lang: Optional[str]) -> Optional[str]:
+    """Language field for the Sonic speak provider; None leaves it out (see sonic_language_mode)."""
+    mode = sonic_language_mode()
+    if mode == "multi" and multilingual:
+        return "multi"
+    if mode == "auto":
+        return None
+    return (voice_lang or "en").split("-")[0]
 
 
 class AgentRuntimeBuilder:
@@ -72,20 +94,26 @@ class AgentRuntimeBuilder:
         else:
             configured_lang = "en"
 
+        # Multi-language call: hear the selected languages together (code-switching). Otherwise listen only to
+        # the primary language, which is the only mode that works for languages outside the multilingual set.
+        plan = resolve_multilingual(config)
+        if plan.enabled:
+            configured_lang = "multi"
+
         listen_model = config.listen.model if config.listen and config.listen.model and "nova" in config.listen.model else "nova-3"
         
         # Ultra-responsive endpointing calculation for instantaneous human-level turn-taking
+        # Silence (ms) the recognizer waits before deciding the caller has finished. Every millisecond here is added to
+        # the reply delay, and measured end to end the reply is about 0.17s faster at 100ms than at 260ms. "rapid" used
+        # to resolve to its configured 380ms, which made it SLOWER than "balanced"; both now have hard ceilings.
         mode = getattr(config.listen, "endpointing_mode", "balanced") if config.listen else "balanced"
         if mode == "rapid":
-            listen_endpointing = getattr(config.listen, "rapid_endpointing", 220) or 220
+            listen_endpointing = min(getattr(config.listen, "rapid_endpointing", RAPID_ENDPOINTING_MS) or RAPID_ENDPOINTING_MS, RAPID_ENDPOINTING_MS)
         elif mode == "dictation":
             listen_endpointing = getattr(config.listen, "dictation_endpointing", 500) or 500
-        elif mode == "balanced":
-            raw_ep = getattr(config.listen, "endpointing", 250) or 250
-            listen_endpointing = min(raw_ep, 260)
-        else:
-            # Ultra-responsive conversational default: 250ms guarantees human-level responsiveness
-            listen_endpointing = min(getattr(config.listen, "endpointing", 250) or 250, 260)
+        else:  # "balanced" and "adaptive"
+            raw_ep = getattr(config.listen, "endpointing", BALANCED_ENDPOINTING_MS) or BALANCED_ENDPOINTING_MS
+            listen_endpointing = min(raw_ep, BALANCED_ENDPOINTING_MS)
 
         # Merge keyterms from listen config, router high-weight terms, and pronunciation rules
         combined_keyterms = list(config.listen.keyterms) if config.listen and config.listen.keyterms else []
@@ -102,14 +130,29 @@ class AgentRuntimeBuilder:
         # Cap to Deepgram recommended maximum of 100 keyterms
         combined_keyterms = combined_keyterms[:100]
 
-        listen_provider = DeepgramListenProvider(
-            type="deepgram",
-            model=listen_model,
-            language=configured_lang,
-            smart_format=True,
-            endpointing=listen_endpointing,
-            keyterms=combined_keyterms if combined_keyterms else None
-        )
+        if plan.enabled and use_flux_multilingual():
+            # Flux multilingual hears the selected languages together with its own turn detection. Measured end to end
+            # it answers in about 1.0-1.2s versus 2.0-2.3s for the older multilingual recognizer, with the same
+            # transcription accuracy in English, Hindi and Spanish.
+            listen_provider = DeepgramListenProvider(
+                type="deepgram",
+                version="v2",
+                model="flux-general-multi",
+                language=None,
+                smart_format=None,
+                endpointing=None,
+                language_hints=list(plan.languages),
+                keyterms=combined_keyterms if combined_keyterms else None,
+            )
+        else:
+            listen_provider = DeepgramListenProvider(
+                type="deepgram",
+                model=listen_model,
+                language=configured_lang,
+                smart_format=True,
+                endpointing=listen_endpointing,
+                keyterms=combined_keyterms if combined_keyterms else None
+            )
         listen_config = DeepgramListenConfig(
             provider=listen_provider
         )
@@ -154,6 +197,7 @@ class AgentRuntimeBuilder:
                     "mode": "id",
                     "id": voice_model
                 },
+                language=_sonic_language(plan.enabled, voice_lang),
                 speed=float(getattr(config.voice, "speed", 1.0) or 1.0)
             )
         else:

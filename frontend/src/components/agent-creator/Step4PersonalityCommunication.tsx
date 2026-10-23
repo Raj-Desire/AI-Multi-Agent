@@ -1166,7 +1166,12 @@ export function Step4PersonalityCommunication({
       const response = await fetch("http://localhost:8000/api/v1/voice/sample-speech", {
         method: "POST",
         headers,
-        body: JSON.stringify({ text: textToSpeak, voice: voiceId })
+        body: JSON.stringify({
+          text: textToSpeak,
+          voice: voiceId,
+          provider: agentData.voice?.provider,
+          language: agentData.voice?.language || "en"
+        })
       });
 
       if (!response.ok) {

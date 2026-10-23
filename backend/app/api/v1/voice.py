@@ -112,36 +112,43 @@ import time
 import re
 
 
+_FAREWELL_PHRASES = (
+    # English
+    "goodbye", "good bye", "bye bye", "bye now", "take care", "have a great day", "have a good day",
+    "have a nice day", "have a wonderful day", "have a great evening", "have a good evening", "talk to you later",
+    "see you later", "see you soon",
+    # Hindi / Gujarati / romanized
+    "अलविदा", "शुभ दिन", "दिन शुभ", "आपका दिन अच्छा", "आपका दिन शुभ", "फिर मिलेंगे",
+    "આવજો", "સારો દિવસ", "ધ્યાન રાખજો", "ફરી મળીશું",
+    "alvida", "phir milenge",
+    # Spanish / French / German / Portuguese
+    "adiós", "adios", "hasta luego", "hasta pronto", "que tengas un buen día",
+    "au revoir", "bonne journée", "à bientôt",
+    "auf wiedersehen", "tschüss", "schönen tag",
+    "tchau", "até logo",
+)
+_FAREWELL_WORD = re.compile(r"\b(bye|cya)\b")
+
+
 def detect_conversation_conclusion(text: str) -> bool:
     """
-    Detects if a transcript turn indicates that the conversation has concluded
-    (e.g., farewells, goodbyes, thanking and ending, hangup cues, multilingual closings).
+    True only when the agent's turn ENDS with a real farewell.
+
+    A farewell word in the middle of a turn is not an ending ("Thanks for your time. Would you like a meeting?"),
+    and neither is a closing remark that is followed by a question or more to say. Only the last sentence counts,
+    and it must not be a question. Phrases that are normal mid-call talk ("contact us", "thank you for your time",
+    "we will follow up") are deliberately not treated as farewells: acting on them hangs up on interested callers.
     """
-    if not text:
+    if not text or not text.strip():
         return False
-    lower = text.lower().strip()
-
-    # 1. Multilingual / Indic keyword matches (no ASCII \b boundaries)
-    indic_farewells = ["આવજો", "अलવિદા", "अलविदा", "शुभ दिन", "दिन शुभ", "સારો રહે", "સારું રહે"]
-    if any(k in lower for k in indic_farewells):
-        return True
-
-    # 2. English & Latin Regex Patterns with word boundaries
-    patterns = [
-        r"\b(goodbye|good\s*bye|bye\s*bye|bye\s*now|bye|cya)\b",
-        r"\b(have\s+a\s+(great|good|wonderful|nice|fantastic|pleasant|blessed)\s+(day|evening|night|weekend|rest\s+of\s+(your\s+)?day))\b",
-        r"\b(take\s*care|see\s*you|talk\s*to\s*you\s*later|catch\s*you\s*later)\b",
-        r"\b(thanks\s+for\s+calling|thank\s+you\s+for\s+calling)\b.*(?:\b(goodbye|bye|take\s*care|have\s+a\s+good|have\s+a\s+great)\b|\Z)",
-        r"\b(thanks\s+for\s+your\s+time|thank\s+you\s+for\s+your\s+time)\b",
-        r"\b(disconnect(ing)?\s*now|hang(ing)?\s*up\s*now|end\s*the\s*call|ending\s*the\s*call)\b",
-        r"\b(reached\s*(your\s*)?voicemail|leave\s+a\s+message\s+after)\b",
-        r"\b(we\s+will\s+follow\s+up\s+at\s+a\s+convenient\s+time)\b",
-        r"\b(glad\s+i\s+could\s+help|happy\s+to\s+help|pleasure\s+helping\s+you)\b.*\b(bye|goodbye|take\s+care)\b",
-        r"\b(adiós|hasta\s+luego|hasta\s+pronto|que\s+tengas\s+un\s+buen\s+día)\b",
-        r"\b(au\s+revoir|bonne\s+journée|à\s+bientôt)\b",
-        r"\b(auf\s+wiedersehen|tschüss|schönen\s+tag)\b"
-    ]
-    return any(re.search(p, lower, re.IGNORECASE) for p in patterns)
+    stripped = text.strip()
+    if stripped.endswith(("?", "؟", "？")):
+        return False
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?।])\s+", stripped) if s.strip()]
+    last = (sentences[-1] if sentences else stripped).lower()
+    if "?" in last:
+        return False
+    return any(p in last for p in _FAREWELL_PHRASES) or bool(_FAREWELL_WORD.search(last))
 
 
 @router.websocket("/telemetry/{call_session_id}")
@@ -198,6 +205,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     is_agent_speaking: bool = False
     is_user_speaking: bool = False
     has_reprompted_silence: bool = False
+    reprompt_injected_at: float = 0.0
     is_concluding_call: bool = False
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
@@ -216,6 +224,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             # 24,000 samples/sec * 2 bytes/sample (16-bit linear PCM) = 48,000 bytes/sec
             audio_duration = len(raw_audio) / 48000.0
             now = time.time()
+            if "user_final" in preview_turn_marks and "first_audio" not in preview_turn_marks:
+                preview_turn_marks["first_audio"] = time.perf_counter()
+                logger.info(
+                    f"[VoicePreview:TurnLatency] reply_delay={round((preview_turn_marks['first_audio'] - preview_turn_marks['user_final']) * 1000)}ms "
+                    f"(final_transcript->thinking={round((preview_turn_marks['thinking'] - preview_turn_marks['user_final']) * 1000) if 'thinking' in preview_turn_marks else None}ms)"
+                )
             if last_agent_speech_done_time < now:
                 last_agent_speech_done_time = now + audio_duration
             else:
@@ -265,6 +279,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     preview_proxy_token: Optional[str] = None
     live_transcript_turns: List[Dict[str, str]] = []
     turn_counter: int = 0
+    preview_turn_marks: Dict[str, float] = {}
+
+    # Follows the caller's language turn by turn, exactly like a real phone call.
+    from app.voice.language_follow import LanguageFollower
+    language_follower = LanguageFollower(
+        get_config=lambda: agent_config,
+        get_client=lambda: deepgram_client,
+        get_settings=lambda: deepgram_settings,
+        get_proxy_token=lambda: preview_proxy_token,
+    )
 
     async def handle_dg_transcript(role: str, content: str):
         nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
@@ -278,6 +302,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             has_reprompted_silence = False
             turn_counter += 1
             live_transcript_turns.append({"role": "user", "content": content})
+            preview_turn_marks.clear()
+            preview_turn_marks["user_final"] = now
+            asyncio.create_task(language_follower.on_user_turn(content))
 
             # Multi-Agent Orchestrator: Submit for Handoff Evaluation
             if handoff_controller and not is_concluding_call:
@@ -328,6 +355,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
     async def handle_dg_agent_thinking(data: dict):
         nonlocal thinking_filler_task, deepgram_client
+        preview_turn_marks.setdefault("thinking", time.perf_counter())
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
@@ -366,8 +394,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             thinking_filler_task.cancel()
 
     async def preview_lifecycle_monitor():
-        """Keeps live preview stream alive indefinitely by sending periodic KeepAlive pulses to Deepgram."""
-        nonlocal last_backchannel_time
+        """Keeps the preview alive with KeepAlive pulses and runs the same silence timeout as a real call:
+        ask the reprompt after the configured silence, then conclude and end if there is still no answer."""
+        nonlocal last_backchannel_time, has_reprompted_silence, reprompt_injected_at, is_concluding_call
+        from app.services.language_text import silence_messages
+        from app.voice.silence_policy import silence_action
+        from app.voice.language_switcher import normalize_code
         keepalive_counter = 0
         try:
             while not call_ended_event.is_set():
@@ -376,7 +408,6 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                 if not deepgram_client or not deepgram_client.is_ready:
                     continue
 
-                # Monologue monitor (ensure keepalive without disruptive agent injection)
                 now = time.time()
 
                 # Send periodic keep-alive every 4 seconds to guarantee WebSocket connection never drops during silence
@@ -385,6 +416,39 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         await deepgram_client.send_keep_alive()
                     except Exception as ke:
                         logger.debug(f"[VoicePreview] KeepAlive pulse: {ke}")
+
+                if not agent_config or is_concluding_call:
+                    continue
+                runtime = agent_config.runtime or AgentRuntimeSettings()
+                silence_timeout = max(3.0, float(runtime.silence_timeout or 8))
+                hangup_delay = max(3.0, float(runtime.silence_hangup_delay or 6))
+
+                language = (agent_config.voice.language if agent_config.voice else None) or "en"
+                reprompt_msg, conclusion_msg = silence_messages(
+                    runtime.silence_reprompt_message, runtime.conclusion_message, normalize_code(language)
+                )
+                action = silence_action(
+                    now, last_user_speech_time, last_agent_speech_done_time, is_user_speaking, user_speech_start_time,
+                    has_reprompted_silence, reprompt_injected_at, silence_timeout, hangup_delay,
+                )
+                if action == "reprompt":
+                    logger.info(f"[VoicePreview] Silence timeout ({silence_timeout:.0f}s). Asking: '{reprompt_msg}'")
+                    has_reprompted_silence = True
+                    reprompt_injected_at = now
+                    await deepgram_client.inject_agent_message(reprompt_msg)
+                elif action == "conclude":
+                    logger.info(f"[VoicePreview] No answer {hangup_delay:.0f}s after the reprompt. Concluding.")
+                    is_concluding_call = True
+                    spoken_from = time.time()
+                    await deepgram_client.inject_agent_message(conclusion_msg, behavior="queue")
+                    # Wait until the goodbye has started and then finished playing (never end mid-sentence).
+                    for _ in range(150):
+                        await asyncio.sleep(0.1)
+                        started = last_agent_speech_done_time > spoken_from
+                        if started and time.time() >= last_agent_speech_done_time + 1.0:
+                            break
+                    await websocket.send_json({"type": "call_concluded", "reason": "silence"})
+                    break
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -399,7 +463,6 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             # 1. Direct binary audio chunk from browser mic (24kHz Linear16 PCM) - Zero JSON/Base64 overhead
             if "bytes" in recv_data and recv_data["bytes"]:
                 raw_bytes = recv_data["bytes"]
-                last_user_speech_time = time.time()
                 if deepgram_client and deepgram_client.is_ready:
                     try:
                         await deepgram_client.send_audio(raw_bytes)
@@ -541,6 +604,21 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     is_concluding_call = False
                     has_reprompted_silence = False
                     call_ended_event.clear()
+
+                    # Multi-language agent without an orchestrator: decide each reply's language from the current turn.
+                    language_follower.reset()
+                    if not preview_proxy_token and not orchestrator:
+                        from app.voice.language_support import resolve_multilingual
+                        from app.api.v1.think_proxy import attach_language_proxy
+                        lang_plan = resolve_multilingual(agent_config)
+                        if lang_plan.enabled:
+                            preview_proxy_token = attach_language_proxy(
+                                deepgram_settings,
+                                call_id=f"preview_lang_{agent_config.agent_id}_{int(time.time())}",
+                                tenant_id=target_org_id or "global",
+                                primary=lang_plan.primary,
+                                languages=lang_plan.languages,
+                            )
 
                     async def handle_dg_error(err_str: str):
                         logger.error(f"[VoicePreview] Voice engine reported error: {err_str}")
@@ -696,10 +774,19 @@ class SampleSpeechRequest(BaseModel):
     provider: Optional[str] = None  # "deepgram" | "cartesia"
     text: Optional[str] = None
     speed: Optional[float] = 1.0
+    language: Optional[str] = None  # language the text is written in; Sonic needs it to pronounce non-English text
 
 
 SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
 CARTESIA_VOICES_CACHE: Dict[str, Any] = {"timestamp": 0.0, "voices": []}
+
+
+@router.get("/multilingual-languages")
+async def list_multilingual_languages(voice: str = "flux-hannah-en", provider: str = "deepgram", language: str = "en"):
+    """Languages an agent can use for mid-call switching with this voice; unsupported ones come back disabled."""
+    from types import SimpleNamespace
+    from app.voice.language_support import language_options
+    return ApiResponse.ok(language_options(SimpleNamespace(voice=voice, provider=provider, language=language)))
 
 
 @router.get("/cartesia-voices")
@@ -802,6 +889,42 @@ async def list_cartesia_voices():
         return {"status": "error", "message": str(e), "data": []}
 
 
+async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float]):
+    """Renders a Sonic preview through the voice engine (the same path as real calls). None = fall back."""
+    import hashlib
+    import os
+    from pathlib import Path
+    from fastapi.responses import Response
+    from app.voice.preview_synth import PreviewSynthesisError, synthesize_sonic_preview
+
+    if os.getenv("PREVIEW_SONIC_VIA", "engine").strip().lower() == "direct":
+        return None
+    key = f"engine:{voice}:{language or ''}:{speed or 1.0}:{text}"
+    if key in SAMPLE_SPEECH_CACHE:
+        return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
+                        headers={"Cache-Control": "public, max-age=86400", "X-Cache": "RAM-HIT"})
+    samples_dir = Path("static/voice_previews")
+    samples_dir.mkdir(parents=True, exist_ok=True)
+    sig = hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
+    disk_file = samples_dir / f"engine_{voice.replace('/', '_')}_{sig}.wav"
+    if disk_file.exists() and disk_file.stat().st_size > 2000:
+        SAMPLE_SPEECH_CACHE[key] = disk_file.read_bytes()
+        return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
+                        headers={"Cache-Control": "public, max-age=86400", "X-Cache": "DISK-HIT"})
+    try:
+        wav = await synthesize_sonic_preview(text, voice, language, speed=speed or 1.0)
+    except PreviewSynthesisError as e:
+        logger.warning(f"[SampleSpeech] Voice engine preview failed, falling back: {e}")
+        return None
+    SAMPLE_SPEECH_CACHE[key] = wav
+    try:
+        disk_file.write_bytes(wav)
+    except Exception as save_err:
+        logger.debug(f"[SampleSpeech] Notice writing disk cache: {save_err}")
+    return Response(content=wav, media_type="audio/wav",
+                    headers={"Cache-Control": "public, max-age=86400", "X-Cache": "MISS"})
+
+
 @router.post("/sample-speech")
 async def generate_sample_speech(payload: SampleSpeechRequest):
     """
@@ -819,7 +942,24 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     sample_text = sample_text.strip()
     voice = payload.voice or "flux-hannah-en"
 
-    cache_key = f"{voice}:{sample_text}"
+    from app.voice.language_switcher import normalize_code, voice_languages
+    from types import SimpleNamespace
+    language = normalize_code(payload.language) if payload.language else None
+    own_language = voice.rsplit("-", 1)[-1] if len(voice.rsplit("-", 1)[-1]) == 2 else "en"  # 'aura-2-diana-es' -> es
+    voice_cfg = SimpleNamespace(voice=voice, provider=payload.provider or "", language=own_language)
+    if language and language not in voice_languages(voice_cfg):
+        # e.g. Hindi text on an English-only voice: it would be read with the wrong pronunciation.
+        raise HTTPException(status_code=422, detail="The selected voice cannot speak this language. Choose a voice that supports it.")
+
+    # Sonic previews go through the voice engine, like real calls, ahead of any older direct-vendor cache entries.
+    if payload.provider == "cartesia" or (
+        "-" in voice and len(voice) == 36 and not voice.startswith(("flux-", "aura-"))
+    ):
+        engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed)
+        if engine_response is not None:
+            return engine_response
+
+    cache_key = f"{voice}:{language or ''}:{sample_text}"
     if cache_key in SAMPLE_SPEECH_CACHE:
         return Response(
             content=SAMPLE_SPEECH_CACHE[cache_key],
@@ -832,7 +972,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     from pathlib import Path
     samples_dir = Path("static/voice_previews")
     samples_dir.mkdir(parents=True, exist_ok=True)
-    hash_sig = hashlib.md5(f"{voice}:{sample_text}".encode("utf-8")).hexdigest()[:12]
+    hash_sig = hashlib.md5(f"{voice}:{language or ''}:{sample_text}".encode("utf-8")).hexdigest()[:12]
     safe_voice_filename = voice.replace("/", "_").replace("\\", "_")
     disk_file = samples_dir / f"{safe_voice_filename}_{hash_sig}.mp3"
 
@@ -873,6 +1013,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
                 "mode": "id",
                 "id": voice
             },
+            **({"language": language} if language else {}),
             "output_format": {
                 "container": "mp3",
                 "sample_rate": 44100,
@@ -1094,9 +1235,12 @@ async def initiate_ai_test_call(
                 "status_callback_event": ["initiated", "ringing", "answered", "completed"],
                 "status_callback_method": "POST",
             }
+            from app.voice.duration_policy import twilio_backstop_seconds
+            credit_cap = None
             if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
-                rem_sec = int(auth_check.get("remaining_seconds", 14400))
-                create_kwargs["time_limit"] = max(1, min(14400, rem_sec))
+                credit_cap = int(auth_check.get("remaining_seconds", 14400))
+            agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
+            create_kwargs["time_limit"] = twilio_backstop_seconds(agent_max, credit_cap)
             return client.calls.create(**create_kwargs)
 
         routing_check = asyncio.create_task(_routes_to_this_server(base_url))

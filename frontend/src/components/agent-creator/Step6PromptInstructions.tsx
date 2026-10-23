@@ -160,6 +160,7 @@ export function Step6PromptInstructions({
         suggested_objective?: string;
         communication_style?: string;
         recommended_voice?: string;
+        used_fallback?: boolean;
       }>("/agents/generate-prompt", {
         method: "POST",
         body: JSON.stringify({
@@ -171,6 +172,7 @@ export function Step6PromptInstructions({
           response_length: agentData.response_length || "short",
           agent_type: (agentData as any).agent_type || "customer_support",
           language: agentData.voice?.language || "en",
+          languages: agentData.language?.multilingual ? agentData.language.secondary || [] : [],
           skills: agentData.skills || [],
           services: agentData.services || [],
           custom_knowledge: agentData.custom_knowledge || "",
@@ -181,6 +183,9 @@ export function Step6PromptInstructions({
       });
 
       if (res) {
+        if (res.used_fallback && !silent) {
+          toast.warning("The AI writer was unavailable, so a basic template was used. Try regenerating in a moment for fully tailored instructions.");
+        }
         if (res.suggested_greetings && res.suggested_greetings.length > 0) {
           setGreetingOptions(res.suggested_greetings);
         }
@@ -406,6 +411,38 @@ export function Step6PromptInstructions({
       .replace(/{{office_location}}/g, businessProfile?.city || "our office");
   };
 
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+  const sampleSpeechUrl = apiBaseUrl.endsWith("/api/v1")
+    ? `${apiBaseUrl}/voice/sample-speech`
+    : `${apiBaseUrl}/api/v1/voice/sample-speech`;
+
+  // Warm the server's audio cache shortly after the greeting or voice settles, so Play Preview starts instantly.
+  const previewText = resolvePreviewText(agentData.greeting || "");
+  const previewVoice = agentData.voice?.voice;
+  const previewProvider = agentData.voice?.provider;
+  const previewLanguage = agentData.voice?.language || "en";
+  useEffect(() => {
+    if (!previewText.trim() || !previewVoice) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const token = localStorage.getItem("desire_token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      fetch(sampleSpeechUrl, {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({ text: previewText, voice: previewVoice, provider: previewProvider, language: previewLanguage })
+      }).catch(() => {
+        /* warming is best-effort; the real click reports errors */
+      });
+    }, 1500);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [previewText, previewVoice, previewProvider, previewLanguage, sampleSpeechUrl]);
+
   // Play Greeting Sample Audio using selected voice
   const handlePlayGreetingAudio = async (textToPlay: string) => {
     if (isPlayingGreeting && playingGreetingText === textToPlay) {
@@ -426,14 +463,26 @@ export function Step6PromptInstructions({
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const voiceId = agentData.voice?.voice || "flux-hannah-en";
-      const response = await fetch("http://localhost:8000/api/v1/voice/sample-speech", {
+      const response = await fetch(sampleSpeechUrl, {
         method: "POST",
         headers,
-        body: JSON.stringify({ text: sanitized, voice: voiceId })
+        body: JSON.stringify({
+          text: sanitized,
+          voice: voiceId,
+          provider: agentData.voice?.provider,
+          language: agentData.voice?.language || "en"
+        })
       });
 
       if (!response.ok) {
-        throw new Error(`Speech synthesis failed (${response.status})`);
+        let detail = `Speech synthesis failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (typeof body?.detail === "string") detail = body.detail;
+        } catch {
+          /* keep the generic message */
+        }
+        throw new Error(detail);
       }
 
       const blob = await response.blob();

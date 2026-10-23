@@ -212,6 +212,18 @@ class DeepgramVoiceAgentClient:
             logger.error(f"Error injecting user message: {e}")
 
 
+    async def update_speak(self, provider: dict) -> bool:
+        """Sends UpdateSpeak so the voice changes mid-call (e.g. a multilingual voice told the new language)."""
+        if not self.is_ready or not self._ws:
+            return False
+        try:
+            await self._ws.send(json.dumps({"type": "UpdateSpeak", "speak": {"provider": provider}}))
+            logger.info(f"Sent UpdateSpeak to Voice Engine (language={provider.get('language')}).")
+            return True
+        except Exception as e:
+            logger.error(f"Error sending UpdateSpeak: {e}")
+            return False
+
     async def update_prompt(self, prompt: str) -> bool:
         """Sends UpdatePrompt to Deepgram mid-conversation. Returns True if sent successfully, raises on error."""
         if not self.is_ready or not self._ws:

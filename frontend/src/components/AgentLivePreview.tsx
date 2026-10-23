@@ -198,8 +198,13 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
               },
             ]);
           } else if (data.type === "call_concluded") {
-            // In Live Playground mode, do NOT auto-stop session — keep session listening continuously until user clicks Stop
-            console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");
+            // The preview normally keeps listening until Stop is clicked. A silence timeout is the exception: it ends
+            // the session so the "are you still there?" then hang-up behaviour can be tested exactly like a call.
+            if (data.reason === "silence") {
+              stopPreviewSession();
+            } else {
+              console.info("[VoicePlayground] Call concluded signal received (ignored in live preview to keep session active).");
+            }
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
           }

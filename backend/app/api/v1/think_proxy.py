@@ -46,7 +46,7 @@ class CallRoutingState:
     call_id: str
     tenant_id: str
     token: str
-    orchestrator: AgentOrchestrator
+    orchestrator: Optional[AgentOrchestrator]
     platform_rules: Optional[List[str]] = None
     on_committed: Optional[Callable[[AgentConfiguration, RoutingDecision, HandoffContext], Any]] = None
     telemetry_callback: Optional[Callable[[Dict[str, Any]], Any]] = None
@@ -59,6 +59,12 @@ class CallRoutingState:
     pending_plan: Optional[HandoffPlan] = None
     cached_prompts: Dict[str, str] = field(default_factory=dict)
     last_system_prompt: Optional[str] = None
+    language_directive: Optional[str] = None  # set by the gateway when the caller switches language
+    # Language-only proxy (single agents): no routing, it only tells the model the caller's language every turn.
+    language_only: bool = False
+    language_primary: str = "en"
+    language_allowed: List[str] = field(default_factory=list)
+    language_current: Optional[str] = None
 
 
 # Thread-safe in-memory registry mapping token string -> CallRoutingState
@@ -207,6 +213,48 @@ def attach_think_proxy(
         headers={"Authorization": f"Bearer {token}"},
     )
     logger.info(f"[ThinkProxy] Think proxy attached for call '{call_id}': {endpoint_url}")
+    return token
+
+
+def attach_language_proxy(
+    deepgram_settings: Any,
+    call_id: str,
+    tenant_id: str,
+    primary: str,
+    languages: List[str],
+    twilio_cfg: Any = None,
+) -> Optional[str]:
+    """
+    For a multi-language agent without an orchestrator: routes the model call through this server so the caller's
+    language is decided from the CURRENT turn and applied to that very reply (a prompt update can only land one
+    turn late). Returns the call token, or None when no public URL exists (the prompt-update path is then used).
+    """
+    from app.providers.deepgram.configuration import DeepgramThinkEndpoint
+
+    # Off by default: every reply takes an extra trip through this server to the model, which measured 1.3-2s slower
+    # than the voice engine's own model. Set LANGUAGE_THINK_PROXY=on to trade that speed for a language switch that is
+    # already correct on the very first turn of the new language (without it, the first reply may lag one turn).
+    if os.getenv("LANGUAGE_THINK_PROXY", "off").strip().lower() not in ("on", "true", "1", "yes"):
+        return None
+    public_base_url = resolve_public_base_url(twilio_cfg)
+    if not public_base_url:
+        logger.warning("[LangProxy] No public https URL; falling back to prompt updates (replies switch one turn late).")
+        return None
+    token = generate_call_token(call_id=call_id, tenant_id=tenant_id)
+    CALL_ROUTING_REGISTRY[token] = CallRoutingState(
+        call_id=call_id,
+        tenant_id=tenant_id,
+        token=token,
+        orchestrator=None,
+        language_only=True,
+        language_primary=primary,
+        language_allowed=list(languages),
+    )
+    deepgram_settings.agent.think.endpoint = DeepgramThinkEndpoint(
+        url=f"{public_base_url}/api/v1/think/chat/completions",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    logger.info(f"[LangProxy] Language proxy attached for call '{call_id}' (languages={languages}).")
     return token
 
 
@@ -388,7 +436,12 @@ def _resolve_upstream_url_and_headers(payload: Dict[str, Any]) -> Tuple[str, Dic
     """Resolves upstream LLM URL and authentication headers from environment."""
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
     azure_key = os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_KEY", "")
-    azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME") or os.getenv("AZURE_OPENAI_MODEL", "gpt-4o")
+    # VOICE_LLM_DEPLOYMENT picks the model for live calls only; other features keep AZURE_OPENAI_DEPLOYMENT_NAME.
+    azure_deployment = (
+        os.getenv("VOICE_LLM_DEPLOYMENT")
+        or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        or os.getenv("AZURE_OPENAI_MODEL", "gpt-4o")
+    )
     azure_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
 
     openai_key = os.getenv("OPENAI_API_KEY", "")
@@ -418,6 +471,24 @@ def _openai_error(status_code: int, message: str, err_type: str, code: Any) -> J
     )
 
 
+def adapt_body_for_deployment(url: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """GPT-5 / o-series deployments reject temperature and max_tokens, and think before answering by default.
+
+    The voice engine sends chat-completions fields meant for GPT-4-class models, so translate them and ask the
+    model for minimal reasoning so the first word is not delayed (VOICE_LLM_REASONING_EFFORT overrides it).
+    """
+    marker = "/deployments/"
+    name = url.split(marker, 1)[1].split("/", 1)[0].lower() if marker in url else ""
+    if not name.startswith(("gpt-5", "o1", "o3", "o4")):
+        return body
+    for field_name in ("temperature", "top_p", "presence_penalty", "frequency_penalty"):
+        body.pop(field_name, None)
+    if "max_tokens" in body:
+        body["max_completion_tokens"] = body.pop("max_tokens")
+    body.setdefault("reasoning_effort", os.getenv("VOICE_LLM_REASONING_EFFORT", "minimal"))
+    return body
+
+
 async def _open_upstream_stream(
     url: str,
     headers: Dict[str, str],
@@ -429,7 +500,7 @@ async def _open_upstream_stream(
     a 200 stream carrying an error payload.
     """
     client = get_shared_http_client()
-    req = client.build_request("POST", url, headers=headers, json=req_body)
+    req = client.build_request("POST", url, headers=headers, json=adapt_body_for_deployment(url, req_body))
     return await client.send(req, stream=True)
 
 
@@ -477,6 +548,71 @@ def _sanitize_sse_line(line: str) -> str:
 # FastAPI Endpoint: POST /api/v1/think/chat/completions
 # =============================================================================
 
+def _turn_language_directive(code: str) -> str:
+    from app.voice.language_switcher import language_name
+    name = language_name(code)
+    return (
+        f"[LANGUAGE FOR THIS REPLY - OVERRIDES EVERY EARLIER LANGUAGE INSTRUCTION]\n"
+        f"The caller's latest message is in {name}. Write your whole reply in {name}, in its native script. "
+        f"Do not mention that you are switching."
+    )
+
+
+async def _language_only_completion(state: CallRoutingState, body: Dict[str, Any], messages: List[Dict[str, Any]]):
+    """Passes the call straight to the model after naming the language of the caller's latest turn."""
+    from app.voice.language_switcher import detect_language, normalize_code
+
+    started = time.perf_counter()
+    if messages and messages[-1].get("role") != "tool":
+        detected = detect_language(_extract_last_user_message(messages))
+        if detected and normalize_code(detected) in state.language_allowed:
+            state.language_current = normalize_code(detected)
+
+    modified = list(messages)
+    if state.language_current:
+        directive = _turn_language_directive(state.language_current)
+        for idx, msg in enumerate(modified):
+            if msg.get("role") == "system":
+                modified[idx] = {"role": "system", "content": f"{msg.get('content', '')}\n\n{directive}"}
+                break
+        else:
+            modified.insert(0, {"role": "system", "content": directive})
+    body["messages"] = modified
+    is_stream = body.get("stream", True)
+
+    try:
+        url, headers = _resolve_upstream_url_and_headers(body)
+    except ValueError as ve:
+        logger.error(f"[LangProxy] Upstream LLM credentials error: {ve}")
+        return _openai_error(503, "Voice Engine upstream reasoning service unavailable", "service_unavailable", "llm_credentials_missing")
+
+    prep_ms = (time.perf_counter() - started) * 1000.0
+    if is_stream:
+        body["stream"] = True
+        try:
+            upstream = await _open_upstream_stream(url=url, headers=headers, req_body=body)
+        except Exception as conn_err:
+            logger.error(f"[LangProxy] Upstream LLM connection error: {conn_err}")
+            return _openai_error(503, "Upstream connection failed", "service_unavailable", "upstream_connect_error")
+        if upstream.status_code >= 400:
+            err = await upstream.aread()
+            await upstream.aclose()
+            logger.error(f"[LangProxy] Upstream LLM HTTP {upstream.status_code}: {err.decode(errors='replace')[:300]}")
+            return _openai_error(upstream.status_code, f"Upstream LLM error: {upstream.status_code}", "upstream_error", upstream.status_code)
+        logger.info(
+            f"[LangProxy] lang={state.language_current or state.language_primary} prep={prep_ms:.0f}ms "
+            f"upstream_headers={(time.perf_counter() - started) * 1000.0:.0f}ms"
+        )
+        return StreamingResponse(_relay_upstream_stream(upstream, commit_callback=lambda: None), media_type="text/event-stream")
+
+    body["stream"] = False
+    resp = await get_shared_http_client().post(url, headers=headers, json=adapt_body_for_deployment(url, body))
+    if resp.status_code >= 400:
+        logger.error(f"[LangProxy] Upstream LLM HTTP {resp.status_code}: {resp.text[:300]}")
+        return _openai_error(resp.status_code, f"Upstream LLM error: {resp.status_code}", "upstream_error", resp.status_code)
+    return resp.json()
+
+
 @router.post("/think/chat/completions")
 @router.post("/think/{call_token}/chat/completions")
 async def think_proxy_chat_completions(
@@ -512,6 +648,9 @@ async def think_proxy_chat_completions(
     if not isinstance(messages, list):
         raise HTTPException(status_code=400, detail="'messages' must be a list")
 
+    if state.language_only:
+        return await _language_only_completion(state, body, messages)
+
     # 3. Check for function-call follow-up requests (last message role == "tool")
     is_tool_followup = bool(messages and messages[-1].get("role") == "tool")
 
@@ -530,6 +669,9 @@ async def think_proxy_chat_completions(
             state=state,
             user_transcript=user_transcript,
         )
+
+    if state.language_directive:
+        system_prompt = f"{system_prompt}\n\n{state.language_directive}"
 
     # 5. Replace existing system message (or prepend if none exists)
     modified_messages = list(messages)
@@ -679,7 +821,7 @@ async def think_proxy_chat_completions(
         body["stream"] = False
         client = get_shared_http_client()
         try:
-            resp = await client.post(url, headers=headers, json=body)
+            resp = await client.post(url, headers=headers, json=adapt_body_for_deployment(url, body))
         except Exception as conn_err:
             logger.error(f"[ThinkProxy] Upstream LLM connection error: {conn_err}")
             return _openai_error(503, "Upstream connection failed", "service_unavailable", "upstream_connect_error")

@@ -10,6 +10,7 @@ from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
 from twilio.twiml.voice_response import VoiceResponse, Dial, Connect, Stream
 import os
+from app.voice.duration_policy import twilio_backstop_seconds
 from app.core.dependencies import TenantContext
 from app.core.security import decrypt_token
 from app.models.call import Call
@@ -147,10 +148,19 @@ class CallService:
                     "from_": selected_from,
                     "twiml": twiml_body,
                 }
+                # Hard cap at Twilio as a safety net (see duration_policy): if our server ever loses the call, Twilio still
+                # ends it just after the agent's maximum duration, or earlier when the organization's credits run out.
+                credit_cap = None
                 if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
-                    rem_sec = int(auth_check.get("remaining_seconds", 14400))
-                    create_kwargs["time_limit"] = max(1, min(14400, rem_sec))
+                    credit_cap = int(auth_check.get("remaining_seconds", 14400))
+                agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
+                create_kwargs["time_limit"] = twilio_backstop_seconds(agent_max, credit_cap)
                 if status_callback_url:
+                    # Audio-based voicemail detection: catches answering machines in any language.
+                    create_kwargs["machine_detection"] = "Enable"
+                    create_kwargs["async_amd"] = True
+                    create_kwargs["async_amd_status_callback"] = f"{base_url}/api/v1/twilio/voice/amd"
+                    create_kwargs["async_amd_status_callback_method"] = "POST"
                     create_kwargs["status_callback"] = status_callback_url
                     create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed", "busy", "no-answer", "canceled"]
                     create_kwargs["status_callback_method"] = "POST"

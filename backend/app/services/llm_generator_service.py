@@ -10,6 +10,8 @@ import json
 import httpx
 from typing import Dict, Any, Optional
 
+from app.services.language_text import language_rules, localized_greetings, repair_greetings, resolve_languages, spoken_name
+
 
 LANG_NAMES = {
     "hi": "Hindi (हिन्दी)",
@@ -126,7 +128,8 @@ class LLMGeneratorService:
         guardrails: Optional[dict] = None,
         personality: Optional[dict] = None,
         include_business_knowledge: Optional[bool] = True,
-        platform_rules: Optional[list] = None
+        platform_rules: Optional[list] = None,
+        languages: Optional[list] = None
     ) -> Dict[str, Any]:
         """
         Generates a tailored telephone voice agent prompt and spoken greeting line
@@ -199,15 +202,7 @@ class LLMGeneratorService:
             greeting_instruction = "Clear, friendly telephone greeting"
 
         # Language directive mapping
-        target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
-        if language and language != "en":
-            lang_note = (
-                f"MANDATORY LANGUAGE RULE: The agent MUST speak and converse in {target_lang_name}.\n"
-                f"- 'suggested_greeting' and ALL 'suggested_greetings' MUST be written authentically in {target_lang_name} (using its native script/characters, e.g. Devanagari for Hindi).\n"
-                f"- Any spoken telephone dialogue examples or openers inside 'system_prompt' MUST be written in {target_lang_name}."
-            )
-        else:
-            lang_note = "Language: English (with multilingual mirroring)"
+        lang_note = language_rules(language, languages)
 
         system_instruction = f"""You are an elite conversational AI voice architect for real-time telephone voice agents.
 Given an Agent Name, Role, Objective, Description, Archetype, Tone, and Response Length, synthesize complete spoken telephone system prompt instructions and 3 distinct opening greeting options.
@@ -353,7 +348,7 @@ Synthesize the complete telephone conversation prompt instructions in the 4-stag
                         {"label": "Engaging Hook & Discovery", "text": main_g},
                         {"label": "Consultative & Professional", "text": f"Hello! I am reaching out to assist with {description.lower().rstrip('.')}."}
                     ]
-                return parsed
+                return repair_greetings(parsed, language, spoken_name(name))
             except Exception as e:
                 print(f"[LLMGenerator] JSON parse error: {e}")
 
@@ -396,7 +391,10 @@ Synthesize the complete telephone conversation prompt instructions in the 4-stag
                 {"label": "Consultative & Professional", "text": f"Good day! You've reached our team. This is {spoken_persona}, how can I best assist with your request today?"}
             ]
 
+        fallback_greetings = localized_greetings(language, spoken_persona) or fallback_greetings
+        fallback_language_rules = "" if resolve_languages(language, languages) == ["en"] else "\n\n" + language_rules(language, languages)
         return {
+            "used_fallback": True,
             "system_prompt": f"""You are {clean_name}, an articulate, empathetic, and professional {clean_role} representing our organization.
 
 MISSION & CONVERSATIONAL FLOW:
@@ -425,7 +423,7 @@ OBJECTIONS & PHONE RULES:
 - If not interested: "Understood! Thank you so much for your time today. Have a wonderful day!"
 - Communication Style: {tone}
 - Spoken Length: {fallback_length_desc}
-- Telephone Audio Rules: Never use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.""",
+- Telephone Audio Rules: Never use markdown, bullet points, numbers, asterisks, bold text, emojis, or code blocks.{fallback_language_rules}""",
             "suggested_greeting": fallback_greetings[0]["text"],
             "suggested_greetings": fallback_greetings,
             "suggested_objective": f"Assist customers effectively with {clean_desc.lower().rstrip('.')}.",
@@ -453,14 +451,8 @@ OBJECTIONS & PHONE RULES:
         clean_name = name.strip() or "Voice Assistant"
         clean_role = (role or "Assistant").strip()
         clean_desc = (objective or description).strip() or "Customer outreach and support."
-        target_lang_name = LANG_NAMES.get(language, language) if language and language != "en" else "English"
-        if language and language != "en":
-            lang_note = (
-                f"MANDATORY LANGUAGE: Generate ALL 3 opening greeting lines strictly in authentic, natural spoken {target_lang_name} "
-                f"using its native script/characters (e.g. Devanagari script for Hindi, not English transliteration)."
-            )
-        else:
-            lang_note = "Language: English"
+        # Greetings are always in the opening language, even for multi-language agents.
+        lang_note = language_rules(language)
 
         system_instruction = f"""You are an elite conversational AI voice architect.
 Your task is to generate 3 distinct, natural, human-sounding telephone opening greeting options tailored specifically to the agent's Description, Role, and Objective.
@@ -509,7 +501,7 @@ Generate 3 fresh and distinct telephone opening greeting lines."""
             try:
                 parsed = json.loads(json_text)
                 if "suggested_greetings" in parsed and parsed["suggested_greetings"]:
-                    return parsed
+                    return repair_greetings(parsed, language, spoken_name(name))
             except Exception as e:
                 print(f"[LLMGenerator] JSON parse error in generate_greetings_only: {e}")
 
@@ -547,9 +539,12 @@ Generate 3 fresh and distinct telephone opening greeting lines."""
                 {"label": "Consultative & Professional", "text": f"Good day! You've reached our team. This is {spoken_persona}, how can I best assist with your request today?"}
             ]
 
+        # Offline path: still hand back greetings in the selected language, never English for a Hindi agent.
+        fallback_greetings = localized_greetings(language, spoken_persona) or fallback_greetings
         return {
             "suggested_greeting": fallback_greetings[0]["text"],
-            "suggested_greetings": fallback_greetings
+            "suggested_greetings": fallback_greetings,
+            "used_fallback": True
         }
 
     async def refine_agent_prompt(

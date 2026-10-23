@@ -30,6 +30,12 @@ class DeepgramListenProvider(BaseModel):
     smart_format: Optional[bool] = True
     keyterms: Optional[List[str]] = None
     endpointing: Optional[int] = 450  # 450ms balanced turn-taking endpointing buffer for rapid continuous speech
+    # Flux speech models detect the end of a turn themselves (no endpointing) and can start the reply early.
+    version: Optional[str] = None
+    eot_threshold: Optional[float] = None
+    eager_eot_threshold: Optional[float] = None
+    eot_timeout_ms: Optional[int] = None
+    language_hints: Optional[List[str]] = None  # flux-general-multi only
 
 
 class DeepgramListenConfig(BaseModel):
@@ -60,6 +66,7 @@ class DeepgramSpeakProvider(BaseModel):
     model: Optional[str] = "flux-hannah-en"
     model_id: Optional[str] = None
     voice: Optional[Dict[str, Any]] = None
+    language: Optional[str] = None  # Cartesia only: language the voice is told it is speaking
     speed: Optional[float] = 1.0
 
 

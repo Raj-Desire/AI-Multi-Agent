@@ -8,6 +8,8 @@ active listening confirmations, psychological empathy, and guardrails.
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone
 from app.agents.configuration import AgentConfiguration
+from app.voice.language_support import resolve_multilingual
+from app.voice.language_switcher import language_name
 
 
 class VoicePromptBuilder:
@@ -301,6 +303,22 @@ class VoicePromptBuilder:
         # Match specific languages
         for code, (eng_name, native_name, sample_phrase) in LANGUAGE_SPECS.items():
             if lang == code or base_code == code or lang == eng_name.lower():
+                plan = resolve_multilingual(config)
+                if plan.enabled:
+                    names = ", ".join(language_name(c) for c in plan.languages)
+                    return (
+                        f"[LANGUAGE DIRECTIVE: START IN {eng_name.upper()} ({native_name}), THEN MIRROR THE CALLER]\n"
+                        f"- Open the call in {eng_name} ({native_name}), e.g. '{sample_phrase}'.\n"
+                        f"- On EVERY turn, detect which of these languages the caller just spoke: {names}. Reply in THAT language, "
+                        f"in its native script. If they switch language mid-call, switch with them immediately, starting with that "
+                        f"very reply. If they switch back, switch back.\n"
+                        f"- Mixed speech (e.g. Hinglish) -> reply in the dominant language of their last sentence.\n"
+                        f"- Never reply in a language outside that list. Your opening language is {eng_name}.\n"
+                        f"- The transcript can contain recognition errors; if a line looks garbled, use the surrounding conversation to "
+                        f"infer the language, and only if you truly cannot tell, ask them to repeat.\n"
+                        f"- Start each reply with a natural 1-2 word acknowledgment in the language you are replying in.\n"
+                        f"- Use natural everyday phone phrasing, correct grammar, and keep to 1-2 short sentences per turn."
+                    )
                 return (
                     f"[MANDATORY LANGUAGE DIRECTIVE: {eng_name.upper()} ({native_name})]\n"
                     f"- PRIMARY CONVERSATIONAL LANGUAGE: The caller expects you to converse EXCLUSIVELY in {eng_name} ({native_name}).\n"
@@ -313,10 +331,19 @@ class VoicePromptBuilder:
                 )
 
         if lang.startswith("en") or lang == "english":
+            plan = resolve_multilingual(config)
+            if plan.enabled:
+                names = ", ".join(language_name(c) for c in plan.languages)
+                return (
+                    "[LANGUAGE DIRECTIVE: START IN ENGLISH, THEN MIRROR THE CALLER]\n"
+                    "- Open the call in natural, fluent spoken English.\n"
+                    f"- On EVERY turn, detect which of these languages the caller just spoke: {names}. Reply in THAT language, "
+                    "in its native script. If they switch language mid-call, switch with them in that very reply."
+                )
             return (
                 "[MANDATORY LANGUAGE DIRECTIVE: ENGLISH]\n"
                 "- PRIMARY CONVERSATIONAL LANGUAGE: Converse and respond in natural, fluent spoken English.\n"
-                "- If the caller switches to another language, seamlessly adapt and respond in that language if you understand it."
+                "- If the caller speaks another language, understand it but politely reply in English."
             )
 
         # Fallback mirroring directive for unlisted or custom locales
@@ -570,6 +597,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             return ""
 
         phrases = getattr(runtime, "filler_phrases", None)
+        # Examples only: the agent must say them in the language it is currently replying in.
         phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you.", "Understood, give me one moment."])])
 
         # The voice engine has no tempo setting, so pacing is steered through phrasing.
@@ -585,7 +613,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
             f"{pacing_line}"
             "- SPOKEN FORMAT: Write everything the way it is said aloud. Say prices in words ('two hundred fifty dollars', not '$250'), say dates as 'March third', say phone numbers as digit words in comma-separated groups (for example 'nine eight seven six five, four three two one zero'), and never use symbols, abbreviations like 'approx.', URLs read character by character, markdown, or emojis.\n"
-            "- IMMEDIATE CONVERSATIONAL BRIDGES (ZERO DEAD AIR): Always begin your turn immediately with a quick, natural human acknowledgment or conversational bridge (such as 'Got it', 'Sure', 'Understood', 'Right', or in Hindi 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर') before delivering the core answer. This eliminates dead air so the caller hears speech instantaneously.\n"
+            "- IMMEDIATE CONVERSATIONAL BRIDGES (ZERO DEAD AIR): Begin your turn with a quick, natural acknowledgment in the SAME language you are replying in (English 'Got it' / 'Sure'; Hindi 'हाँ जी' / 'बिल्कुल'; Gujarati 'હા જી' / 'બરાબર'; or the equivalent in any other language). NEVER use an English bridge when replying in another language.\n"
             "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
             "- FLUID INTER-SENTENCE PACING: Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
             "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
@@ -868,9 +896,36 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
         # Telephony Performance Optimization: Deepgram managed LLMs have a hard 25,000 character limit.
         # Keeping the active prompt under 16,000 characters eliminates LLM prefill delay, reduces TTFT (Time-To-First-Token)
         # by 2-3x, and ensures instantaneous conversational replies.
-        if len(resolved_prompt) > 18000:
-            resolved_prompt = resolved_prompt[:18000]
+        # The language rule goes LAST (the model weighs the end of a long prompt most) and is added after trimming
+        # so it can never be cut off. It overrides any earlier "speak only X" wording, including a saved prompt.
+        language_override = VoicePromptBuilder._build_language_override(config)
+        limit = 18000 - (len(language_override) + 2 if language_override else 0)
+        if len(resolved_prompt) > limit:
+            resolved_prompt = resolved_prompt[:limit]
+        if language_override:
+            resolved_prompt = f"{resolved_prompt}\n\n{language_override}"
 
         return resolved_prompt
+
+    @staticmethod
+    def _build_language_override(config: AgentConfiguration) -> str:
+        """Final per-turn language rule for multi-language agents; empty when the agent is single-language."""
+        plan = resolve_multilingual(config)
+        if not plan.enabled:
+            return ""
+        names = ", ".join(language_name(c) for c in plan.languages)
+        return (
+            f"[FINAL LANGUAGE RULE - THIS OVERRIDES EVERY EARLIER LANGUAGE INSTRUCTION, INCLUDING 'SPEAK ONLY X']\n"
+            f"Allowed languages: {names}. {language_name(plan.primary)} is only the language the call OPENED in.\n"
+            f"Do this silently before EVERY reply:\n"
+            f"1. Look at the caller's LAST message only. Decide its language from its words and letters: Devanagari letters = Hindi, "
+            f"Latin letters with English words = English, Latin letters with Spanish words = Spanish, and so on. Broken or "
+            f"ungrammatical English is still English.\n"
+            f"2. Write your whole reply in THAT language, in its native script, even if every earlier reply was in another language. "
+            f"Example: caller says 'I want an email system' -> you reply in English; caller then says 'हाँ बताइए' -> you reply in Hindi.\n"
+            f"3. Never say you are switching. If the last message is a single filler word (like 'okay' or 'yes') or unclear, keep "
+            f"the language of your previous reply.\n"
+            f"A reply in the wrong language is a failure of this rule."
+        )
 
 

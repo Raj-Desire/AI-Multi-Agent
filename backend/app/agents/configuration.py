@@ -23,8 +23,14 @@ class AgentPersonality(BaseModel):
 
 
 class AgentLanguageConfig(BaseModel):
+    # Multi-language calls are opt-in: the agent follows the caller between `primary` (the opening language) and
+    # `secondary`. Anything the voice or the recognizer cannot handle is dropped by language_support.resolve_multilingual.
+    multilingual: bool = False
     primary: str = "en"
     secondary: List[str] = Field(default_factory=list)
+
+    def auto_switch_enabled(self) -> bool:
+        return self.multilingual
 
 
 class SpeakProviderConfig(BaseModel):

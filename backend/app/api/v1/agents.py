@@ -31,6 +31,7 @@ class GeneratePromptRequest(BaseModel):
     communication_style: Optional[str] = "Professional + Friendly"
     response_length: Optional[str] = "short"  # "short" | "balanced" | "detailed"
     language: Optional[str] = "en"
+    languages: Optional[List[str]] = None  # extra languages when the agent is multi-language
     skills: Optional[List[str]] = None
     services: Optional[List[Any]] = None
     custom_knowledge: Optional[str] = None
@@ -48,11 +49,13 @@ class GeneratedPromptResponse(BaseModel):
     recommended_voice: Optional[str] = None
     positive_flow: Optional[str] = ""
     negative_flow: Optional[str] = ""
+    used_fallback: bool = False
 
 
 class GeneratedGreetingsResponse(BaseModel):
     suggested_greeting: str
     suggested_greetings: List[Dict[str, str]] = Field(default_factory=list)
+    used_fallback: bool = False
 
 
 class RefinePromptRequest(BaseModel):
@@ -112,7 +115,8 @@ async def generate_greetings(
         )
         return ApiResponse.ok(GeneratedGreetingsResponse(
             suggested_greeting=gen.get("suggested_greeting", f"Hi! This is {name}. How can I help you today?"),
-            suggested_greetings=gen.get("suggested_greetings", [])
+            suggested_greetings=gen.get("suggested_greetings", []),
+            used_fallback=bool(gen.get("used_fallback"))
         ))
     except Exception as e:
         print(f"[Generate Greetings Error] {e}")
@@ -155,7 +159,8 @@ async def generate_prompt(
             guardrails=payload.guardrails,
             personality=payload.personality,
             include_business_knowledge=payload.include_business_knowledge,
-            platform_rules=active_rules
+            platform_rules=active_rules,
+            languages=payload.languages
         )
         return ApiResponse.ok(GeneratedPromptResponse(
             system_prompt=gen.get("system_prompt", ""),
@@ -165,7 +170,8 @@ async def generate_prompt(
             communication_style=gen.get("communication_style", style),
             recommended_voice=gen.get("recommended_voice", "flux-hannah-en"),
             positive_flow=gen.get("positive_flow", ""),
-            negative_flow=gen.get("negative_flow", "")
+            negative_flow=gen.get("negative_flow", ""),
+            used_fallback=bool(gen.get("used_fallback"))
         ))
     except Exception as e:
         print(f"[Generate Prompt Error] {e}")

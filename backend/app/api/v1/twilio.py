@@ -227,6 +227,21 @@ async def voice_twiml_webhook(request: Request):
         return Response(content=fallback_xml, media_type="application/xml")
 
 
+@router.post("/voice/amd")
+async def voice_amd_webhook(request: Request):
+    """Twilio async answering-machine-detection result. Language independent (audio based)."""
+    try:
+        form = await request.form()
+    except Exception:
+        form = {}
+    call_sid = form.get("CallSid")
+    answered_by = (form.get("AnsweredBy") or "").lower()
+    if call_sid and (answered_by.startswith("machine") or answered_by == "fax"):
+        from app.voice.call_end_classifier import MACHINE_CALLS
+        MACHINE_CALLS[call_sid] = answered_by
+    return Response(content="", status_code=204)
+
+
 @router.api_route("/voice/status", methods=["GET", "POST"])
 async def voice_status_webhook(request: Request):
     """

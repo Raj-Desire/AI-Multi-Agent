@@ -70,6 +70,7 @@ class CallSession(BaseModel):
     agent_name: str = "AI Receptionist"
     agent_role: str = "Professional AI Voice Assistant"
     language: str = "en"
+    detected_language: Optional[str] = None  # last language the caller switched to mid-call
     voice: str = "flux-hannah-en"
     model: str = "gpt-4o-mini"
     custom_prompt: Optional[str] = None

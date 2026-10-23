@@ -264,6 +264,12 @@ export interface AgentVoiceConfig {
   volume?: number;
 }
 
+export interface AgentLanguageConfig {
+  multilingual: boolean;
+  primary: string;
+  secondary: string[];
+}
+
 export interface AgentLLMConfig {
   provider: string;
   model: string;
@@ -453,6 +459,7 @@ export interface AgentConfig {
   personality: AgentPersonality;
   voice: AgentVoiceConfig;
   llm: AgentLLMConfig;
+  language?: AgentLanguageConfig;
   listen?: AgentListenConfig;
   runtime?: AgentRuntimeSettings;
   guardrails?: AgentGuardrails;

@@ -569,7 +569,7 @@ export function Step5BehaviorSafety({
                 <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-medium">
                   <span>Smart Conclusion:</span>
                   <span className="font-bold font-mono">
-                    At {Math.max(10, currentDurationSeconds - 5)}s (Saves +1 minute overage)
+                    Goodbye at {Math.max(10, currentDurationSeconds - 11)}s, call ends by {Math.max(10, currentDurationSeconds - 5)}s (avoids a +1 minute charge)
                   </span>
                 </div>
               </div>
