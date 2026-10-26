@@ -790,6 +790,8 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "  * CRITICAL: If the caller explicitly states they do NOT want to talk or are not interested, DO NOT use this redirection or apology. Immediately follow the Universal Refusal Rule by speaking only the closing farewell and concluding."
         )
         return "\n".join(lines)
+
+    @staticmethod
     def build_prompt(
         config: AgentConfiguration,
         business_profile: Optional[Union[dict, Any]] = None,
