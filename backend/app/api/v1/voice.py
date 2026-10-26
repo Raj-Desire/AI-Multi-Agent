@@ -295,6 +295,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     async def handle_dg_transcript(role: str, content: str):
         nonlocal turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence
         nonlocal live_transcript_turns, turn_counter, orchestrator, handoff_controller, is_concluding_call
+        nonlocal refusal_concluding, closing_message_text
         now = time.perf_counter()
         turn_latency = round((now - turn_start_time) * 1000.0, 2)
         if role == "user":
