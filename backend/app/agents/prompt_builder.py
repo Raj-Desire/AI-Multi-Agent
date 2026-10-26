@@ -780,6 +780,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             for r in restricted:
                 lines.append(f"- {r}")
 
+        lines.append(
             "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
             "  * You represent and assist strictly within your defined business services and expertise.\n"
             "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call or refused to talk.\n"
@@ -847,7 +848,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
     - In Spanish: "Entendido, muchas gracias por su tiempo. ¡Hasta luego!"
     - In French: "C'est compris, merci pour votre temps. Au revoir !"
     - In German: "Verstanden, vielen Dank für Ihre Zeit. Auf Wiedersehen!"
-  * Concluding with a clear farewell immediately terminates the call cleanly.""""
+  * Concluding with a clear farewell immediately terminates the call cleanly."""
 
         guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
