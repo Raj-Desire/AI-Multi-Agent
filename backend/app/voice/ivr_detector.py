@@ -120,20 +120,34 @@ class SmartIVRDetector:
 
     # 7. Caller clearly refusing to continue (any language) -> conclude politely and hang up.
     REFUSAL_PATTERNS = [
+        # English
         r"\b(?:not\s+interested|no\s+thanks|don'?t\s+call\s+(?:me\s+)?again|stop\s+calling|do\s+not\s+call)\b",
         r"\b(?:i\s+)?(?:don'?t|do\s+not)\s+(?:want|wish|need)\s+to\s+(?:talk|speak|continue)\b",
-        r"\b(?:baat|bat)\s+nahi\s+kar(?:ni|na|ta|ti)\b",
+        r"\b(?:please\s+)?hang\s+up\b|\bdisconnect\s+(?:the\s+)?call\b",
+        # Hindi / Romanized Hinglish
+        r"\b(?:baat|bat)\s*(?:bhi\s*|hi\s*|to\s*)?nahi\s*kar(?:ni|na|ta|ti)\b",
+        r"\b(?:mujhe|mujhko)\s*(?:aapse\s*|tumse\s*)?(?:baat|bat)\s*(?:hi\s*|bhi\s*)?nahi\s*kar(?:ni|na|ta|ti)\b",
         r"\b(?:mujhe\s+)?(?:koi\s+)?(?:zaroorat|jarurat)\s+nahi\b",
-        r"\b(?:interested|intrest)\s+nahi\b",
-        r"\bphone\s+(?:mat\s+karo|nahi\s+karna)\b",
-        r"\bno\s+me\s+interesa\b|\bno\s+quiero\s+hablar\b|\bno\s+llame\s+m[aá]s\b",
-        r"मुझे\s*(?:कोई\s*)?(?:बात|बातचीत)\s*नहीं\s*(?:करनी|करना)",
-        r"(?:बात|बातचीत)\s*नहीं\s*(?:करनी|करना)",
+        r"\b(?:interested|intrest)\s+(?:nahi|nahin)\b",
+        r"\bphone\s+(?:mat\s+karo|nahi\s+karna|rakho|kat\s+do|rakh\s+do)\b",
+        # Devanagari Hindi
+        r"(?:बात|बातचीत)\s*(?:भी\s*|ही\s*|तो\s*)?नहीं\s*(?:करनी|करना|करूँगा|करूँगी)",
+        r"(?:मुझे|मुझको)\s*(?:आपसे\s*|तुमसे\s*)?(?:बात|बातचीत)\s*(?:ही\s*|भी\s*)?नहीं\s*(?:करनी|करना)",
         r"(?:मुझे\s*)?(?:कोई\s*)?(?:ज़रूरत|जरूरत)\s*नहीं",
-        r"(?:इंटरेस्टेड|रुचि)\s*नहीं",
-        r"फोन\s*(?:मत|ना)\s*करो",
-        r"મારે\s*(?:કોઈ\s*)?(?:વાત|જરૂર)\s*નથી",
-        r"(?:વાત\s*નથી\s*કરવી|રસ\s*નથી)",
+        r"(?:इंटरेस्टेड|रुचि|दिलचस्पी)\s*नहीं",
+        r"फोन\s*(?:मत|ना|नहीं)\s*(?:करो|कीजिए|रखो|काटो)",
+        r"कॉल\s*(?:काट|कट)\s*(?:दो|दीजिए|करो)",
+        # Gujarati
+        r"\b(?:tamari\s+sathe\s+)?(?:vaat|vat)\s*(?:nathi|nahi)\s*karvi\b",
+        r"મારે\s*(?:તમારી\s*સાથે\s*)?(?:કોઈ\s*)?(?:વાત|જરૂર)\s*નથી",
+        r"(?:વાત\s*(?:નથી\s*કરવી|નથી\s*જોઈતી)|રસ\s*નથી)",
+        r"ફોન\s*(?:મૂકો|કાપો|ન\s*કરો)",
+        # Spanish
+        r"\bno\s+me\s+interesa\b|\bno\s+quiero\s+hablar\b|\bno\s+llame\s+m[aá]s\b|\bdeje\s+de\s+llamar\b",
+        # French
+        r"\bpas\s+int[eé]ress[eé]\b|\bne\s+me\s+rappelez\s+plus\b|\bje\s+ne\s+veux\s+pas\s+parler\b",
+        # German
+        r"\bkein\s+interesse\b|\bnicht\s+interessiert\b|\brufen\s+sie\s+nicht\s+mehr\s+an\b",
     ]
 
     _COMPILED_INDIC_DTMF = [re.compile(p) for p in INDIC_DTMF_PATTERNS]
@@ -144,6 +158,12 @@ class SmartIVRDetector:
         "hi": "समझ गया, आपके समय के लिए धन्यवाद। यदि भविष्य में किसी मदद की ज़रूरत हो तो कृपया संपर्क करें। अलविदा!",
         "gu": "સમજી ગયો, તમારા સમય માટે આભાર. ભવિષ્યમાં કોઈ મદદ જોઈએ તો કૃપા કરીને સંપર્ક કરજો. આવજો!",
         "es": "Entendido, gracias por su tiempo. Si necesita ayuda en el futuro, no dude en contactarnos. ¡Adiós!",
+        "fr": "C'est compris, merci pour votre temps. Si vous avez besoin d'aide à l'avenir, n'hésitez pas à nous contacter. Au revoir !",
+        "de": "Verstanden, vielen Dank für Ihre Zeit. Wenn Sie in Zukunft Hilfe benötigen, melden Sie sich gerne. Auf Wiedersehen!",
+        "it": "Ho capito, grazie per il suo tempo. Se dovesse avere bisogno in futuro, non esiti a contattarci. Arrivederci!",
+        "pt": "Entendido, obrigado pelo seu tempo. Se precisar de ajuda no futuro, entre em contato. Até logo!",
+        "ru": "Понятно, спасибо за ваше время. Если в будущем понадобится помощь, обращайтесь. До свидания!",
+        "ja": "かしこまりました。お時間をいただきありがとうございました。また何かございましたらご連絡ください。失礼いたします。",
         "hinglish": "Samajh gaya, aapke samay ke liye dhanyavaad. Future mein kisi madad ki zaroorat ho to kripya sampark karein. Alvida!",
         "en": "Understood, thank you for your time. If you need any help in the future, please get in touch. Goodbye!",
     }

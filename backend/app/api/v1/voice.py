@@ -309,6 +309,34 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             # Multi-Agent Orchestrator: Submit for Handoff Evaluation
             if handoff_controller and not is_concluding_call:
                 handoff_controller.submit(content, turn_number=turn_counter)
+
+            # Fast-Path Multilingual User Refusal Detection
+            if not is_concluding_call:
+                try:
+                    from app.voice.ivr_detector import SmartIVRDetector
+                    if SmartIVRDetector.is_user_refusal(content):
+                        logger.info(f"[VoicePreview] Caller declined to continue: '{content[:60]}'. Concluding preview.")
+                        is_concluding_call = True
+                        closing_msg = SmartIVRDetector.closing_message(content)
+                        async def _conclude_preview():
+                            try:
+                                if deepgram_client and deepgram_client.is_ready:
+                                    await deepgram_client.inject_agent_message(closing_msg, behavior="queue")
+                                    # Wait for speech to start and finish playing
+                                    spoken_from = time.time()
+                                    for _ in range(120):
+                                        await asyncio.sleep(0.1)
+                                        if last_agent_speech_done_time > spoken_from and time.time() >= last_agent_speech_done_time + 0.8:
+                                            break
+                            except Exception as ce:
+                                logger.debug(f"[VoicePreview] Closing speech error: {ce}")
+                            try:
+                                await websocket.send_json({"type": "call_concluded", "reason": "user_declined"})
+                            except Exception:
+                                pass
+                        asyncio.create_task(_conclude_preview())
+                except Exception as ex:
+                    logger.debug(f"[VoicePreview] User refusal check error: {ex}")
         else:
             is_agent_speaking = True
             live_transcript_turns.append({"role": "assistant", "content": content})
@@ -316,6 +344,26 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             # Steady-State Prompt Swap Following Assistant Response
             if handoff_controller:
                 asyncio.create_task(handoff_controller.on_assistant_turn(content))
+
+            # Check if assistant concluded conversation with a farewell
+            if turn_counter >= 1 and not is_concluding_call:
+                try:
+                    if detect_conversation_conclusion(content):
+                        logger.info(f"[VoicePreview] Assistant farewell detected: '{content[-40:]}'. Concluding preview session.")
+                        is_concluding_call = True
+                        async def _farewell_preview():
+                            spoken_from = time.time()
+                            for _ in range(100):
+                                await asyncio.sleep(0.1)
+                                if last_agent_speech_done_time > spoken_from and time.time() >= last_agent_speech_done_time + 0.8:
+                                    break
+                            try:
+                                await websocket.send_json({"type": "call_concluded", "reason": "agent_farewell"})
+                            except Exception:
+                                pass
+                        asyncio.create_task(_farewell_preview())
+                except Exception as fe:
+                    logger.debug(f"[VoicePreview] Farewell check error: {fe}")
 
         try:
             await websocket.send_json({
