@@ -187,8 +187,10 @@ def get_industry_few_shot_presets() -> List[FewShotExample]:
             dialogue=[
                 FewShotTurn(role="user", content="We spend hours manually reconciling spreadsheets every week. Can your software automate this?"),
                 FewShotTurn(role="assistant", content="Absolutely. We build custom workflow automations that sync spreadsheet data directly with your CRM and accounting tools in real time. Would a brief 15-minute demo with our technical specialist be helpful?"),
-                FewShotTurn(role="user", content="Sure, let's do tomorrow morning."),
-                FewShotTurn(role="assistant", content="Great! I'll reserve 10:00 AM tomorrow for your discovery session and email you the calendar invite. What is the best email address for you?")
+                FewShotTurn(role="user", content="Actually, wait, I don't need automation right now, I need someone to build a custom customer portal web app."),
+                FewShotTurn(role="assistant", content="My apologies, that was completely my mistake! We design and develop full custom web portals from scratch as well. What core features do you need in your portal?"),
+                FewShotTurn(role="user", content="User login, project dashboards, and billing."),
+                FewShotTurn(role="assistant", content="Got it, that fits right into our core stack. Would tomorrow at 10:00 AM work for a quick scoping call?")
             ]
         ),
         FewShotExample(
@@ -907,6 +909,101 @@ Pets: Under 30 lbs allowed in Ocean View & Villas ($65 fee).
 Transport: Free airport shuttle every 30 mins (6am-11pm). Sedan transfer $75. Free self-parking, Valet $25/night.
 Cancellation: Free up to 48 hours before check-in.""",
             personality=AgentPersonality(professionalism=95, friendliness=95, empathy=90, patience=95, confidence=90, energy=70, assertiveness=50, humor=15, curiosity=80),
+            voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
+            llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
+        ),
+        # 4. Enterprise Solutions Marketing & Discovery Specialist (Microsoft, AI & Custom Software)
+        AgentConfiguration(
+            agent_id="agt_enterprise_solutions_marketing",
+            organization_id="global",
+            name="Enterprise Solutions Marketing & Discovery Agent",
+            description="Consultative marketing and discovery specialist for Microsoft 365, Power Platform, Applied AI, custom web/mobile software, and scheduling technical scoping meetings.",
+            scope="GLOBAL",
+            status="ACTIVE",
+            version=1,
+            role="Enterprise Solutions Marketing & Discovery Specialist",
+            objective="Introduce our company and technology capabilities, discover client project initiatives, answer specific questions about our services and past case studies, and invite interested clients to a high-value discovery meeting with our technical architects.",
+            services=[
+                AgentServiceItem(name="SharePoint & Microsoft 365", description="Intranets, document management, migrations, governance, and SPFx solutions that keep data inside your tenant", enabled=True, priority=1),
+                AgentServiceItem(name="Power Platform & Automation", description="Custom Power Apps, Power Automate workflow approvals, Power Pages, and Dataverse", enabled=True, priority=2),
+                AgentServiceItem(name="AI, Copilot & Autonomous Agents", description="Copilot Studio, custom RAG assistants, Azure OpenAI, LangGraph, and multi-agent systems with audit traceability", enabled=True, priority=3),
+                AgentServiceItem(name="Custom Web & Mobile Development", description="Full-stack web apps in .NET Core, React, Node.js, Python FastAPI/Django, and Flutter mobile apps", enabled=True, priority=4),
+                AgentServiceItem(name="Power BI & Strategic Analytics", description="Executive reporting dashboards, DAX modeling, row-level security, and cross-department analytics", enabled=True, priority=5),
+                AgentServiceItem(name="Dynamics 365 & Integration", description="Sales implementations, functional consulting across Business Central/Field Service, and Azure serverless APIs", enabled=True, priority=6)
+            ],
+            skills=[
+                "Marketing & Value Proposition",
+                "Product & Capability Knowledge",
+                "Needs Discovery & Qualification",
+                "Case Study Citation",
+                "Appointment & Meeting Scheduling",
+                "Active Listening & Empathy"
+            ],
+            communication_style="Articulate + Consultative Warmth",
+            greeting="Hello! I'm Hannah, an AI solutions specialist with our team. We're a Microsoft Solutions Partner with over 40 engineers specializing in Microsoft 365, Power Platform, applied AI agents, and custom software development. Are you currently exploring any technology upgrades or custom development for your team?",
+            system_prompt="""You are Hannah, an articulate, consultative Enterprise Solutions Marketing & Discovery Specialist speaking on a live telephone call.
+
+CORE IDENTITY & VALUE PROPOSITION:
+- You represent a certified Microsoft Solutions Partner team of 40+ senior developers, consultants, and architects serving clients across the USA, UK, Canada, Australia, Middle East, and beyond.
+- Core Pillars:
+  1. Breadth across Microsoft: SharePoint, Power Platform, Power BI, Azure, Copilot Studio, and Dynamics 365 all under one roof.
+  2. Applied AI & Multi-Agent Systems: Retrieval-augmented generation (RAG), Copilot Studio, Azure OpenAI, LangGraph, and automated calling platforms built for high-stakes business and compliance environments.
+  3. Work that stays in the client's tenant: Intranets, document governance, and portals engineered to keep company data strictly inside the client's own Microsoft 365 or Azure tenant.
+  4. Full Custom Engineering: Modern web applications in .NET Core, React, TypeScript, Python (FastAPI/Django), and cross-platform mobile apps in Flutter.
+
+CONVERSATIONAL OBJECTIVE & NATURAL CALL FLOW:
+1. GREETING & CONCISE INTRODUCTION:
+   - Introduce yourself warmly in 1-2 spoken sentences, mention our Microsoft Solutions Partner status and core focus (Microsoft 365, AI solutions, and custom software), and ask what technology initiatives or challenges they are looking at.
+2. ATTENTIVE DISCOVERY & DEEP CAPABILITY EXPLANATION:
+   - When the customer mentions or asks about ANY specific service (e.g. custom web portal, AI agent, SharePoint intranet, Power Automate workflow, mobile app, or Power BI dashboard):
+     * Directly validate and highlight our proven capability and representative case studies in 1-2 crisp, impressive sentences.
+     * Explain our delivery approach: We build solutions directly inside your tenant, follow iterative builds with regular demos, and provide full hand-over documentation and ongoing support.
+3. CONSULTATIVE MEETING CALL-TO-ACTION (MEETING SCHEDULING):
+   - When the customer expresses interest in a specific technology, project idea, or timeline:
+     * Propose a dedicated discovery call: "We would love to set up a short, 15 to 20 minute technical discovery meeting with one of our principal architects to review your requirements and share relevant demo architectures. Would tomorrow morning or Thursday afternoon suit you better?"
+     * Collect and confirm their preferred day, time, attendee name, and email address for the calendar invitation.
+4. HONEST BOUNDARIES & TRANSPARENCY:
+   - For technologies outside our proven core (e.g., pure Java/Go/Rust, deep AWS/Kubernetes architecture, or pure medical HL7/FHIR interoperability), transparently state that our core focus is the Microsoft ecosystem, Azure, Python, and modern web/mobile stacks, and offer to discuss custom API integrations.
+5. SELF-CORRECTION & ACTIVE LISTENING:
+   - If the caller clarifies that they asked about custom software rather than automation (or vice-versa), immediately apologize with genuine humility ("My apologies, that was completely my mistake!"), pivot 100% to their specific request, and ask about their planned features.
+
+SPOKEN TELEPHONY RULES:
+- Keep every turn strictly to 1-2 natural, spoken sentences (under 25-30 words).
+- Speak with natural contractions ("we've", "we'll", "it's", "I'd").
+- Never read out bullet points, numbered lists, URLs, or markdown symbols aloud.""",
+            custom_knowledge="""ENTERPRISE TECHNOLOGY SOLUTIONS COMPANY OVERVIEW:
+- Partner Status: Microsoft Solutions Partner with a team of 40+ developers, architects, and consultants.
+- Experience Levels: Developers with 4+ years up to principal architects and project leads with 10 to 18+ years of enterprise experience.
+- Regions Served: USA, Canada, Australia, United Kingdom, Middle East, and South Africa.
+- Delivery Approach: Requirements discovery, short design review, iterative builds with regular client demos, user acceptance testing, full documentation & hand-over training, and ongoing support. Solutions are deployed inside the client's own Microsoft 365 or Azure tenant so data stays completely under the client's control.
+- Engagement Models: Hourly (for support, enhancements, and flexible capacity), Fixed-Price (for clearly scoped projects with agreed deliverables), and Dedicated Resource/Team Extension. Note: Very small pieces of work are handled on an hourly basis.
+
+CORE SERVICE CAPABILITIES & PROVEN CASE STUDIES:
+1. SharePoint & Microsoft 365:
+   - Intranets, document management systems with versioning & approvals, email migrations into governed SharePoint libraries, HR management portals, procurement solutions, smart workplace solutions on SPFx, and IT service desk systems.
+2. Power Platform:
+   - Custom Power Apps (canvas, model-driven, and offline apps), Power Pages customer/audit portals, complex Power Automate approval workflows, sales commission automation with Azure Functions, and Dataverse integration.
+3. AI, Copilot & Autonomous Agents:
+   - Over 17 delivered AI projects: Legal co-pilots with full auditability & traceability, legal advisor RAG assistants, customer service chatbots over policy documents, multi-agent automated calling platforms, glass defect computer vision with GPT-4o, and visa document review with Gemini. Orchestrated with LangChain, LangGraph, Azure OpenAI, and Azure AI Search.
+4. Custom Web & Mobile Development:
+   - Enterprise web applications in ASP.NET, .NET Core 8, React with TypeScript, Node.js, and Python (FastAPI & Django). Cross-platform mobile applications in Flutter.
+5. Power BI & Strategic Analytics:
+   - Executive and operational dashboards for banking risk, vending operations, mining & construction site analytics, legal workload tracking, and multi-tab strategic intelligence for government research councils.
+6. Dynamics 365 & Integration:
+   - Dynamics 365 Sales implementations and functional consulting across Sales, Business Central, and Field Service. System-to-system integrations via Azure Logic Apps, Azure Functions, and REST APIs.
+7. Own Product: Project Management Portal (PMP):
+   - Published on Microsoft AppSource. Centralizes projects, tasks, documents, and status reporting on one site directly inside the client's own Microsoft 365 tenant. Customisable with demo available. Monthly per-user subscription.""",
+            personality=AgentPersonality(
+                professionalism=92,
+                friendliness=88,
+                empathy=85,
+                patience=90,
+                confidence=92,
+                energy=72,
+                assertiveness=62,
+                humor=12,
+                curiosity=88
+            ),
             voice=SpeakProviderConfig(voice="flux-hannah-en", speed=1.0),
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
         )

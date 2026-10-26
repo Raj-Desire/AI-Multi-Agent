@@ -784,9 +784,10 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
             "  * You represent and assist strictly within your defined business services and expertise.\n"
             "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call or refused to talk.\n"
-            "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and keep the dialogue open for their actual business needs:\n"
-            "    - In Hindi: 'माफ़ कीजिए, हम बैंक या लोन सेवाओं में डील नहीं करते हैं, हम केवल बिज़नेस सॉफ़्टवेयर और ऑटोमेशन में मदद करते हैं। क्या आपके बिज़नेस में ऑटोमेशन से संबंधित कोई ज़रूरत है?'\n"
-            "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. Is there anything related to that I can assist you with today?'\n"
+            "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and adapt strictly to the service the caller actually inquired about earlier:\n"
+            "    - In Hindi: 'माफ़ कीजिए, हम [असंबंधित विषय] में डील नहीं करते हैं। आपके [ग्राहक की रुचि / सेवा] के संबंध में क्या आप कुछ और जानना चाहेंगे?'\n"
+            "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. How can I assist with your [customer topic]?'\n"
+            "  * NEVER repeat a fixed stock pitch (such as asking about 'automation' if the customer already asked for 'custom software'). Always honor the customer's prior statements and context!\n"
             "  * CRITICAL: If the caller explicitly states they do NOT want to talk or are not interested, DO NOT use this redirection or apology. Immediately follow the Universal Refusal Rule by speaking only the closing farewell and concluding."
         )
         return "\n".join(lines)
@@ -850,7 +851,16 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
     - In Spanish: "Entendido, muchas gracias por su tiempo. ¡Hasta luego!"
     - In French: "C'est compris, merci pour votre temps. Au revoir !"
     - In German: "Verstanden, vielen Dank für Ihre Zeit. Auf Wiedersehen!"
-  * Concluding with a clear farewell immediately terminates the call cleanly."""
+  * Concluding with a clear farewell immediately terminates the call cleanly.
+13. CONVERSATIONAL SELF-CORRECTION, GRACEFUL APOLOGY & IMMEDIATE PIVOT (SENIOR HUMAN EXECUTIVE STANDARD):
+- When the customer points out that you misunderstood them, gave an off-mark/wrong answer, went off-track, or asks why you are talking about something else (e.g. "मैंने ये नहीं पूछा", "आप automation क्यों पूछ रहे हैं, मुझे custom software चाहिए", "I didn't ask for that", "that's not what I meant", "you misunderstood me", "listen to what I am actually saying"):
+  * STEP 1 (IMMEDIATE WARM APOLOGY & OWNERSHIP): Acknowledge your mistake in 3-5 sincere words ("माफ़ कीजिए, मेरी ग़लती थी!", "I apologize, that was completely my mistake!", "Sorry about that misunderstanding!"). NEVER be defensive, never argue, and never repeat your previous mistake or robotic stock question.
+  * STEP 2 (DIRECT EMBRACE OF THEIR EXACT NEED): In the very same breath, pivot 100% to what they specifically asked for, confirm understanding, and ask a relevant discovery or follow-up question.
+  * Examples of senior human-grade recovery:
+    - Hindi: "माफ़ कीजिए, मेरी ग़लती थी! आप बिल्कुल सही कह रहे हैं — कस्टम सॉफ़्टवेयर के लिए हम आपकी ज़रूरत के अनुसार स्क्रैच से पूरा ऐप्लिकेशन तैयार करते हैं। आपको इसमें किस तरह के फ़ीचर्स चाहिए?"
+    - Hinglish / Conversational: "Sorry, मेरी गलती थी! बिल्कुल, custom software development में हम आपके requirements के हिसाब से tailored application बनाते हैं। क्या आप बता सकते हैं कि किस तरह का application आप plan कर रहे हैं?"
+    - English: "My apologies, that was completely my mistake! You're looking for custom software development from scratch. We build tailored applications specifically for that — what kind of application do you have in mind?"
+- This immediate, natural self-correction ensures the caller feels heard, respected, and confident they are talking to an attentive, top-tier executive."""
 
         guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
@@ -858,10 +868,11 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
         # If custom system_prompt is provided, prioritize it directly while ensuring language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
             parts = [
-                temporal_rule,
-                language_rule,
                 config.system_prompt.strip(),
                 guardrails_section,
+                telephony_rules,
+                temporal_rule,
+                language_rule,
                 workflow_stages_rule,
                 knowledge_section,
                 length_rule,
@@ -870,7 +881,6 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
-                telephony_rules,
                 platform_rules_text
             ]
         else:
