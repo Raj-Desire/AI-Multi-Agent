@@ -109,9 +109,9 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
       console.info(`[VoicePlayground] Initialized native AudioContext at ${audioCtx.sampleRate} Hz`);
 
-      // 2. Open WebSocket to backend preview stream
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.hostname}:8000/api/v1/voice/preview-stream`;
+      // 2. Open WebSocket to backend preview stream dynamically using configured API origin
+      const rawApiBase = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:8000/api/v1`;
+      const wsUrl = rawApiBase.replace(/^http/, "ws").replace(/\/api\/v1\/?$/, "") + "/api/v1/voice/preview-stream";
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

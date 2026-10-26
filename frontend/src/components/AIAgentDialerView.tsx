@@ -229,8 +229,8 @@ export function AIAgentDialerView({
 
   function connectTelemetryStream(sessionId: string) {
     if (telemetryWsRef.current) telemetryWsRef.current.close();
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/api/v1/voice/telemetry/${sessionId}`;
+    const rawApiBase = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:8000/api/v1`;
+    const wsUrl = rawApiBase.replace(/^http/, "ws").replace(/\/api\/v1\/?$/, "") + `/api/v1/voice/telemetry/${sessionId}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (e) => {

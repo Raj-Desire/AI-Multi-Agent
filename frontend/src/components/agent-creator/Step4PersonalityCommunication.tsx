@@ -1163,7 +1163,10 @@ export function Step4PersonalityCommunication({
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      const response = await fetch("http://localhost:8000/api/v1/voice/sample-speech", {
+      const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+      const sampleUrl = apiBase.endsWith("/api/v1") ? `${apiBase}/voice/sample-speech` : `${apiBase}/api/v1/voice/sample-speech`;
+
+      const response = await fetch(sampleUrl, {
         method: "POST",
         headers,
         body: JSON.stringify({
