@@ -780,14 +780,13 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             for r in restricted:
                 lines.append(f"- {r}")
 
-        lines.append(
             "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
             "  * You represent and assist strictly within your defined business services and expertise.\n"
-            "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call.\n"
+            "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call or refused to talk.\n"
             "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and keep the dialogue open for their actual business needs:\n"
             "    - In Hindi: 'माफ़ कीजिए, हम बैंक या लोन सेवाओं में डील नहीं करते हैं, हम केवल बिज़नेस सॉफ़्टवेयर और ऑटोमेशन में मदद करते हैं। क्या आपके बिज़नेस में ऑटोमेशन से संबंधित कोई ज़रूरत है?'\n"
             "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. Is there anything related to that I can assist you with today?'\n"
-            "  * Keep the tone helpful, warm, and conversational. Always gently bridge back to what you can help with rather than abruptly ending the call."
+            "  * CRITICAL: If the caller explicitly states they do NOT want to talk or are not interested, DO NOT use this redirection or apology. Immediately follow the Universal Refusal Rule by speaking only the closing farewell and concluding."
         )
         return "\n".join(lines)
     def build_prompt(
@@ -831,23 +830,24 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
 9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
 10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation.
-11. POLITE SERVICE BOUNDARY & REDIRECTION (NEVER HANG UP ON OFF-TOPIC QUESTIONS): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
-- NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call.
+11. POLITE SERVICE BOUNDARY & REDIRECTION (FOR OFF-TOPIC PRODUCT INQUIRIES ONLY): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
+- NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call or refused to talk.
 - Politely clarify that this specific service is not available and ask how you can help with your actual services:
   * Hindi: "माफ़ कीजिए, हम [असंबंधित सेवा] में डील नहीं करते हैं, हम केवल [कंपनी की सेवाएं] में सहायता करते हैं। क्या आपके बिज़नेस में इससे संबंधित कोई आवश्यकता है?"
   * English: "I'm sorry, we do not provide or deal with [unrelated topic]; our team specializes in [authorized services]. How can I assist you with [your services] today?"
-- Always keep the conversation active, polite, and helpful!
-12. UNIVERSAL REFUSAL & CALL TERMINATION DIRECTIVE (ALL LANGUAGES & SCRIPTS):
-- If the caller clearly states in ANY language or script that they do not want to talk, are not interested, want to hang up, or ask you to stop calling (for example: Hindi "बात नहीं करनी", "मुझे आपसे बात ही नहीं करनी है", "फोन रखो"; English "I don't want to talk with you", "not interested", "stop calling"; Gujarati "વાત નથી કરવી", "રસ નથી"; Spanish "no quiero hablar", "no me interesa"; French "je ne veux pas parler"; German "ich möchte nicht sprechen"):
-  * IMMEDIATELY RESPECT THEIR DECISION. NEVER argue, pitch products, counter-objection, deflect, or ask any follow-up questions.
-  * Acknowledge politely and conclude with ONE short farewell in the EXACT language they spoke:
-    - In Hindi: "समझ गया, आपके समय के लिए धन्यवाद। अलविदा!"
+- CRITICAL EXCEPTION: If the caller says they do NOT want to talk or are not interested, Rule 12 (Universal Refusal) takes ABSOLUTE PRECEDENCE. NEVER use Rule 11's apology or redirection question when the caller refuses to talk!
+12. UNIVERSAL REFUSAL & IMMEDIATE CALL CONCLUSION (ALL 43 LANGUAGES & SCRIPTS - HIGHEST PRECEDENCE):
+- This rule OVERRIDES all other rules, including Rule 11 (Redirection).
+- If the caller clearly states in ANY language or script that they do not want to talk, are not interested, want to hang up, or ask you to stop calling (for example: Hindi "बात नहीं करनी", "मुझे आपसे बात ही नहीं करनी है", "मेरी आपसे बात नहीं करनी", "फोन रखो"; English "I don't want to talk with you", "not interested", "stop calling"; Gujarati "વાત નથી કરવી", "રસ નથી"; Spanish "no quiero hablar", "no me interesa"; French "je ne veux pas parler"; German "ich möchte nicht sprechen"):
+  * IMMEDIATELY RESPECT THEIR DECISION. NEVER apologize, never explain services, never ask if they need business automation/software, never counter-question, never argue, and never deflect.
+  * Speak ONLY ONE single polite closing farewell in the EXACT language they spoke, and nothing else:
+    - In Hindi: "समझ गया, आपके समय के लिए धन्यवाद। यदि भविष्य में किसी मदद की ज़रूरत हो तो कृपया संपर्क करें। अलविदा!"
     - In Gujarati: "સમજી ગયો, તમારા સમય માટે આભાર. આવજો!"
     - In English: "I understand, thank you for your time. Goodbye!"
     - In Spanish: "Entendido, muchas gracias por su tiempo. ¡Hasta luego!"
     - In French: "C'est compris, merci pour votre temps. Au revoir !"
     - In German: "Verstanden, vielen Dank für Ihre Zeit. Auf Wiedersehen!"
-  * Concluding with a clear farewell immediately triggers the call termination to save caller time and credits."""
+  * Concluding with a clear farewell immediately terminates the call cleanly.""""
 
         guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)

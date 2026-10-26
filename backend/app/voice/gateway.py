@@ -418,6 +418,17 @@ async def voice_stream_websocket(websocket: WebSocket):
                     logger.error(f"[VoiceGateway] IVR detection error: {ivr_err}")
         else:
             is_agent_speaking = True
+            # Suppress interrupted intermediate LLM redirection turn when user declined
+            if session and getattr(session, "outcome", None) == "USER_DECLINED":
+                norm_c = content.strip().lower()
+                is_close_snippet = (
+                    (goodbye_key and goodbye_key in _text_key(content)) or
+                    any(w in norm_c for w in ["धन्यवाद", "अलविदा", "goodbye", "thank you", "आभार", "आवजो", "adios", "hasta luego", "au revoir", "auf wiedersehen"])
+                )
+                if not is_close_snippet:
+                    logger.info(f"[VoiceGateway] Suppressing interrupted intermediate LLM redirection turn: '{content[:50]}...'")
+                    return
+
             live_transcript_turns.append({"role": "assistant", "content": content})
             if goodbye_key and goodbye_key in _text_key(content):
                 goodbye_started_event.set()
@@ -466,12 +477,18 @@ async def voice_stream_websocket(websocket: WebSocket):
                 # The agent already said its goodbye; just let it finish playing, then hang up.
                 asyncio.create_task(end_call_gracefully(None))
 
-    async def end_call_gracefully(closing_text: Optional[str], deadline_at: Optional[float] = None, max_wait: float = 25.0):
+    async def end_call_gracefully(
+        closing_text: Optional[str],
+        deadline_at: Optional[float] = None,
+        max_wait: float = 25.0,
+        behavior: str = "queue"
+    ):
         """Speaks the closing message (if any) and hangs up only after the caller has heard it in full.
 
         The agent's current sentence is never cut: the closing message is queued behind it, and the hang-up waits for
         the engine to stop sending audio AND for our real-time playback queue to drain. deadline_at is only a billing
         safety net for the maximum-duration limit; it is reached long after the goodbye has normally finished.
+        For user refusals, behavior='interrupt' is used to instantly preempt any unwanted LLM redirection.
         """
         nonlocal is_concluding_call, goodbye_key
         is_concluding_call = True
@@ -484,14 +501,12 @@ async def voice_stream_websocket(websocket: WebSocket):
         if closing_text and deepgram_client and deepgram_client.is_ready:
             goodbye_key = _text_key(closing_text)[:14] or None
             expected_audio_s = closing_audio_expected_seconds(closing_text)
-            # The engine REFUSES an injection while the caller is mid-turn (and a "default" one while the agent is
-            # mid-turn too), which silently dropped goodbyes before. "queue" waits behind the sentence in progress;
-            # if it is refused we wait for the caller to stop and try again, never injecting twice.
+            # Inject closing message with specified behavior (interrupt for refusal, queue for normal conclusion)
             for attempt in range(6):
                 goodbye_started_event.clear()
                 injection_refused_event.clear()
                 try:
-                    await deepgram_client.inject_agent_message(closing_text, behavior="queue")
+                    await deepgram_client.inject_agent_message(closing_text, behavior=behavior)
                 except Exception as e:
                     logger.warning(f"[VoiceGateway] Could not speak closing message: {e}")
                 waiter = asyncio.create_task(goodbye_started_event.wait())
@@ -502,7 +517,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                     waiter.cancel()
                     refused.cancel()
                 if goodbye_started_event.is_set() or not injection_refused_event.is_set():
-                    break  # being spoken, or accepted and queued behind the sentence in progress
+                    break  # being spoken, or accepted
                 logger.info(f"[VoiceGateway] Closing message refused (caller mid-turn); retry {attempt + 1}.")
                 for _ in range(10):  # let the caller finish their turn
                     if not is_user_speaking:
@@ -531,6 +546,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def conclude_and_hangup(heard_text: str, outcome: str, closing: Optional[str] = None):
         """Speak a goodbye in the language the other party used, then hang up."""
+        nonlocal is_interrupted, is_agent_speaking, last_agent_speech_done_time
         if not closing:
             from app.voice.call_end_classifier import classify_turn
             from app.voice.ivr_detector import SmartIVRDetector
@@ -544,7 +560,28 @@ async def voice_stream_websocket(websocket: WebSocket):
             closing = (verdict.closing if verdict and verdict.closing else None) or SmartIVRDetector.closing_message(heard_text)
         if session:
             session.outcome = outcome
-        await end_call_gracefully(closing)
+
+        is_refusal = (outcome == "USER_DECLINED")
+        if is_refusal:
+            # Instantly flush any existing outbound audio queued for Twilio
+            is_interrupted = True
+            is_agent_speaking = False
+            last_agent_speech_done_time = time.time()
+            while not outbound_audio_queue.empty():
+                try:
+                    outbound_audio_queue.get_nowait()
+                    outbound_audio_queue.task_done()
+                except Exception:
+                    break
+            if stream_sid:
+                clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
+                try:
+                    await websocket.send_text(clear_msg)
+                    logger.info(f"[VoiceGateway] Refusal clear message sent to Twilio for stream {stream_sid}")
+                except Exception as e:
+                    logger.error(f"[VoiceGateway] Failed to send refusal clear message: {e}")
+
+        await end_call_gracefully(closing, behavior="interrupt" if is_refusal else "queue")
 
     language_follower = LanguageFollower(
         get_config=lambda: agent_config,

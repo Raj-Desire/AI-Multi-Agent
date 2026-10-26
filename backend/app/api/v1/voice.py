@@ -207,6 +207,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     has_reprompted_silence: bool = False
     reprompt_injected_at: float = 0.0
     is_concluding_call: bool = False
+    refusal_concluding: bool = False
+    closing_message_text: Optional[str] = None
     call_ended_event: asyncio.Event = asyncio.Event()
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
@@ -317,11 +319,19 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     if SmartIVRDetector.is_user_refusal(content):
                         logger.info(f"[VoicePreview] Caller declined to continue: '{content[:60]}'. Concluding preview.")
                         is_concluding_call = True
+                        refusal_concluding = True
                         closing_msg = SmartIVRDetector.closing_message(content)
+                        closing_message_text = closing_msg
+                        # Instantly cancel any scheduled audio queued in the browser player
+                        try:
+                            await websocket.send_json({"type": "clear"})
+                        except Exception:
+                            pass
                         async def _conclude_preview():
                             try:
                                 if deepgram_client and deepgram_client.is_ready:
-                                    await deepgram_client.inject_agent_message(closing_msg, behavior="queue")
+                                    # Interrupt any ongoing LLM thought/speech immediately with the closing message
+                                    await deepgram_client.inject_agent_message(closing_msg, behavior="interrupt")
                                     # Wait for speech to start and finish playing
                                     spoken_from = time.time()
                                     for _ in range(120):
@@ -339,6 +349,20 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     logger.debug(f"[VoicePreview] User refusal check error: {ex}")
         else:
             is_agent_speaking = True
+            # If the user declined, suppress any concurrent unwanted LLM redirection responses.
+            # Only allow the closing message itself or recognized farewells to be recorded/broadcast.
+            if refusal_concluding and closing_message_text:
+                norm_c = content.strip().lower()
+                norm_close = closing_message_text.strip().lower()
+                is_close_snippet = (
+                    norm_c in norm_close or
+                    norm_close in norm_c or
+                    any(w in norm_c for w in ["धन्यवाद", "अलविदा", "goodbye", "thank you", "आभार", "आवजो", "adios", "hasta luego", "au revoir", "auf wiedersehen"])
+                )
+                if not is_close_snippet:
+                    logger.info(f"[VoicePreview] Suppressing interrupted intermediate LLM redirection turn: '{content[:50]}...'")
+                    return
+
             live_transcript_turns.append({"role": "assistant", "content": content})
 
             # Steady-State Prompt Swap Following Assistant Response
