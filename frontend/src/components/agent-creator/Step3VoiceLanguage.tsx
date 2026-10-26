@@ -140,7 +140,15 @@ export const LANG_TO_COUNTRY_CODE: Record<string, string> = {
   cs: "cz",
   hu: "hu",
   ro: "ro",
-  uk: "ua"
+  uk: "ua",
+  bg: "bg",
+  hr: "hr",
+  ms: "my",
+  sk: "sk",
+  ka: "ge",
+  kn: "in",
+  ml: "in",
+  mr: "in"
 };
 
 // Vector-Clean Cross-Platform Country Flag Component with Zero-Jank Fallback
@@ -181,7 +189,7 @@ export function getVoiceCountryCode(voiceId: string, langCode?: string): string 
   const lang = (langCode || "").toLowerCase();
 
   if (accent.includes("british") || accent.includes("uk")) return "gb";
-  if (accent.includes("indian") || lang === "hi" || lang === "gu" || lang === "ta" || lang === "te" || lang === "pa" || lang === "bn") return "in";
+  if (accent.includes("indian") || lang === "hi" || lang === "gu" || lang === "ta" || lang === "te" || lang === "pa" || lang === "bn" || lang === "kn" || lang === "ml" || lang === "mr") return "in";
   if (accent.includes("australian")) return "au";
   if (accent.includes("irish")) return "ie";
   if (accent.includes("singaporean")) return "sg";
@@ -213,6 +221,11 @@ export function getVoiceCountryCode(voiceId: string, langCode?: string): string 
   if (lang === "hu") return "hu";
   if (lang === "ro") return "ro";
   if (lang === "uk") return "ua";
+  if (lang === "bg") return "bg";
+  if (lang === "hr") return "hr";
+  if (lang === "ms") return "my";
+  if (lang === "sk") return "sk";
+  if (lang === "ka") return "ge";
   return "us";
 }
 
@@ -255,7 +268,15 @@ export const ALL_SONIC_SUPPORTED_LANGUAGES = [
   { countryCode: "cz", lang: "cs", label: "Czech (Čeština)" },
   { countryCode: "hu", lang: "hu", label: "Hungarian (Magyar)" },
   { countryCode: "ro", lang: "ro", label: "Romanian (Română)" },
-  { countryCode: "ua", lang: "uk", label: "Ukrainian (Українська)" }
+  { countryCode: "ua", lang: "uk", label: "Ukrainian (Українська)" },
+  { countryCode: "bg", lang: "bg", label: "Bulgarian (Български)" },
+  { countryCode: "hr", lang: "hr", label: "Croatian (Hrvatski)" },
+  { countryCode: "my", lang: "ms", label: "Malay (Bahasa Melayu)" },
+  { countryCode: "sk", lang: "sk", label: "Slovak (Slovenčina)" },
+  { countryCode: "ge", lang: "ka", label: "Georgian (ქართული)" },
+  { countryCode: "in", lang: "kn", label: "Kannada (ಕನ್ನಡ)" },
+  { countryCode: "in", lang: "ml", label: "Malayalam (മലയാളം)" },
+  { countryCode: "in", lang: "mr", label: "Marathi (मराठी)" }
 ];
 
 export function getVoiceSupportedList(voiceId: string, engine: string, langCode?: string): Array<{ countryCode: string; lang: string; label: string }> {

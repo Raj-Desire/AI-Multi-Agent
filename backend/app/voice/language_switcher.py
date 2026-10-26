@@ -71,7 +71,7 @@ def detect_language(text: str) -> Optional[str]:
 
 # Languages each voice family can actually speak (mirrors the voice picker in the agent creator).
 SONIC_LANGUAGES = frozenset(
-    "en hi es fr de it pt ja zh ko ar nl he sv pl tr id th ru vi tl ta te bn gu pa ur el da fi no cs hu ro uk".split()
+    "en hi es fr de it pt ja zh ko ar nl he sv pl tr id th ru vi tl ta te bn gu pa ur el da fi no cs hu ro uk bg hr ms sk ka kn ml mr".split()
 )
 AURA2_LANGUAGES = frozenset("en es fr de it ja".split())
 

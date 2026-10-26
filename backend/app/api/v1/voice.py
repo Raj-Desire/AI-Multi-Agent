@@ -867,7 +867,15 @@ async def list_cartesia_voices():
                     "cs": "Dobrý den! Jsem váš hlasový asistent AI s technologií Sonic. Jak vám mohu dnes pomoci?",
                     "hu": "Üdvözlöm! Én vagyok az Ön Sonic-alapú mesterséges intelligencia hangasszisztense. Miben segíthetek ma?",
                     "ro": "Bună! Sunt asistentul tău vocal inteligent cu tehnologia Sonic. Cu ce te pot ajuta astăzi?",
-                    "uk": "Вітаю! Я ваш голосовий асистент зі штучним інтелектом на базі Sonic. Чим можу допомогти?"
+                    "uk": "Вітаю! Я ваш голосовий асистент зі штучним інтелектом на базі Sonic. Чим можу допомогти?",
+                    "bg": "Здравейте! Аз съм вашият гласов асистент с изкуствен интелект на Sonic. С какво мога да помогна?",
+                    "hr": "Pozdrav! Ja sam vaš AI glasovni asistent s tehnologijom Sonic. Kako vam mogu pomoći danas?",
+                    "ms": "Hai! Saya pembantu suara AI anda dengan teknologi Sonic. Apa yang boleh saya bantu hari ini?",
+                    "sk": "Dobrý deň! Som váš hlasový asistent s umelou inteligenciou Sonic. Ako vám dnes môžem pomôcť?",
+                    "ka": "გამარჯობა! მე ვარ თქვენი ხელოვნური ინტელექტის ხმოვანი ასისტენტი Sonic-ის ტექნოლოგიით. როგორ შემიძლია დაგეხმაროთ დღეს?",
+                    "kn": "ನಮಸ್ಕಾರ! ನಾನು ಸೋನಿಕ್ ತಂತ್ರಜ್ಞಾನದಿಂದ ಚಾಲಿತವಾದ ನಿಮ್ಮ AI ಧ್ವನಿ ಸಹಾಯಕ. ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?",
+                    "ml": "നമസ്കാരം! ഞാൻ സോണിക് സാങ്കേതികവിദ്യയിൽ പ്രവർത്തിക്കുന്ന നിങ്ങളുടെ AI വോയ്സ് അസിസ്റ്റന്റാണ്. ഇന്ന് ഞാൻ നിങ്ങളെ എങ്ങനെ സഹായിക്കണം?",
+                    "mr": "नमस्कार! मी सोनिक तंत्रज्ञानावर चालणारा तुमचा एआय व्हॉइस असिस्टंट आहे. आज मी तुमची कशी मदत करू शकते?"
                 }
 
                 formatted.append({

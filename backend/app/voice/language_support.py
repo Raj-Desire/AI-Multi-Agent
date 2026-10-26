@@ -20,6 +20,8 @@ LANGUAGE_LABELS = {
     "th": "Thai", "vi": "Vietnamese", "tl": "Tagalog", "ta": "Tamil", "te": "Telugu", "bn": "Bengali",
     "gu": "Gujarati", "pa": "Punjabi", "ur": "Urdu", "el": "Greek", "da": "Danish", "fi": "Finnish",
     "no": "Norwegian", "cs": "Czech", "hu": "Hungarian", "ro": "Romanian", "uk": "Ukrainian",
+    "bg": "Bulgarian", "hr": "Croatian", "ms": "Malay", "sk": "Slovak", "ka": "Georgian",
+    "kn": "Kannada", "ml": "Malayalam", "mr": "Marathi",
 }
 
 _REASON_VOICE = "The selected voice cannot speak this language"

@@ -294,7 +294,15 @@ class VoicePromptBuilder:
             "cs": ("Czech", "Čeština", "Dobrý den! Jistě, jak vám mohu dnes pomoci?"),
             "hu": ("Hungarian", "Magyar", "Üdvözlöm! Természetesen, miben segíthetek ma?"),
             "ro": ("Romanian", "Română", "Bună! Sigur că da, cu ce te pot ajuta astăzi?"),
-            "uk": ("Ukrainian", "Українська", "Вітаю! Звісно, чим я можу допомогти вам сьогодні?")
+            "uk": ("Ukrainian", "Українська", "Вітаю! Звісно, чим я можу допомогти вам сьогодні?"),
+            "bg": ("Bulgarian", "Български", "Здравейте! Разбира се, с какво мога да ви помогна днес?"),
+            "hr": ("Croatian", "Hrvatski", "Pozdrav! Naravno, kako vam mogu pomoći danas?"),
+            "ms": ("Malay", "Bahasa Melayu", "Hai! Sudah tentu, apa yang boleh saya bantu hari ini?"),
+            "sk": ("Slovak", "Slovenčina", "Dobrý deň! Samozrejme, ako vám dnes môžem pomôcť?"),
+            "ka": ("Georgian", "ქართული", "გამარჯობა! რა თქმა უნდა, როგორ შემიძლია დაგეხმაროთ დღეს?"),
+            "kn": ("Kannada", "ಕನ್ನಡ", "ನಮಸ್ಕಾರ! ಖಂಡಿತ, ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?"),
+            "ml": ("Malayalam", "മലയാളം", "നമസ്കാരം! തീർച്ചയായും, ഇന്ന് ഞാൻ നിങ്ങളെ എങ്ങനെ സഹായിക്കണം?"),
+            "mr": ("Marathi", "मराठी", "नमस्कार! नक्कीच, आज मी तुमची कशी मदत करू शकते?")
         }
 
         # Normalize prefix (e.g. "es-es" -> "es", "hi-in" -> "hi")
