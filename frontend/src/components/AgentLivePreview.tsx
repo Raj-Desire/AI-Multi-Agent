@@ -266,13 +266,28 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         const normalizedVol = Math.min(100, Math.round(rms * 400));
         setMicVolume(normalizedVol);
 
-        if (rms > 0.015) {
+        // Increase threshold from 0.015 to 0.038 to ignore breaths and ambient room noise
+        if (rms > 0.038) {
           setIsUserSpeaking(true);
+          // Only barge-in if sustained above threshold to avoid false breath/mic pop cutoffs
+          const allowBargeIn = agentConfig.runtime?.barge_in_enabled ?? true;
+          if (allowBargeIn && scheduledSourcesRef.current.length > 0) {
+            // Check if user is actually vocalizing rather than a quick breath or keyboard tap
+            if (!userSpeakingTimeoutRef.current) {
+              // Give 120ms grace window before stopping active audio playback
+              setTimeout(() => {
+                if (scheduledSourcesRef.current.length > 0) {
+                  clearAudioQueue();
+                }
+              }, 120);
+            }
+          }
+
           if (userSpeakingTimeoutRef.current) clearTimeout(userSpeakingTimeoutRef.current);
           userSpeakingTimeoutRef.current = setTimeout(() => {
             setIsUserSpeaking(false);
             setMicVolume(0);
-          }, 600);
+          }, 700);
         }
 
         // Resample from browser native sample rate (e.g. 48000Hz/44100Hz) to 24000Hz Linear PCM
@@ -661,19 +676,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         )}
       </div>
 
-      {/* Live Preview Rules & Behavior Info Banner */}
-      <div className="px-4 py-2 bg-amber-500/5 dark:bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-3 text-[11px]">
-        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 min-w-0">
-          <Info className="w-3.5 h-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <span className="leading-tight truncate">
-            <strong>Playground Mode:</strong> Silence auto-cut & reprompts are bypassed here so you can test freely.
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-[var(--color-muted)] shrink-0 font-medium">
-          <PhoneCall className="w-3 h-3 text-emerald-500" />
-          <span>Real calls enforce silence limits ({agentConfig.runtime?.silence_timeout ?? 5}s)</span>
-        </div>
-      </div>
+
 
       {/* Conversational Transcript Feed */}
       <div

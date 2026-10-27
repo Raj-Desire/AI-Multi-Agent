@@ -561,21 +561,6 @@ export function Step5BehaviorSafety({
                   );
                 })}
               </div>
-
-              <div className="p-2.5 bg-[var(--color-surface-muted)]/70 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] text-[11px] text-[var(--color-muted)] space-y-1">
-                <div className="flex items-center justify-between font-medium">
-                  <span>Selected limit:</span>
-                  <span className="font-bold text-[var(--color-heading)] font-mono">
-                    {Math.round(currentDurationSeconds / 60)} min ({currentDurationSeconds}s)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-medium">
-                  <span>Smart Conclusion:</span>
-                  <span className="font-bold font-mono">
-                    Goodbye at {Math.max(10, currentDurationSeconds - 11)}s, call ends by {Math.max(10, currentDurationSeconds - 5)}s (avoids a +1 minute charge)
-                  </span>
-                </div>
-              </div>
             </div>
 
             {/* Card 2: Call Ending & Goodbye */}

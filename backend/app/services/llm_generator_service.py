@@ -129,7 +129,9 @@ class LLMGeneratorService:
         personality: Optional[dict] = None,
         include_business_knowledge: Optional[bool] = True,
         platform_rules: Optional[list] = None,
-        languages: Optional[list] = None
+        languages: Optional[list] = None,
+        voice: Optional[str] = None,
+        voice_speed: Optional[float] = 1.0
     ) -> Dict[str, Any]:
         """
         Generates a tailored telephone voice agent prompt and spoken greeting line
@@ -314,6 +316,8 @@ Return ONLY a valid JSON object matching this schema:
             if rule_items:
                 rules_ctx = f"\nMandatory Active Platform Voice Rules:\n" + "\n".join(rule_items[:10])
 
+        voice_note = f"\nCalibrated Voice Model: {voice} (playback speed: {voice_speed or 1.0}x)" if voice else ""
+
         user_prompt = f"""Agent Name: {name}
 Agent Role: {role or 'Assistant'}
 Primary Objective: {objective or description}
@@ -321,7 +325,7 @@ Description / Business Workflow: {description}
 Agent Archetype: {agent_type}
 Communication Tone: {tone}{personality_ctx}
 Configured Spoken Response Length: {len_key} ({spoken_length_rule})
-Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}{rules_ctx}
+Enabled Capabilities: {skills_str}{services_str}{custom_ctx}{guardrail_ctx}{kb_note}{rules_ctx}{voice_note}
 
 Synthesize the complete telephone conversation prompt instructions in the 4-stage format and 3 distinct opening greeting options (Direct & Warm, Engaging Hook & Discovery, Consultative & Professional) tailored to this specific workflow."""
 

@@ -248,32 +248,57 @@ async def voice_stream_websocket(websocket: WebSocket):
             is_user_speaking = False
             return
         has_reprompted_silence = False  # Reset silence reprompt on user speech
-        is_interrupted = True
-        is_agent_speaking = False
-        last_agent_speech_done_time = time.time()
 
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
-        # Instantly send clear message to Twilio to flush the audio buffer on the caller's handset
-        if stream_sid:
-            clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
+        # If agent is not actively speaking or playing audio, record state immediately without clearing
+        if not is_agent_speaking and time.time() >= last_agent_speech_done_time:
+            if session:
+                await call_session_service.record_barge_in(session)
+            return
+
+        # Cancel any pending barge-in evaluation
+        if barge_in_debounce_task and not barge_in_debounce_task.done():
+            barge_in_debounce_task.cancel()
+
+        # Sustained vocalization check: 180ms debounce avoids cutting off active agent sentences on quick breaths or mic clicks
+        async def _debounced_barge_in():
+            nonlocal is_interrupted, is_agent_speaking, last_agent_speech_done_time
             try:
-                await websocket.send_text(clear_msg)
-                logger.info(f"[VoiceGateway] Instant barge-in clear signal sent to Twilio for stream {stream_sid}")
+                await asyncio.sleep(0.18)
+                if not is_user_speaking or is_concluding_call:
+                    return
+
+                is_interrupted = True
+                is_agent_speaking = False
+                last_agent_speech_done_time = time.time()
+
+                # Send clear message to Twilio to flush the audio buffer on the caller's handset
+                if stream_sid:
+                    clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
+                    try:
+                        await websocket.send_text(clear_msg)
+                        logger.info(f"[VoiceGateway] Verified barge-in clear signal sent to Twilio for stream {stream_sid}")
+                    except Exception as e:
+                        logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
+
+                # Flush any unplayed chunks in the internal pacer queue
+                while not outbound_audio_queue.empty():
+                    try:
+                        outbound_audio_queue.get_nowait()
+                        outbound_audio_queue.task_done()
+                    except Exception:
+                        break
+
+                if session:
+                    await call_session_service.record_barge_in(session)
+            except asyncio.CancelledError:
+                pass
             except Exception as e:
-                logger.error(f"[VoiceGateway] Failed to send clear message: {e}")
+                logger.debug(f"[VoiceGateway] Barge-in debounce error: {e}")
 
-        # Flush any unplayed chunks in the internal pacer queue
-        while not outbound_audio_queue.empty():
-            try:
-                outbound_audio_queue.get_nowait()
-                outbound_audio_queue.task_done()
-            except Exception:
-                break
-
-        if session:
-            await call_session_service.record_barge_in(session)
+        barge_in_debounce_task = asyncio.create_task(_debounced_barge_in())
 
     async def handle_agent_speaking(data: dict):
         nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task, is_interrupted

@@ -402,7 +402,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             pass
 
     async def handle_dg_user_speaking():
-        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task
+        nonlocal is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, is_concluding_call, thinking_filler_task, barge_in_debounce_task
         user_speech_start_time = time.time()
         is_user_speaking = True
         if not is_concluding_call:
@@ -412,13 +412,30 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
-        is_agent_speaking = False
-        try:
-            await websocket.send_json({
-                "type": "clear"
-            })
-        except Exception:
-            pass
+        # If agent is not speaking, no need to interrupt audio
+        if not is_agent_speaking and time.time() >= last_agent_speech_done_time:
+            return
+
+        if barge_in_debounce_task and not barge_in_debounce_task.done():
+            barge_in_debounce_task.cancel()
+
+        async def _debounced_preview_clear():
+            nonlocal is_agent_speaking
+            try:
+                await asyncio.sleep(0.18)
+                if not is_user_speaking or is_concluding_call:
+                    return
+                is_agent_speaking = False
+                try:
+                    await websocket.send_json({
+                        "type": "clear"
+                    })
+                except Exception:
+                    pass
+            except asyncio.CancelledError:
+                pass
+
+        barge_in_debounce_task = asyncio.create_task(_debounced_preview_clear())
 
     async def handle_dg_agent_speaking(data: dict):
         nonlocal is_agent_speaking, is_user_speaking, thinking_filler_task

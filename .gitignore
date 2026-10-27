@@ -65,6 +65,12 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Audio / Voice Previews Cache
+backend/static/voice_previews/
+static/voice_previews/
+*.wav
+*.mp3
+
 # Agent / Tool cache
 .gemini/
 .agents/

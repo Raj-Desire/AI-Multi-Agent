@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight, Save, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, CheckCircle2, AlertTriangle, Sparkles } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Alert } from "./ui/Alert";
 import { AgentConfig } from "../types";
@@ -12,9 +12,10 @@ import { Step2RoleConversation } from "./agent-creator/Step2RoleConversation";
 import { Step3VoiceLanguage } from "./agent-creator/Step3VoiceLanguage";
 import { Step4PersonalityCommunication } from "./agent-creator/Step4PersonalityCommunication";
 import { Step5BehaviorSafety } from "./agent-creator/Step5BehaviorSafety";
-import { Step6PromptInstructions } from "./agent-creator/Step6PromptInstructions";
+import { Step6PromptInstructions, computeConfigFingerprint } from "./agent-creator/Step6PromptInstructions";
 import { Step6TestPreview } from "./agent-creator/Step6TestPreview";
 import { Step7ReviewActivate } from "./agent-creator/Step7ReviewActivate";
+import { toast } from "sonner";
 
 interface AgentEditorModalProps {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export function AgentEditorModal({
   });
 
   const [initialSnapshot, setInitialSnapshot] = useState<string>("");
+  const [lastSynthesizedFingerprint, setLastSynthesizedFingerprint] = useState<string>("");
 
   useEffect(() => {
     let baseAgent: AgentConfig;
@@ -99,10 +101,19 @@ export function AgentEditorModal({
     }
     setAgentData(baseAgent);
     setInitialSnapshot(JSON.stringify(baseAgent));
+    const initFp = computeConfigFingerprint(baseAgent);
+    setLastSynthesizedFingerprint(baseAgent.system_prompt && baseAgent.system_prompt.trim().length > 50 ? initFp : "");
     setCurrentStep(1);
     setErrorMsg(null);
     setShowValidationErrors(false);
   }, [initialAgent, isOpen, user]);
+
+  const currentFingerprint = computeConfigFingerprint(agentData);
+  const requiresSynthesisWarning = Boolean(
+    !agentData.system_prompt?.trim() ||
+      !lastSynthesizedFingerprint ||
+      lastSynthesizedFingerprint !== currentFingerprint
+  );
 
   useEffect(() => {
     if (!initialSnapshot) return;
@@ -187,6 +198,18 @@ export function AgentEditorModal({
       return;
     }
 
+    // Guard: If activating and parameters from Steps 1-5 changed without compiling into Step 6 prompt instructions
+    if (activate && requiresSynthesisWarning) {
+      setErrorMsg(
+        "Parameters from Steps 1–5 were modified or prompt is uncompiled. Please click 'Compile & Synthesize' in Step 6 below before activating your voice agent."
+      );
+      toast.warning(
+        "Agent parameters changed! Redirecting to Step 6 to compile prompt & greeting before activation."
+      );
+      setCurrentStep(6);
+      return;
+    }
+
     try {
       setSaving(true);
       setErrorMsg(null);
@@ -212,6 +235,7 @@ export function AgentEditorModal({
         totalSteps={CREATOR_STEPS.length}
         currentStepLabel={currentStepObj.title}
         saving={saving}
+        requiresSynthesisWarning={requiresSynthesisWarning}
         onBack={onClose}
         onSave={handleSaveAction}
         onTestCall={onTestCall}
@@ -282,6 +306,11 @@ export function AgentEditorModal({
           <Step6PromptInstructions
             agentData={agentData}
             setAgentData={setAgentData}
+            lastSynthesizedFingerprint={lastSynthesizedFingerprint}
+            onFingerprintSynthesized={(fp) => {
+              setLastSynthesizedFingerprint(fp);
+              setErrorMsg(null);
+            }}
           />
         )}
 
@@ -298,6 +327,7 @@ export function AgentEditorModal({
           <Step7ReviewActivate
             agentData={agentData}
             saving={saving}
+            requiresSynthesisWarning={requiresSynthesisWarning}
             onJumpToStep={(stepId) => handleSelectStep(stepId)}
             onSave={handleSaveAction}
           />
@@ -362,14 +392,23 @@ export function AgentEditorModal({
               </Button>
               <Button
                 type="button"
-                variant="primary"
+                variant={requiresSynthesisWarning ? "outline" : "primary"}
                 size="sm"
                 disabled={saving}
                 onClick={() => handleSaveAction(true)}
-                leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
+                leftIcon={<CheckCircle2 className={`w-3.5 h-3.5 ${requiresSynthesisWarning ? "text-amber-500" : ""}`} />}
+                className={`cursor-pointer text-xs h-8 px-3.5 font-semibold transition-all ${
+                  requiresSynthesisWarning
+                    ? "border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500"
+                    : ""
+                }`}
+                title={
+                  requiresSynthesisWarning
+                    ? "Parameters from Steps 1–5 modified: Click to go to Step 6 and compile prompt before activation"
+                    : "Deploy and Activate Agent"
+                }
               >
-                {saving ? "Saving..." : "Deploy & Activate"}
+                {saving ? "Saving..." : requiresSynthesisWarning ? "Compile & Activate" : "Deploy & Activate"}
               </Button>
             </>
           )}

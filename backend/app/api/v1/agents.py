@@ -32,6 +32,8 @@ class GeneratePromptRequest(BaseModel):
     response_length: Optional[str] = "short"  # "short" | "balanced" | "detailed"
     language: Optional[str] = "en"
     languages: Optional[List[str]] = None  # extra languages when the agent is multi-language
+    voice: Optional[str] = None
+    voice_speed: Optional[float] = 1.0
     skills: Optional[List[str]] = None
     services: Optional[List[Any]] = None
     custom_knowledge: Optional[str] = None
@@ -160,7 +162,9 @@ async def generate_prompt(
             personality=payload.personality,
             include_business_knowledge=payload.include_business_knowledge,
             platform_rules=active_rules,
-            languages=payload.languages
+            languages=payload.languages,
+            voice=payload.voice,
+            voice_speed=payload.voice_speed
         )
         return ApiResponse.ok(GeneratedPromptResponse(
             system_prompt=gen.get("system_prompt", ""),

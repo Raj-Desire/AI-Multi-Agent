@@ -24,6 +24,7 @@ import { AgentConfig } from "../../types";
 interface Step7ReviewActivateProps {
   agentData: AgentConfig;
   saving: boolean;
+  requiresSynthesisWarning?: boolean;
   onJumpToStep: (stepId: number) => void;
   onSave: (activate: boolean) => void;
 }
@@ -31,6 +32,7 @@ interface Step7ReviewActivateProps {
 export function Step7ReviewActivate({
   agentData,
   saving,
+  requiresSynthesisWarning = false,
   onJumpToStep,
   onSave
 }: Step7ReviewActivateProps) {
@@ -65,6 +67,35 @@ export function Step7ReviewActivate({
           </div>
         </div>
       </div>
+
+      {/* Synthesis Required Warning Banner */}
+      {requiresSynthesisWarning && (
+        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-[var(--radius-main,0.5rem)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="font-bold text-amber-700 dark:text-amber-300">
+                Compilation Needed Before Activation
+              </h4>
+              <p className="text-amber-600/90 dark:text-amber-400/90 text-[11px] mt-0.5 leading-relaxed">
+                You updated core configuration parameters (voice, tone, pacing, or guardrails) in Steps 1–5. Please jump to Step 6 and click <strong>Compile &amp; Synthesize</strong> so your AI voice instructions match these changes.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onJumpToStep(6)}
+            leftIcon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+            className="cursor-pointer font-semibold text-xs border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15 shrink-0 self-start sm:self-auto"
+          >
+            Go to Step 6 &amp; Compile
+          </Button>
+        </div>
+      )}
 
       {/* Review Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">

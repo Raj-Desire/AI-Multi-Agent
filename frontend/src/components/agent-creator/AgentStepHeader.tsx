@@ -12,6 +12,7 @@ interface AgentStepHeaderProps {
   totalSteps: number;
   currentStepLabel: string;
   saving: boolean;
+  requiresSynthesisWarning?: boolean;
   onBack: () => void;
   onSave: (activate: boolean) => void;
   onTestCall?: (agent: AgentConfig) => void;
@@ -24,6 +25,7 @@ export function AgentStepHeader({
   totalSteps,
   currentStepLabel,
   saving,
+  requiresSynthesisWarning = false,
   onBack,
   onSave,
   onTestCall
@@ -146,14 +148,23 @@ export function AgentStepHeader({
 
         <Button
           type="button"
-          variant="primary"
+          variant={requiresSynthesisWarning ? "outline" : "primary"}
           size="sm"
           disabled={saving}
           onClick={() => onSave(true)}
-          leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-          className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
+          leftIcon={<CheckCircle2 className={`w-3.5 h-3.5 ${requiresSynthesisWarning ? "text-amber-500" : ""}`} />}
+          className={`cursor-pointer text-xs h-8 px-3.5 font-semibold transition-all ${
+            requiresSynthesisWarning
+              ? "border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500"
+              : ""
+          }`}
+          title={
+            requiresSynthesisWarning
+              ? "Configuration modified in Steps 1–5: Click to jump to Step 6 and synthesize prompt"
+              : "Activate AI Voice Agent"
+          }
         >
-          {saving ? "Saving..." : "Activate"}
+          {saving ? "Saving..." : requiresSynthesisWarning ? "Compile & Activate" : "Activate"}
         </Button>
       </div>
     </header>

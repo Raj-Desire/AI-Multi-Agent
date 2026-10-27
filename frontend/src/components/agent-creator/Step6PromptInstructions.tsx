@@ -38,7 +38,7 @@ import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AgentConfig } from "../../types";
-import { AURA_VOICES } from "./constants";
+import { AURA_VOICES, POPULAR_SONIC_VOICES } from "./constants";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
 import { ConversationalWorkflowCanvas } from "./ConversationalWorkflowCanvas";
@@ -48,6 +48,24 @@ import { PromptRegressionTester } from "./PromptRegressionTester";
 interface Step6PromptInstructionsProps {
   agentData: AgentConfig;
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
+  lastSynthesizedFingerprint?: string;
+  onFingerprintSynthesized?: (fp: string) => void;
+}
+
+export function computeConfigFingerprint(agentData: Partial<AgentConfig>): string {
+  return [
+    agentData.name || "",
+    agentData.description || "",
+    agentData.role || "",
+    agentData.objective || "",
+    agentData.communication_style || "",
+    agentData.response_length || "",
+    agentData.voice?.voice || "",
+    agentData.voice?.language || "",
+    agentData.voice?.speed || 1.0,
+    (agentData.guardrails?.restricted_actions || []).join(","),
+    JSON.stringify(agentData.personality || {})
+  ].join("|");
 }
 
 interface GreetingOption {
@@ -64,9 +82,12 @@ interface PromptDiffPreview {
 
 export function Step6PromptInstructions({
   agentData,
-  setAgentData
+  setAgentData,
+  lastSynthesizedFingerprint: propLastSynthesizedFingerprint,
+  onFingerprintSynthesized
 }: Step6PromptInstructionsProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [synthesisStage, setSynthesisStage] = useState<number>(0);
   const [isGeneratingGreetings, setIsGeneratingGreetings] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [refinementInput, setRefinementInput] = useState("");
@@ -79,6 +100,26 @@ export function Step6PromptInstructions({
   const [pendingDiff, setPendingDiff] = useState<PromptDiffPreview | null>(null);
   const [activePromptTab, setActivePromptTab] = useState<"script" | "canvas" | "regression">("script");
   const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
+  const [dismissedSynthesisBanner, setDismissedSynthesisBanner] = useState(false);
+
+  // Compute a live fingerprint of Steps 1-5 core parameters
+  const currentConfigFingerprint = computeConfigFingerprint(agentData);
+  const [localLastFingerprint, setLocalLastFingerprint] = useState<string>(() => {
+    return propLastSynthesizedFingerprint !== undefined
+      ? propLastSynthesizedFingerprint
+      : agentData.system_prompt && agentData.system_prompt.trim().length > 50
+      ? currentConfigFingerprint
+      : "";
+  });
+
+  const effectiveLastFingerprint =
+    propLastSynthesizedFingerprint !== undefined ? propLastSynthesizedFingerprint : localLastFingerprint;
+
+  const hasConfigChangedSinceLastSynthesis = Boolean(
+    !agentData.system_prompt?.trim() ||
+      !effectiveLastFingerprint ||
+      effectiveLastFingerprint !== currentConfigFingerprint
+  );
 
   // Business details for resolving {{company_name}} and other variables come from this agent
   const businessProfile = {
@@ -87,9 +128,17 @@ export function Step6PromptInstructions({
     city: agentData.office_address,
   };
 
-  // Textarea DOM refs for inserting variables precisely at cursor position
+  // Textarea & Workspace DOM refs for inserting variables precisely and scrolling to diff
   const greetingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptWorkspaceRef = useRef<HTMLDivElement | null>(null);
+
+  // When a pendingDiff appears, auto-scroll smoothly to the prompt workspace
+  useEffect(() => {
+    if (pendingDiff && promptWorkspaceRef.current) {
+      promptWorkspaceRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [pendingDiff]);
 
   // Audio preview state for greeting
   const [isPlayingGreeting, setIsPlayingGreeting] = useState(false);
@@ -116,7 +165,10 @@ export function Step6PromptInstructions({
   };
 
   const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
-  const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
+  const selectedVoiceObj =
+    POPULAR_SONIC_VOICES.find((v) => v.id === selectedVoiceId) ||
+    AURA_VOICES.find((v) => v.id === selectedVoiceId) ||
+    AURA_VOICES[0];
 
   // Effective company name resolved from business profile or fallback
   const resolvedCompanyName = businessProfile?.company_name?.trim() || "Apex Solutions";
@@ -151,8 +203,15 @@ export function Step6PromptInstructions({
       return;
     }
 
+    let stageTimer: any = null;
     try {
       setIsGenerating(true);
+      setSynthesisStage(1);
+
+      stageTimer = setInterval(() => {
+        setSynthesisStage((prev) => (prev < 3 ? prev + 1 : prev));
+      }, 700);
+
       const res = await fetchApi<{
         system_prompt: string;
         suggested_greeting?: string;
@@ -173,6 +232,8 @@ export function Step6PromptInstructions({
           agent_type: (agentData as any).agent_type || "customer_support",
           language: agentData.voice?.language || "en",
           languages: agentData.language?.multilingual ? agentData.language.secondary || [] : [],
+          voice: agentData.voice?.voice || "flux-hannah-en",
+          voice_speed: agentData.voice?.speed || 1.0,
           skills: agentData.skills || [],
           services: agentData.services || [],
           custom_knowledge: agentData.custom_knowledge || "",
@@ -183,6 +244,10 @@ export function Step6PromptInstructions({
       });
 
       if (res) {
+        setLocalLastFingerprint(currentConfigFingerprint);
+        onFingerprintSynthesized?.(currentConfigFingerprint);
+        setDismissedSynthesisBanner(true);
+
         if (res.used_fallback && !silent) {
           toast.warning("The AI writer was unavailable, so a basic template was used. Try regenerating in a moment for fully tailored instructions.");
         }
@@ -197,10 +262,10 @@ export function Step6PromptInstructions({
           setPendingDiff({
             original: agentData.system_prompt,
             suggested: res.system_prompt,
-            summary: "AI generated an updated prompt based on your configured role, skills, and business knowledge.",
+            summary: "AI generated an updated prompt synchronized with your configured voice, personality, and guardrails.",
             suggestedGreeting: chosenGreeting
           });
-          toast.info("AI suggested an updated prompt. Review changes below to accept or reject.");
+          toast.info("AI synthesized an updated prompt. Review changes below to accept or keep current edits.");
         } else {
           setAgentData((prev) => ({
             ...prev,
@@ -212,7 +277,7 @@ export function Step6PromptInstructions({
           }));
 
           if (!silent) {
-            toast.success("AI Prompt and Opening Greetings synthesized successfully!");
+            toast.success("AI Prompt and Spoken Greeting synthesized successfully!");
           }
         }
       }
@@ -222,7 +287,9 @@ export function Step6PromptInstructions({
         toast.error(err.message || "Failed to generate instructions.");
       }
     } finally {
+      if (stageTimer) clearInterval(stageTimer);
       setIsGenerating(false);
+      setSynthesisStage(0);
     }
   }
 
@@ -319,6 +386,8 @@ export function Step6PromptInstructions({
       system_prompt: pendingDiff.suggested,
       greeting: pendingDiff.suggestedGreeting || prev.greeting
     }));
+    setLocalLastFingerprint(currentConfigFingerprint);
+    onFingerprintSynthesized?.(currentConfigFingerprint);
     toast.success("Changes successfully applied to your prompt!");
     setPendingDiff(null);
   };
@@ -598,28 +667,6 @@ export function Step6PromptInstructions({
           >
             {copied ? "Copied" : "Copy"}
           </Button>
-
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            disabled={isGenerating}
-            onClick={() => handleGenerateInstructions(false)}
-            leftIcon={
-              isGenerating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5" />
-              )
-            }
-            className="cursor-pointer text-xs h-8 px-3.5 font-semibold"
-          >
-            {isGenerating
-              ? "Synthesizing Prompt..."
-              : agentData.system_prompt
-              ? "Re-Generate with AI"
-              : "Generate with AI"}
-          </Button>
         </div>
       </div>
 
@@ -685,6 +732,117 @@ export function Step6PromptInstructions({
       {/* Prompt Script & AI Generator View */}
       {activePromptTab === "script" && (
         <>
+          {/* Interactive Multi-Step Parameter Synthesis Banner */}
+          {(!agentData.system_prompt || hasConfigChangedSinceLastSynthesis || isGenerating) && !dismissedSynthesisBanner && (
+            <div className="relative overflow-hidden rounded-[var(--radius-main,0.75rem)] border border-[var(--color-primary)]/30 bg-gradient-to-r from-[var(--color-primary)]/10 via-[var(--color-surface)] to-[var(--color-primary)]/5 p-4 shadow-sm transition-all duration-300">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5 max-w-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)] text-white shadow-xs">
+                      <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                    </span>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      {isGenerating
+                        ? "Compiling Spoken Intelligence from Steps 1–5..."
+                        : hasConfigChangedSinceLastSynthesis
+                        ? "Parameters Updated in Steps 1–5: Ready to Compile & Synthesize"
+                        : "Compile & Synthesize Instructions from Parameters"}
+                    </h3>
+                    <Badge variant="primary" size="sm" className="text-[10px] font-semibold">
+                      {isGenerating ? "Synthesizing" : "Recommended"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+                    {isGenerating
+                      ? "Analyzing role, voice tempo, tone markers, and active guardrails to author production-ready conversational instructions and spoken greetings."
+                      : hasConfigChangedSinceLastSynthesis
+                      ? "You modified your agent's voice, pacing, or guardrails. Click 'Compile & Synthesize' to update your spoken system prompt and greeting."
+                      : "Click 'Compile & Synthesize' to generate instructions and opening greetings calibrated to your role, tone, voice, and guardrails."}
+                  </p>
+
+                  {/* Multi-stage animation visual during synthesis */}
+                  {isGenerating && (
+                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
+                          synthesisStage >= 1
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)]/15 text-[var(--color-primary)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)]"
+                        }`}
+                      >
+                        {synthesisStage > 1 ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        ) : (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-primary)] shrink-0" />
+                        )}
+                        <span className="truncate">1. Persona & Tone</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
+                          synthesisStage >= 2
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)]/15 text-[var(--color-primary)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)]"
+                        }`}
+                      >
+                        {synthesisStage > 2 ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        ) : synthesisStage === 2 ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-primary)] shrink-0" />
+                        ) : (
+                          <Volume2 className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                        )}
+                        <span className="truncate">2. Voice & Sentence Pacing</span>
+                      </div>
+                      <div
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all ${
+                          synthesisStage >= 3
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)]/15 text-[var(--color-primary)]"
+                            : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)]"
+                        }`}
+                      >
+                        {synthesisStage === 3 ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--color-primary)] shrink-0" />
+                        ) : (
+                          <Shield className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                        )}
+                        <span className="truncate">3. Guardrails & Objections</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  {!isGenerating && (
+                    <button
+                      type="button"
+                      onClick={() => setDismissedSynthesisBanner(true)}
+                      className="text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] px-2.5 py-1.5 rounded cursor-pointer transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    disabled={isGenerating}
+                    onClick={() => handleGenerateInstructions(false)}
+                    leftIcon={
+                      isGenerating ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )
+                    }
+                    className="cursor-pointer font-bold px-4 py-2 shadow-xs"
+                  >
+                    {isGenerating ? "Compiling & Synthesizing..." : "Compile & Synthesize"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* SECTION 2: Compact Agent Context Summary Bar */}
           <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-2 select-none">
             <div className="flex items-center justify-between">
@@ -1019,7 +1177,7 @@ export function Step6PromptInstructions({
       </div>
 
       {/* SECTION 4: Full-Width Prompt Workspace (Central Focus) */}
-      <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5">
+      <div ref={promptWorkspaceRef} className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.5rem)] shadow-2xs space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[var(--color-border)]">
           <div>
             <h3 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider flex items-center gap-2">
@@ -1162,27 +1320,137 @@ export function Step6PromptInstructions({
           </div>
         </div>
 
-        {/* The Main Prompt Editor Textarea */}
-        <div className="space-y-1.5">
-          <textarea
-            ref={promptTextareaRef}
-            rows={isExpandedEditor ? 22 : 12}
-            value={agentData.system_prompt || ""}
-            onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
-            placeholder={`You are a professional voice representative for {{company_name}}.\n\n## Main Objective\n${agentData.objective || "Accurately understand caller requests, answer business questions, and guide them to confirmed next steps."}\n\n## Conversation Rules\n1. Keep responses within ${agentData.response_length || "short"} sentences.\n2. Maintain a ${agentData.communication_style || "professional and warm"} demeanor.\n3. Always confirm key caller details before concluding.`}
-            className="w-full p-4 text-xs bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] font-mono leading-relaxed transition-all resize-y shadow-2xs"
-          />
+        {/* The Main Prompt Editor / AI Comparison View */}
+        {pendingDiff ? (
+          <div className="space-y-3 p-4 bg-gradient-to-b from-[var(--color-surface-muted)]/90 to-[var(--color-surface)] border-2 border-[var(--color-primary)]/50 rounded-[var(--radius-main,0.5rem)] shadow-md animate-fade-in">
+            {/* Header with clear action bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--color-border)]">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)] text-white shadow-xs">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  <h4 className="text-xs font-bold text-[var(--color-heading)]">
+                    Review AI Generated Prompt Updates
+                  </h4>
+                  <Badge variant="primary" size="sm" className="text-[10px]">
+                    Comparison Mode
+                  </Badge>
+                </div>
+                {pendingDiff.summary && (
+                  <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
+                    {pendingDiff.summary}
+                  </p>
+                )}
+              </div>
 
-          <div className="flex flex-wrap items-center justify-between text-[11px] text-[var(--color-muted)] px-1">
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>Spoken Audio Rule: Keep instructions clear and free of emojis or complex markdown tags.</span>
-            </span>
-            <span className="font-mono text-[10px] font-semibold text-[var(--color-heading)]">
-              {(agentData.system_prompt || "").length} characters
-            </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRejectDiff}
+                  leftIcon={<X className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
+                  className="cursor-pointer text-xs h-8 px-3"
+                  title="Keep your current prompt as-is"
+                >
+                  Keep Current (Discard)
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={handleApplyDiff}
+                  leftIcon={<Check className="w-3.5 h-3.5" />}
+                  className="cursor-pointer text-xs h-8 px-4 font-bold shadow-xs"
+                  title="Apply new AI instructions to this agent"
+                >
+                  Accept &amp; Apply Changes
+                </Button>
+              </div>
+            </div>
+
+            {/* Side-by-Side Review Columns directly in the instruction box */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-1">
+              {/* Left Column: Current Prompt */}
+              <div className="space-y-1.5 flex flex-col">
+                <div className="flex items-center justify-between text-[11px] px-1 font-semibold text-[var(--color-muted)]">
+                  <span className="uppercase tracking-wider text-[10px] font-bold">
+                    Option A: Current Prompt
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRejectDiff}
+                    className="text-xs text-[var(--color-primary)] hover:underline cursor-pointer"
+                  >
+                    Use this version
+                  </button>
+                </div>
+                <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-xs font-mono text-[var(--color-muted)] h-72 sm:h-80 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text shadow-inner">
+                  {pendingDiff.original || "(Empty Prompt)"}
+                </div>
+              </div>
+
+              {/* Right Column: AI Proposed Update */}
+              <div className="space-y-1.5 flex flex-col">
+                <div className="flex items-center justify-between text-[11px] px-1 font-semibold text-[var(--color-primary)]">
+                  <span className="uppercase tracking-wider text-[10px] font-bold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Option B: AI Proposed Update (Recommended)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleApplyDiff}
+                    className="text-xs text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
+                  >
+                    Apply this version &rarr;
+                  </button>
+                </div>
+                <div className="p-3.5 bg-[var(--color-surface)] border-2 border-[var(--color-primary)]/60 rounded-[var(--radius-main,0.375rem)] text-xs font-mono text-[var(--color-heading)] h-72 sm:h-80 overflow-y-auto leading-relaxed whitespace-pre-wrap select-text ring-2 ring-[var(--color-primary)]/15 shadow-inner">
+                  {pendingDiff.suggested}
+                </div>
+              </div>
+            </div>
+
+            {pendingDiff.suggestedGreeting && (
+              <div className="p-2.5 bg-[var(--color-surface)] rounded border border-[var(--color-border)] text-[11px] flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="font-bold text-[var(--color-primary)] shrink-0">Updated Spoken Greeting:</span>
+                  <span className="italic truncate text-[var(--color-heading)]">"{pendingDiff.suggestedGreeting}"</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handlePlayGreetingAudio(pendingDiff.suggestedGreeting!)}
+                  className="px-2 py-0.5 text-xs text-[var(--color-primary)] font-semibold hover:bg-[var(--color-primary)]/10 rounded shrink-0 flex items-center gap-1 cursor-pointer"
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>Listen</span>
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="space-y-1.5">
+            <textarea
+              ref={promptTextareaRef}
+              rows={isExpandedEditor ? 22 : 12}
+              value={agentData.system_prompt || ""}
+              onChange={(e) => setAgentData({ ...agentData, system_prompt: e.target.value })}
+              placeholder={`You are a professional voice representative for {{company_name}}.\n\n## Main Objective\n${agentData.objective || "Accurately understand caller requests, answer business questions, and guide them to confirmed next steps."}\n\n## Conversation Rules\n1. Keep responses within ${agentData.response_length || "short"} sentences.\n2. Maintain a ${agentData.communication_style || "professional and warm"} demeanor.\n3. Always confirm key caller details before concluding.`}
+              className="w-full p-4 text-xs bg-[var(--color-surface-muted)]/50 border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] placeholder:text-[var(--color-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] font-mono leading-relaxed transition-all resize-y shadow-2xs"
+            />
+
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-[var(--color-muted)] px-1">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>Spoken Audio Rule: Keep instructions clear and free of emojis or complex markdown tags.</span>
+              </span>
+              <span className="font-mono text-[10px] font-semibold text-[var(--color-heading)]">
+                {(agentData.system_prompt || "").length} characters
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION 5: AI Prompt Assistant & Comparison Review */}
@@ -1257,70 +1525,6 @@ export function Step6PromptInstructions({
             ))}
           </div>
         </div>
-
-        {/* AI Suggested Changes Preview & Diff Review Interface */}
-        {pendingDiff && (
-          <div className="mt-3 p-4 bg-[var(--color-surface-muted)]/80 border-2 border-[var(--color-primary)]/40 rounded-[var(--radius-main,0.5rem)] space-y-3 animate-fade-in shadow-card">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--color-border)]">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
-                <h4 className="text-xs font-bold text-[var(--color-heading)]">
-                  AI Suggested Changes (Review Before Applying)
-                </h4>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRejectDiff}
-                  leftIcon={<X className="w-3.5 h-3.5 text-[var(--color-danger)]" />}
-                  className="cursor-pointer text-xs h-7 px-2.5"
-                >
-                  Discard
-                </Button>
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={handleApplyDiff}
-                  leftIcon={<Check className="w-3.5 h-3.5" />}
-                  className="cursor-pointer text-xs h-7 px-3 font-semibold"
-                >
-                  Accept &amp; Apply Changes
-                </Button>
-              </div>
-            </div>
-
-            {pendingDiff.summary && (
-              <p className="text-[11px] text-[var(--color-heading)] font-semibold bg-[var(--color-surface)] p-2 rounded border border-[var(--color-border)] flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-                <span>Summary: {pendingDiff.summary}</span>
-              </p>
-            )}
-
-            {/* Comparison view */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
-                  Current Prompt
-                </span>
-                <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-xs font-mono text-[var(--color-muted)] max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap">
-                  {pendingDiff.original || "(Empty Prompt)"}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-primary)]">
-                  AI Proposed Update
-                </span>
-                <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-primary)]/50 rounded-[var(--radius-main,0.375rem)] text-xs font-mono text-[var(--color-heading)] max-h-48 overflow-y-auto leading-relaxed whitespace-pre-wrap ring-1 ring-[var(--color-primary)]/20">
-                  {pendingDiff.suggested}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       </>
       )}
