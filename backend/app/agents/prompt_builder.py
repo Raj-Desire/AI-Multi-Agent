@@ -147,27 +147,27 @@ class VoicePromptBuilder:
 
         # 1. Professionalism (0-100)
         if p.professionalism >= 85:
-            directives.append("Tone & Demeanor: Highly professional, polished, articulate, and formal business demeanor.")
+            directives.append("Tone & Demeanor (Professionalism): Highly professional, polished, articulate, and formal business demeanor. Use precise business vocabulary and avoid slang.")
         elif p.professionalism >= 65:
-            directives.append("Tone & Demeanor: Balanced professional warmth, courteous and respectful.")
+            directives.append("Tone & Demeanor (Professionalism): Balanced professional warmth, courteous, respectful, and polite.")
         elif p.professionalism >= 40:
-            directives.append("Tone & Demeanor: Conversational, relaxed, everyday approachable business style.")
+            directives.append("Tone & Demeanor (Professionalism): Conversational, relaxed, everyday approachable business style.")
         else:
-            directives.append("Tone & Demeanor: Very casual, informal peer-to-peer conversational manner.")
+            directives.append("Tone & Demeanor (Professionalism): Very casual, informal peer-to-peer conversational manner.")
 
         # 2. Friendliness (0-100)
         if p.friendliness >= 85:
-            directives.append("Warmth & Rapport: Exceptionally warm, welcoming, polite, and enthusiastic.")
+            directives.append("Warmth & Rapport (Friendliness): Exceptionally warm, welcoming, polite, and enthusiastic. Greet with bright positivity and make the caller feel appreciated.")
         elif p.friendliness >= 60:
-            directives.append("Warmth & Rapport: Friendly, pleasant, and positive.")
+            directives.append("Warmth & Rapport (Friendliness): Friendly, pleasant, positive, and hospitable.")
         elif p.friendliness >= 35:
-            directives.append("Warmth & Rapport: Neutral, balanced, and direct.")
+            directives.append("Warmth & Rapport (Friendliness): Neutral, balanced, direct, and pragmatic.")
         else:
-            directives.append("Warmth & Rapport: Purely matter-of-fact, strictly transactional, no extra pleasantries.")
+            directives.append("Warmth & Rapport (Friendliness): Purely matter-of-fact, strictly transactional, zero small talk or extra pleasantries.")
 
         # 3. Empathy (0-100)
         if p.empathy >= 80:
-            directives.append("Empathy & Active Listening: Deeply empathetic and validating. Always acknowledge and validate any caller concern or emotion before proceeding.")
+            directives.append("Empathy & Active Listening: Deeply empathetic and validating. Always explicitly acknowledge and validate any caller concern, frustration, or hesitation before moving to solutions.")
         elif p.empathy >= 55:
             directives.append("Empathy: Sincere understanding when callers express doubts or hesitation.")
         else:
@@ -175,51 +175,51 @@ class VoicePromptBuilder:
 
         # 4. Confidence (0-100)
         if p.confidence >= 80:
-            directives.append("Confidence & Authority: High authority, decisive, commanding clarity, and unwavering reassurance.")
+            directives.append("Confidence & Authority: High authority, decisive, commanding clarity, and unwavering reassurance. Speak with strong conviction.")
         elif p.confidence >= 55:
-            directives.append("Confidence: Clear, reliable, and composed.")
+            directives.append("Confidence: Clear, reliable, and composed tone.")
         else:
-            directives.append("Confidence: Modest, gentle, and collaborative tone.")
+            directives.append("Confidence: Modest, gentle, humble, and collaborative tone.")
 
-        # 5. Patience (0-100)
+        # 5. Patience (0-100) - Influences spoken cadence and pause structure
         if p.patience >= 80:
-            directives.append("Patience: Unhurried, supportive, and accommodating. Never rush or pressure the caller.")
+            directives.append("Patience (Spoken Cadence): Unhurried, supportive, and accommodating. Use measured phrasing with natural micro-commas. Never rush, pressure, or interrupt the caller.")
         elif p.patience >= 50:
-            directives.append("Patience: Steady and measured speaking cadence.")
+            directives.append("Patience: Steady and measured speaking cadence, comfortable with normal conversational pacing.")
         else:
-            directives.append("Patience: Fast, decisive, and efficient, moving the dialogue forward quickly.")
+            directives.append("Patience: Fast, decisive, and efficient, moving the dialogue forward quickly without pausing.")
 
-        # 6. Energy (0-100)
+        # 6. Energy (0-100) - Influences vocal punch, exclamations, and tempo
         if p.energy >= 80:
-            directives.append("Vocal Energy: High energy, upbeat, dynamic, and lively pacing.")
+            directives.append("Vocal Energy: High energy, upbeat, dynamic, and lively pacing. Use spirited spoken openers ('Awesome!', 'Great!') and punchy phrasing.")
         elif p.energy >= 50:
             directives.append("Vocal Energy: Balanced, natural conversational energy.")
         else:
-            directives.append("Vocal Energy: Calm, soothing, grounded, and low-key cadence.")
+            directives.append("Vocal Energy: Calm, soothing, grounded, and low-key cadence. Speak softly and gently.")
 
         # 7. Assertiveness (0-100)
         if p.assertiveness >= 80:
-            directives.append("Assertiveness & Direction: Proactively steer the conversation towards concrete decisions, scheduled appointments, and firm next steps.")
+            directives.append("Assertiveness & Direction: Proactively steer the conversation towards concrete decisions, scheduled appointments, and firm next steps without hesitation.")
         elif p.assertiveness >= 50:
             directives.append("Assertiveness: Gently guide the caller while remaining flexible.")
         else:
-            directives.append("Assertiveness: Passive and accommodating; allow the caller to entirely drive the flow.")
+            directives.append("Assertiveness: Passive and accommodating; allow the caller to entirely drive the flow and topics.")
 
         # 8. Humor (0-100)
         if p.humor >= 70:
-            directives.append("Humor & Charm: Playful, witty, and lighthearted charm when appropriate.")
+            directives.append("Humor & Charm: Playful, witty, and lighthearted charm when appropriate. Add subtle smile in your voice.")
         elif p.humor >= 40:
             directives.append("Humor: Mild warmth and occasional subtle cheerfulness.")
         else:
-            directives.append("Humor: Zero humor. Strictly focused and serious.")
+            directives.append("Humor: Zero humor. Strictly focused, serious, and matter-of-fact.")
 
         # 9. Curiosity (0-100)
         if p.curiosity >= 75:
-            directives.append("Curiosity & Discovery: Inquisitive and probing; ask thoughtful clarifying questions to uncover caller needs.")
+            directives.append("Curiosity & Discovery: Inquisitive and probing; ask thoughtful clarifying questions to deeply uncover caller needs and underlying pain points.")
         elif p.curiosity >= 45:
             directives.append("Curiosity: Standard discovery, asking necessary qualifying questions.")
         else:
-            directives.append("Curiosity: Minimal questions; answer only what was directly asked.")
+            directives.append("Curiosity: Minimal questions; answer only what was directly asked without probing.")
 
         return directives
 
@@ -608,14 +608,20 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         # Examples only: the agent must say them in the language it is currently replying in.
         phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you.", "Understood, give me one moment."])])
 
-        # The voice engine has no tempo setting, so pacing is steered through phrasing.
+        # The voice engine pacing is steered both through speed setting and personality energy/patience
         speed = getattr(getattr(config, "voice", None), "speed", None) or 1.0
-        if speed <= 0.9:
-            pacing_line = "- PACING: Speak in a calm, unhurried way. Prefer shorter sentences and let thoughts land before moving on.\n"
-        elif speed >= 1.05:
-            pacing_line = "- PACING: Keep a brisk, energetic pace. Be direct and skip unnecessary lead-ins.\n"
+        p = getattr(config, "personality", None)
+        energy_val = getattr(p, "energy", 70) if p else 70
+        patience_val = getattr(p, "patience", 80) if p else 80
+
+        if speed <= 0.9 or (patience_val >= 85 and energy_val <= 45):
+            pacing_line = "- PACING & ACOUSTICS: Speak in a calm, unhurried, measured way. Use gentle micro-pauses (commas) and allow thoughts to settle before advancing.\n"
+        elif speed >= 1.05 or energy_val >= 80:
+            pacing_line = "- PACING & ACOUSTICS: Maintain a lively, upbeat, dynamic vocal bounce. Speak briskly and decisively, using short punchy sentences.\n"
+        elif patience_val <= 35:
+            pacing_line = "- PACING & ACOUSTICS: Keep answers brisk, direct, and time-efficient with zero lingering.\n"
         else:
-            pacing_line = ""
+            pacing_line = "- PACING & ACOUSTICS: Balanced, relaxed conversational human pacing.\n"
 
         return (
             "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
@@ -860,15 +866,36 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
     - Hindi: "माफ़ कीजिए, मेरी ग़लती थी! आप बिल्कुल सही कह रहे हैं — कस्टम सॉफ़्टवेयर के लिए हम आपकी ज़रूरत के अनुसार स्क्रैच से पूरा ऐप्लिकेशन तैयार करते हैं। आपको इसमें किस तरह के फ़ीचर्स चाहिए?"
     - Hinglish / Conversational: "Sorry, मेरी गलती थी! बिल्कुल, custom software development में हम आपके requirements के हिसाब से tailored application बनाते हैं। क्या आप बता सकते हैं कि किस तरह का application आप plan कर रहे हैं?"
     - English: "My apologies, that was completely my mistake! You're looking for custom software development from scratch. We build tailored applications specifically for that — what kind of application do you have in mind?"
-- This immediate, natural self-correction ensures the caller feels heard, respected, and confident they are talking to an attentive, top-tier executive."""
+- This immediate, natural self-correction ensures the caller feels heard, respected, and confident they are talking to an attentive, top-tier executive.
+14. OUTBOUND CALL PURPOSE DISCLOSURE & "WHY ARE YOU CALLING ME?":
+- NEVER ask a customer you called: "How can I help you today?" or "What can I help you with today?". YOU initiated the outbound call!
+- In Turn 1 following the greeting (or whenever the customer says "I'm good / fine", "what's this about?", or "why are you calling me?"):
+  * STEP 1: Acknowledge their response in 2-3 words ("Glad to hear!").
+  * STEP 2: IMMEDIATELY state the exact purpose of the call in ONE direct, confident sentence:
+    - English: "The reason I'm reaching out is pretty quick — we're a Microsoft Solutions Partner, and we help teams build custom software, web applications, and automate manual workflows. I'm just checking if your team has any technology or software initiatives on your radar right now?"
+    - Hindi: "मैं इसलिए कॉल कर रहा हूँ क्योंकि हम टीमों के लिए कस्टम सॉफ़्टवेयर और बिज़नेस ऑटोमेशन तैयार करते हैं। क्या इस समय आपकी टीम में किसी सॉफ़्टवेयर या ऐप डेवलपमेंट की ज़रूरत है?"
+  * NEVER say vague robotic phrases like "I'm here to see if you have any questions about our services" or "What's on your mind?". State your purpose proactively!
+15. BUSY / CALL ME LATER RESCHEDULING & IMMEDIATE HANGUP (CRITICAL TELEPHONY RULE):
+- When a customer says they are busy, driving, in a meeting, or asks you to call back later (e.g., "Can you call me later?", "I am busy right now", "call back in 2 hours", "bad time"):
+  * STEP 1: Immediately agree without arguing or keeping them on the phone: "Sure thing! When would be a good time to call you back?"
+  * STEP 2: When they give a time (e.g. "Tomorrow 5 PM" or "in 2 hours"), CONFIRM the appointment in ONE single sentence and ALWAYS finish with a clear closing farewell word (e.g. "Goodbye!" or "Talk to you then, goodbye!") so the telephone line disconnects instantly:
+    - English: "Perfect, I've got you down for tomorrow at 5:00 PM. Talk to you then, goodbye!"
+    - Hindi: "बिल्कुल, मैं आपको कल शाम 5 बजे कॉल करूँगा। तब बात करते हैं, अलविदा!"
+    - Gujarati: "ચોક્કસ, હું તમને કાલે સાંજે 5 વાગ્યે કૉલ કરીશ. આવજો!"
+  * NEVER drag out the call with repetitive confirmations, calendar lectures, or open-ended lingering once the callback time is scheduled. Speak the confirmation and farewell so the call terminates immediately!"""
 
         guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
 
-        # If custom system_prompt is provided, prioritize it directly while ensuring language and length directives apply
+        personality_directives = VoicePromptBuilder._build_personality_instructions(config)
+        personality_lines = "\n".join(f"- {d}" for d in personality_directives)
+        personality_section = f"[PERSONALITY DIMENSIONS & BEHAVIORAL PROFILE]\nSTYLE: {config.communication_style or 'Conversational'}\n{personality_lines}"
+
+        # If custom system_prompt is provided, prioritize it directly while ensuring personality, language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
             parts = [
                 config.system_prompt.strip(),
+                personality_section,
                 guardrails_section,
                 telephony_rules,
                 temporal_rule,
@@ -885,8 +912,6 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             ]
         else:
             role_directives = VoicePromptBuilder._build_role_intent_directives(config)
-            personality_directives = VoicePromptBuilder._build_personality_instructions(config)
-            personality_text = "\n".join(f"- {d}" for d in personality_directives[:4])
 
             # Capabilities & Custom Skills
             skills_directives = []
@@ -899,6 +924,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             parts = [
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
                 f"PRIMARY GOAL: {config.objective}",
+                personality_section,
                 guardrails_section,
                 telephony_rules,
                 temporal_rule,
@@ -906,7 +932,6 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 role_directives,
                 workflow_stages_rule,
                 knowledge_section,
-                f"STYLE: {config.communication_style}\n{personality_text}",
                 skills_text,
                 length_rule,
                 acoustics_rule,

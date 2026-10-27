@@ -560,6 +560,17 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
   // Columns for My Organization Agents
   const myColumns: Column<AgentConfig>[] = [
     {
+      key: "index",
+      header: "#",
+      className: "w-12 text-center",
+      headerClassName: "w-12 text-center",
+      render: (_a, idx) => (
+        <span className="text-xs font-mono font-medium text-[var(--color-muted)]">
+          {typeof idx === "number" ? idx + 1 : "-"}
+        </span>
+      )
+    },
+    {
       key: "name",
       header: "Agent",
       sortable: true,
@@ -723,6 +734,17 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
 
   // Columns for Platform Agent Templates
   const defaultColumns: Column<AgentConfig>[] = [
+    {
+      key: "index",
+      header: "#",
+      className: "w-12 text-center",
+      headerClassName: "w-12 text-center",
+      render: (_a, idx) => (
+        <span className="text-xs font-mono font-medium text-[var(--color-muted)]">
+          {typeof idx === "number" ? idx + 1 : "-"}
+        </span>
+      )
+    },
     {
       key: "name",
       header: "Agent Template",
@@ -1155,7 +1177,8 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
           loadingMessage="Loading platform agent templates..."
           emptyTitle="No platform templates matching query"
           emptyDescription="Try clearing your search keyword."
-          pagination={false}
+          pagination={defaultAgentsList.length > 10}
+          pageSize={10}
         />
       </div>
 

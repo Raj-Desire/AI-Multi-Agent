@@ -511,18 +511,35 @@ export function Step3VoiceLanguage({
   }, [audioElement]);
 
   // Prefetch voice sample audio into memory for instantaneous (0ms) playback on click
-  const prefetchVoiceSample = async (voiceId: string, customText?: string): Promise<string | undefined> => {
+  const prefetchVoiceSample = async (voiceId: string, customText?: string, explicitLang?: string): Promise<string | undefined> => {
     const voiceObj =
       sonicVoices.find((v) => v.id === voiceId) ||
       POPULAR_SONIC_VOICES.find((v) => v.id === voiceId) ||
       AURA_VOICES.find((v) => v.id === voiceId);
 
+    const isSonicVoice = (voiceObj as any)?.engine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
+    const isMultilingualAura = voiceId.startsWith("aura-2");
+    const isMultilingual = isSonicVoice || isMultilingualAura;
+
+    // Determine target playback language:
+    // 1) Explicitly requested language
+    // 2) If selected voice is this voice, agent's configured language
+    // 3) If voice is multilingual, prioritize agent's configured language
+    // 4) Voice's native default language
+    const targetLang =
+      explicitLang ||
+      (selectedVoiceId === voiceId ? agentData.voice?.language : undefined) ||
+      (isMultilingual ? (agentData.voice?.language || (voiceObj as any)?.language || "en") : ((voiceObj as any)?.language || "en"));
+
+    // If custom text not supplied, use natural greeting in the target language for multilingual voices,
+    // or fall back to voice sample text if targetLang matches voice's native language.
     const sampleText =
       customText ||
-      (voiceObj as any)?.sampleText ||
-      `Hello! I am your AI voice agent. How can I help you today?`;
+      (targetLang && targetLang !== (voiceObj as any)?.language
+        ? (NATIVE_DEFAULT_GREETINGS[targetLang] || `Hello! I am your AI voice agent. How can I help you today?`)
+        : ((voiceObj as any)?.sampleText || NATIVE_DEFAULT_GREETINGS[targetLang || "en"] || `Hello! I am your AI voice agent. How can I help you today?`));
 
-    const cacheKey = `${voiceId}:${sampleText}`;
+    const cacheKey = `${voiceId}:${targetLang}:${sampleText}`;
     if (audioBlobCacheRef.current.has(cacheKey)) return audioBlobCacheRef.current.get(cacheKey);
 
     try {
@@ -533,8 +550,6 @@ export function Step3VoiceLanguage({
       const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
       const sampleUrl = apiBase.endsWith("/api/v1") ? `${apiBase}/voice/sample-speech` : `${apiBase}/api/v1/voice/sample-speech`;
 
-      const isSonicVoice = (voiceObj as any)?.engine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
-
       const response = await fetch(sampleUrl, {
         method: "POST",
         headers,
@@ -542,8 +557,7 @@ export function Step3VoiceLanguage({
           text: sampleText,
           voice: voiceId,
           provider: isSonicVoice ? "cartesia" : "deepgram",
-          // Sonic needs the language to pronounce non-English text correctly
-          language: customText ? agentData.voice?.language || "en" : (voiceObj as any)?.language || "en"
+          language: targetLang || "en"
         })
       });
 
@@ -576,7 +590,7 @@ export function Step3VoiceLanguage({
     setPlayingVoiceId(null);
   };
 
-  const playVoiceSample = async (voiceId: string, customText?: string) => {
+  const playVoiceSample = async (voiceId: string, customText?: string, explicitLang?: string) => {
     if (playingVoiceId === voiceId) {
       stopCurrentAudio();
       return;
@@ -592,15 +606,25 @@ export function Step3VoiceLanguage({
         POPULAR_SONIC_VOICES.find((v) => v.id === voiceId) ||
         AURA_VOICES.find((v) => v.id === voiceId);
 
+      const isSonicVoice = (voiceObj as any)?.engine === "sonic" || (!voiceId.startsWith("flux-") && !voiceId.startsWith("aura-") && voiceId.includes("-"));
+      const isMultilingualAura = voiceId.startsWith("aura-2");
+      const isMultilingual = isSonicVoice || isMultilingualAura;
+
+      const targetLang =
+        explicitLang ||
+        (selectedVoiceId === voiceId ? agentData.voice?.language : undefined) ||
+        (isMultilingual ? (agentData.voice?.language || (voiceObj as any)?.language || "en") : ((voiceObj as any)?.language || "en"));
+
       const sampleText =
         customText ||
-        (voiceObj as any)?.sampleText ||
-        `Hello! I am your AI voice agent. How can I help you today?`;
+        (targetLang && targetLang !== (voiceObj as any)?.language
+          ? (NATIVE_DEFAULT_GREETINGS[targetLang] || `Hello! I am your AI voice agent. How can I help you today?`)
+          : ((voiceObj as any)?.sampleText || NATIVE_DEFAULT_GREETINGS[targetLang || "en"] || `Hello! I am your AI voice agent. How can I help you today?`));
 
-      const cacheKey = `${voiceId}:${sampleText}`;
+      const cacheKey = `${voiceId}:${targetLang}:${sampleText}`;
       let audioUrl = audioBlobCacheRef.current.get(cacheKey);
       if (!audioUrl) {
-        audioUrl = await prefetchVoiceSample(voiceId, sampleText);
+        audioUrl = await prefetchVoiceSample(voiceId, sampleText, targetLang);
       }
 
       if (!audioUrl) {
@@ -642,7 +666,8 @@ export function Step3VoiceLanguage({
   };
 
   const handlePlaySample = () => {
-    playVoiceSample(selectedVoiceId);
+    const currentLang = agentData.voice?.language || "en";
+    playVoiceSample(selectedVoiceId, undefined, currentLang);
   };
 
   const handleVoiceChange = (voiceId: string, explicitLang?: string) => {
@@ -809,17 +834,28 @@ export function Step3VoiceLanguage({
   const filteredVoices = useMemo(() => {
     const rawList = selectedEngine === "sonic" ? POPULAR_SONIC_VOICES : AURA_VOICES;
 
-    return rawList.filter((v) => {
-      // Sonic language filter
-      if (selectedEngine === "sonic" && sonicLangFilter !== "all" && v.language !== sonicLangFilter) {
-        return false;
+    const filtered = rawList.filter((v) => {
+      const voiceEngine = (v as any).engine || (v.id.includes("-") && !v.id.startsWith("flux-") && !v.id.startsWith("aura-") ? "sonic" : "flux");
+      const isSonic = voiceEngine === "sonic";
+      const isMultilingualAura = v.id.startsWith("aura-2");
+      const supportedLangs = isSonic
+        ? ALL_SONIC_SUPPORTED_LANGUAGES.map((item) => item.lang)
+        : isMultilingualAura
+          ? ["en", "es", "fr", "de", "it", "ja"]
+          : [v.language || "en"];
+
+      // Language filter from modal toolbar
+      if (sonicLangFilter !== "all") {
+        if (!supportedLangs.includes(sonicLangFilter)) {
+          return false;
+        }
       }
 
       // 1. Gender / Language filter
       if (activeFilter === "female" && (v.gender || "").toLowerCase() !== "female") return false;
       if (activeFilter === "male" && (v.gender || "").toLowerCase() !== "male") return false;
-      if (activeFilter === "english" && (v.language !== "en" || (v.id.startsWith("aura-2-") && !v.id.endsWith("-en")))) return false;
-      if (activeFilter === "multilingual" && v.language === "en" && !v.id.startsWith("aura-2")) return false;
+      if (activeFilter === "english" && !supportedLangs.includes("en")) return false;
+      if (activeFilter === "multilingual" && !isSonic && !isMultilingualAura) return false;
 
       // 2. Use-case category (sales, support, ...) for Flux
       if (selectedEngine === "flux" && activeCategory !== "all" && !getVoiceCategories(v.id).includes(activeCategory as any)) return false;
@@ -845,6 +881,21 @@ export function Step3VoiceLanguage({
 
       return true;
     });
+
+    // Intelligent Sorting: When a specific language is filtered (e.g. Japanese, German, Hindi),
+    // prioritize voices whose native/primary calibrated language matches that filter!
+    // They are recommended at the top, while other multilingual voices that support it follow right below.
+    if (sonicLangFilter !== "all") {
+      return [...filtered].sort((a, b) => {
+        const aNative = a.language === sonicLangFilter;
+        const bNative = b.language === sonicLangFilter;
+        if (aNative && !bNative) return -1;
+        if (!aNative && bNative) return 1;
+        return 0;
+      });
+    }
+
+    return filtered;
   }, [selectedEngine, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
 
   return (
@@ -1002,15 +1053,16 @@ export function Step3VoiceLanguage({
             {isVoiceDropdownOpen && (
               <div className="absolute left-0 top-full mt-1.5 w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in text-xs font-sans">
                 {/* Top Bar with Selected Voice Pill and Close Icon */}
-                <div className="px-3.5 py-2.5 bg-[var(--color-surface-muted)]/50 border-b border-[var(--color-border)]/70 flex items-center justify-between">
+                <div className="px-3.5 py-2.5 bg-[var(--color-primary-light)]/40 border-b border-[var(--color-primary)]/20 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">
+                    <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
                       ✓
                     </span>
-                    <span className="font-bold text-xs text-[var(--color-heading)]">
-                      {selectedVoiceObj.name}
+                    <span className="font-bold text-xs text-[var(--color-primary)] flex items-center gap-1.5">
+                      <span>Currently Selected:</span>
+                      <span className="text-[var(--color-heading)] underline underline-offset-2 decoration-[var(--color-primary)]">{selectedVoiceObj.name}</span>
                     </span>
-                    <span className="text-[11px] text-[var(--color-muted)] flex items-center gap-1.5 font-medium bg-[var(--color-surface)] px-2 py-0.5 rounded border border-[var(--color-border)] shadow-2xs">
+                    <span className="text-[11px] text-[var(--color-primary)] flex items-center gap-1.5 font-semibold bg-[var(--color-surface)] px-2 py-0.5 rounded-full border border-[var(--color-primary)]/30 shadow-2xs">
                       <CountryFlag code={getVoiceCountryCode(selectedVoiceObj.id, selectedVoiceObj.language)} />
                       <span>+{selectedEngine === "sonic" ? ALL_SONIC_SUPPORTED_LANGUAGES.length - 1 : (selectedVoiceObj.id.startsWith("aura-2") ? 5 : 0)}</span>
                     </span>
@@ -1090,9 +1142,13 @@ export function Step3VoiceLanguage({
                       <button
                         type="button"
                         onClick={() => setIsModalLangFilterOpen(!isModalLangFilterOpen)}
-                        className="h-7 px-2 text-[11px] font-medium bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md text-[var(--color-heading)] flex items-center gap-1.5 hover:border-[var(--color-primary)] transition-all cursor-pointer"
+                        className={`h-7 px-2 text-[11px] font-medium border rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
+                          sonicLangFilter !== "all"
+                            ? "bg-[var(--color-primary-light)]/40 border-[var(--color-primary)] text-[var(--color-primary)] font-bold ring-1 ring-[var(--color-primary)]/20 shadow-2xs"
+                            : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)]"
+                        }`}
                       >
-                        {selectedEngine === "sonic" && sonicLangFilter !== "all" ? (
+                        {sonicLangFilter !== "all" ? (
                           <>
                             <CountryFlag code={LANG_TO_COUNTRY_CODE[sonicLangFilter] || "us"} />
                             <span className="truncate max-w-[85px]">
@@ -1105,7 +1161,7 @@ export function Step3VoiceLanguage({
                             <span>Any language</span>
                           </>
                         )}
-                        <ChevronDown className={`w-3 h-3 text-[var(--color-muted)] shrink-0 transition-transform ${isModalLangFilterOpen ? "rotate-180 text-[var(--color-primary)]" : ""}`} />
+                        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${isModalLangFilterOpen ? "rotate-180 text-[var(--color-primary)]" : "text-[var(--color-muted)]"}`} />
                       </button>
 
                       {isModalLangFilterOpen && (
@@ -1113,12 +1169,11 @@ export function Step3VoiceLanguage({
                           <button
                             type="button"
                             onClick={() => {
-                              if (selectedEngine === "sonic") setSonicLangFilter("all");
-                              else setActiveFilter("all");
+                              setSonicLangFilter("all");
                               setIsModalLangFilterOpen(false);
                             }}
                             className={`w-full px-2 py-1.5 rounded text-[11px] flex items-center justify-between gap-1.5 cursor-pointer text-left transition-colors ${
-                              (selectedEngine === "sonic" ? sonicLangFilter === "all" : activeFilter === "all")
+                              sonicLangFilter === "all"
                                 ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] font-bold"
                                 : "text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
                             }`}
@@ -1127,27 +1182,20 @@ export function Step3VoiceLanguage({
                               <Globe className="w-3.5 h-3.5 text-[var(--color-muted)]" />
                               <span>Any language (All)</span>
                             </div>
-                            {(selectedEngine === "sonic" ? sonicLangFilter === "all" : activeFilter === "all") && (
+                            {sonicLangFilter === "all" && (
                               <Check className="w-3 h-3 text-[var(--color-primary)]" />
                             )}
                           </button>
 
                           {SUPPORTED_LANGUAGES.map((lang) => {
-                            const isSelected = selectedEngine === "sonic" ? sonicLangFilter === lang.code : false;
+                            const isSelected = sonicLangFilter === lang.code;
                             const countryCode = LANG_TO_COUNTRY_CODE[lang.code] || "us";
                             return (
                               <button
                                 key={lang.code}
                                 type="button"
                                 onClick={() => {
-                                  if (selectedEngine === "sonic") setSonicLangFilter(lang.code);
-                                  else {
-                                    if (["es", "fr", "de", "it", "ja"].includes(lang.code)) {
-                                      setActiveFilter("multilingual");
-                                    } else {
-                                      setActiveFilter("all");
-                                    }
-                                  }
+                                  setSonicLangFilter(lang.code);
                                   setIsModalLangFilterOpen(false);
                                 }}
                                 className={`w-full px-2 py-1.5 rounded text-[11px] flex items-center justify-between gap-1.5 cursor-pointer text-left transition-colors ${
@@ -1223,18 +1271,25 @@ export function Step3VoiceLanguage({
                       const supportedList = getVoiceSupportedList(v.id, voiceEngine, v.language);
                       const extraCount = supportedList.length > 1 ? `+${supportedList.length - 1}` : "";
 
+                      const effectiveVoiceLang =
+                        sonicLangFilter !== "all"
+                          ? sonicLangFilter
+                          : isSelected
+                            ? (agentData.voice?.language || v.language || "en")
+                            : (v.language || "en");
+
                       return (
                         <div
                           key={v.id}
-                          onMouseEnter={() => prefetchVoiceSample(v.id)}
+                          onMouseEnter={() => prefetchVoiceSample(v.id, undefined, effectiveVoiceLang)}
                           onClick={() => {
-                            handleVoiceChange(v.id);
+                            handleVoiceChange(v.id, effectiveVoiceLang);
                             setIsVoiceDropdownOpen(false);
                           }}
-                          className={`px-4 py-3 flex items-center justify-between gap-3.5 cursor-pointer transition-all group select-none ${
+                          className={`px-4 py-3 flex items-center justify-between gap-3.5 cursor-pointer transition-all group select-none relative ${
                             isSelected
-                              ? "bg-[var(--color-primary-light)]/25 text-[var(--color-heading)]"
-                              : "hover:bg-[var(--color-surface-muted)]/70 text-[var(--color-heading)]"
+                              ? "bg-[var(--color-primary-light)]/40 border-l-4 border-l-[var(--color-primary)] text-[var(--color-heading)] shadow-xs"
+                              : "hover:bg-[var(--color-surface-muted)]/70 text-[var(--color-heading)] border-l-4 border-l-transparent"
                           }`}
                         >
                           {/* Far Left: Prominent Circular Play/Stop Button with Primary Brand Color */}
@@ -1243,14 +1298,16 @@ export function Step3VoiceLanguage({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                playVoiceSample(v.id);
+                                playVoiceSample(v.id, undefined, effectiveVoiceLang);
                               }}
                               className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer shadow-xs ${
                                 isVoicePlaying
                                   ? "bg-[var(--color-primary)] text-white ring-2 ring-[var(--color-primary)]/40 animate-pulse"
-                                  : "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white border border-[var(--color-primary)]/30"
+                                  : isSelected
+                                    ? "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover,var(--color-primary))] shadow-sm"
+                                    : "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white border border-[var(--color-primary)]/30"
                               }`}
-                              title={isVoicePlaying ? "Stop audio" : `Play ${v.name} voice preview`}
+                              title={isVoicePlaying ? "Stop audio" : `Play ${v.name} voice preview in ${effectiveVoiceLang.toUpperCase()}`}
                             >
                               {isVoicePlaying ? (
                                 <Square className="w-3.5 h-3.5 fill-current" />
@@ -1262,9 +1319,23 @@ export function Step3VoiceLanguage({
                             {/* Middle Details: Name + Persona + Gender Glyph + Wave Effect + Description */}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-xs text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition-colors">
+                                <span className={`font-bold text-xs transition-colors ${
+                                  isSelected
+                                    ? "text-[var(--color-primary)] font-extrabold"
+                                    : "text-[var(--color-heading)] group-hover:text-[var(--color-primary)]"
+                                }`}>
                                   {v.name}
                                 </span>
+                                {isSelected && (
+                                  <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-[var(--color-primary)] text-white shadow-2xs">
+                                    Selected
+                                  </span>
+                                )}
+                                {sonicLangFilter !== "all" && v.language === sonicLangFilter && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-0.5">
+                                    ★ Recommended Native
+                                  </span>
+                                )}
                                 <span className="text-[11px] text-[var(--color-muted)] font-normal">
                                   - {meta.tone || meta.bestFor}
                                 </span>
@@ -1307,12 +1378,19 @@ export function Step3VoiceLanguage({
                                 className={`flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-md border shadow-2xs font-medium cursor-pointer transition-colors ${
                                   openFlyoutVoiceId === v.id
                                     ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] border-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/20"
-                                    : "text-[var(--color-muted)] bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-heading)]"
+                                    : isSelected
+                                      ? "text-[var(--color-primary)] bg-[var(--color-surface)] border-[var(--color-primary)] font-semibold ring-1 ring-[var(--color-primary)]/20 shadow-xs"
+                                      : sonicLangFilter !== "all"
+                                        ? "text-[var(--color-heading)] bg-[var(--color-surface)] border-[var(--color-primary)]/50 font-semibold"
+                                        : "text-[var(--color-muted)] bg-[var(--color-surface)] border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-heading)]"
                                 }`}
                                 title="Click or hover to select supported regional languages"
                               >
-                                <CountryFlag code={primaryCountryCode} />
-                                {extraCount && <span className="font-semibold">{extraCount}</span>}
+                                <CountryFlag code={LANG_TO_COUNTRY_CODE[effectiveVoiceLang] || primaryCountryCode} />
+                                <span className={`font-mono text-[10px] uppercase font-bold ${isSelected || sonicLangFilter !== "all" ? "text-[var(--color-primary)]" : "text-[var(--color-heading)]"}`}>
+                                  {effectiveVoiceLang}
+                                </span>
+                                {extraCount && <span className="font-semibold text-[10px] opacity-75">{extraCount}</span>}
                               </div>
 
                               {/* Seamless Flyout Bridge (Zero-Gap) with Direct Selection */}
@@ -1326,22 +1404,23 @@ export function Step3VoiceLanguage({
                                   <div className="text-[11px] font-semibold text-[var(--color-muted)] mb-2 pb-1.5 border-b border-[var(--color-border)] flex items-center justify-between">
                                     <span>Select Language ({supportedList.length})</span>
                                     <span className="font-mono text-[10px] bg-[var(--color-surface-muted)] px-1.5 py-0.2 rounded border border-[var(--color-border)]">
-                                      Active: {(agentData.voice?.language || "en").toUpperCase()}
+                                      Active: {effectiveVoiceLang.toUpperCase()}
                                     </span>
                                   </div>
                                   <div className="max-h-56 overflow-y-auto scrollbar-thin space-y-0.5 pr-1">
                                     {supportedList.map((item, idx) => {
-                                      const isLangActive = (agentData.voice?.language || "en") === item.lang;
+                                      const isLangActive = effectiveVoiceLang === item.lang;
                                       return (
-                                        <button
-                                          key={idx}
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleVoiceChange(v.id, item.lang);
-                                            setOpenFlyoutVoiceId(null);
-                                            setIsVoiceDropdownOpen(false);
-                                          }}
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleVoiceChange(v.id, item.lang);
+                                              setOpenFlyoutVoiceId(null);
+                                              // Keep voice selection popup open so user can immediately test preview
+                                              prefetchVoiceSample(v.id, undefined, item.lang);
+                                            }}
                                           className={`w-full flex items-center justify-between gap-2 py-1.5 px-2 rounded-md text-xs transition-colors cursor-pointer text-left ${
                                             isLangActive
                                               ? "bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] font-bold"
@@ -1376,10 +1455,12 @@ export function Step3VoiceLanguage({
                             </button>
 
                             {/* Selection Indicator */}
-                            <div className="w-5 h-5 flex items-center justify-center">
-                              {isSelected && (
-                                <Check className="w-4 h-4 text-[var(--color-primary)] stroke-[2.5]" />
-                              )}
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              {isSelected ? (
+                                <div className="w-6 h-6 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center shadow-xs">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </div>

@@ -168,21 +168,24 @@ export function DataTable<T extends Record<string, any>>({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {paginatedData.map((item, rowIdx) => (
-                  <tr
-                    key={item.id || rowIdx}
-                    className="hover:bg-[var(--color-surface-muted)]/40 transition-colors"
-                  >
-                    {columns.map((col) => (
-                      <td
-                        key={col.key}
-                        className={`px-4 py-2.5 text-sm text-[var(--color-text)] align-middle ${col.className || ""}`}
-                      >
-                        {col.render ? col.render(item, rowIdx) : item[col.key]}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {paginatedData.map((item, rowIdx) => {
+                  const globalIdx = pagination ? (currentPage - 1) * pageSize + rowIdx : rowIdx;
+                  return (
+                    <tr
+                      key={item.id || rowIdx}
+                      className="hover:bg-[var(--color-surface-muted)]/40 transition-colors"
+                    >
+                      {columns.map((col) => (
+                        <td
+                          key={col.key}
+                          className={`px-4 py-2.5 text-sm text-[var(--color-text)] align-middle ${col.className || ""}`}
+                        >
+                          {col.render ? col.render(item, globalIdx) : item[col.key]}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

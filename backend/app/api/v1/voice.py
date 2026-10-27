@@ -116,10 +116,11 @@ _FAREWELL_PHRASES = (
     # English
     "goodbye", "good bye", "bye bye", "bye now", "take care", "have a great day", "have a good day",
     "have a nice day", "have a wonderful day", "have a great evening", "have a good evening", "talk to you later",
-    "see you later", "see you soon",
+    "see you later", "see you soon", "talk to you then", "speak with you then", "speak to you then",
+    "call you then", "reach out then", "looking forward to it", "talk soon",
     # Hindi / Gujarati / romanized
-    "अलविदा", "शुभ दिन", "दिन शुभ", "आपका दिन अच्छा", "आपका दिन शुभ", "फिर मिलेंगे",
-    "આવજો", "સારો દિવસ", "ધ્યાન રાખજો", "ફરી મળીશું",
+    "अलविदा", "शुभ दिन", "दिन शुभ", "आपका दिन अच्छा", "आपका दिन शुभ", "फिर मिलेंगे", "तब बात करते हैं", "तब कॉल करता हूँ",
+    "આવજો", "સારો દિવસ", "ધ્યાન રાખજો", "ફરી મળીશું", "ત્યારે વાત કરીએ",
     "alvida", "phir milenge",
     # Spanish / French / German / Portuguese
     "adiós", "adios", "hasta luego", "hasta pronto", "que tengas un buen día",
