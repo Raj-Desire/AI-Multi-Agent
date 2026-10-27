@@ -233,9 +233,9 @@ class AgentRuntimeSettings(BaseModel):
     barge_in_enabled: bool = True
     interruption_sensitivity: float = 0.8
     turn_delay_ms: int = Field(default=0, description="Natural conversational acoustic delay before speech synthesis output begins (ms)")
-    silence_timeout: int = 8  # Seconds of silence before asking reprompt message (natural telephone pacing)
+    silence_timeout: int = 12  # Seconds of silence before asking reprompt message (callers often pause 10s+ to think)
     silence_reprompt_message: Optional[str] = "Are you still there? I'm here if you have any questions."
-    silence_hangup_delay: int = 6  # Seconds after reprompt before concluding and hanging up
+    silence_hangup_delay: int = 10  # Seconds after reprompt before concluding and hanging up
     maximum_call_duration: int = 300  # Max total call duration in seconds
     conclusion_message: Optional[str] = "Thank you for your time. Have a great day!"
     customer_response_timeout: int = 15
@@ -954,8 +954,8 @@ HOW A REAL SENIOR HUMAN TALKS (READ THIS CAREFULLY):
      * NEVER give a vague answer like "I'm here to see if you have questions" or "What's on your mind?".
      * State directly: "I'm reaching out because we help companies develop custom software, mobile apps, and automation systems. I wanted to see if your team has any development initiatives planned this quarter."
 
-3. RADICAL BREVITY (10 TO 20 WORDS PER TURN):
-   - Real people do NOT monologue on the phone. Never say more than 1 or 2 short conversational sentences.
+3. RADICAL BREVITY (10 TO 25 WORDS PER TURN):
+   - Real people do NOT monologue on the phone. Never say more than 1 or 2 short conversational sentences: ONE highlight, then ONE question. Never read out a list of three or more items.
    - Speak in natural, everyday conversational language. Skip corporate jargon.
    - Use natural contractions always: "we've", "we'll", "it's", "that's", "don't", "I'd".
 
@@ -972,9 +972,10 @@ HOW A REAL SENIOR HUMAN TALKS (READ THIS CAREFULLY):
    - Example (SharePoint/M365): "Oh, absolutely. We've set up intranets and document governance for dozens of companies so data stays right inside their own Microsoft tenant. What's the main challenge you're trying to solve there?"
    - Example (AI & Agents): "We actually just delivered an AI assistant with full audit trails for a legal team, and another for customer support. What kind of workflow were you thinking of automating?"
 
-6. NATURAL MEETING INVITATION (NOT A PUSHY SALES PITCH):
-   - Only when they show interest in a specific tech or project, suggest a casual chat:
-   - "I'd love to have one of our senior architects hop on a quick 15-minute call with you to look at your specs and bounce ideas around. Would later this week work for you?"
+6. NATURAL MEETING INVITATION & LEAD CAPTURE (DO NOT END A GOOD CALL WITHOUT IT):
+   - After you have answered 2 or 3 questions on the same topic, or the caller shows clear interest in a specific tech or project, suggest a casual chat:
+   - "We offer a free one-hour consultation with one of our solution architects to look at your needs. Shall I set that up?"
+   - If they agree, collect ONE item per turn: name, company, email, what they need, and the best time. Then confirm in one sentence.
 
 7. HANDLING "CALL ME LATER" / BUSY (CONFIRM & DISCONNECT DIRECTLY):
    - If the customer says "Can you call me later?", "I'm busy", or "not right now":

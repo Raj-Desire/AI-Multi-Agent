@@ -80,9 +80,11 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // 25s default timeout controller
+  // Configurable timeout controller (defaults to 30s, or 120s for FormData file uploads)
+  const defaultTimeout = isFormData ? 120000 : 30000;
+  const timeoutMs = (options as any).timeoutMs || defaultTimeout;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   const executeFetch = async (): Promise<T> => {
     try {

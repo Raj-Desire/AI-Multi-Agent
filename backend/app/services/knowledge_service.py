@@ -4,6 +4,8 @@ Orchestrates document uploading, binary parsing, vector chunk generation,
 document library management, and real-time semantic RAG retrieval for voice calls.
 """
 
+import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Union
@@ -150,6 +152,28 @@ class KnowledgeService:
         org_id = organization_id.organization_id if isinstance(organization_id, TenantContext) else organization_id
         return await self.repo.delete_document(org_id, document_id)
 
+    _SPOKEN_TERMS = (
+        (re.compile(r"\bn\.?\s*(?:eight|8|it|a)\s*n\b", re.I), "n8n"),
+        (re.compile(r"\bshare\s+point\b", re.I), "SharePoint"),
+        (re.compile(r"\bpower\s+(?:ops|apps?)\b", re.I), "Power Apps"),
+        (re.compile(r"\bpower\s+b\.?\s*i\b", re.I), "Power BI"),
+        (re.compile(r"\bs\.?\s*p\.?\s*f\.?\s*x\b", re.I), "SPFx"),
+        (re.compile(r"\bdynamics\s+365\b|\bdynamic\s+365\b", re.I), "Dynamics 365"),
+    )
+
+    @classmethod
+    def _normalize_spoken_terms(cls, query: str) -> str:
+        """Maps how speech recognition hears product names ('n eight n', 'share point') to the written term."""
+        for pattern, written in cls._SPOKEN_TERMS:
+            query = pattern.sub(written, query)
+        # Speech recognition hears "intranet" as "internet". Fix it only when the caller is asking about what we
+        # built (not about internet connectivity, which is genuinely out of scope).
+        if re.search(r"\binternet\b", query, re.I) \
+                and re.search(r"\b(built|build|made|done|project|projects|portal|example|examples|experience|sharepoint|show)\b", query, re.I) \
+                and not re.search(r"\b(service|services|provider|connection|broadband|wifi|wi-fi|plan|plans|speed)\b", query, re.I):
+            query = re.sub(r"\binternet\b", "intranet", query, flags=re.I)
+        return query
+
     async def search_knowledge(
         self,
         organization_id: Union[str, TenantContext],
@@ -166,42 +190,65 @@ class KnowledgeService:
             return []
 
         org_id = organization_id.organization_id if isinstance(organization_id, TenantContext) else organization_id
-        query_embedding = await VectorEmbeddingService.get_embedding(query.strip())
+        query = self._normalize_spoken_terms(query.strip())
+        query_embedding = await VectorEmbeddingService.get_embedding(query)
         results = await self.repo.search_vector_chunks(
             org_id=org_id,
             query_embedding=query_embedding,
             top_k=top_k,
             min_similarity=min_similarity,
             category=category,
-            document_ids=document_ids
+            document_ids=document_ids,
+            query_text=query
         )
         return results
+
+    async def warm_up(self, organization_id: str, document_ids: Optional[List[str]] = None) -> None:
+        """
+        Called when a call starts: opens the embedding connection and loads the tenant's chunks into memory so the
+        first real caller question does not pay for a cold TLS handshake and a database read.
+        """
+        try:
+            await asyncio.gather(
+                VectorEmbeddingService.get_embedding("warm up"),
+                self.search_knowledge(organization_id, "warm up", top_k=1, document_ids=document_ids),
+            )
+        except Exception:
+            pass
 
     async def get_grounding_context_for_call(
         self,
         organization_id: Union[str, TenantContext],
         user_transcript: str,
-        document_ids: Optional[List[str]] = None
+        document_ids: Optional[List[str]] = None,
+        top_k: int = 3,
+        max_words: int = 450
     ) -> Optional[str]:
         """
-        Retrieves relevant document excerpts based on user utterances for live injection.
+        Retrieves the document excerpts that answer the caller's question, for the live `search_knowledge` tool.
+        Output is capped (~450 words) so the model can read it and start speaking quickly.
         """
         org_id = organization_id.organization_id if isinstance(organization_id, TenantContext) else organization_id
         matches = await self.search_knowledge(
             organization_id=org_id,
             query=user_transcript,
-            top_k=2,
-            min_similarity=0.30,
+            top_k=top_k,
+            min_similarity=0.25,
             document_ids=document_ids
         )
         if not matches:
             return None
 
-        excerpts = []
+        excerpts: List[str] = []
+        used = 0
         for m in matches:
-            excerpts.append(f"Document ({m.document_name}): {m.content}")
+            words = m.content.split()
+            if excerpts and used + len(words) > max_words:
+                break
+            excerpts.append(m.content)
+            used += len(words)
 
-        return "\n\n".join(excerpts)
+        return ("\n\n---\n\n").join(excerpts)
 
 
 # Global singleton instance

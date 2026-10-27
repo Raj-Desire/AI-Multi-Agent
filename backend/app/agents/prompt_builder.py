@@ -12,6 +12,9 @@ from app.voice.language_support import resolve_multilingual
 from app.voice.language_switcher import language_name
 
 
+PROMPT_CHAR_LIMIT = 24000
+
+
 class VoicePromptBuilder:
     """Builds human-grade, voice-specific system prompts from an AgentConfiguration."""
 
@@ -378,10 +381,32 @@ class VoicePromptBuilder:
             try:
                 from app.repositories.knowledge_repository import knowledge_repository
                 org_id = getattr(config, "organization_id", "global") or "global"
+                # Small documents fit in the prompt. Large ones (a 70+ page knowledge base) cannot: pasting only the
+                # first chunks gives the model the preamble and nothing else, so those are answered through the live
+                # `search_knowledge` tool instead.
+                small_doc_ids = []
+                large_doc_names = []
+                for _doc_id in config.attached_document_ids:
+                    _meta = knowledge_repository.get_document_by_id_sync(org_id, _doc_id)
+                    if _meta and (_meta.total_chunks or 0) > 6:
+                        large_doc_names.append(_meta.title or _meta.file_name)
+                    else:
+                        small_doc_ids.append(_doc_id)
+                if large_doc_names:
+                    sections.append(
+                        "[KNOWLEDGE BASE LOOKUP - MANDATORY]\n"
+                        f"- Your verified company knowledge ({', '.join(large_doc_names)}) is too large to be listed here. "
+                        "You have a `search_knowledge` function. For ANY question about services, projects, case studies, "
+                        "products, technologies, industries, team or company facts, call `search_knowledge` FIRST with the caller's "
+                        "topic, then answer ONLY from what it returns.\n"
+                        "- If the result contains a 'Spoken brief', say it almost word for word, then offer more detail.\n"
+                        "- If nothing relevant is returned, say the solution team will follow up. Never invent projects, clients or numbers.\n"
+                        "- Say a short natural filler (for example 'Let me check that for you') before the lookup."
+                    )
                 attached_chunks = knowledge_repository.get_chunks_for_document_ids_sync(
                     org_id=org_id,
-                    document_ids=config.attached_document_ids,
-                    max_chunks_per_doc=5
+                    document_ids=small_doc_ids,
+                    max_chunks_per_doc=6
                 )
                 if attached_chunks:
                     doc_titles_seen = set()
@@ -790,9 +815,11 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
             "  * You represent and assist strictly within your defined business services and expertise.\n"
             "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call or refused to talk.\n"
-            "  * Instead, simply and politely acknowledge that this specific service is not available from your end in ONE short, friendly sentence, and adapt strictly to the service the caller actually inquired about earlier:\n"
-            "    - In Hindi: 'माफ़ कीजिए, हम [असंबंधित विषय] में डील नहीं करते हैं। आपके [ग्राहक की रुचि / सेवा] के संबंध में क्या आप कुछ और जानना चाहेंगे?'\n"
-            "    - In English: 'I am sorry, we do not provide or deal with [unrelated topic]; our team specializes in [your authorized services]. How can I assist with your [customer topic]?'\n"
+            "  * LOOK BEFORE YOU DECLINE: if you have a `search_knowledge` function, call it with the caller's topic BEFORE saying you do not offer something. Speech recognition garbles product names (for example 'n eight n' is n8n, 'power apps' may be heard as 'power ops'), so search using the most likely real term. Decline ONLY if the search returns nothing relevant. A question like 'what other services do you offer?' is NEVER off-topic: answer it with 2-3 of your services in one sentence.\n"
+            "  * For something genuinely not covered, acknowledge it in ONE short, friendly sentence, offer a follow-up from the solution team instead of a flat refusal, and vary your wording (never repeat the same sentence twice in one call):\n"
+            "    - In Hindi: 'माफ़ कीजिए, यह हमने अभी तक नहीं किया है, लेकिन हमारी टीम इसे कन्फ़र्म कर सकती है। क्या मैं एक छोटी कॉल तय कर दूँ?'\n"
+            "    - In English: \"That's not something we've delivered so far, but I can have our solution team confirm. Want me to set up a quick call?\" or \"Hmm, that one's outside what we usually build, though our team can tell you for sure. Shall I arrange a quick chat?\"\n"
+            "    - Only for clearly unrelated consumer topics (internet service, loans, phones): \"Ah, that's not our area, we focus on [your authorized services]. Is there a software or Microsoft project on your mind?\"\n"
             "  * NEVER repeat a fixed stock pitch (such as asking about 'automation' if the customer already asked for 'custom software'). Always honor the customer's prior statements and context!\n"
             "  * CRITICAL: If the caller explicitly states they do NOT want to talk or are not interested, DO NOT use this redirection or apology. Immediately follow the Universal Refusal Rule by speaking only the closing farewell and concluding."
         )
@@ -842,9 +869,11 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation.
 11. POLITE SERVICE BOUNDARY & REDIRECTION (FOR OFF-TOPIC PRODUCT INQUIRIES ONLY): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
 - NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call or refused to talk.
-- Politely clarify that this specific service is not available and ask how you can help with your actual services:
-  * Hindi: "माफ़ कीजिए, हम [असंबंधित सेवा] में डील नहीं करते हैं, हम केवल [कंपनी की सेवाएं] में सहायता करते हैं। क्या आपके बिज़नेस में इससे संबंधित कोई आवश्यकता है?"
-  * English: "I'm sorry, we do not provide or deal with [unrelated topic]; our team specializes in [authorized services]. How can I assist you with [your services] today?"
+- FIRST, if you have a `search_knowledge` function, call it with the caller's topic (use the likely real term: speech recognition turns "n eight n" into n8n). Questions such as "what other services do you provide?" are NEVER off-topic: answer with 2-3 of your services. Decline only if the search returns nothing relevant.
+- If it is truly not covered, say so in one short friendly sentence, offer a follow-up from the solution team, and vary your wording (never repeat the same sentence twice in a call):
+  * Hindi: "माफ़ कीजिए, यह हमने अभी तक नहीं किया है, लेकिन हमारी टीम इसे कन्फ़र्म कर सकती है। क्या मैं एक छोटी कॉल तय कर दूँ?"
+  * English: "That's not something we've delivered so far, but I can have our solution team confirm. Want me to set up a quick call?"
+  * Clearly unrelated consumer topics only (internet service, loans, phones): "Ah, that's not our area, we focus on [authorized services]. Is there a software or Microsoft project on your mind?"
 - CRITICAL EXCEPTION: If the caller says they do NOT want to talk or are not interested, Rule 12 (Universal Refusal) takes ABSOLUTE PRECEDENCE. NEVER use Rule 11's apology or redirection question when the caller refuses to talk!
 12. UNIVERSAL REFUSAL & IMMEDIATE CALL CONCLUSION (ALL 43 LANGUAGES & SCRIPTS - HIGHEST PRECEDENCE):
 - This rule OVERRIDES all other rules, including Rule 11 (Redirection).
@@ -893,15 +922,17 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 
         # If custom system_prompt is provided, prioritize it directly while ensuring personality, language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
+            # The prompt is cut at the tail when over the limit, so the facts the agent must answer from (knowledge
+            # and the live-lookup instruction) come right after its own instructions instead of after ~20k of rules.
             parts = [
                 config.system_prompt.strip(),
+                knowledge_section,
                 personality_section,
                 guardrails_section,
                 telephony_rules,
                 temporal_rule,
                 language_rule,
                 workflow_stages_rule,
-                knowledge_section,
                 length_rule,
                 acoustics_rule,
                 turn_taking_rule,
@@ -951,12 +982,12 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
         ).strip()
 
         # Telephony Performance Optimization: Deepgram managed LLMs have a hard 25,000 character limit.
-        # Keeping the active prompt under 16,000 characters eliminates LLM prefill delay, reduces TTFT (Time-To-First-Token)
-        # by 2-3x, and ensures instantaneous conversational replies.
+        # The full prompt (rules + knowledge + persona) is ~35k characters; the tail beyond the limit is dropped, so section
+        # ORDER decides what the model sees. 24,000 keeps the knowledge, refusal and language rules inside the limit.
         # The language rule goes LAST (the model weighs the end of a long prompt most) and is added after trimming
         # so it can never be cut off. It overrides any earlier "speak only X" wording, including a saved prompt.
         language_override = VoicePromptBuilder._build_language_override(config)
-        limit = 18000 - (len(language_override) + 2 if language_override else 0)
+        limit = PROMPT_CHAR_LIMIT - (len(language_override) + 2 if language_override else 0)
         if len(resolved_prompt) > limit:
             resolved_prompt = resolved_prompt[:limit]
         if language_override:

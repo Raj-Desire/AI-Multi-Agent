@@ -5,6 +5,8 @@ with an ultra-fast In-Memory Vector Cosine matrix fallback for local development
 """
 
 import asyncio
+import re
+import time
 from typing import List, Optional, Dict, Any, Tuple
 from app.models.knowledge_document import DocumentMetadata, DocumentChunk, KnowledgeSearchResult
 from app.services.vector_embedding_service import VectorEmbeddingService
@@ -196,11 +198,28 @@ class KnowledgeRepository:
             container = get_knowledge_chunks_container()
             if not container:
                 return
-            for chk in chunks:
-                try:
-                    container.upsert_item(body=chk.model_dump(mode="json"))
-                except Exception as e:
-                    print(f"[KnowledgeRepository] Error saving chunk {chk.id}: {e}")
+            from concurrent.futures import ThreadPoolExecutor
+            failed: List[str] = []
+
+            def _upsert_one(chk_item):
+                last_err = None
+                for _ in range(3):
+                    try:
+                        container.upsert_item(body=chk_item.model_dump(mode="json"))
+                        return
+                    except Exception as e:  # throttling (429) or transient network errors
+                        last_err = e
+                        time.sleep(0.5)
+                print(f"[KnowledgeRepository] Error saving chunk {chk_item.id}: {last_err}")
+                failed.append(chk_item.id)
+
+            # Up to 10 concurrent writers (sequential writes of 100+ chunks took 30s+).
+            workers = min(10, max(2, len(chunks)))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                list(executor.map(_upsert_one, chunks))
+            if failed:
+                # Never report a document as INDEXED when part of it is missing from the vector store.
+                raise RuntimeError(f"{len(failed)} of {len(chunks)} knowledge chunks could not be saved to the database.")
 
         await asyncio.to_thread(_sync_save)
 
@@ -222,6 +241,47 @@ class KnowledgeRepository:
         merged.update(self._chunk_memory_store.get(org_id, {}))
         return list(merged.values())
 
+    @staticmethod
+    def _cosine_scores(query_embedding: List[float], chunks: List[DocumentChunk]) -> List[float]:
+        """Cosine similarity of the query against every chunk (numpy matrix product when available)."""
+        try:
+            import numpy as np
+            q = np.asarray(query_embedding, dtype=np.float32)
+            dim = q.shape[0]
+            matrix = np.zeros((len(chunks), dim), dtype=np.float32)
+            for i, c in enumerate(chunks):
+                if len(c.embedding) == dim:
+                    matrix[i] = c.embedding
+            norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(q)
+            norms[norms == 0] = 1.0
+            return np.clip(matrix @ q / norms, 0.0, 1.0).tolist()
+        except ImportError:
+            return [VectorEmbeddingService.cosine_similarity(query_embedding, c.embedding) for c in chunks]
+
+    _STOPWORDS = frozenset(
+        "the and for with that this what which about have your you are can does do tell please like any "
+        "from into how would could should there their them they will just some more also been being".split()
+    )
+
+    @classmethod
+    def _lexical_scores(cls, query_text: str, chunks: List[DocumentChunk]) -> List[float]:
+        """Fraction (0..1) of the query's distinctive terms present in each chunk; exact record IDs count double."""
+        terms = {t for t in re.findall(r"[a-z0-9][a-z0-9+#.\-]*", query_text.lower()) if len(t) > 2 and t not in cls._STOPWORDS}
+        if not terms:
+            return [0.0] * len(chunks)
+        ids = {t for t in terms if re.fullmatch(r"[a-z]{2,5}-\d{1,3}", t)}
+        out = []
+        for c in chunks:
+            hay = f"{c.section_title or ''} {c.content}".lower()
+            hits = sum(1 for t in terms if t in hay)
+            score = hits / len(terms)
+            if ids and any(i in hay for i in ids):
+                score = min(1.0, score + 0.5)
+                if any(i in (c.section_title or "").lower() for i in ids):
+                    score += 1.0  # the record itself, not an index/table that merely lists its ID
+            out.append(score)
+        return out
+
     async def search_vector_chunks(
         self,
         org_id: str,
@@ -229,7 +289,8 @@ class KnowledgeRepository:
         top_k: int = 3,
         min_similarity: float = 0.50,
         category: Optional[str] = None,
-        document_ids: Optional[List[str]] = None
+        document_ids: Optional[List[str]] = None,
+        query_text: Optional[str] = None
     ) -> List[KnowledgeSearchResult]:
         """
         Executes vector similarity search against tenant's document chunks.
@@ -275,15 +336,19 @@ class KnowledgeRepository:
         if not all_chunks:
             return []
 
-        # 2. Compute Cosine Similarities in parallel
-        scored_results: List[Tuple[float, DocumentChunk]] = []
-        for chk in all_chunks:
-            if chk.embedding:
-                sim = VectorEmbeddingService.cosine_similarity(query_embedding, chk.embedding)
-                if sim >= min_similarity:
-                    scored_results.append((sim, chk))
+        # 2. Score every chunk: cosine similarity (vectorised) plus a small lexical boost for exact terms/IDs
+        candidates = [chk for chk in all_chunks if chk.embedding]
+        if not candidates:
+            return []
+        sims = self._cosine_scores(query_embedding, candidates)
+        lexical = self._lexical_scores(query_text, candidates) if query_text else [0.0] * len(candidates)
 
-        # 3. Sort descending by similarity score
+        scored_results: List[Tuple[float, DocumentChunk]] = []
+        for chk, sim, lex in zip(candidates, sims, lexical):
+            if sim >= min_similarity or lex >= 0.5:
+                scored_results.append((sim + 0.15 * lex, chk))
+
+        # 3. Sort descending by combined score
         scored_results.sort(key=lambda x: x[0], reverse=True)
 
         # 4. Resolve document metadata for matches
@@ -302,7 +367,7 @@ class KnowledgeRepository:
                 document_id=chk.document_id,
                 document_name=doc_name,
                 content=chk.content,
-                similarity_score=round(score, 4),
+                similarity_score=round(min(score, 1.0), 4),
                 page_number=chk.page_number,
                 section_title=chk.section_title,
                 category=doc_cat

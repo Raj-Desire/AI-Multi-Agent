@@ -11,8 +11,25 @@ import hashlib
 from typing import List, Optional
 import httpx
 import logging
+from collections import OrderedDict
 
 logger = logging.getLogger("vector_embedding_service")
+
+
+_azure_client: Optional[httpx.AsyncClient] = None
+_QUERY_CACHE_MAX = 256
+_query_cache: "OrderedDict[str, List[float]]" = OrderedDict()
+
+
+def _get_azure_client() -> httpx.AsyncClient:
+    """Shared keep-alive client: a fresh TLS handshake per query costs ~0.8s, which is audible on a phone call."""
+    global _azure_client
+    if _azure_client is None or _azure_client.is_closed:
+        _azure_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(max_keepalive_connections=5, keepalive_expiry=120.0),
+        )
+    return _azure_client
 
 
 class VectorEmbeddingService:
@@ -29,8 +46,17 @@ class VectorEmbeddingService:
             return [0.0] * 1536
 
         # Preferred: Azure OpenAI embeddings deployment (real semantic vectors)
+        cache_key = clean_text[:8000].lower()
+        cached = _query_cache.get(cache_key)
+        if cached is not None:
+            _query_cache.move_to_end(cache_key)
+            return cached
+
         azure_vecs = await VectorEmbeddingService._azure_embeddings([clean_text[:8000]])
         if azure_vecs:
+            _query_cache[cache_key] = azure_vecs[0]
+            if len(_query_cache) > _QUERY_CACHE_MAX:
+                _query_cache.popitem(last=False)
             return azure_vecs[0]
 
         effective_key = api_key or os.getenv("OPENAI_API_KEY", "")
@@ -79,15 +105,15 @@ class VectorEmbeddingService:
         url = f"{endpoint}/openai/deployments/{deployment}/embeddings?api-version={version}"
         vectors: List[List[float]] = []
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                for start in range(0, len(texts), 16):
-                    batch = texts[start:start + 16]
-                    resp = await client.post(url, headers={"api-key": key, "Content-Type": "application/json"}, json={"input": batch})
-                    if resp.status_code != 200:
-                        logger.warning(f"[VectorEmbedding] Azure embeddings returned {resp.status_code}: {resp.text[:300]}")
-                        return None
-                    data = sorted(resp.json()["data"], key=lambda d: d["index"])
-                    vectors.extend(d["embedding"] for d in data)
+            client = _get_azure_client()
+            for start in range(0, len(texts), 16):
+                batch = texts[start:start + 16]
+                resp = await client.post(url, headers={"api-key": key, "Content-Type": "application/json"}, json={"input": batch})
+                if resp.status_code != 200:
+                    logger.warning(f"[VectorEmbedding] Azure embeddings returned {resp.status_code}: {resp.text[:300]}")
+                    return None
+                data = sorted(resp.json()["data"], key=lambda d: d["index"])
+                vectors.extend(d["embedding"] for d in data)
         except Exception as e:
             logger.warning(f"[VectorEmbedding] Azure embeddings request failed: {e}")
             return None

@@ -1,10 +1,14 @@
 """
 Silence timeout shared by phone calls and the live preview: ask "are you still there?" after the configured
 silence, then conclude and hang up if there is still no answer.
+
+Only real silence counts. Time while the caller is talking (however long) never counts, and neither does the time
+the agent needs to work out its reply after the caller finishes.
 """
 
 MIN_SILENCE_SECONDS = 3.0
-STUCK_SPEAKING_SECONDS = 15.0  # a caller turn this long with no transcript is noise, not speech
+STUCK_SPEAKING_SECONDS = 45.0  # a "speaking" flag this old with no transcript is noise; real monologues are shorter
+AGENT_REPLY_GRACE_SECONDS = 12.0  # after the caller finishes, the agent owes a reply: allow it this long (lookups, LLM)
 
 
 def silence_action(
@@ -26,6 +30,11 @@ def silence_action(
         return "none"
     last_activity = max(last_user_speech_time, agent_speech_done_at)
     if not has_reprompted:
-        return "reprompt" if now - last_activity >= max(MIN_SILENCE_SECONDS, silence_timeout) else "none"
+        threshold = max(MIN_SILENCE_SECONDS, silence_timeout)
+        if last_user_speech_time > agent_speech_done_at:
+            # The caller spoke last, so the next sound is owed by the agent: silence here is the agent thinking,
+            # not the caller being absent.
+            threshold = max(threshold, AGENT_REPLY_GRACE_SECONDS)
+        return "reprompt" if now - last_activity >= threshold else "none"
     quiet_since = max(last_activity, reprompt_injected_at)
     return "conclude" if now - quiet_since >= max(MIN_SILENCE_SECONDS, hangup_delay) else "none"

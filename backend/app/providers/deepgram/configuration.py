@@ -4,7 +4,7 @@ Follows Deepgram Voice Agent SettingsConfiguration specification (Agent V1 API).
 """
 
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class DeepgramAudioInput(BaseModel):
@@ -93,6 +93,18 @@ class DeepgramSettingsConfiguration(BaseModel):
     type: str = "Settings"
     audio: DeepgramAudioConfig = Field(default_factory=DeepgramAudioConfig)
     agent: DeepgramAgentConfig
+
+    # Server-side scope (organization + attached document ids) for the live knowledge search tool.
+    # Private attribute: never serialized into the payload sent to the voice engine.
+    _knowledge_scope: Optional[Dict[str, Any]] = PrivateAttr(default=None)
+
+    @property
+    def knowledge_scope(self) -> Optional[Dict[str, Any]]:
+        return self._knowledge_scope
+
+    @knowledge_scope.setter
+    def knowledge_scope(self, value: Optional[Dict[str, Any]]) -> None:
+        self._knowledge_scope = value
 
 
 class DeepgramInjectAgentMessage(BaseModel):

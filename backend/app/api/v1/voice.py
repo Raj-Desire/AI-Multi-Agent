@@ -129,6 +129,8 @@ _FAREWELL_PHRASES = (
     "tchau", "até logo",
 )
 _FAREWELL_WORD = re.compile(r"\b(bye|cya)\b")
+# "have a great conversation", "have a lovely evening", "have a wonderful week": any "have a <nice adjective> <word>" closing
+_FAREWELL_WISH = re.compile(r"\bhave an? (great|good|nice|wonderful|lovely|fantastic|amazing|productive|pleasant|safe)\s+\w+")
 
 
 def detect_conversation_conclusion(text: str) -> bool:
@@ -149,7 +151,7 @@ def detect_conversation_conclusion(text: str) -> bool:
     last = (sentences[-1] if sentences else stripped).lower()
     if "?" in last:
         return False
-    return any(p in last for p in _FAREWELL_PHRASES) or bool(_FAREWELL_WORD.search(last))
+    return any(p in last for p in _FAREWELL_PHRASES) or bool(_FAREWELL_WORD.search(last)) or bool(_FAREWELL_WISH.search(last))
 
 
 @router.websocket("/telemetry/{call_session_id}")

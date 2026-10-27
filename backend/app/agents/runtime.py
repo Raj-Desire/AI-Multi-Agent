@@ -45,6 +45,26 @@ def _sonic_language(multilingual: bool, voice_lang: Optional[str]) -> Optional[s
     return (voice_lang or "en").split("-")[0]
 
 
+SEARCH_KNOWLEDGE_FUNCTION = {
+    "name": "search_knowledge",
+    "description": (
+        "Look up verified company facts in the knowledge base: services, projects and case studies, products, "
+        "technologies, industries, team skills, FAQs. Call this BEFORE answering any question about what the "
+        "company does or has delivered. Use the caller's own words plus key terms (service, industry, technology)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "What the caller wants to know, e.g. 'SharePoint intranet for a bank' or 'Power BI dashboards experience'",
+            }
+        },
+        "required": ["query"],
+    },
+}
+
+
 class AgentRuntimeBuilder:
     """Converts tenant AgentConfiguration into Deepgram Voice Agent settings payload."""
 
@@ -157,6 +177,16 @@ class AgentRuntimeBuilder:
             provider=listen_provider
         )
 
+        # Live knowledge search: only for agents with attached documents (static prompt excerpts cannot cover a
+        # large document, so the model looks up the answer on demand).
+        knowledge_scope = None
+        attached_ids = list(getattr(config, "attached_document_ids", None) or [])
+        if attached_ids and getattr(config, "knowledge_mode", "auto") != "disabled":
+            knowledge_scope = {
+                "organization_id": getattr(config, "organization_id", None) or "global",
+                "document_ids": attached_ids,
+            }
+
         # 3. Think configuration (LLM)
         think_temp = config.llm.temperature if config.llm.temperature is not None else 0.35
         think_provider = DeepgramThinkProvider(
@@ -175,7 +205,7 @@ class AgentRuntimeBuilder:
             provider=think_provider,
             endpoint=think_endpoint_obj,
             prompt=system_prompt,
-            functions=[]
+            functions=[SEARCH_KNOWLEDGE_FUNCTION] if knowledge_scope else []
         )
 
         # 4. Speak configuration (TTS - Flux vs Sonic)
@@ -231,8 +261,10 @@ class AgentRuntimeBuilder:
             speak=speak_config
         )
 
-        return DeepgramSettingsConfiguration(
+        settings = DeepgramSettingsConfiguration(
             type="Settings",
             audio=audio_config,
             agent=agent_config
         )
+        settings.knowledge_scope = knowledge_scope
+        return settings

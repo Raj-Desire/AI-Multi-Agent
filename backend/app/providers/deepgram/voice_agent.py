@@ -71,6 +71,8 @@ class DeepgramVoiceAgentClient:
         self._session_id: Optional[str] = None
 
         self._audio_received_event = asyncio.Event()
+        self._knowledge_scope: Optional[Dict[str, Any]] = None
+        self._function_tasks: set = set()
 
     @property
     def is_ready(self) -> bool:
@@ -125,6 +127,14 @@ class DeepgramVoiceAgentClient:
                     close_timeout=5
                 )
             self._is_connected = True
+            self._knowledge_scope = getattr(settings, "knowledge_scope", None)
+            if self._knowledge_scope:
+                from app.services.knowledge_service import knowledge_service
+                warm = asyncio.create_task(knowledge_service.warm_up(
+                    self._knowledge_scope["organization_id"], self._knowledge_scope.get("document_ids")
+                ))
+                self._function_tasks.add(warm)
+                warm.add_done_callback(self._function_tasks.discard)
             self._welcome_event.clear()
             self._settings_applied_event.clear()
 
@@ -278,6 +288,59 @@ class DeepgramVoiceAgentClient:
             logger.warning(f"[VoiceEngine] Error waiting for PromptUpdated acknowledgement: {e}")
             return False
 
+    async def _handle_function_call_request(self, data: Dict[str, Any]):
+        """Answers client-side function calls (knowledge search) with a FunctionCallResponse."""
+        for fn in data.get("functions") or []:
+            if not fn.get("client_side", True):
+                continue
+            name = fn.get("name")
+            call_id = fn.get("id")
+            if name != "search_knowledge":
+                content = "Unknown function."
+            else:
+                content = await self._run_knowledge_search(fn.get("arguments"))
+            if not self._ws or not self._is_connected:
+                return
+            try:
+                await self._ws.send(json.dumps({
+                    "type": "FunctionCallResponse",
+                    "id": call_id,
+                    "name": name,
+                    "content": content,
+                }))
+            except Exception as e:
+                logger.error(f"Error sending FunctionCallResponse: {e}")
+
+    async def _run_knowledge_search(self, raw_arguments: Any) -> str:
+        scope = self._knowledge_scope
+        if not scope:
+            return "No knowledge base is attached to this agent."
+        try:
+            args = json.loads(raw_arguments) if isinstance(raw_arguments, str) else (raw_arguments or {})
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return "No query provided."
+            started = time.perf_counter()
+            from app.services.knowledge_service import knowledge_service
+            context = await asyncio.wait_for(
+                knowledge_service.get_grounding_context_for_call(
+                    organization_id=scope["organization_id"],
+                    user_transcript=query,
+                    document_ids=scope.get("document_ids"),
+                ),
+                timeout=5.0,
+            )
+            logger.info(f"[Knowledge] search '{query[:60]}' -> {'hit' if context else 'miss'} in {(time.perf_counter() - started) * 1000:.0f}ms")
+            if not context:
+                return "No matching information was found. Say you will have the solution team follow up; do not guess."
+            return context
+        except asyncio.TimeoutError:
+            logger.warning("[Knowledge] search timed out")
+            return "The lookup took too long. Answer briefly from what you already know, or offer a follow-up."
+        except Exception as e:
+            logger.error(f"[Knowledge] search failed: {e}")
+            return "The lookup is unavailable right now. Offer a follow-up from the solution team."
+
     async def send_keep_alive(self):
         """Sends KeepAlive to keep long-running sessions active."""
         if not self.is_ready or not self._ws:
@@ -332,6 +395,12 @@ class DeepgramVoiceAgentClient:
                 ):
                     self._prompt_updated_event.set()
                     logger.info(f"Deepgram {event_type} acknowledgement received.")
+
+                elif event_type == DeepgramEventType.FUNCTION_CALL_REQUEST:
+                    # Run lookups off the receive loop so agent audio keeps flowing while the search executes.
+                    task = asyncio.create_task(self._handle_function_call_request(data))
+                    self._function_tasks.add(task)
+                    task.add_done_callback(self._function_tasks.discard)
 
                 elif event_type == DeepgramEventType.CONVERSATION_TEXT:
                     role = data.get("role", "assistant")
