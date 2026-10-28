@@ -39,7 +39,7 @@ class PreviewSynthesisError(Exception):
     """The voice engine could not render the preview."""
 
 
-def build_preview_settings(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.5",
+def build_preview_settings(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
                            speed: float = 1.0) -> DeepgramSettingsConfiguration:
     """Settings identical in shape to a real call's Sonic speak provider; the greeting is the preview text."""
     speak = DeepgramSpeakProvider(
@@ -80,7 +80,7 @@ def pcm_to_wav(pcm: bytes, sample_rate: int = PREVIEW_SAMPLE_RATE) -> bytes:
     return buf.getvalue()
 
 
-async def _synthesize_once(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.5",
+async def _synthesize_once(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
                                    speed: float = 1.0, timeout: float = 20.0,
                                    client_factory=DeepgramVoiceAgentClient) -> bytes:
     """Returns WAV bytes of `text` spoken by the Sonic voice through the voice engine."""
@@ -131,7 +131,7 @@ async def _synthesize_once(text: str, voice_id: str, language: Optional[str], mo
     return pcm_to_wav(pcm)
 
 
-async def synthesize_sonic_preview(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.5",
+async def synthesize_sonic_preview(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
                                    speed: float = 1.0, timeout: float = 15.0, attempts: int = 2,
                                    client_factory=DeepgramVoiceAgentClient) -> bytes:
     """Retries once: a brand-new engine session occasionally stalls before it starts speaking."""

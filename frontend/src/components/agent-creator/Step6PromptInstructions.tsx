@@ -100,7 +100,6 @@ export function Step6PromptInstructions({
   const [pendingDiff, setPendingDiff] = useState<PromptDiffPreview | null>(null);
   const [activePromptTab, setActivePromptTab] = useState<"script" | "canvas" | "regression">("script");
   const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
-  const [dismissedSynthesisBanner, setDismissedSynthesisBanner] = useState(false);
 
   // Compute a live fingerprint of Steps 1-5 core parameters
   const currentConfigFingerprint = computeConfigFingerprint(agentData);
@@ -246,7 +245,6 @@ export function Step6PromptInstructions({
       if (res) {
         setLocalLastFingerprint(currentConfigFingerprint);
         onFingerprintSynthesized?.(currentConfigFingerprint);
-        setDismissedSynthesisBanner(true);
 
         if (res.used_fallback && !silent) {
           toast.warning("The AI writer was unavailable, so a basic template was used. Try regenerating in a moment for fully tailored instructions.");
@@ -733,7 +731,8 @@ export function Step6PromptInstructions({
       {activePromptTab === "script" && (
         <>
           {/* Interactive Multi-Step Parameter Synthesis Banner */}
-          {(!agentData.system_prompt || hasConfigChangedSinceLastSynthesis || isGenerating) && !dismissedSynthesisBanner && (
+          {/* Compiling is mandatory before activation, so the banner cannot be dismissed: it disappears only once compiled. */}
+          {(!agentData.system_prompt || hasConfigChangedSinceLastSynthesis || isGenerating) && (
             <div className="relative overflow-hidden rounded-[var(--radius-main,0.75rem)] border border-[var(--color-primary)]/30 bg-gradient-to-r from-[var(--color-primary)]/10 via-[var(--color-surface)] to-[var(--color-primary)]/5 p-4 shadow-sm transition-all duration-300">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1.5 max-w-xl">
@@ -812,15 +811,6 @@ export function Step6PromptInstructions({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                  {!isGenerating && (
-                    <button
-                      type="button"
-                      onClick={() => setDismissedSynthesisBanner(true)}
-                      className="text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] px-2.5 py-1.5 rounded cursor-pointer transition-colors"
-                    >
-                      Dismiss
-                    </button>
-                  )}
                   <Button
                     type="button"
                     variant="primary"

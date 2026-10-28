@@ -1108,7 +1108,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
             "Content-Type": "application/json"
         }
         body = {
-            "model_id": "sonic-3.5",
+            "model_id": "sonic-3.6",
             "transcript": sample_text,
             "voice": {
                 "mode": "id",

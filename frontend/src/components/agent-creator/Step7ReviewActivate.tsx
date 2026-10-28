@@ -281,16 +281,10 @@ export function Step7ReviewActivate({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="p-2.5 bg-[var(--color-surface-muted)] rounded border border-[var(--color-border)]">
               <span className="text-[var(--color-muted)] text-[11px] block">Max Duration</span>
               <span className="font-semibold text-[var(--color-heading)]">{Math.round(durationSec / 60)} minutes</span>
-            </div>
-            <div className="p-2.5 bg-[var(--color-surface-muted)] rounded border border-[var(--color-border)]">
-              <span className="text-[var(--color-muted)] text-[11px] block">Interruption (Barge-in)</span>
-              <span className="font-semibold text-[var(--color-heading)]">
-                {agentData.runtime?.barge_in_enabled ? "Enabled" : "Disabled"}
-              </span>
             </div>
             <div className="p-2.5 bg-[var(--color-surface-muted)] rounded border border-[var(--color-border)]">
               <span className="text-[var(--color-muted)] text-[11px] block">Silence Reprompt</span>

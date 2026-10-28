@@ -79,16 +79,22 @@ class QuickDraftAgentRequest(BaseModel):
 
 
 class QuickDraftAgentResponse(BaseModel):
-    name: str
-    role: str
-    description: str
-    objective: str
-    greeting: str
+    name: str = ""
+    role: str = ""
+    description: str = ""
+    objective: str = ""
+    greeting: str = ""
     agent_type: Optional[str] = "custom"
     communication_style: Optional[str] = "Professional + Friendly"
     response_length: Optional[str] = "short"
     skills: Optional[List[str]] = Field(default_factory=list)
     matched_preset_id: Optional[str] = "custom"
+    language: Optional[str] = "en"
+    call_direction: Optional[str] = "inbound"
+    # When set, the form must NOT be filled: the text was not a usable description, or no AI answer was available.
+    needs_clarification: bool = False
+    is_fallback: bool = False
+    clarification_message: Optional[str] = None
 
 
 @router.post("/generate-greetings", response_model=ApiResponse[GeneratedGreetingsResponse])
@@ -229,18 +235,7 @@ async def quick_draft(
 
     try:
         draft = await llm_service.quick_draft_agent(prompt)
-        return ApiResponse.ok(QuickDraftAgentResponse(
-            name=draft.get("name", "Voice Specialist"),
-            role=draft.get("role", "Specialist Assistant"),
-            description=draft.get("description", prompt),
-            objective=draft.get("objective", prompt),
-            greeting=draft.get("greeting", "Hello! How can I assist you today?"),
-            agent_type=draft.get("agent_type", "custom"),
-            communication_style=draft.get("communication_style", "Professional + Friendly"),
-            response_length=draft.get("response_length", "short"),
-            skills=draft.get("skills", []),
-            matched_preset_id=draft.get("matched_preset_id", "custom")
-        ))
+        return ApiResponse.ok(QuickDraftAgentResponse(**draft))
     except Exception as e:
         print(f"[Quick Draft Error] {e}")
         raise HTTPException(status_code=500, detail=f"Failed to draft agent: {str(e)}")

@@ -216,8 +216,9 @@ class AgentRuntimeBuilder:
 
         if is_cartesia:
             sonic_model_id = getattr(config.voice, "model", None)
-            if not sonic_model_id or sonic_model_id in ["flux", "aura", "deepgram", "v1", "v2"]:
-                sonic_model_id = "sonic-3.5"
+            if not sonic_model_id or sonic_model_id in ["flux", "aura", "deepgram", "v1", "v2"] or sonic_model_id.startswith("sonic-3.5"):
+                # Agents saved with the older Sonic 3.5 model move to 3.6 without needing a re-save.
+                sonic_model_id = "sonic-3.6"
             speak_provider = DeepgramSpeakProvider(
                 type="cartesia",
                 model=None,

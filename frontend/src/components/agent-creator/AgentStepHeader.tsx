@@ -119,21 +119,6 @@ export function AgentStepHeader({
             </div>
           </div>
         </div>
-
-        {onTestCall && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => onTestCall(agentData)}
-            leftIcon={<Play className="w-3.5 h-3.5 text-emerald-500" />}
-            className="cursor-pointer text-xs h-8 px-3"
-            title="Test current unsaved configuration over real telephone"
-          >
-            Test Call
-          </Button>
-        )}
-
         <Button
           type="button"
           variant="outline"

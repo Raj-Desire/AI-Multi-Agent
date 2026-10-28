@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Sparkles, Check, Info, Bot, Compass, Plus, Layers, Sliders, ArrowRight, Network, GitBranch, Cpu, X, AlertTriangle, Search, Users, Wand2, Loader2 } from "lucide-react";
 import { InfoTooltip, Tooltip } from "../ui/Tooltip";
-import { AGENT_PURPOSES, AgentPurposeItem } from "./constants";
+import { AGENT_PURPOSES, AgentPurposeItem, SUPPORTED_LANGUAGES } from "./constants";
 import { AgentConfig } from "../../types";
 import { fetchApi } from "../../api-client";
 import { toast } from "sonner";
@@ -121,6 +121,14 @@ export function Step1Basics({
     }
   };
 
+  // Track the last selected prebuilt preset so switching back from Custom/Orchestrator restores it
+  const [lastSelectedPresetId, setLastSelectedPresetId] = useState<string>(
+    selectedPurposeId !== "custom" && selectedPurposeId !== "orchestrator" ? selectedPurposeId : "follow_up"
+  );
+  // Track whether the user manually typed in name or description
+  const [hasUserEditedName, setHasUserEditedName] = useState(false);
+  const [hasUserEditedDesc, setHasUserEditedDesc] = useState(false);
+
   const handleModeSwitch = (mode: CreationMode) => {
     if (mode === "orchestrator") {
       setSelectedPurposeId("orchestrator");
@@ -137,7 +145,7 @@ export function Step1Basics({
       setSelectedPurposeId("custom");
       setAgentData((prev) => ({
         ...prev,
-        name: prev.name && !prev.name.includes("Agent") ? prev.name : "",
+        name: prev.name || "",
         description: prev.description || "",
         role: customRoleName || prev.role || "",
         objective: customHelpScope || prev.objective || "",
@@ -146,43 +154,66 @@ export function Step1Basics({
       } as any));
       setTimeout(() => nameInputRef.current?.focus(), 80);
     } else {
-      const fallbackPreset =
-        AGENT_PURPOSES.find((p) => p.id !== "custom" && p.id === selectedPurposeId) ||
-        AGENT_PURPOSES.find((p) => p.id === "follow_up") ||
+      // Switching back to prebuilt role: restore the last selected preset!
+      const targetPresetId =
+        lastSelectedPresetId && lastSelectedPresetId !== "custom" && lastSelectedPresetId !== "orchestrator"
+          ? lastSelectedPresetId
+          : "follow_up";
+      const preset =
+        AGENT_PURPOSES.find((p) => p.id === targetPresetId) ||
+        AGENT_PURPOSES.find((p) => p.id !== "custom") ||
         AGENT_PURPOSES[0];
-      handlePurposeSelect(fallbackPreset);
+      handlePurposeSelect(preset, true);
     }
   };
 
-  const handlePurposeSelect = (purpose: AgentPurposeItem) => {
-    if (selectedPurposeId === purpose.id) return;
+  const handlePurposeSelect = (purpose: AgentPurposeItem, forceApply: boolean = false) => {
+    if (selectedPurposeId === purpose.id && !forceApply) return;
     setSelectedPurposeId(purpose.id);
+    if (purpose.id !== "custom" && purpose.id !== "orchestrator") {
+      setLastSelectedPresetId(purpose.id);
+    }
+
     if (purpose.id === "custom") {
-      setAgentData((prev) => ({ ...prev, name: "", description: "", role: "", objective: "", is_orchestrator: false } as any));
-    } else {
       setAgentData((prev) => ({
         ...prev,
-        name: `${purpose.title} Agent`,
-        description: purpose.description,
-        role: purpose.defaultRole,
-        objective: purpose.defaultObjective,
-        greeting: purpose.defaultGreeting,
-        system_prompt: purpose.defaultSystemPrompt ?? prev.system_prompt,
-        communication_style: purpose.defaultCommunicationStyle,
-        response_length: purpose.defaultResponseLength,
-        skills: purpose.defaultCapabilities,
-        personality: { ...prev.personality, ...purpose.defaultPersonality },
-        voice: {
-          ...prev.voice,
-          voice: purpose.recommendedVoiceId || prev.voice?.voice || "flux-hannah-en",
-          speed: purpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0
-        },
-        llm: {
-          ...prev.llm,
-          temperature: purpose.recommendedTemperature ?? prev.llm?.temperature ?? 0.4
-        },
-        is_orchestrator: false,
+        name: prev.name || "",
+        description: prev.description || "",
+        role: prev.role || "",
+        objective: prev.objective || "",
+        is_orchestrator: false
       } as any));
+    } else {
+      // When user clicks a prebuilt preset, update name and description to match the selected preset
+      // unless they explicitly hand-typed their own unique custom name
+      setAgentData((prev) => {
+        const newName = hasUserEditedName && prev.name ? prev.name : `${purpose.title} Agent`;
+        const newDesc = hasUserEditedDesc && prev.description ? prev.description : purpose.description;
+
+        return {
+          ...prev,
+          name: newName,
+          description: newDesc,
+          role: purpose.defaultRole,
+          objective: purpose.defaultObjective,
+          greeting: purpose.defaultGreeting,
+          system_prompt: purpose.defaultSystemPrompt ?? prev.system_prompt,
+          communication_style: purpose.defaultCommunicationStyle,
+          response_length: purpose.defaultResponseLength,
+          skills: purpose.defaultCapabilities,
+          personality: { ...prev.personality, ...purpose.defaultPersonality },
+          voice: {
+            ...prev.voice,
+            voice: purpose.recommendedVoiceId || prev.voice?.voice || "flux-hannah-en",
+            speed: purpose.recommendedSpeed ?? prev.voice?.speed ?? 1.0
+          },
+          llm: {
+            ...prev.llm,
+            temperature: purpose.recommendedTemperature ?? prev.llm?.temperature ?? 0.4
+          },
+          is_orchestrator: false,
+        } as any;
+      });
     }
   };
 
@@ -204,17 +235,43 @@ export function Step1Basics({
         response_length?: string;
         skills?: string[];
         matched_preset_id?: string;
+        language?: string;
+        call_direction?: string;
+        needs_clarification?: boolean;
+        is_fallback?: boolean;
+        clarification_message?: string | null;
       }>("/agents/quick-draft", {
         method: "POST",
         body: JSON.stringify({ prompt: quickPrompt.trim() }),
       });
 
+      // Not a usable description (gibberish, instructions to the AI) or no AI answer: leave the form untouched.
+      if (res && (res.needs_clarification || res.is_fallback)) {
+        toast.error(res.clarification_message || "Please describe your business or what the agent should do on calls.");
+        return;
+      }
+
       if (res && res.name) {
+        // Do not silently throw away a name/description the user typed by hand.
+        const typedByUser =
+          (hasUserEditedName && !!agentData.name?.trim() && agentData.name.trim() !== res.name) ||
+          (hasUserEditedDesc && !!agentData.description?.trim() && agentData.description.trim() !== res.description);
+        if (typedByUser && !window.confirm("Replace the name and description you typed with the AI draft?")) {
+          return;
+        }
+
         // Find matching preset if any
         const matchedPurpose = AGENT_PURPOSES.find(
           (p) => p.id !== "custom" && p.id === res.matched_preset_id
         );
 
+        // A non-English draft also switches the voice and speech recognition to that language.
+        const langConfig = res.language && res.language !== "en"
+          ? SUPPORTED_LANGUAGES.find((l) => l.code === res.language)
+          : undefined;
+
+        // The preset only selects the card and the personality defaults. Its stock system prompt is NOT copied
+        // over: it carries another business's facts and would replace what the user described.
         setAgentData((prev) => ({
           ...prev,
           name: res.name,
@@ -225,8 +282,24 @@ export function Step1Basics({
           communication_style: res.communication_style || prev.communication_style || "Professional + Friendly",
           response_length: res.response_length || prev.response_length || "short",
           skills: res.skills && res.skills.length > 0 ? res.skills : prev.skills,
-          system_prompt: matchedPurpose?.defaultSystemPrompt || prev.system_prompt,
-        }));
+          ...(langConfig
+            ? {
+                voice: {
+                  ...prev.voice,
+                  provider: "deepgram",
+                  model: "flux",
+                  voice: langConfig.defaultVoice || prev.voice?.voice,
+                  language: langConfig.code,
+                },
+                listen: {
+                  ...prev.listen,
+                  provider: prev.listen?.provider || "deepgram",
+                  model: prev.listen?.model || "nova-3",
+                  language: langConfig.code,
+                },
+              }
+            : {}),
+        } as any));
 
         if (matchedPurpose) {
           setSelectedPurposeId(matchedPurpose.id);
@@ -522,6 +595,101 @@ export function Step1Basics({
         </div>
       </div>
 
+      {/* ─── AGENT IDENTITY (ALWAYS FIRST & PRESERVED ACROSS MODES) ────── */}
+      <div className="space-y-4 pt-1">
+        <div className="border-b border-[var(--color-border)] pb-2 flex items-center gap-2">
+          <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+            <Bot className="w-4 h-4" />
+          </div>
+          <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+            Agent Identity &amp; Details
+            {isOrchestratorMode && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30">Orchestrator</span>
+            )}
+            {isCustomMode && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">Custom</span>
+            )}
+          </h2>
+          <InfoTooltip content="Set the essential identity, display name, and operational summary for your AI voice agent." position="top" />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+                <span>Agent Name</span>
+                <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
+              </label>
+              <InfoTooltip content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics." position="top" />
+            </div>
+            {isOrchestratorMode && (
+              <span className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1">
+                <Network className="w-3 h-3" />Supervisor Name
+              </span>
+            )}
+            {isCustomMode && (
+              <span className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />Bespoke Name
+              </span>
+            )}
+          </div>
+          <input
+            key={`name-input-${shakeTriggerKey}`}
+            ref={nameInputRef}
+            type="text"
+            value={agentData.name}
+            onChange={(e) => {
+              setHasUserEditedName(true);
+              setAgentData({ ...agentData, name: e.target.value });
+            }}
+            placeholder={isOrchestratorMode ? "e.g., Hotel Concierge Hub, Front Desk Supervisor" : isCustomMode ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
+            className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-200 border ${
+              isNameInvalid
+                ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/15 animate-shake"
+                : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+            }`}
+          />
+          {isNameInvalid && (
+            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
+              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+              <span>Please enter an agent name before proceeding to the next step.</span>
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
+              <span>Description</span>
+              <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
+            </label>
+            <InfoTooltip content="Explain what this agent does. This helps our AI generator produce optimal prompts." position="top" />
+          </div>
+          <textarea
+            key={`desc-input-${shakeTriggerKey}`}
+            ref={descInputRef}
+            rows={2}
+            value={agentData.description || ""}
+            onChange={(e) => {
+              setHasUserEditedDesc(true);
+              setAgentData({ ...agentData, description: e.target.value });
+            }}
+            placeholder={isOrchestratorMode ? "e.g., Routes hotel callers to the right specialist — Ocean Grand or Skyline — based on their request." : isCustomMode ? "e.g., Handles custom customer inquiries and routes escalated requests." : "e.g., Follows up with existing customers about pending inquiries, orders, or feedback."}
+            className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none shadow-2xs resize-none transition-all duration-200 border ${
+              isDescInvalid
+                ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/15 animate-shake"
+                : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
+            }`}
+          />
+          {isDescInvalid && (
+            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
+              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
+              <span>Please provide a brief description of what this agent handles.</span>
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* ─── MODE A: PREBUILT PRESETS ───────────────────────────────────── */}
       {!isCustomMode && !isOrchestratorMode && (
         <div className="space-y-3 animate-fade-in">
@@ -566,42 +734,6 @@ export function Step1Basics({
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODE B: CUSTOM AGENT ───────────────────────────────────────── */}
-      {isCustomMode && (
-        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-4 animate-fade-in shadow-2xs">
-          <div className="flex items-center gap-2 border-b border-[var(--color-border)] pb-2.5">
-            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-                Custom Role Specification
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">Bespoke Setup</span>
-              </h3>
-              <p className="text-[11px] text-[var(--color-muted)]">Define the exact role without preset constraints.</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[var(--color-heading)]">Custom Role Title</label>
-              <input type="text" value={customRoleName} onChange={(e) => { setCustomRoleName(e.target.value); setAgentData((prev) => ({ ...prev, role: e.target.value })); }} placeholder="e.g., VIP Concierge Specialist" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-[var(--color-heading)]">What should this agent help with?</label>
-              <input type="text" value={customHelpScope} onChange={(e) => { setCustomHelpScope(e.target.value); setAgentData((prev) => ({ ...prev, objective: e.target.value })); }} placeholder="e.g., Verify account details, process order modifications" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
-            </div>
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="block text-xs font-bold text-[var(--color-heading)]">Call Success Criteria</label>
-              <input type="text" value={customSuccessCriteria} onChange={(e) => setCustomSuccessCriteria(e.target.value)} placeholder="e.g., Resolution reached or escalated with notes captured" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
-              <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1.5 pt-0.5">
-                <Info className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-                Our AI prompt engine builds tailored telephony instructions from these specifications in Stage 2.
-              </p>
-            </div>
           </div>
         </div>
       )}
@@ -954,91 +1086,41 @@ export function Step1Basics({
         </div>
       )}
 
-      {/* ─── AGENT IDENTITY ─────────────────────────────────────────────── */}
-      <div className="space-y-4 pt-1">
-        <div className="border-b border-[var(--color-border)] pb-2 flex items-center gap-2">
-          <div className="w-6 h-6 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-            <Bot className="w-4 h-4" />
-          </div>
-          <h2 className="text-sm font-bold text-[var(--color-heading)] flex items-center gap-1.5">
-            Agent Identity &amp; Details
-            {isOrchestratorMode && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)] border border-[var(--color-primary)]/30">Orchestrator</span>
-            )}
-          </h2>
-          <InfoTooltip content="Set the essential identity, display name, and operational summary for your AI voice agent." position="top" />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
-                <span>Agent Name</span>
-                <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
-              </label>
-              <InfoTooltip content="Give your agent a clear, recognizable name used across call logs, reporting, and analytics." position="top" />
+      {/* ─── MODE B: CUSTOM ROLE SPECIFICATION ─────────────────────────── */}
+      {isCustomMode && (
+        <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-4 animate-fade-in shadow-2xs">
+          <div className="flex items-center gap-2 border-b border-[var(--color-border)] pb-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-            {isOrchestratorMode && (
-              <span className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1">
-                <Network className="w-3 h-3" />Supervisor Name
-              </span>
-            )}
-            {isCustomMode && (
-              <span className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1">
-                <Sparkles className="w-3 h-3" />Bespoke Name
-              </span>
-            )}
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-heading)] flex items-center gap-1.5">
+                Custom Role Specification
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20">Bespoke Setup</span>
+              </h3>
+              <p className="text-[11px] text-[var(--color-muted)]">Define the exact role without preset constraints.</p>
+            </div>
           </div>
-          <input
-            key={`name-input-${shakeTriggerKey}`}
-            ref={nameInputRef}
-            type="text"
-            value={agentData.name}
-            onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
-            placeholder={isOrchestratorMode ? "e.g., Hotel Concierge Hub, Front Desk Supervisor" : isCustomMode ? "e.g., VIP Support Assistant, Custom Inbound Specialist" : "e.g., Customer Follow-Up Agent, VIP Sales Closer"}
-            className={`w-full h-9 px-3.5 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none font-medium shadow-2xs transition-all duration-200 border ${
-              isNameInvalid
-                ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/15 animate-shake"
-                : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
-            }`}
-          />
-          {isNameInvalid && (
-            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
-              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
-              <span>Please enter an agent name before proceeding to the next step.</span>
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <label className="block text-xs font-bold text-[var(--color-heading)] flex items-center gap-1">
-              <span>Description</span>
-              <span className="text-[var(--color-danger)] font-bold text-sm leading-none">*</span>
-            </label>
-            <InfoTooltip content="Explain what this agent does. This helps our AI generator produce optimal prompts." position="top" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-[var(--color-heading)]">Custom Role Title</label>
+              <input type="text" value={customRoleName} onChange={(e) => { setCustomRoleName(e.target.value); setAgentData((prev) => ({ ...prev, role: e.target.value })); }} placeholder="e.g., VIP Concierge Specialist" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-[var(--color-heading)]">What should this agent help with?</label>
+              <input type="text" value={customHelpScope} onChange={(e) => { setCustomHelpScope(e.target.value); setAgentData((prev) => ({ ...prev, objective: e.target.value })); }} placeholder="e.g., Verify account details, process order modifications" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
+            </div>
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="block text-xs font-bold text-[var(--color-heading)]">Call Success Criteria</label>
+              <input type="text" value={customSuccessCriteria} onChange={(e) => setCustomSuccessCriteria(e.target.value)} placeholder="e.g., Resolution reached or escalated with notes captured" className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]/60 focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all" />
+              <p className="text-[11px] text-[var(--color-muted)] flex items-center gap-1.5 pt-0.5">
+                <Info className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                Our AI prompt engine builds tailored telephony instructions from these specifications in Stage 2.
+              </p>
+            </div>
           </div>
-          <textarea
-            key={`desc-input-${shakeTriggerKey}`}
-            ref={descInputRef}
-            rows={2}
-            value={agentData.description || ""}
-            onChange={(e) => setAgentData({ ...agentData, description: e.target.value })}
-            placeholder={isOrchestratorMode ? "e.g., Routes hotel callers to the right specialist — Ocean Grand or Skyline — based on their request." : isCustomMode ? "e.g., Handles custom customer inquiries and routes escalated requests." : "e.g., Follows up with existing customers about pending inquiries, orders, or feedback."}
-            className={`w-full p-3 text-xs bg-[var(--color-surface)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none shadow-2xs resize-none transition-all duration-200 border ${
-              isDescInvalid
-                ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]/15 animate-shake"
-                : "border-[var(--color-border)] focus:border-[var(--color-primary)]"
-            }`}
-          />
-          {isDescInvalid && (
-            <p className="text-[10px] font-medium text-[var(--color-primary)] flex items-center gap-1 mt-0.5">
-              <Info className="w-3 h-3 text-[var(--color-primary)] shrink-0" />
-              <span>Please provide a brief description of what this agent handles.</span>
-            </p>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

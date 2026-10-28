@@ -523,7 +523,7 @@ class AgentConfiguration(BaseModel):
 
 def get_default_platform_agents() -> List[AgentConfiguration]:
     """Returns the library of standard platform-level Global AI Voice Agents."""
-    return [
+    agents = [
         AgentConfiguration(
             agent_id="agt_receptionist_default",
             organization_id="global",
@@ -1026,6 +1026,22 @@ CORE SERVICE CAPABILITIES & PROVEN CASE STUDIES:
             llm=ThinkProviderConfig(model="gpt-4o-mini", temperature=0.35)
         )
     ]
+
+    # Voice-model test copy of the marketing & discovery agent: same prompt and knowledge, Sonic 3.6 voice,
+    # listed at position 8 so it can be compared by ear against the older Sonic 3.5 voice.
+    test_agent = agents[-1].model_copy(deep=True)
+    test_agent.agent_id = "agt_enterprise_solutions_marketing_s36"
+    test_agent.name = "Enterprise Solutions Marketing & Discovery Agent (Voice Test)"
+    test_agent.voice = SpeakProviderConfig(
+        provider="cartesia",
+        version="",
+        model="sonic-3.6",
+        voice="db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        language="en",
+        speed=1.0,
+    )
+    agents.insert(8, test_agent)
+    return agents
 
 
 def get_default_receptionist_agent(organization_id: str = "global") -> AgentConfiguration:

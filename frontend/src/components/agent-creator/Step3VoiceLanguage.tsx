@@ -695,7 +695,7 @@ export function Step3VoiceLanguage({
         voice: {
           ...prev.voice,
           provider: isSonic ? "cartesia" : "deepgram",
-          model: isSonic ? "sonic-3.5" : "flux",
+          model: isSonic ? "sonic-3.6" : "flux",
           voice: voiceId,
           language: targetLang
         },

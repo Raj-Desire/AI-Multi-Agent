@@ -201,10 +201,10 @@ export function AgentEditorModal({
     // Guard: If activating and parameters from Steps 1-5 changed without compiling into Step 6 prompt instructions
     if (activate && requiresSynthesisWarning) {
       setErrorMsg(
-        "Parameters from Steps 1–5 were modified or prompt is uncompiled. Please click 'Compile & Synthesize' in Step 6 below before activating your voice agent."
+        "Parameters modified or prompt is uncompiled. Please click 'Compile & Synthesize' below before activating your voice agent."
       );
       toast.warning(
-        "Agent parameters changed! Redirecting to Step 6 to compile prompt & greeting before activation."
+        "Agent parameters changed! Redirecting to compile prompt & greeting before activation."
       );
       setCurrentStep(6);
       return;
@@ -238,7 +238,6 @@ export function AgentEditorModal({
         requiresSynthesisWarning={requiresSynthesisWarning}
         onBack={onClose}
         onSave={handleSaveAction}
-        onTestCall={onTestCall}
       />
 
       {/* 2. Progress Stepper Bar */}

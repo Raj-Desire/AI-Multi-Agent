@@ -106,23 +106,14 @@ OBJECTIONS & PHONE RULES:
     defaultGreeting: "Hello! This is Aria following up on your recent request with our team. I wanted to verify that everything went smoothly and see if you have any questions I can answer?",
     defaultSystemPrompt: `You are Aria, an empathetic and knowledgeable Customer Relationship Specialist speaking with a customer.
 
-CORE DIRECTIVE — DIRECT ANSWERING FIRST:
-- When the customer asks about ANY service, resort booking, software pricing, room rates, or subscriptions, ALWAYS answer their questions DIRECTLY with exact facts and numbers!
-- NEVER say "I need to connect you with a specialist" or "Would you like me to schedule a call with our specialist" or "Please hold while I transfer you".
-- Give them the exact pricing, room options, or software plans directly in 1-2 spoken sentences!
-
-RESORT BOOKING KNOWLEDGE (GRAND SEASIDE RESORT, GOA):
-- Location: Calangute Beach, Goa.
-- Rooms & Rates: Standard King Room ($175/night), Deluxe Ocean View Suite ($280/night), Executive Garden Villa with private plunge pool ($420/night).
-- Dining & Amenities: The Azure Horizon Seafood, Lotus Wellness Spa ($120/hour massage), complimentary airport shuttle, infinity pool.
-
-ENTERPRISE SOFTWARE & TELEPHONY KNOWLEDGE (CLOUDFLOW AI):
-- Subscription Tiers: Starter Plan is $49/month (1,000 voice minutes). Professional Plan is $149/month (5,000 voice minutes). Enterprise Plan is $499/month (25,000 voice minutes, custom LLM fine-tuning, 99.99% SLA).
-- Telephony: Additional minutes $0.025/min. Local numbers $3/month. Twilio BYOC fully supported with zero platform markup.
+CORE DIRECTIVE — ANSWER FROM YOUR FACTS:
+- When the customer asks about a service, order, price or booking, answer directly using only the facts in this agent's knowledge base or business details.
+- If a fact is not in your knowledge, never guess or invent it: say you will check and have the team follow up.
+- Never refuse to help or push the customer to "a specialist" when you already have the answer.
 
 CONVERSATIONAL CADENCE:
 - Keep spoken replies strictly to 1 to 2 crisp, natural sentences per turn.
-- Give the factual numbers and answer directly!`,
+- Give the facts directly, then ask one follow-up question.`,
     defaultCommunicationStyle: "Warm + Friendly",
     defaultResponseLength: "short",
     defaultCapabilities: ["Collect customer information", "Answer FAQs", "Confirm appointments", "Send SMS follow-up"],
@@ -944,7 +935,7 @@ export function getVoiceCategories(voiceId: string): VoiceCategoryId[] {
 }
 
 export const SUPPORTED_LANGUAGES = [
-  // Flagship Global Languages (Supported across both Flux & Sonic 3.5)
+  // Flagship Global Languages (Supported across both Flux & Sonic 3.6)
   { code: "en", label: "English (US / Global)", native: "English", defaultVoice: "flux-hannah-en", defaultSonicVoice: "6c756032-11c3-4be8-a120-74f9673fb700" },
   { code: "es", label: "Spanish (Español)", native: "Español", defaultVoice: "aura-2-agustina-es", defaultSonicVoice: "692279a6-ebcc-4735-a21e-9b8e31f6b3de" },
   { code: "fr", label: "French (Français)", native: "Français", defaultVoice: "aura-2-agathe-fr", defaultSonicVoice: "6acedd3e-bac4-41bc-8c7c-ef560d27e778" },
