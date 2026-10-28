@@ -236,7 +236,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     async def handle_user_speaking():
         """Barge-in: Interrupt audio immediately when user starts speaking."""
-        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, is_interrupted, last_agent_speech_done_time, is_concluding_call
+        nonlocal stream_sid, session, is_user_speaking, is_agent_speaking, last_user_speech_time, user_speech_start_time, has_reprompted_silence, user_spoke, thinking_filler_task, is_interrupted, last_agent_speech_done_time, is_concluding_call, barge_in_debounce_task
         turn_marks.clear()
         _mark_turn("user_start")
         user_speech_start_time = time.time()
@@ -728,7 +728,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         Monitors Silence Timeout (2-Stage Recovery: Reprompt -> Conclude & End)
         and Dynamic Maximum Call Duration (180s active vs 60s silent).
         """
-        nonlocal is_concluding_call, has_reprompted_silence, reprompt_injected_at, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke
+        nonlocal is_concluding_call, has_reprompted_silence, reprompt_injected_at, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke, last_backchannel_time
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
