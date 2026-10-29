@@ -15,7 +15,7 @@ interface ExecutiveReportExportModalProps {
   agents: AgentLeadStat[];
   leads: LeadListItem[];
   filters: LeadFilterState;
-  activeTab: "all_leads" | "interested" | "callbacks" | "analytics" | "cohorts";
+  activeTab: "all_leads" | "interested" | "callbacks" | "calendar" | "analytics" | "cohorts";
   dateRangeLabel: string;
 }
 
@@ -218,6 +218,7 @@ export function ExecutiveReportExportModal({
       // Download file
       const fileName = `Executive_Call_Analytics_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
       XLSX.writeFile(wb, fileName);
+      fetchApi("/activity/event", { method: "POST", body: JSON.stringify({ event: "export_report_excel" }) }).catch(() => {});
       toast.success(`Excel report exported with ${fullLeads.length} filtered leads.`);
       onClose();
     } catch (err: any) {
@@ -230,6 +231,7 @@ export function ExecutiveReportExportModal({
   // 2. High-Density Executive PDF Summary View / Browser Print
   const handlePrintPDF = () => {
     window.print();
+    fetchApi("/activity/event", { method: "POST", body: JSON.stringify({ event: "export_report_pdf" }) }).catch(() => {});
     onClose();
   };
 

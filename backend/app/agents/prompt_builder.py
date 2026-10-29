@@ -5,6 +5,7 @@ spoken cadence, response length limits (1-2 sentences), personality sliders,
 active listening confirmations, psychological empathy, and guardrails.
 """
 
+import re
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone
 from app.agents.configuration import AgentConfiguration
@@ -13,6 +14,12 @@ from app.voice.language_switcher import language_name
 
 
 PROMPT_CHAR_LIMIT = 24000
+
+# "Thursday, September 14th": a weekday plus month and day written into a saved prompt is a stale example, never a fact.
+_EXAMPLE_DATE = re.compile(
+    r"\b(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,?\s+"
+    r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?\b"
+)
 
 
 class VoicePromptBuilder:
@@ -591,6 +598,44 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 
 
     @staticmethod
+    def _neutralize_example_dates(text: str) -> str:
+        """A saved prompt may contain a sample line like 'How does Thursday, September 14th at 2 PM sound?'. The model
+        repeats it as if it were real, so literal weekday-plus-date examples are turned into an instruction to use the calendar."""
+        return _EXAMPLE_DATE.sub("a real upcoming weekday and date from today's calendar", text or "")
+
+    @staticmethod
+    def _build_date_anchor(
+        business_profile: Optional[Union[dict, Any]] = None,
+        config: Optional[AgentConfiguration] = None,
+    ) -> str:
+        """Short block placed right after the agent's own instructions so the prompt cut can never drop today's date."""
+        from datetime import timedelta
+        from app.agents.schedule import resolve_agent_schedule
+
+        schedule = resolve_agent_schedule(config, business_profile)
+        now = schedule.now()
+        tomorrow = now + timedelta(days=1)
+        following = ", ".join(
+            f"{(now + timedelta(days=i)).strftime('%A %B %d')}" for i in range(2, 8)
+        )
+        return (
+            "[TODAY'S DATE & MEETING BOOKING RULES - ALWAYS FOLLOW]\n"
+            f"- Today is {now.strftime('%A, %B %d, %Y')}, {now.strftime('%I:%M %p')} ({schedule.timezone_label}). "
+            f"Tomorrow is {tomorrow.strftime('%A, %B %d')}. After that: {following}.\n"
+            "- NEVER invent, guess or recite a date from memory. Any weekday, month or date written elsewhere in your instructions "
+            "is only a pattern; take real dates from this calendar. A date before today is never valid.\n"
+            "- When you propose a meeting, offer a real upcoming slot from this calendar, for example "
+            f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\".\n"
+            "- When the caller names a day or time (\"tomorrow 5 PM\", \"Friday\"), confirm it back in ONE sentence with the weekday, the "
+            f"calendar date, the time and the timezone, for example \"{tomorrow.strftime('%A, %B %d')} at 5 PM {schedule.timezone_label}\". "
+            "If they gave no day or no time, ask for the missing part. If they gave only a day, ask the time, and the other way round.\n"
+            "- Speak only words meant for the caller. Never say bracketed notes or stage directions such as \"[Scheduling the meeting...]\" "
+            "and never say \"please hold on\". Do not promise an email or calendar invite unless your facts say you send one.\n"
+            "- Once the meeting is confirmed, say so once and ask if there is anything else. When the caller says bye, thanks or that's all, "
+            "reply with ONE short goodbye that includes the word \"goodbye\", then stop talking."
+        )
+
+    @staticmethod
     def _build_role_intent_directives(config: AgentConfiguration) -> str:
         """Dynamically derives conversational posture based on agent role and objective."""
         role_lower = (config.role or "").lower()
@@ -843,6 +888,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 platform_rules = []
 
         temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile, config)
+        date_anchor = VoicePromptBuilder._build_date_anchor(business_profile, config)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
@@ -908,7 +954,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
 - When a customer says they are busy, driving, in a meeting, or asks you to call back later (e.g., "Can you call me later?", "I am busy right now", "call back in 2 hours", "bad time"):
   * STEP 1: Immediately agree without arguing or keeping them on the phone: "Sure thing! When would be a good time to call you back?"
   * STEP 2: When they give a time (e.g. "Tomorrow 5 PM" or "in 2 hours"), CONFIRM the appointment in ONE single sentence and ALWAYS finish with a clear closing farewell word (e.g. "Goodbye!" or "Talk to you then, goodbye!") so the telephone line disconnects instantly:
-    - English: "Perfect, I've got you down for tomorrow at 5:00 PM. Talk to you then, goodbye!"
+    - English: "Perfect, I've got you down for tomorrow, <weekday and date>, at 5:00 PM. Talk to you then, goodbye!" (use tomorrow's real weekday and date from the calendar and never read the angle brackets aloud)
     - Hindi: "बिल्कुल, मैं आपको कल शाम 5 बजे कॉल करूँगा। तब बात करते हैं, अलविदा!"
     - Gujarati: "ચોક્કસ, હું તમને કાલે સાંજે 5 વાગ્યે કૉલ કરીશ. આવજો!"
   * NEVER drag out the call with repetitive confirmations, calendar lectures, or open-ended lingering once the callback time is scheduled. Speak the confirmation and farewell so the call terminates immediately!"""
@@ -925,7 +971,8 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             # The prompt is cut at the tail when over the limit, so the facts the agent must answer from (knowledge
             # and the live-lookup instruction) come right after its own instructions instead of after ~20k of rules.
             parts = [
-                config.system_prompt.strip(),
+                VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()),
+                date_anchor,
                 knowledge_section,
                 personality_section,
                 guardrails_section,
@@ -955,6 +1002,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             parts = [
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
                 f"PRIMARY GOAL: {config.objective}",
+                date_anchor,
                 personality_section,
                 guardrails_section,
                 telephony_rules,

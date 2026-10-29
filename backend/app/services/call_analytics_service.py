@@ -307,7 +307,8 @@ class CallAnalyticsService:
         self,
         transcript_array: List[Dict[str, Any]],
         call_duration: int = 0,
-        call_status: str = "completed"
+        call_status: str = "completed",
+        timezone_iana: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Analyzes full transcript turns and produces structured evaluation intelligence:
@@ -440,12 +441,21 @@ JSON OUTPUT STRUCTURE:
   "important_info": "Notable business details captured (e.g. budget, timeline)",
   "next_action": "Clear, actionable recommended next step",
   "callback_datetime": "Parsed date/time string if customer requested callback, or null",
+  "scheduled_type": "meeting | callback | null. 'meeting' only when a demo/appointment/visit was explicitly agreed; 'callback' when a call-back time was agreed",
+  "scheduled_date": "YYYY-MM-DD in the business timezone for the AGREED date, or null",
+  "scheduled_time": "HH:MM 24-hour in the business timezone for the AGREED time, or null",
+  "scheduled_confidence": "confirmed only if BOTH a specific date and a specific time were clearly agreed by the customer; otherwise tentative. Never guess; vague phrases like 'sometime next week' are tentative with null date/time",
   "customer_name": "Customer name if mentioned or null",
   "company_name": "Company name if mentioned or null",
   "needs_audio_recording": false,
   "recording_retention_reason": "Escalation / Negative Sentiment / AI Confusion / None"
 }"""
 
+        from app.services.appointment_time import local_reference
+        system_prompt += (
+            f"\n\nREFERENCE TIME: right now it is {local_reference(timezone_iana)}. Resolve words like 'tomorrow' or "
+            f"'next Monday' to a concrete calendar date relative to this moment, in that timezone."
+        )
         user_prompt = f"TRANSCRIPT:\n{formatted_transcript}\n\nPlease output valid JSON."
         parsed = await self._execute_llm_json(system_prompt, user_prompt)
         if not parsed:
@@ -552,6 +562,11 @@ JSON OUTPUT STRUCTURE:
             "important_info": parsed.get("important_info"),
             "next_action": parsed.get("next_action") or "Follow up with prospect",
             "callback_datetime": parsed.get("callback_datetime"),
+            "scheduled_type": parsed.get("scheduled_type"),
+            "scheduled_date": parsed.get("scheduled_date"),
+            "scheduled_time": parsed.get("scheduled_time"),
+            "scheduled_confidence": parsed.get("scheduled_confidence"),
+            "scheduled_timezone": timezone_iana,
             "customer_name": parsed.get("customer_name"),
             "company_name": parsed.get("company_name"),
             "business_requirements": parsed.get("business_requirements"),

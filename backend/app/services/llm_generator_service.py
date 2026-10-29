@@ -236,7 +236,7 @@ You MUST structure the generated system_prompt into these comprehensive, battle-
 
 6. STAGE 4 (NEXT STEPS & ACTION CONFIRMATION):
    - Concrete next steps: booking a 15-minute discovery consultation, confirming appointment, logging a ticket, or dispatching an SMS confirmation.
-   - MANDATORY DATE CONFIRMATION RULE: When offering or confirming a meeting date/time, NEVER confirm with just a day name (e.g., never say just 'Monday'). Always specify the exact calendar date (e.g. 'Monday, September 7th' or clarify 'Do you mean today, Monday, or next Monday?').
+   - MANDATORY DATE CONFIRMATION RULE: When offering or confirming a meeting date/time, NEVER confirm with just a day name (e.g., never say just 'Monday'). Always specify the exact calendar date taken from the live calendar given at call time, or clarify 'Do you mean today, Monday, or next Monday?'. NEVER write a literal calendar date (month and day) into the prompt or its sample lines; the model repeats it as a real date on calls.
    - PAST-TIME PREVENTION: If a caller asks to schedule for today at a time that has already passed, check current time and inform them politely that the time has passed today and propose an alternative time or tomorrow.
 
 7. OBJECTIONS & PHONE RULES:

@@ -6,6 +6,7 @@ from app.repositories.user_repository import UserRepository
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.repositories.call_repository import CallRepository
+from app.repositories.activity_log_repository import ActivityLogRepository
 from app.services.twilio_service import TwilioService
 from app.services.cost_calculator import CostCalculatorService
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, TwilioDirectAccountUsageResponse
@@ -357,6 +358,30 @@ async def superadmin_delete_user(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete user.")
 
     return {"message": f"User {target_user['email']} deleted successfully."}
+
+
+@router.get("/activity-logs")
+async def list_activity_logs(
+    limit: int = Query(200, ge=1, le=1000),
+    search: Optional[str] = Query(None),
+    category: Optional[str] = Query(None, pattern="^(login|action)$"),
+    _: Dict[str, Any] = Depends(require_superadmin)
+):
+    """Recent login and major-operation audit entries across all organizations."""
+    items = await ActivityLogRepository.list_recent(limit=limit, search=search, category=category)
+    return [
+        {
+            "id": i["id"],
+            "username": i.get("username"),
+            "org_name": i.get("org_name"),
+            "ip_address": i.get("ip_address"),
+            "category": i.get("category"),
+            "action": i.get("action"),
+            "message": i.get("message"),
+            "timestamp": i.get("timestamp"),
+        }
+        for i in items
+    ]
 
 
 # ---------------------------------------------------------------------------

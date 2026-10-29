@@ -403,6 +403,7 @@ export function ProspectsView() {
     a.href = url;
     a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+    fetchApi("/activity/event", { method: "POST", body: JSON.stringify({ event: "export_contacts_csv" }) }).catch(() => {});
   };
 
   const getStatusBadge = (st: string) => {

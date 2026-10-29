@@ -1,6 +1,7 @@
 from typing import Optional, List
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from app.services.activity_log_service import log_action
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.schemas.lead_intelligence import (
@@ -18,6 +19,8 @@ from app.schemas.lead_intelligence import (
 )
 from app.schemas.prospect import ProspectResponse
 from app.services.lead_intelligence_service import LeadIntelligenceService
+from app.services.appointment_service import AppointmentService
+from fastapi import HTTPException
 
 router = APIRouter(prefix="/lead-intelligence", tags=["Lead Intelligence"])
 
@@ -207,6 +210,39 @@ async def list_callbacks(
     return ApiResponse.ok(res)
 
 
+@router.get("/calendar", response_model=ApiResponse[List[dict]])
+async def list_calendar_events(
+    start: datetime = Query(..., alias="from", description="Range start (ISO 8601)"),
+    end: datetime = Query(..., alias="to", description="Range end (ISO 8601), max 62 days after start"),
+    campaign_id: Optional[str] = Query(None),
+    agent_id: Optional[str] = Query(None),
+    type: Optional[str] = Query(None, pattern="^(meeting|callback)$"),
+    status: Optional[str] = Query(None, pattern="^(scheduled|missed|cancelled)$"),
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    """Meetings and agreed call-backs for the caller's organization within a date range."""
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    try:
+        rows = await AppointmentService().list_range(ctx, start, end, campaign_id, agent_id, type, status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return ApiResponse.ok(rows)
+
+
+@router.get("/calendar/{appointment_id}", response_model=ApiResponse[dict])
+async def get_calendar_event(
+    appointment_id: str,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    row = await AppointmentService().get(ctx, appointment_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    return ApiResponse.ok(row)
+
+
 @router.get("/leads/{prospect_id}", response_model=ApiResponse[LeadDetailResponse])
 async def get_lead_detail(
     prospect_id: str,
@@ -237,6 +273,7 @@ async def execute_lead_action(
 
 @router.get("/export")
 async def export_leads_csv(
+    request: Request,
     search: Optional[str] = Query(None),
     date_range: Optional[str] = Query("all"),
     custom_start: Optional[str] = Query(None),
@@ -272,6 +309,7 @@ async def export_leads_csv(
         follow_up=follow_up,
         only_high_value=only_high_value
     )
+    await log_action(request, ctx, "exported lead intelligence report (CSV)")
     filename = f"lead_intelligence_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         content=csv_data,

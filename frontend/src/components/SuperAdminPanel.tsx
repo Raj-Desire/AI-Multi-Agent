@@ -17,7 +17,8 @@ import {
   Sparkles,
   DollarSign,
   PhoneCall,
-  Coins
+  Coins,
+  ScrollText
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -32,6 +33,7 @@ import { SuperAdminVoiceRulesTab } from "./SuperAdminVoiceRulesTab";
 import { SuperAdminUsageCostTab } from "./SuperAdminUsageCostTab";
 import { SuperAdminTwilioUsageTab } from "./SuperAdminTwilioUsageTab";
 import { SuperAdminCreditsTab } from "./SuperAdminCreditsTab";
+import { SuperAdminActivityLogTab } from "./SuperAdminActivityLogTab";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -412,12 +414,13 @@ export const SuperAdminPanel: React.FC = () => {
       {/* Tabs */}
       <Tabs
         tabs={[
-          { id: "organizations", label: "Organizations Directory", icon: <Building2 className="w-3.5 h-3.5" /> },
-          { id: "users", label: "Global User Accounts", icon: <Users className="w-3.5 h-3.5" /> },
-          { id: "credits", label: "Credits & Subscriptions", icon: <Coins className="w-3.5 h-3.5 text-amber-500" /> },
-          { id: "cost_tracking", label: "Usage & Cost Tracking", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> },
-          { id: "twilio_usage", label: "Twilio Account Telemetry", icon: <PhoneCall className="w-3.5 h-3.5 text-blue-500" /> },
-          { id: "voice_rules", label: "AI Voice Rules & Intelligence", icon: <Sparkles className="w-3.5 h-3.5" /> },
+          { id: "organizations", label: "Organizations", icon: <Building2 className="w-3.5 h-3.5" /> },
+          { id: "users", label: "Users", icon: <Users className="w-3.5 h-3.5" /> },
+          { id: "credits", label: "Credits", icon: <Coins className="w-3.5 h-3.5 text-amber-500" /> },
+          { id: "cost_tracking", label: "Usage & Cost", icon: <DollarSign className="w-3.5 h-3.5 text-emerald-500" /> },
+          { id: "twilio_usage", label: "Twilio", icon: <PhoneCall className="w-3.5 h-3.5 text-blue-500" /> },
+          { id: "voice_rules", label: "Voice Rules", icon: <Sparkles className="w-3.5 h-3.5" /> },
+          { id: "activity_log", label: "Activity Log", icon: <ScrollText className="w-3.5 h-3.5" /> },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -509,6 +512,10 @@ export const SuperAdminPanel: React.FC = () => {
       )}
 
       {/* TAB 5: AI Voice Rules & Intelligence */}
+      {activeTab === "activity_log" && (
+        <SuperAdminActivityLogTab />
+      )}
+
       {activeTab === "voice_rules" && (
         <SuperAdminVoiceRulesTab />
       )}

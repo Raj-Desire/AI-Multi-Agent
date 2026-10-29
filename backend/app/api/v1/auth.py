@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status
 from pydantic import BaseModel, EmailStr
 from typing import Dict, Any, Optional
 from app.repositories.user_repository import UserRepository
@@ -25,7 +25,7 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     email_or_user = req.email.strip()
     user = await UserRepository.get_by_email(email_or_user)
     
@@ -56,6 +56,9 @@ async def login(req: LoginRequest):
         "organization_id": user.get("organization_id", user["id"]),
         "org_name": user.get("org_name")
     })
+
+    from app.services.activity_log_service import log_login
+    await log_login(request, user)
 
     return TokenResponse(
         access_token=access_token,

@@ -154,6 +154,12 @@ def detect_conversation_conclusion(text: str) -> bool:
     return any(p in last for p in _FAREWELL_PHRASES) or bool(_FAREWELL_WORD.search(last)) or bool(_FAREWELL_WISH.search(last))
 
 
+def detect_caller_farewell(text: str) -> bool:
+    """The caller is saying goodbye ("Okay. Bye.", "thanks, goodbye"): a short turn that ends in a farewell.
+    Long turns are excluded so a goodbye mentioned inside a sentence never ends the call."""
+    return 0 < len(re.findall(r"\w+", text or "")) <= 8 and detect_conversation_conclusion(text)
+
+
 @router.websocket("/telemetry/{call_session_id}")
 async def telemetry_websocket(websocket: WebSocket, call_session_id: str):
     """

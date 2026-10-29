@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, Request, status
+from app.services.activity_log_service import log_action
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.schemas.prospect import (
@@ -134,6 +135,7 @@ async def validate_csv_import(
 @router.post("/import/csv", response_model=ApiResponse[CSVImportSummaryResponse])
 async def import_prospects_csv(
     payload: CSVImportRequest,
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: ProspectService = Depends(get_prospect_service)
 ):
@@ -149,6 +151,7 @@ async def import_prospects_csv(
         default_tags=payload.default_tags,
         default_source=payload.default_source
     )
+    await log_action(request, ctx, "imported contacts from CSV")
     return ApiResponse.ok(res)
 
 

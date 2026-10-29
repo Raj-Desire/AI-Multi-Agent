@@ -11,6 +11,7 @@ from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.agents.configuration import AgentConfiguration, PromptVersionSnapshot, PromptTestCase
 from app.services.agent_service import AgentService
+from app.services.activity_log_service import log_action
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.llm_generator_service import LLMGeneratorService
@@ -292,6 +293,7 @@ async def get_agent(
 @router.post("", response_model=ApiResponse[AgentConfiguration])
 async def create_agent(
     payload: AgentConfiguration,
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: AgentService = Depends(get_agent_service)
 ):
@@ -307,6 +309,7 @@ async def create_agent(
             )
 
     created = await service.create_agent(ctx, payload)
+    await log_action(request, ctx, f"created agent '{created.name}'")
     return ApiResponse.ok(created)
 
 
@@ -555,11 +558,14 @@ async def run_prompt_regression_test(
 @router.delete("/{agent_id}", response_model=ApiResponse[Dict[str, Any]])
 async def delete_agent(
     agent_id: str,
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: AgentService = Depends(get_agent_service)
 ):
     """Permanently deletes a custom agent from the caller's organization."""
     success = await service.delete_agent(ctx, agent_id)
+    if success:
+        await log_action(request, ctx, f"deleted agent {agent_id}")
     return ApiResponse.ok({
         "deleted": success,
         "agent_id": agent_id,

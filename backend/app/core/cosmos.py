@@ -28,6 +28,8 @@ COSMOS_CONTAINER_AGENT_VERSIONS = os.getenv("COSMOS_CONTAINER_AGENT_VERSIONS", "
 COSMOS_CONTAINER_ORG_CREDITS = os.getenv("COSMOS_CONTAINER_ORG_CREDITS", "org_credits")
 COSMOS_CONTAINER_USAGE_LEDGER = os.getenv("COSMOS_CONTAINER_USAGE_LEDGER", "usage_ledger")
 COSMOS_CONTAINER_CREDIT_LOGS = os.getenv("COSMOS_CONTAINER_CREDIT_LOGS", "credit_assignment_log")
+COSMOS_CONTAINER_ACTIVITY_LOGS = os.getenv("COSMOS_CONTAINER_ACTIVITY_LOGS", "activity_logs")
+COSMOS_CONTAINER_APPOINTMENTS = os.getenv("COSMOS_CONTAINER_APPOINTMENTS", "appointments")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@desireai.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -48,6 +50,8 @@ _knowledge_chunks_container = None
 _credits_container = None
 _ledger_container = None
 _credit_logs_container = None
+_activity_logs_container = None
+_appointments_container = None
 
 def get_cosmos_client() -> Optional[CosmosClient]:
     global _client
@@ -288,9 +292,37 @@ def get_credit_logs_container():
         print(f"[CosmosDB Error] Failed to get credit logs container: {e}")
         return None
 
+def get_activity_logs_container():
+    global _activity_logs_container
+    if _activity_logs_container is not None:
+        return _activity_logs_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _activity_logs_container = db.get_container_client(COSMOS_CONTAINER_ACTIVITY_LOGS)
+        return _activity_logs_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get activity logs container: {e}")
+        return None
+
+def get_appointments_container():
+    global _appointments_container
+    if _appointments_container is not None:
+        return _appointments_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _appointments_container = db.get_container_client(COSMOS_CONTAINER_APPOINTMENTS)
+        return _appointments_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get appointments container: {e}")
+        return None
+
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
-    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container, _agent_versions_container, _credits_container, _ledger_container, _credit_logs_container
+    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container, _agent_versions_container, _credits_container, _ledger_container, _credit_logs_container, _activity_logs_container, _appointments_container
     client = get_cosmos_client()
     if not client:
         print("[CosmosDB Warning] Cosmos client unavailable during startup.")
@@ -314,6 +346,9 @@ def init_cosmos_db():
         _credits_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_ORG_CREDITS, partition_key=PartitionKey(path="/organization_id"))
         _ledger_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_USAGE_LEDGER, partition_key=PartitionKey(path="/organization_id"), default_ttl=7776000)
         _credit_logs_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_CREDIT_LOGS, partition_key=PartitionKey(path="/organization_id"))
+        # Activity audit trail: auto-expire entries after 180 days
+        _activity_logs_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_ACTIVITY_LOGS, partition_key=PartitionKey(path="/organization_id"), default_ttl=15552000)
+        _appointments_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_APPOINTMENTS, partition_key=PartitionKey(path="/organization_id"))
     except Exception as e:
         print(f"[CosmosDB Error] Container verification during startup: {e}")
 

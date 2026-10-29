@@ -442,10 +442,13 @@ class CallSessionService:
         analytics_data: Dict[str, Any] = {}
         try:
             from app.services.call_analytics_service import CallAnalyticsService
+            from app.services.appointment_time import agent_timezone
+            stored_call = await self.call_repo.get_by_id(call_id)
             analytics_data = await CallAnalyticsService().analyze_call_transcript(
                 transcript_records,
                 call_duration=session.call_duration or 0,
-                call_status=final_status
+                call_status=final_status,
+                timezone_iana=agent_timezone(getattr(stored_call, "agent_config_snapshot", None)),
             ) or {}
             logger.info(
                 f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
@@ -480,6 +483,9 @@ class CallSessionService:
                 call_doc.outcome = resolved_outcome
                 call_doc.business_outcome = resolved_outcome
                 await self.call_repo.save(call_doc)
+                if analytics_data:
+                    from app.services.appointment_service import AppointmentService
+                    await AppointmentService().upsert_from_call(call_doc, analytics_data)
         except Exception as e:
             logger.error(f"[CallSessionService] Error saving post-call analytics for {call_id}: {e}")
 

@@ -3,7 +3,8 @@ from app.schemas.call import slim_call_dict
 import asyncio
 import math
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, Request, status
+from app.services.activity_log_service import log_action
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.schemas.common import ApiResponse
 from app.schemas.campaign import (
@@ -158,6 +159,7 @@ async def delete_campaign(
 @router.post("/{campaign_id}/start", response_model=ApiResponse[CampaignResponse])
 async def start_campaign(
     campaign_id: str,
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: CampaignService = Depends(get_campaign_service)
 ):
@@ -170,6 +172,7 @@ async def start_campaign(
             detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
         )
     campaign = await service.start_campaign(ctx, campaign_id)
+    await log_action(request, ctx, f"started campaign '{campaign.name}'")
     # Trigger immediate dialer evaluation
     asyncio.create_task(campaign_dialer_engine.tick())
     return ApiResponse.ok(CampaignResponse.model_validate(campaign))
@@ -189,6 +192,7 @@ async def pause_campaign(
 @router.post("/{campaign_id}/resume", response_model=ApiResponse[CampaignResponse])
 async def resume_campaign(
     campaign_id: str,
+    request: Request,
     ctx: TenantContext = Depends(get_tenant_context),
     service: CampaignService = Depends(get_campaign_service)
 ):
@@ -201,6 +205,7 @@ async def resume_campaign(
             detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
         )
     campaign = await service.resume_campaign(ctx, campaign_id)
+    await log_action(request, ctx, f"resumed campaign '{campaign.name}'")
     asyncio.create_task(campaign_dialer_engine.tick())
     return ApiResponse.ok(CampaignResponse.model_validate(campaign))
 

@@ -21,6 +21,7 @@ import { LeadOutcomeDistribution } from "./LeadOutcomeDistribution";
 import { CampaignPerformanceSection } from "./CampaignPerformanceSection";
 import { AgentPerformanceSection } from "./AgentPerformanceSection";
 import { LeadTable } from "./LeadTable";
+import { CalendarView } from "./CalendarView";
 import { CallbackRequestsView } from "./CallbackRequestsView";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
 import { LeadCohortAnalyticsSection } from "./LeadCohortAnalyticsSection";
@@ -40,7 +41,8 @@ import {
   Megaphone,
   CheckCircle2,
   TrendingUp,
-  ArrowRight
+  ArrowRight,
+  CalendarDays
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { toast } from "sonner";
@@ -65,7 +67,7 @@ export function LeadIntelligenceView() {
   const cacheScope = user?.organization_id || "default";
 
   // Navigation View Tab: "all_leads" | "interested" | "callbacks" | "analytics" | "cohorts"
-  const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "analytics" | "cohorts">("all_leads");
+  const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "calendar" | "analytics" | "cohorts">("all_leads");
 
   // Filter State
   const [filters, setFilters] = useState<LeadFilterState>(INITIAL_FILTERS);
@@ -104,6 +106,7 @@ export function LeadIntelligenceView() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
   // Detail Drawer State
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
 
@@ -380,6 +383,7 @@ export function LeadIntelligenceView() {
             if (activeTab === "analytics") loadAnalyticsDetails();
             loadLeads();
             if (activeTab === "callbacks") loadCallbacks();
+            if (activeTab === "calendar") setCalendarRefreshKey((k) => k + 1);
           }
         } catch (e) {
           console.error("Error parsing telemetry event:", e);
@@ -591,6 +595,18 @@ export function LeadIntelligenceView() {
           </button>
 
           <button
+            onClick={() => setActiveTab("calendar")}
+            className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === "calendar"
+                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Calendar</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("analytics")}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "analytics"
@@ -680,6 +696,19 @@ export function LeadIntelligenceView() {
             }}
           />
         </div>
+      )}
+
+      {/* CALENDAR: meetings and agreed call-backs captured from calls */}
+      {activeTab === "calendar" && (
+        <CalendarView
+          campaigns={campaigns}
+          agents={agents}
+          refreshKey={calendarRefreshKey}
+          onSelectProspect={(pid) => {
+            setSelectedProspectId(pid);
+            setIsDrawerOpen(true);
+          }}
+        />
       )}
 
       {/* TAB 3: ANALYTICS, CHARTS & CAMPAIGN PERFORMANCE */}

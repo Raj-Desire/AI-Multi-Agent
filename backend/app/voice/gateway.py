@@ -96,6 +96,7 @@ async def voice_stream_websocket(websocket: WebSocket):
     lifecycle_task: Optional[asyncio.Task] = None
     thinking_filler_task: Optional[asyncio.Task] = None
     barge_in_debounce_task: Optional[asyncio.Task] = None
+    caller_farewell_at: Optional[float] = None
 
     # Multi-Agent Orchestrator runtime state
     orchestrator: Optional[AgentOrchestrator] = None
@@ -377,6 +378,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
         nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke, real_conversation
         nonlocal orchestrator, live_transcript_turns, handoff_controller, turn_counter, cached_rules_map, cached_inbound_forward_number
+        nonlocal caller_farewell_at
         if not session:
             return
 
@@ -400,6 +402,23 @@ async def voice_stream_websocket(websocket: WebSocket):
             live_transcript_turns.append({"role": "user", "content": content})
             turn_counter += 1
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
+
+            # The caller said goodbye: the agent's reply may not contain a farewell word of its own, and the line must
+            # not stay open after the caller has left. The next agent turn ends the call; a silent agent is cut after 7s.
+            from app.api.v1.voice import detect_caller_farewell
+            if not is_concluding_call and turn_counter >= 1 and detect_caller_farewell(content):
+                caller_farewell_at = time.time()
+                logger.info(f"[VoiceGateway] Caller said goodbye: '{content[:40]}'. The call ends after the agent's reply.")
+                stamp = caller_farewell_at
+
+                async def _caller_farewell_fallback():
+                    await asyncio.sleep(7.0)
+                    if caller_farewell_at == stamp and not is_concluding_call and not call_ended_event.is_set():
+                        await end_call_gracefully("Thank you for your time, goodbye!")
+
+                asyncio.create_task(_caller_farewell_fallback())
+            else:
+                caller_farewell_at = None
 
             # ── Multi-Agent Orchestrator: Submit for Handoff Evaluation ──────
             if handoff_controller and not is_concluding_call:
@@ -489,7 +508,8 @@ async def voice_stream_websocket(websocket: WebSocket):
 
             from app.api.v1.voice import detect_conversation_conclusion
             # Never conclude on initial greeting (turn 0) or before the user has even spoken!
-            if user_spoke and turn_counter >= 1 and detect_conversation_conclusion(content):
+            caller_left = caller_farewell_at is not None and time.time() - caller_farewell_at < 20.0
+            if user_spoke and turn_counter >= 1 and (caller_left or detect_conversation_conclusion(content)):
                 lower_content = content.lower()
                 is_voicemail_or_machine = (
                     "voicemail detected" in lower_content or

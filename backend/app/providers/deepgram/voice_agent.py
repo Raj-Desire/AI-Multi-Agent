@@ -20,6 +20,8 @@ from app.providers.deepgram.configuration import (
 from app.providers.deepgram.events import DeepgramEventType
 
 logger = logging.getLogger("deepgram.voice_agent")
+
+HANDSHAKE_ATTEMPTS = 3
 logger.setLevel(logging.INFO)
 
 
@@ -68,6 +70,7 @@ class DeepgramVoiceAgentClient:
         self._closed_event = asyncio.Event()
         self._is_connected = False
         self._is_ready = False
+        self._handshake_error: Optional[str] = None
         self._session_id: Optional[str] = None
 
         self._audio_received_event = asyncio.Event()
@@ -87,6 +90,27 @@ class DeepgramVoiceAgentClient:
         settings: DeepgramSettingsConfiguration,
         greeting: Optional[str] = None,
         timeout: float = 10.0
+    ) -> bool:
+        """
+        Opens the voice engine session. The engine occasionally refuses to start listening on a fresh session
+        (FAILED_TO_START_LISTENING) even with valid settings; a brand-new session usually succeeds, so a failed
+        handshake is retried instead of ending the call before the agent has said anything.
+        """
+        for attempt in range(1, HANDSHAKE_ATTEMPTS + 1):
+            final = attempt == HANDSHAKE_ATTEMPTS
+            try:
+                return await self._connect_once(settings, greeting, timeout, final)
+            except Exception as e:
+                if final or self._closed_event.is_set() or isinstance(e, ValueError):
+                    raise
+                logger.warning(f"[VoiceEngine] Handshake attempt {attempt}/{HANDSHAKE_ATTEMPTS} failed ({e}); retrying with a new session.")
+
+    async def _connect_once(
+        self,
+        settings: DeepgramSettingsConfiguration,
+        greeting: Optional[str],
+        timeout: float,
+        final: bool,
     ) -> bool:
         """
         Executes the mandatory Deepgram initialization handshake:
@@ -137,6 +161,7 @@ class DeepgramVoiceAgentClient:
                 warm.add_done_callback(self._function_tasks.discard)
             self._welcome_event.clear()
             self._settings_applied_event.clear()
+            self._handshake_error = None
 
             # Start listener loop
             self._receive_task = asyncio.create_task(self._receive_loop())
@@ -159,6 +184,8 @@ class DeepgramVoiceAgentClient:
                 await asyncio.wait_for(self._settings_applied_event.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 raise TimeoutError("Timed out waiting for Deepgram SettingsApplied message.")
+            if self._handshake_error:
+                raise ConnectionError(self._handshake_error)
 
             self._is_ready = True
             logger.info("Deepgram Voice Agent initialized successfully.")
@@ -183,10 +210,33 @@ class DeepgramVoiceAgentClient:
 
         except Exception as e:
             logger.error(f"Failed to connect/configure Deepgram Voice Agent: {e}")
+            if not final:
+                await self._abort_handshake()
+                raise
             if self.on_error:
                 await self.on_error(str(e))
             await self.close()
             raise
+
+    async def _abort_handshake(self):
+        """Drops a half-started session so the next attempt starts clean (unlike close(), the client stays reusable)."""
+        self._is_connected = False
+        self._is_ready = False
+        task, self._receive_task = self._receive_task, None
+        if task:
+            task.cancel()
+            try:
+                await task
+            except BaseException:
+                pass
+        ws, self._ws = self._ws, None
+        if ws:
+            try:
+                await ws.close()
+            except Exception:
+                pass
+        self._welcome_event.clear()
+        self._settings_applied_event.clear()
 
     async def send_audio(self, raw_audio_bytes: bytes):
         """Streams raw audio bytes (mulaw, 8kHz) directly to Deepgram."""
@@ -428,7 +478,12 @@ class DeepgramVoiceAgentClient:
                 elif event_type == DeepgramEventType.ERROR:
                     err_msg = data.get("message") or data.get("description") or data.get("error") or str(data)
                     logger.error(f"Deepgram Error event: {err_msg} | Full payload: {data}")
-                    if self.on_error:
+                    if not self._is_ready:
+                        # Refused while starting up: wake the handshake so it fails (and retries) at once, not after the timeout.
+                        self._handshake_error = err_msg
+                        self._welcome_event.set()
+                        self._settings_applied_event.set()
+                    elif self.on_error:
                         await self.on_error(err_msg)
 
                 elif event_type == DeepgramEventType.WARNING:

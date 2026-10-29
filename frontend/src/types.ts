@@ -1386,3 +1386,26 @@ export interface SuperAdminOrgCreditItem extends OrgCreditStatus {
 }
 
 
+
+export interface CalendarEvent {
+  id: string;
+  type: "meeting" | "callback";
+  status: "scheduled" | "missed" | "cancelled";
+  start_at_utc: string;
+  end_at_utc: string;
+  timezone: string;
+  title: string;
+  prospect_id?: string | null;
+  prospect_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  company?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  call_id?: string | null;
+  summary?: string | null;
+  next_action?: string | null;
+  history: { at: string; event: string; [k: string]: any }[];
+}

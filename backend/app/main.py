@@ -15,6 +15,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.superadmin import router as superadmin_router
 from app.api.v1.theme import router as theme_router
+from app.api.v1.activity import router as activity_router
 from app.api.v1.agents import router as agents_router
 from app.api.v1.voice import router as voice_router
 from app.api.v1.prospects import router as prospects_router
@@ -98,6 +99,7 @@ app.include_router(superadmin_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
 app.include_router(calls_router, prefix="/api/v1")
 app.include_router(theme_router, prefix="/api/v1")
+app.include_router(activity_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(voice_router, prefix="/api/v1")
 app.include_router(prospects_router, prefix="/api/v1")
