@@ -108,6 +108,9 @@ export function LeadIntelligenceView() {
   // Detail Drawer State
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  // "call": one row for every call (any agent, dialer or campaign); "contact": one row per person (latest call)
+  const [leadsGroupBy, setLeadsGroupBy] = useState<"call" | "contact">("call");
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
 
   // Modal States
@@ -221,6 +224,7 @@ export function LeadIntelligenceView() {
       // only_high_value is only enforced if the user is explicitly on the "interested" tab and hasn't selected another outcome
       const isOnlyHighValue = activeTab === "interested" && filters.outcome === "all";
       params.set("only_high_value", isOnlyHighValue ? "true" : "false");
+      params.set("group_by", leadsGroupBy);
 
       const leadsUrl = `/lead-intelligence/leads?${params.toString()}`;
       const leadsKey = `${cacheScope}:${leadsUrl}`;
@@ -256,6 +260,7 @@ export function LeadIntelligenceView() {
     filters.prospectStatus,
     filters.followUp,
     activeTab,
+    leadsGroupBy,
     cacheScope,
   ]);
 
@@ -369,8 +374,11 @@ export function LeadIntelligenceView() {
                 action: {
                   label: "View Lead",
                   onClick: () => {
-                    if (data.payload?.prospect_id) {
-                      setSelectedProspectId(data.payload.prospect_id);
+                    // A call placed from the dialer has no prospect record: the call id opens it just the same
+                    const target = data.payload?.prospect_id || data.payload?.call_id;
+                    if (target) {
+                      setSelectedProspectId(target);
+                      setSelectedCallId(data.payload?.call_id || null);
                       setIsDrawerOpen(true);
                     }
                   },
@@ -583,7 +591,10 @@ export function LeadIntelligenceView() {
           </button>
 
           <button
-            onClick={() => setActiveTab("callbacks")}
+            onClick={() => {
+              setActiveTab("callbacks");
+              handleFilterChange({ outcome: "Callback Requested" });
+            }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "callbacks"
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
@@ -595,7 +606,10 @@ export function LeadIntelligenceView() {
           </button>
 
           <button
-            onClick={() => setActiveTab("calendar")}
+            onClick={() => {
+              setActiveTab("calendar");
+              handleFilterChange({ outcome: "all" });
+            }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "calendar"
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
@@ -607,7 +621,10 @@ export function LeadIntelligenceView() {
           </button>
 
           <button
-            onClick={() => setActiveTab("analytics")}
+            onClick={() => {
+              setActiveTab("analytics");
+              handleFilterChange({ outcome: "all" });
+            }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "analytics"
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
@@ -619,7 +636,10 @@ export function LeadIntelligenceView() {
           </button>
 
           <button
-            onClick={() => setActiveTab("cohorts")}
+            onClick={() => {
+              setActiveTab("cohorts");
+              handleFilterChange({ outcome: "all" });
+            }}
             className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === "cohorts"
                 ? "border-[var(--color-primary)] text-[var(--color-primary)]"
@@ -649,6 +669,29 @@ export function LeadIntelligenceView() {
           />
 
 
+          <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-[var(--color-muted)]">
+            <span>
+              {leadsGroupBy === "call"
+                ? "Every call is listed with its agent, score and transcript."
+                : "One row per person, showing their latest call (a booked call stays on top)."}
+            </span>
+            <div className="inline-flex rounded-md border border-[var(--color-border)] overflow-hidden">
+              {([["call", "Every call"], ["contact", "One row per person"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => { setLeadsGroupBy(value); setLeadsPage(1); }}
+                  className={`px-3 py-1.5 font-semibold cursor-pointer transition-colors ${
+                    leadsGroupBy === value
+                      ? "bg-[var(--color-primary)] text-white"
+                      : "bg-[var(--color-surface)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Main Lead Table */}
           <LeadTable
             leads={leads}
@@ -670,6 +713,7 @@ export function LeadIntelligenceView() {
             onPageChange={(p) => setLeadsPage(p)}
             onSelectLead={(lead) => {
               setSelectedProspectId(lead.prospect_id);
+              setSelectedCallId(lead.last_call_id || null);
               setIsDrawerOpen(true);
             }}
             onResetFilters={handleResetFilters}
@@ -690,8 +734,9 @@ export function LeadIntelligenceView() {
             totalPages={callbacksTotalPages}
             isLoading={isLoadingCallbacks}
             onPageChange={(p) => setCallbacksPage(p)}
-            onSelectProspect={(pid) => {
+            onSelectProspect={(pid, callId) => {
               setSelectedProspectId(pid);
+              setSelectedCallId(callId || null);
               setIsDrawerOpen(true);
             }}
           />
@@ -704,8 +749,9 @@ export function LeadIntelligenceView() {
           campaigns={campaigns}
           agents={agents}
           refreshKey={calendarRefreshKey}
-          onSelectProspect={(pid) => {
+          onSelectProspect={(pid, callId) => {
             setSelectedProspectId(pid);
+            setSelectedCallId(callId || null);
             setIsDrawerOpen(true);
           }}
         />
@@ -759,10 +805,12 @@ export function LeadIntelligenceView() {
       {/* Lead Detail Drawer Modal */}
       <LeadDetailDrawer
         prospectId={selectedProspectId}
+        callId={selectedCallId}
         isOpen={isDrawerOpen}
         onClose={() => {
           setIsDrawerOpen(false);
           setSelectedProspectId(null);
+          setSelectedCallId(null);
         }}
         onLeadUpdated={() => {
           loadSummary();

@@ -21,8 +21,22 @@ interface CallbackRequestsViewProps {
   totalPages: number;
   isLoading: boolean;
   onPageChange: (newPage: number) => void;
-  onSelectProspect: (prospectId: string) => void;
+  onSelectProspect: (prospectId: string, callId?: string | null) => void;
   onQuickCall?: (phoneNumber: string) => void;
+}
+
+// The agreed time, in the viewer's time zone; text that cannot be read as a date is shown as it was saved
+function formatCallbackTime(cb: CallbackListItem): { text: string; overdue: boolean } {
+  if (cb.requested_at_utc) {
+    const d = new Date(cb.requested_at_utc);
+    if (!Number.isNaN(d.getTime())) {
+      return {
+        text: d.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" }),
+        overdue: d.getTime() < Date.now(),
+      };
+    }
+  }
+  return { text: cb.requested_datetime || "Time not given", overdue: false };
 }
 
 export function CallbackRequestsView({
@@ -78,7 +92,7 @@ export function CallbackRequestsView({
             Active Callback Requests
           </h3>
           <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-semibold font-mono">
-            {total} Pending
+            {total} {total === 1 ? "request" : "requests"}
           </span>
         </div>
       </div>
@@ -87,8 +101,8 @@ export function CallbackRequestsView({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
         {callbacks.map((cb) => (
           <div
-            key={cb.prospect_id}
-            onClick={() => onSelectProspect(cb.prospect_id)}
+            key={cb.last_call_id || cb.prospect_id}
+            onClick={() => onSelectProspect(cb.prospect_id, cb.last_call_id)}
             className="p-4 rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)] hover:border-purple-500/40 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
           >
             {/* Top Row: Contact Info & Callback Schedule Tag */}
@@ -109,10 +123,22 @@ export function CallbackRequestsView({
               </div>
 
               {/* Urgency Badge */}
-              <div className="px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-semibold flex items-center gap-1.5 shrink-0">
-                <Calendar className="w-3 h-3" />
-                <span>{cb.requested_datetime || "Requested Callback"}</span>
-              </div>
+              {(() => {
+                const when = formatCallbackTime(cb);
+                return (
+                  <div
+                    className={`px-2.5 py-1 rounded-full border text-xs font-semibold flex items-center gap-1.5 shrink-0 ${
+                      when.overdue
+                        ? "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400"
+                        : "bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400"
+                    }`}
+                  >
+                    <Calendar className="w-3 h-3" />
+                    <span>{when.text}</span>
+                    {when.overdue && <span className="font-bold">· Overdue</span>}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Middle: AI Call Summary */}
@@ -142,7 +168,7 @@ export function CallbackRequestsView({
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => onSelectProspect(cb.prospect_id)}
+                  onClick={() => onSelectProspect(cb.prospect_id, cb.last_call_id)}
                   rightIcon={<ArrowRight className="w-3 h-3" />}
                   className="cursor-pointer font-medium"
                 >

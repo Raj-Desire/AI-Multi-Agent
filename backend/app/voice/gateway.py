@@ -665,7 +665,13 @@ async def voice_stream_websocket(websocket: WebSocket):
         if not verdict or not verdict.should_end or is_concluding_call:
             return
         is_concluding_call = True
-        reason = "IVR_DETECTED (LLM_MACHINE)" if verdict.is_machine else "USER_DECLINED"
+        from app.api.v1.voice import detect_caller_farewell
+        if verdict.is_machine:
+            reason = "IVR_DETECTED (LLM_MACHINE)"
+        elif detect_caller_farewell(latest_text):
+            reason = "CALLER_ENDED"  # a polite goodbye (even after a booking) is not a refusal; the analysis decides the outcome
+        else:
+            reason = "USER_DECLINED"
         logger.info(f"[VoiceGateway] LLM call-end verdict ({verdict.language}): {reason}. Concluding and hanging up.")
         await conclude_and_hangup(heard_text, reason, closing=verdict.closing or None)
 

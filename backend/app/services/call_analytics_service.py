@@ -153,13 +153,17 @@ class CallAnalyticsService:
     # and every point can be explained to the end user via `score_breakdown`.
     #
     #   engagement (0-25) + intent (0-40) + qualification (0-20)
-    #   + sentiment (0-10) - objections (0-15)  ->  clamped to the outcome band
+    #   + sentiment (0-10) + commitment (0-15) - objections (0-15)  ->  kept inside the outcome band
+    #
+    # The band only stops a score from leaving its outcome's range. Its floor must sit BELOW what real calls
+    # earn: a floor above the usual raw total lifts every such call to the same number (every "Interested"
+    # call used to score exactly 75), which hides the difference between a confirmed meeting and a passing "yes".
 
     OUTCOME_BANDS = {
-        "Interested": (75, 95),
-        "Transferred to Specialist": (60, 80),
-        "Callback Requested": (45, 68),
-        "Asked Details": (40, 65),
+        "Interested": (50, 98),
+        "Transferred to Specialist": (50, 85),
+        "Callback Requested": (25, 68),
+        "Asked Details": (25, 65),
         "Minimal Engagement": (10, 25),
         "Not Interested": (0, 20),
         "Do Not Call": (0, 0),
@@ -285,7 +289,14 @@ class CallAnalyticsService:
         objections = parsed.get("objections") or []
         objection_pts = -min(len(objections) * 5, 15) if isinstance(objections, list) else 0
 
-        raw = engagement + intent_pts + qualification + sentiment + objection_pts
+        # A concrete day and time agreed on the call is a commitment, worth more than saying "yes" to the idea
+        confirmed_slot = (
+            str(parsed.get("scheduled_confidence") or "").lower() == "confirmed"
+            and str(parsed.get("scheduled_type") or "").lower() in ("meeting", "callback")
+        )
+        commitment = 15 if confirmed_slot and outcome in ("Interested", "Callback Requested", "Transferred to Specialist", "Asked Details") else 0
+
+        raw = engagement + intent_pts + qualification + sentiment + commitment + objection_pts
         lo, hi = self.OUTCOME_BANDS[outcome]
         score = max(lo, min(raw, hi))
 
@@ -295,6 +306,7 @@ class CallAnalyticsService:
             "qualification": qualification,
             "sentiment": sentiment,
             "objections": objection_pts,
+            "commitment": commitment,
             "raw_total": raw,
             "total": score,
             "customer_words": customer_word_count,

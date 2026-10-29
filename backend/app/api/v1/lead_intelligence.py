@@ -159,6 +159,7 @@ async def list_leads(
     page_size: int = Query(25, ge=1, le=500, description="Page size"),
     sort_by: str = Query("last_call_at", description="Sort field: last_call_at, lead_score, full_name, campaign_name, outcome, callback_datetime"),
     sort_order: str = Query("desc", description="Sort direction: asc or desc"),
+    group_by: str = Query("contact", description="contact = one row per person (latest call); call = one row for every call"),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -183,7 +184,8 @@ async def list_leads(
         page=page,
         page_size=page_size,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        group_by=group_by
     )
     return ApiResponse.ok(res)
 
@@ -246,6 +248,7 @@ async def get_calendar_event(
 @router.get("/leads/{prospect_id}", response_model=ApiResponse[LeadDetailResponse])
 async def get_lead_detail(
     prospect_id: str,
+    call_id: Optional[str] = Query(None, description="Show this call's score, summary and transcript"),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -253,7 +256,7 @@ async def get_lead_detail(
     Returns comprehensive 360-degree Lead Intelligence detail for the drawer.
     Includes AI summary, key requirements, questions, objections, next action, 'Why highlighted' evidence, complete transcript turns, and call history.
     """
-    res = await lead_svc.get_lead_detail(ctx=ctx, prospect_id=prospect_id)
+    res = await lead_svc.get_lead_detail(ctx=ctx, prospect_id=prospect_id, call_id=call_id)
     return ApiResponse.ok(res)
 
 

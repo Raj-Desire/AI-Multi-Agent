@@ -39,6 +39,7 @@ import { toast } from "sonner";
 
 interface LeadDetailDrawerProps {
   prospectId: string | null;
+  callId?: string | null;
   isOpen: boolean;
   onClose: () => void;
   onLeadUpdated?: () => void;
@@ -47,6 +48,7 @@ interface LeadDetailDrawerProps {
 
 export function LeadDetailDrawer({
   prospectId,
+  callId,
   isOpen,
   onClose,
   onLeadUpdated,
@@ -89,16 +91,18 @@ export function LeadDetailDrawer({
     setIsChatOpen(false);
     setIsChatClosing(false);
     if (isOpen && prospectId) {
-      loadLeadDetail(prospectId);
+      loadLeadDetail(prospectId, callId);
     } else {
       setDetail(null);
     }
-  }, [isOpen, prospectId]);
+  }, [isOpen, prospectId, callId]);
 
-  const loadLeadDetail = async (id: string) => {
+  // Score, summary and transcript belong to one call: pass its id so that exact call is shown
+  const loadLeadDetail = async (id: string, forCallId?: string | null) => {
     setIsLoading(true);
     try {
-      const res = await fetchApi<LeadDetailResponse>(`/lead-intelligence/leads/${id}`);
+      const query = forCallId ? `?call_id=${encodeURIComponent(forCallId)}` : "";
+      const res = await fetchApi<LeadDetailResponse>(`/lead-intelligence/leads/${encodeURIComponent(id)}${query}`);
       if (res) {
         setDetail(res);
         setNewStatus(res.prospect?.status || "Interested");
@@ -131,7 +135,7 @@ export function LeadDetailDrawer({
       toast.success("Lead follow-up action saved successfully!");
       setNewNote("");
       if (onLeadUpdated) onLeadUpdated();
-      loadLeadDetail(prospectId);
+      loadLeadDetail(prospectId, detail?.latest_call_id);
     } catch (err) {
       toast.error("Failed to update lead action.");
     } finally {
@@ -208,6 +212,27 @@ export function LeadDetailDrawer({
                     <span>{detail.campaign_name}</span>
                   </span>
                 )}
+              </div>
+            )}
+
+            {detail && (
+              <div className="flex items-center gap-1.5 text-[11px] flex-wrap pt-1">
+                {[
+                  detail.call_source ? `Source: ${detail.call_source}` : null,
+                  detail.agent_name ? `Agent: ${detail.agent_name}` : null,
+                  detail.latest_call_at ? new Date(detail.latest_call_at).toLocaleString() : null,
+                  `Duration ${detail.call_duration ?? 0}s`,
+                  detail.analytics_status === "pending" ? "Analysis in progress" : `Score ${detail.lead_score}/100`,
+                  detail.meeting_at
+                    ? `Meeting ${new Date(detail.meeting_at).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: detail.meeting_timezone || undefined, timeZoneName: "short" })}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .map((chip) => (
+                    <span key={chip as string} className="px-2 py-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)]">
+                      {chip}
+                    </span>
+                  ))}
               </div>
             )}
           </div>
@@ -437,7 +462,18 @@ export function LeadDetailDrawer({
                   ) : (
                     <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[var(--color-border)]">
                       {detail.call_history.map((hist, idx) => (
-                        <div key={idx} className="relative space-y-1">
+                        <div
+                          key={idx}
+                          className={`relative space-y-1 rounded-md p-2 -m-2 cursor-pointer transition-colors ${
+                            hist.call_id === detail.latest_call_id ? "bg-[var(--color-primary)]/5" : "hover:bg-[var(--color-background)]/60"
+                          }`}
+                          onClick={() => {
+                            if (prospectId && hist.call_id !== detail.latest_call_id) {
+                              loadLeadDetail(prospectId, hist.call_id);
+                              setDrawerTab("summary");
+                            }
+                          }}
+                        >
                           {/* Dot marker */}
                           <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-[var(--color-primary)] ring-4 ring-[var(--color-surface)]" />
 
@@ -451,7 +487,13 @@ export function LeadDetailDrawer({
                           </div>
 
                           <div className="text-[11px] text-[var(--color-muted)]">
-                            Talking time: {hist.duration}s &bull; Handled by {hist.agent_name || "AI Agent"}
+                            {hist.source || "Call"}
+                            {hist.campaign_name ? ` · ${hist.campaign_name}` : ""} &bull; Talking time: {hist.duration}s &bull; Handled by {hist.agent_name || "AI Agent"}
+                            {typeof hist.score === "number" ? ` • Score ${hist.score}/100` : hist.analytics_status === "pending" ? " • Analysis in progress" : ""}
+                            {` • ${hist.turns ?? 0} messages`}
+                            {hist.meeting_at
+                              ? ` • Meeting ${new Date(hist.meeting_at).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: hist.meeting_timezone || undefined, timeZoneName: "short" })}`
+                              : ""}
                           </div>
 
                           {hist.summary && (

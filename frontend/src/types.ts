@@ -1025,6 +1025,12 @@ export interface LeadListItem {
   next_action?: string | null;
   prospect_status: string;
   callback_datetime?: string | null;
+  meeting_at?: string | null;
+  meeting_timezone?: string | null;
+  meeting_type?: string | null;
+  call_source?: string | null;
+  call_status?: string | null;
+  analytics_status?: string | null;
   summary?: string | null;
   tags: string[];
 }
@@ -1048,6 +1054,8 @@ export interface CallbackListItem {
   campaign_id?: string | null;
   campaign_name?: string | null;
   requested_datetime?: string | null;
+  requested_at_utc?: string | null;
+  last_call_id?: string | null;
   last_call_at?: string | null;
   summary?: string | null;
   next_action?: string | null;
@@ -1091,6 +1099,12 @@ export interface LeadDetailResponse {
   callback_datetime?: string | null;
   agent_id?: string | null;
   agent_name?: string | null;
+  call_source?: string | null;
+  call_status?: string | null;
+  call_duration?: number;
+  analytics_status?: string | null;
+  meeting_at?: string | null;
+  meeting_timezone?: string | null;
   highlight_reasons: LeadHighlightEvidence[];
   transcript: ConversationTurnMessage[];
   call_history: Array<{
@@ -1101,6 +1115,16 @@ export interface LeadDetailResponse {
     summary: string;
     agent_name?: string;
     campaign_id?: string;
+    campaign_name?: string | null;
+    source?: string;
+    score?: number | null;
+    interest_level?: string | null;
+    status?: string | null;
+    analytics_status?: string | null;
+    turns?: number;
+    meeting_at?: string | null;
+    meeting_timezone?: string | null;
+    selected?: boolean;
   }>;
 }
 

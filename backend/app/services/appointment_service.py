@@ -39,7 +39,7 @@ class AppointmentService:
             existing = await self.repo.get_by_id(org_id, appt_id)
             now = datetime.now(dt_timezone.utc)
 
-            prospect = await self._prospect(org_id, getattr(call, "prospect_id", None))
+            prospect = await self._prospect(org_id, getattr(call, "prospect_id", None), getattr(call, "to_number", None))
             name = (getattr(prospect, "full_name", None) or analytics.get("customer_name") or "Prospect")
             campaign_name = await self._campaign_name(org_id, getattr(call, "campaign_id", None))
 
@@ -76,14 +76,20 @@ class AppointmentService:
             logger.error(f"[AppointmentService] upsert_from_call failed: {e}")
             return None
 
-    async def _prospect(self, org_id: str, prospect_id: Optional[str]):
-        if not prospect_id:
-            return None
+    async def _prospect(self, org_id: str, prospect_id: Optional[str], phone: Optional[str] = None):
+        """The contact for the call: by id, or, for a call placed from the dialer, by the number that was dialled."""
         try:
             from app.repositories.prospect_repository import ProspectRepository
-            return await ProspectRepository().get_by_id(org_id, prospect_id)
+            repo = ProspectRepository()
+            if prospect_id:
+                return await repo.get_by_id(org_id, prospect_id)
+            if phone:
+                from app.services.prospect_service import normalize_phone
+                normalized = normalize_phone(phone)
+                return await repo.get_by_normalized_phone(org_id, normalized) if normalized else None
         except Exception:
-            return None
+            pass
+        return None
 
     async def _campaign_name(self, org_id: str, campaign_id: Optional[str]) -> Optional[str]:
         if not campaign_id:

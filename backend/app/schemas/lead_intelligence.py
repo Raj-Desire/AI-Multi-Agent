@@ -101,6 +101,13 @@ class LeadListItem(BaseModel):
     next_action: Optional[str] = None
     prospect_status: str
     callback_datetime: Optional[str] = None
+    # Booked meeting or call-back from the calendar: UTC "YYYY-MM-DDTHH:MM:SSZ", its zone and kind (meeting | callback)
+    meeting_at: Optional[str] = None
+    meeting_timezone: Optional[str] = None
+    meeting_type: Optional[str] = None
+    call_source: Optional[str] = None      # Campaign | Agent dialer
+    call_status: Optional[str] = None      # completed, busy, no-answer, ...
+    analytics_status: Optional[str] = None  # ready | pending | unavailable
     summary: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
 
@@ -126,6 +133,8 @@ class CallbackListItem(BaseModel):
     campaign_id: Optional[str] = None
     campaign_name: Optional[str] = None
     requested_datetime: Optional[str] = None
+    requested_at_utc: Optional[str] = None  # the same moment as UTC "YYYY-MM-DDTHH:MM:SSZ", when it could be read
+    last_call_id: Optional[str] = None
     last_call_at: Optional[datetime] = None
     summary: Optional[str] = None
     next_action: Optional[str] = None
@@ -174,6 +183,12 @@ class LeadDetailResponse(BaseModel):
     callback_datetime: Optional[str] = None
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
+    call_source: Optional[str] = None       # Campaign | Agent dialer
+    call_status: Optional[str] = None
+    call_duration: int = 0
+    analytics_status: Optional[str] = None
+    meeting_at: Optional[str] = None
+    meeting_timezone: Optional[str] = None
 
     # "Why this lead is highlighted" synthesized evidence
     highlight_reasons: List[LeadHighlightEvidence] = Field(default_factory=list)

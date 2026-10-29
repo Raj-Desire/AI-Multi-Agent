@@ -47,6 +47,17 @@ async def lifespan(app: FastAPI):
     else:
         print("[CampaignDialer] Continuous background polling disabled (ENABLE_CAMPAIGN_BACKGROUND_DIALER=false). Dialing operates on-demand.")
 
+    # A restart can interrupt post-call analysis; finish those calls so their leads and calendar bookings still appear.
+    async def _recover_pending_analytics():
+        await asyncio.sleep(20)
+        try:
+            from app.services.call_session_service import CallSessionService
+            await CallSessionService().recover_pending_analytics()
+        except Exception as e:
+            print(f"[Main Startup] Pending call analytics recovery skipped: {e}")
+
+    recovery_task = asyncio.create_task(_recover_pending_analytics())
+
     # Check concurrency warning for in-process think proxy registry
     think_proxy_flag = os.getenv("ORCHESTRATOR_THINK_PROXY", "false").lower() in ("true", "1", "yes")
     workers_str = os.getenv("WEB_CONCURRENCY") or os.getenv("WORKERS") or "1"

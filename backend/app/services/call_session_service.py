@@ -18,6 +18,25 @@ from app.models.call import Call
 
 logger = logging.getLogger("call_session_service")
 
+# How a live call ended is not how the lead turned out: a caller who books a meeting and then says bye is still a lead.
+_END_REASONS = {"USER_DECLINED", "CALLER_ENDED"}
+
+
+def resolve_final_outcome(session_outcome: Optional[str], analytics: Optional[Dict[str, Any]]) -> str:
+    """The outcome stored on the call. The analysed outcome wins over a live end reason when the caller only said
+    goodbye, or when a meeting or call-back time was confirmed; otherwise the live reason (refusal, machine) stands."""
+    analytics = analytics or {}
+    analysed = analytics.get("business_outcome") or analytics.get("interest_level")
+    if session_outcome in _END_REASONS and analysed:
+        booked = (
+            (analytics.get("scheduled_confidence") or "").lower() == "confirmed"
+            and (analytics.get("scheduled_type") or "").lower() in ("meeting", "callback")
+        )
+        if session_outcome == "CALLER_ENDED" or booked:
+            return analysed
+    return session_outcome or analysed or "Completed"
+
+
 # Strong references so fire-and-forget analytics tasks are not garbage collected mid-run.
 _background_tasks: set = set()
 _finalized_session_ids: set = set()
@@ -458,36 +477,10 @@ class CallSessionService:
         except Exception as analytics_err:
             logger.error(f"[CallSessionService] Post-call analytics error: {analytics_err}")
 
-        resolved_outcome = session.outcome or analytics_data.get("business_outcome") or analytics_data.get("interest_level") or "Completed"
+        resolved_outcome = resolve_final_outcome(session.outcome, analytics_data)
 
         # Enrich the stored call record (re-read: the Twilio status webhook may have updated it meanwhile)
-        try:
-            call_doc = await self.call_repo.get_by_id(call_id)
-            if call_doc:
-                call_doc.summary = analytics_data.get("summary") or call_doc.summary
-                call_doc.key_insights = analytics_data.get("key_insights") or call_doc.key_insights
-                call_doc.key_requirements = analytics_data.get("key_requirements") or call_doc.key_requirements
-                call_doc.customer_questions = analytics_data.get("customer_questions") or call_doc.customer_questions
-                call_doc.objections = analytics_data.get("objections") or call_doc.objections
-                call_doc.important_info = analytics_data.get("important_info") or call_doc.important_info
-                call_doc.next_action = analytics_data.get("next_action") or call_doc.next_action
-                call_doc.intent = analytics_data.get("intent") or call_doc.intent
-                call_doc.sentiment = analytics_data.get("sentiment") or call_doc.sentiment
-                if analytics_data.get("lead_score") is not None:
-                    call_doc.lead_score = analytics_data.get("lead_score")
-                call_doc.interest_level = analytics_data.get("interest_level") or call_doc.interest_level
-                call_doc.classification = analytics_data.get("classification") or call_doc.classification
-                call_doc.callback_datetime = analytics_data.get("callback_datetime") or call_doc.callback_datetime
-                call_doc.analytics = analytics_data if analytics_data else call_doc.analytics
-                call_doc.analytics_status = "ready" if analytics_data else "unavailable"
-                call_doc.outcome = resolved_outcome
-                call_doc.business_outcome = resolved_outcome
-                await self.call_repo.save(call_doc)
-                if analytics_data:
-                    from app.services.appointment_service import AppointmentService
-                    await AppointmentService().upsert_from_call(call_doc, analytics_data)
-        except Exception as e:
-            logger.error(f"[CallSessionService] Error saving post-call analytics for {call_id}: {e}")
+        await self._apply_analytics(call_id, analytics_data, resolved_outcome)
 
         # Propagate a richer outcome (e.g. "Interested") to the prospect and campaign member
         if resolved_outcome != initial_outcome:
@@ -614,3 +607,73 @@ class CallSessionService:
                     asyncio.create_task(_send_escalation_alert_async())
                 except Exception as alert_dispatch_err:
                     logger.error(f"[CallSessionService:Alert Dispatch] Could not schedule alert: {alert_dispatch_err}")
+
+
+    async def recover_pending_analytics(self, min_age_seconds: int = 180, max_age_hours: int = 72) -> int:
+        """Analyses calls whose post-call analysis never finished (the server restarted while it was running), so their
+        lead, outcome and calendar appointment still appear. Returns how many calls were recovered."""
+        from app.services.call_analytics_service import CallAnalyticsService
+        from app.services.appointment_time import agent_timezone
+
+        now = datetime.now(timezone.utc)
+        recovered = 0
+        for call in await self.call_repo.list_all_calls(limit=1000):
+            try:
+                if getattr(call, "analytics_status", None) != "pending" or not call.transcript:
+                    continue
+                created = call.created_at if isinstance(call.created_at, datetime) else None
+                if created is None:
+                    continue
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                age = (now - created).total_seconds()
+                if age < min_age_seconds or age > max_age_hours * 3600:
+                    continue
+                records = [t.model_dump(mode="json") if hasattr(t, "model_dump") else dict(t) for t in call.transcript]
+                if not any(r.get("role") == "user" for r in records):
+                    continue
+                analytics = await CallAnalyticsService().analyze_call_transcript(
+                    records,
+                    call_duration=call.duration or 0,
+                    call_status=call.status or "completed",
+                    timezone_iana=agent_timezone(getattr(call, "agent_config_snapshot", None)),
+                ) or {}
+                outcome = resolve_final_outcome(call.outcome, analytics) if analytics else (call.outcome or "Completed")
+                await self._apply_analytics(call.id, analytics, outcome)
+                recovered += 1
+            except Exception as e:
+                logger.warning(f"[CallSessionService] Could not recover analytics for {getattr(call, 'id', '?')}: {e}")
+        if recovered:
+            logger.info(f"[CallSessionService] Recovered post-call analytics for {recovered} call(s).")
+        return recovered
+
+    async def _apply_analytics(self, call_id: str, analytics_data: Dict[str, Any], resolved_outcome: str):
+        """Writes the analysis onto the stored call and creates its calendar appointment when a time was confirmed."""
+        try:
+            call_doc = await self.call_repo.get_by_id(call_id)
+            if call_doc:
+                call_doc.summary = analytics_data.get("summary") or call_doc.summary
+                call_doc.key_insights = analytics_data.get("key_insights") or call_doc.key_insights
+                call_doc.key_requirements = analytics_data.get("key_requirements") or call_doc.key_requirements
+                call_doc.customer_questions = analytics_data.get("customer_questions") or call_doc.customer_questions
+                call_doc.objections = analytics_data.get("objections") or call_doc.objections
+                call_doc.important_info = analytics_data.get("important_info") or call_doc.important_info
+                call_doc.next_action = analytics_data.get("next_action") or call_doc.next_action
+                call_doc.intent = analytics_data.get("intent") or call_doc.intent
+                call_doc.sentiment = analytics_data.get("sentiment") or call_doc.sentiment
+                if analytics_data.get("lead_score") is not None:
+                    call_doc.lead_score = analytics_data.get("lead_score")
+                call_doc.interest_level = analytics_data.get("interest_level") or call_doc.interest_level
+                call_doc.classification = analytics_data.get("classification") or call_doc.classification
+                call_doc.callback_datetime = analytics_data.get("callback_datetime") or call_doc.callback_datetime
+                call_doc.analytics = analytics_data if analytics_data else call_doc.analytics
+                call_doc.analytics_status = "ready" if analytics_data else "unavailable"
+                call_doc.outcome = resolved_outcome
+                call_doc.business_outcome = resolved_outcome
+                await self.call_repo.save(call_doc)
+                if analytics_data:
+                    from app.services.appointment_service import AppointmentService
+                    await AppointmentService().upsert_from_call(call_doc, analytics_data)
+        except Exception as e:
+            logger.error(f"[CallSessionService] Error saving post-call analytics for {call_id}: {e}")
+

@@ -24,7 +24,7 @@ interface CalendarViewProps {
   campaigns: CampaignLeadStat[];
   agents: AgentLeadStat[];
   refreshKey?: number;
-  onSelectProspect: (prospectId: string) => void;
+  onSelectProspect: (prospectId: string, callId?: string | null) => void;
 }
 
 const DAY_MS = 86400000;
@@ -309,8 +309,8 @@ export function CalendarView({ campaigns, agents, refreshKey = 0, onSelectProspe
               </div>
             )}
 
-            {selected.prospect_id && (
-              <Button size="sm" variant="outline" onClick={() => { onSelectProspect(selected.prospect_id!); setSelected(null); }}>
+            {(selected.prospect_id || selected.phone) && (
+              <Button size="sm" variant="outline" onClick={() => { onSelectProspect(selected.prospect_id || `temp_${selected.phone}`, selected.call_id); setSelected(null); }}>
                 <ExternalLink className="w-3.5 h-3.5 mr-1" /> Open lead
               </Button>
             )}

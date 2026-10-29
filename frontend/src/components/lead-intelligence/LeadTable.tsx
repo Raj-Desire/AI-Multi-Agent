@@ -170,6 +170,20 @@ export function LeadTable({
     }
   };
 
+  // Booked meeting or call-back, shown in the time zone it was agreed in (the stored time is UTC)
+  const formatMeeting = (lead: LeadListItem) => {
+    if (!lead.meeting_at) return null;
+    try {
+      const d = new Date(lead.meeting_at);
+      const zone = lead.meeting_timezone || undefined;
+      const day = d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", timeZone: zone });
+      const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: zone, timeZoneName: "short" });
+      return `${lead.meeting_type === "callback" ? "Call back" : "Meeting"} ${day}, ${time}`;
+    } catch {
+      return lead.meeting_at;
+    }
+  };
+
   return (
     <div className="rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xs overflow-hidden flex flex-col">
       {/* Table Top Header Info */}
@@ -257,7 +271,7 @@ export function LeadTable({
             <tbody className="divide-y divide-[var(--color-border)]/60">
               {leads.map((lead) => (
                 <tr
-                  key={lead.prospect_id}
+                  key={lead.last_call_id || lead.prospect_id}
                   onClick={() => onSelectLead(lead)}
                   className="hover:bg-[var(--color-surface-hover,var(--color-border)/20)] transition-colors cursor-pointer group"
                 >
@@ -310,6 +324,11 @@ export function LeadTable({
                     <span className="inline-block max-w-[180px] truncate text-xs font-medium text-[var(--color-heading)]">
                       {lead.next_action || "Follow up with prospect"}
                     </span>
+                    {formatMeeting(lead) && (
+                      <span className="mt-1 flex w-fit items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-heading)] whitespace-nowrap">
+                        {formatMeeting(lead)}
+                      </span>
+                    )}
                   </td>
 
                   {/* CRM Status */}

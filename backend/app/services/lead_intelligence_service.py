@@ -89,6 +89,29 @@ def normalize_outcome_bucket(
     return "No Answer"
 
 
+def is_callback_call(call: Any) -> bool:
+    """An agreed call-back (not a meeting: meetings are shown in the calendar)."""
+    return str((getattr(call, "analytics", None) or {}).get("scheduled_type") or "").lower() == "callback"
+
+
+def bucket_for_call(
+    call: Any,
+    score: Optional[int] = None,
+    qualification_threshold: int = 70,
+    warm_threshold: int = 40,
+) -> str:
+    """The outcome bucket of one call. Every count and list (cards, tabs, chart, rows) uses this single rule,
+    so the numbers on the page always agree."""
+    if is_callback_call(call):
+        return "Callback Requested"
+    return normalize_outcome_bucket(
+        call.business_outcome or call.outcome,
+        score=score,
+        qualification_threshold=qualification_threshold,
+        warm_threshold=warm_threshold,
+    )
+
+
 def normalize_interest_level(
     raw_level: Optional[str],
     score: Optional[int] = None,
@@ -243,8 +266,30 @@ class LeadIntelligenceService:
         self._org_locks: Dict[str, asyncio.Lock] = {}
         self._refresh_tasks: Dict[str, asyncio.Task] = {}
         self._org_versions: Dict[str, int] = {}
+        self._appointment_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         from app.core.cache_events import register_listener
         register_listener(self._on_data_changed)
+
+    async def _all_ai_calls(self, ctx: TenantContext) -> List[Call]:
+        """Every AI call of the tenant, including unscored ones (the cache is filled by _get_all_org_data)."""
+        await self._get_all_org_data(ctx)
+        return (self._org_data_cache.get(ctx.organization_id) or {}).get("all_calls") or []
+
+    async def _appointments_by_call(self, org_id: str) -> Dict[str, Any]:
+        """Calendar bookings keyed by the call that created them, so each lead row can show its meeting day and time."""
+        cached = self._appointment_cache.get(org_id)
+        if cached and time.time() - cached[0] < 20.0:
+            return cached[1]
+        by_call: Dict[str, Any] = {}
+        try:
+            from app.repositories.appointment_repository import AppointmentRepository
+            for a in await AppointmentRepository().list_range(org_id, "2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z", limit=2000):
+                if a.call_id and a.status != "cancelled":
+                    by_call[a.call_id] = a
+        except Exception as e:
+            logger.warning(f"[LeadIntelligence] Could not load calendar bookings: {e}")
+        self._appointment_cache[org_id] = (time.time(), by_call)
+        return by_call
 
     def invalidate_cache(self, org_id: Optional[str] = None):
         """Hard invalidation: the next request waits for fresh data (used after explicit user changes)."""
@@ -345,6 +390,8 @@ class LeadIntelligenceService:
             return has_score or getattr(c, "analytics_status", None) == "ready"
 
         calls = [c for c in raw_calls if (c.campaign_id and c.campaign_id.strip()) or _is_scored_ai_call(c)]
+        # Every call an AI agent placed or took, scored or not (a no-answer or an unfinished analysis is still a call)
+        all_ai_calls = [c for c in raw_calls if getattr(c, "agent_id", None) or (c.campaign_id and c.campaign_id.strip())]
 
         # 2. Fetch Prospects dictionary
         prospects_list, _ = await self.prospect_repo.list_by_org(org_id, page=1, page_size=10000)
@@ -363,6 +410,7 @@ class LeadIntelligenceService:
         self._org_data_cache[org_id] = {
             "timestamp": time.time(),
             "calls": calls,
+            "all_calls": all_ai_calls,
             "prospects_dict": prospects_dict,
             "campaigns_dict": campaigns_dict,
             # data changed while we were loading: serve it, but refresh again on the next request
@@ -394,6 +442,7 @@ class LeadIntelligenceService:
         campaign_id: Optional[str] = None
     ) -> LeadKPISummary:
         calls, prospects_dict, campaigns_dict = await self._get_all_org_data(ctx)
+        calls = await self._all_ai_calls(ctx) or calls
         start_dt, end_dt, prev_start_dt, prev_end_dt, period_label, comp_label = parse_date_range(
             date_range, custom_start, custom_end
         )
@@ -419,7 +468,7 @@ class LeadIntelligenceService:
             dur = c.duration or 0
             total_duration += dur
 
-            p_key = c.prospect_id or c.to_number
+            p_key = c.id  # every call is its own lead: the same number can show interest again in a new conversation
             if not p_key:
                 continue
             existing = latest_curr_by_prospect.get(p_key)
@@ -445,8 +494,8 @@ class LeadIntelligenceService:
                 total_score += sc
                 scored_calls += 1
 
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -463,7 +512,7 @@ class LeadIntelligenceService:
         # Index latest call per unique prospect for previous period
         latest_prev_by_prospect: Dict[str, Call] = {}
         for c in prev_calls:
-            p_key = c.prospect_id or c.to_number
+            p_key = c.id  # every call is its own lead: the same number can show interest again in a new conversation
             if not p_key:
                 continue
             existing = latest_prev_by_prospect.get(p_key)
@@ -478,8 +527,8 @@ class LeadIntelligenceService:
 
         for p_key, c in latest_prev_by_prospect.items():
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -616,8 +665,8 @@ class LeadIntelligenceService:
 
             buckets[key]["total"] += 1
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -664,6 +713,7 @@ class LeadIntelligenceService:
         campaign_id: Optional[str] = None
     ) -> LeadOutcomeDistributionResponse:
         calls, _, _ = await self._get_all_org_data(ctx)
+        calls = await self._all_ai_calls(ctx) or calls
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
         rules = await self.get_qualification_rules(ctx)
         qual_thresh = rules.qualification_threshold
@@ -684,7 +734,7 @@ class LeadIntelligenceService:
             cdt = self._get_call_created_at(c)
             if not (start_dt <= cdt <= end_dt):
                 continue
-            p_key = c.prospect_id or c.to_number
+            p_key = c.id  # every call is its own lead: the same number can show interest again in a new conversation
             if not p_key:
                 continue
             existing = latest_by_prospect.get(p_key)
@@ -694,8 +744,8 @@ class LeadIntelligenceService:
         total = len(latest_by_prospect)
         for p_key, c in latest_by_prospect.items():
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -790,8 +840,8 @@ class LeadIntelligenceService:
             entry = stats_map[cid]
             entry["total_calls"] += 1
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -872,8 +922,8 @@ class LeadIntelligenceService:
             entry["total_calls"] += 1
 
             sc = c.lead_score or (c.analytics.get("lead_score") if c.analytics else None)
-            outcome = normalize_outcome_bucket(
-                c.business_outcome or c.outcome,
+            outcome = bucket_for_call(
+                c,
                 score=sc,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -926,23 +976,34 @@ class LeadIntelligenceService:
         page: int = 1,
         page_size: int = 25,
         sort_by: str = "last_call_at",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        group_by: str = "contact"
     ) -> LeadListPaginationResponse:
         calls, prospects_dict, campaigns_dict = await self._get_all_org_data(ctx)
+        appointments = await self._appointments_by_call(ctx.organization_id)
+        per_call = (group_by or "").lower() == "call"
+        if per_call:
+            calls = await self._all_ai_calls(ctx)
+        phone_index: Dict[str, Prospect] = {}
+        for pr in prospects_dict.values():
+            phone_index[pr.phone_number] = pr
+            if getattr(pr, "normalized_phone", None):
+                phone_index[pr.normalized_phone] = pr
 
-        # Index latest call by prospect_id or phone
+        # One row per contact: the latest call, except that a call with a booked meeting is kept ahead of later calls
+        # without one, so a follow-up call never hides the booking.
         latest_calls_by_prospect: Dict[str, Call] = {}
         for c in calls:
-            p_key = c.prospect_id or c.to_number
-            if not p_key:
+            p_key = c.id if per_call else (c.prospect_id or c.to_number)
+            if not p_key or not (c.prospect_id or c.to_number):
                 continue
             existing = latest_calls_by_prospect.get(p_key)
             if not existing:
                 latest_calls_by_prospect[p_key] = c
             else:
-                cdt = self._get_call_created_at(c)
-                ext_dt = self._get_call_created_at(existing)
-                if cdt > ext_dt:
+                rank = (c.id in appointments, self._get_call_created_at(c))
+                ext_rank = (existing.id in appointments, self._get_call_created_at(existing))
+                if rank > ext_rank:
                     latest_calls_by_prospect[p_key] = c
 
         # Date range limits
@@ -974,8 +1035,8 @@ class LeadIntelligenceService:
 
             # Resolve outcome & score
             score = call_rec.lead_score or (call_rec.analytics.get("lead_score") if call_rec.analytics else None) or 0
-            norm_outcome = normalize_outcome_bucket(
-                call_rec.business_outcome or call_rec.outcome,
+            norm_outcome = bucket_for_call(
+                call_rec,
                 score=score,
                 qualification_threshold=qual_thresh,
                 warm_threshold=warm_thresh
@@ -989,8 +1050,11 @@ class LeadIntelligenceService:
             )
 
             # High value filter check
+            appt = appointments.get(call_rec.id)
+
+            # A call with a booked meeting is always a high-value lead, whatever its outcome label says
             if only_high_value and not (outcome and outcome != "all"):
-                if not is_high_value_outcome(norm_outcome):
+                if not is_high_value_outcome(norm_outcome) and not appt:
                     continue
 
             # Outcome filter check
@@ -1014,10 +1078,12 @@ class LeadIntelligenceService:
             p = prospects_dict.get(call_rec.prospect_id or "")
             if not p:
                 # Try finding by phone
-                p = next((pr for pr in prospects_dict.values() if pr.phone_number == call_rec.to_number or getattr(pr, "normalized_phone", None) == call_rec.to_number), None)
+                p = phone_index.get(call_rec.to_number)
 
-            p_id = p.id if p else (call_rec.prospect_id or f"temp_{p_key}")
-            p_name = p.full_name if p else (call_rec.to_number or "Contact")
+            p_id = p.id if p else (call_rec.prospect_id or f"temp_{call_rec.to_number}")
+            # A call placed from the dialer has no prospect record: use the name the caller gave during the call, if any
+            spoken_name = ((call_rec.analytics or {}).get("customer_name") or "").strip() if not p else ""
+            p_name = p.full_name if p else (spoken_name or call_rec.to_number or "Contact")
             p_phone = p.phone_number if p else call_rec.to_number
             p_email = p.email if p else None
             p_company = p.company if p else (call_rec.analytics.get("company_name") if call_rec.analytics else None)
@@ -1032,7 +1098,7 @@ class LeadIntelligenceService:
             # Follow up status check
             if follow_up and follow_up != "all":
                 fu = follow_up.strip().lower()
-                has_callback = bool(call_rec.callback_datetime)
+                has_callback = bool(call_rec.callback_datetime) or bool(appt)
                 if fu == "needs_follow_up" and (not call_rec.next_action or call_rec.next_action.lower() in ["none", "retry"]):
                     continue
                 elif fu == "scheduled" and not has_callback:
@@ -1077,6 +1143,12 @@ class LeadIntelligenceService:
                 next_action=call_rec.next_action or "Follow up with prospect",
                 prospect_status=p_status,
                 callback_datetime=call_rec.callback_datetime,
+                meeting_at=appt.start_at_utc if appt else None,
+                meeting_timezone=appt.timezone if appt else None,
+                meeting_type=appt.type if appt else None,
+                call_source="Campaign" if (call_rec.campaign_id or "").strip() else "Agent dialer",
+                call_status=call_rec.status,
+                analytics_status=call_rec.analytics_status,
                 summary=call_rec.summary or "",
                 tags=p_tags
             ))
@@ -1093,6 +1165,8 @@ class LeadIntelligenceService:
             lead_items.sort(key=lambda x: x.business_outcome.lower(), reverse=reverse)
         elif sort_by == "callback_datetime":
             lead_items.sort(key=lambda x: x.callback_datetime or "", reverse=reverse)
+        elif sort_by == "meeting_at":
+            lead_items.sort(key=lambda x: x.meeting_at or "", reverse=reverse)
         else:  # default last_call_at
             lead_items.sort(key=lambda x: x.last_call_at or datetime.min.replace(tzinfo=timezone.utc), reverse=reverse)
 
@@ -1115,6 +1189,29 @@ class LeadIntelligenceService:
     # -------------------------------------------------------------
     # 7. Dedicated Callback Requests View
     # -------------------------------------------------------------
+    @staticmethod
+    def _callback_time_utc(c: Any) -> Optional[str]:
+        """The agreed call-back moment as UTC, from the analysed date and time or from the saved text. The text comes in
+        several shapes (with an offset, with Z, or with no zone at all), which is why the page used to show them raw."""
+        from app.services.appointment_time import agent_timezone, resolve_to_utc, to_utc_str
+        from zoneinfo import ZoneInfo
+        an = c.analytics or {}
+        iana = an.get("scheduled_timezone") or agent_timezone(getattr(c, "agent_config_snapshot", None))
+        try:
+            if is_callback_call(c) and an.get("scheduled_date") and an.get("scheduled_time"):
+                start = resolve_to_utc(an.get("scheduled_date"), an.get("scheduled_time"), iana)
+                if start:
+                    return to_utc_str(start)
+            raw = (c.callback_datetime or "").strip()
+            if raw:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ZoneInfo(iana))
+                return to_utc_str(dt.astimezone(timezone.utc))
+        except Exception:
+            return None
+        return None
+
     async def list_callbacks(
         self,
         ctx: TenantContext,
@@ -1127,9 +1224,8 @@ class LeadIntelligenceService:
 
         callback_items: List[CallbackListItem] = []
         for c in calls:
-            outcome = normalize_outcome_bucket(c.business_outcome or c.outcome)
-            has_callback = (outcome == "Callback Requested") or bool(c.callback_datetime)
-            if not has_callback:
+            outcome = bucket_for_call(c)
+            if outcome != "Callback Requested":
                 continue
 
             if campaign_id and campaign_id != "all" and c.campaign_id != campaign_id:
@@ -1171,6 +1267,8 @@ class LeadIntelligenceService:
                 campaign_id=c.campaign_id,
                 campaign_name=cmp_name,
                 requested_datetime=c.callback_datetime or "Scheduled by customer",
+                requested_at_utc=self._callback_time_utc(c),
+                last_call_id=c.id,
                 last_call_at=self._get_call_created_at(c),
                 summary=c.summary or "Requested follow-up callback during voice call.",
                 next_action=c.next_action or "Call back customer as requested",
@@ -1202,30 +1300,40 @@ class LeadIntelligenceService:
     async def get_lead_detail(
         self,
         ctx: TenantContext,
-        prospect_id: str
+        prospect_id: str,
+        call_id: Optional[str] = None
     ) -> LeadDetailResponse:
         calls, prospects_dict, campaigns_dict = await self._get_all_org_data(ctx)
+        # Details and history cover every AI call, scored or not, so a dialer call or a no-answer is never missing
+        calls = await self._all_ai_calls(ctx) or calls
+
+        chosen_call = next((c for c in calls if c.id == call_id), None) if call_id else None
+        # A lead without a prospect record is listed as "temp_<phone>"
+        lookup_key = prospect_id[5:] if prospect_id.startswith("temp_") else prospect_id
 
         # 1. Resolve Prospect
         prospect = prospects_dict.get(prospect_id)
-        if not prospect:
+        if not prospect and chosen_call and chosen_call.prospect_id:
+            prospect = prospects_dict.get(chosen_call.prospect_id)
+        if not prospect and not prospect_id.startswith("temp_"):
             prospect = await self.prospect_repo.get_by_id(ctx.organization_id, prospect_id)
         if not prospect:
             # Check by phone or temporary ID
             for p in prospects_dict.values():
-                if p.phone_number == prospect_id or getattr(p, "normalized_phone", None) == prospect_id:
+                if p.phone_number == lookup_key or getattr(p, "normalized_phone", None) == lookup_key:
                     prospect = p
                     break
 
         if not prospect:
             # Construct a synthetic prospect object from call records if standalone
-            matched_call = next((c for c in calls if c.prospect_id == prospect_id or c.to_number == prospect_id), None)
+            matched_call = chosen_call or next((c for c in calls if c.prospect_id == prospect_id or c.to_number == lookup_key), None)
             if matched_call:
                 now = datetime.now(timezone.utc)
+                spoken_name = ((matched_call.analytics or {}).get("customer_name") or "").strip()
                 prospect = Prospect(
                     id=prospect_id,
                     organization_id=ctx.organization_id,
-                    full_name=matched_call.to_number,
+                    full_name=spoken_name or matched_call.to_number,
                     phone_number=matched_call.to_number,
                     normalized_phone=matched_call.to_number,
                     status=ProspectStatus.INTERESTED,
@@ -1244,7 +1352,14 @@ class LeadIntelligenceService:
 
         prospect_calls.sort(key=lambda x: self._get_call_created_at(x), reverse=True)
 
-        latest_call = prospect_calls[0] if prospect_calls else None
+        # The call shown is the one the caller clicked; otherwise the one the list shows (a booked call ahead of later
+        # calls without a booking), otherwise the latest.
+        appointments = await self._appointments_by_call(ctx.organization_id)
+        latest_call = None
+        if chosen_call and chosen_call in prospect_calls:
+            latest_call = chosen_call
+        elif prospect_calls:
+            latest_call = next((c for c in prospect_calls if c.id in appointments), prospect_calls[0])
 
         # 3. Resolve Campaign
         campaign_name = None
@@ -1255,13 +1370,15 @@ class LeadIntelligenceService:
 
         # 4. Extract Analytics & Intelligence
         rules = await self.get_qualification_rules(ctx)
-        score = latest_call.lead_score if latest_call and latest_call.lead_score is not None else 0
+        score = (latest_call.lead_score if latest_call.lead_score is not None else ((latest_call.analytics or {}).get("lead_score") or 0)) if latest_call else 0
         outcome = normalize_outcome_bucket(
             latest_call.business_outcome or latest_call.outcome if latest_call else "Interested",
             score=score,
             qualification_threshold=rules.qualification_threshold,
             warm_threshold=rules.warm_threshold
         )
+        if latest_call and is_callback_call(latest_call):
+            outcome = "Callback Requested"
         interest_lvl = normalize_interest_level(
             latest_call.interest_level if latest_call else None,
             score=score,
@@ -1311,14 +1428,26 @@ class LeadIntelligenceService:
         # 7. Call History Summary
         history_list = []
         for c in prospect_calls:
+            c_score = c.lead_score if c.lead_score is not None else (c.analytics or {}).get("lead_score")
+            c_appt = appointments.get(c.id)
             history_list.append({
                 "call_id": c.id,
                 "created_at": self._get_call_created_at(c).isoformat(),
                 "duration": c.duration or 0,
-                "outcome": normalize_outcome_bucket(c.business_outcome or c.outcome),
+                "outcome": bucket_for_call(c, score=c_score),
                 "summary": c.summary or "",
                 "agent_name": c.agent_name or "AI Voice Assistant",
-                "campaign_id": c.campaign_id
+                "campaign_id": c.campaign_id,
+                "campaign_name": (campaigns_dict.get(c.campaign_id).name if c.campaign_id and campaigns_dict.get(c.campaign_id) else None),
+                "source": "Campaign" if (c.campaign_id or "").strip() else "Agent dialer",
+                "score": c_score,
+                "interest_level": c.interest_level,
+                "status": c.status,
+                "analytics_status": c.analytics_status,
+                "turns": len(c.transcript or []),
+                "meeting_at": c_appt.start_at_utc if c_appt else None,
+                "meeting_timezone": c_appt.timezone if c_appt else None,
+                "selected": bool(latest_call and c.id == latest_call.id),
             })
 
         return LeadDetailResponse(
@@ -1342,6 +1471,12 @@ class LeadIntelligenceService:
             callback_datetime=callback_dt,
             agent_id=agent_id,
             agent_name=agent_name,
+            call_source=("Campaign" if (latest_call.campaign_id or "").strip() else "Agent dialer") if latest_call else None,
+            call_status=latest_call.status if latest_call else None,
+            call_duration=(latest_call.duration or 0) if latest_call else 0,
+            analytics_status=latest_call.analytics_status if latest_call else None,
+            meeting_at=appointments[latest_call.id].start_at_utc if latest_call and latest_call.id in appointments else None,
+            meeting_timezone=appointments[latest_call.id].timezone if latest_call and latest_call.id in appointments else None,
             highlight_reasons=highlights,
             transcript=raw_transcript,
             call_history=history_list

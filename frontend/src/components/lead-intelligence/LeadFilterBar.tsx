@@ -4,10 +4,6 @@ import {
   Search,
   X,
   Download,
-  Sparkles,
-  PhoneForwarded,
-  HelpCircle,
-  PhoneOff,
   SlidersHorizontal,
   Sliders,
   FileSpreadsheet
@@ -69,52 +65,6 @@ export function LeadFilterBar({
     }, 300);
     return () => clearTimeout(handler);
   }, [localSearch, filters.search, onFilterChange]);
-
-  // Quick Preset Handlers
-  const applyPreset = (preset: string) => {
-    switch (preset) {
-      case "all_leads":
-        onFilterChange({
-          outcome: "all",
-          interestLevel: "all",
-          scoreRange: "all",
-          followUp: "all",
-        });
-        break;
-      case "interested":
-        onFilterChange({
-          outcome: "Interested",
-          interestLevel: "all",
-          scoreRange: "all",
-          followUp: "all",
-        });
-        break;
-      case "callbacks":
-        onFilterChange({
-          outcome: "Callback Requested",
-          followUp: "all",
-          interestLevel: "all",
-        });
-        break;
-      case "needs_followup":
-        onFilterChange({
-          outcome: "Information Requested",
-          followUp: "all",
-          interestLevel: "all",
-        });
-        break;
-      case "no_answer":
-        onFilterChange({
-          outcome: "No Answer",
-          interestLevel: "all",
-          scoreRange: "all",
-          followUp: "all",
-        });
-        break;
-      default:
-        onResetFilters();
-    }
-  };
 
   // Build active filter chips
   const activeChips: Array<{ id: string; label: string; onRemove: () => void }> = [];
@@ -206,68 +156,8 @@ export function LeadFilterBar({
 
   return (
     <div className="space-y-2.5">
-      {/* Quick Saved Views Pills */}
-      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-thin">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[11px] font-bold text-[var(--color-muted)] uppercase tracking-wider mr-1">
-            Quick Views:
-          </span>
-          <button
-            onClick={() => onResetFilters()}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer ${
-              filters.outcome === "all" && !filters.search && filters.interestLevel === "all" && filters.scoreRange === "all"
-                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            All Leads
-          </button>
-          <button
-            onClick={() => applyPreset("interested")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
-              filters.outcome === "Interested"
-                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
-            }`}
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${filters.outcome === "Interested" ? "text-white" : "text-[var(--color-primary)]"}`} />
-            <span>Interested</span>
-          </button>
-          <button
-            onClick={() => applyPreset("callbacks")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
-              filters.outcome === "Callback Requested"
-                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
-            }`}
-          >
-            <PhoneForwarded className={`w-3.5 h-3.5 ${filters.outcome === "Callback Requested" ? "text-white" : "text-[var(--color-primary)]"}`} />
-            <span>Callbacks</span>
-          </button>
-          <button
-            onClick={() => applyPreset("needs_followup")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
-              filters.outcome === "Information Requested"
-                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
-            }`}
-          >
-            <HelpCircle className={`w-3.5 h-3.5 ${filters.outcome === "Information Requested" ? "text-white" : "text-[var(--color-primary)]"}`} />
-            <span>Needs Follow-up</span>
-          </button>
-          <button
-            onClick={() => applyPreset("no_answer")}
-            className={`px-2.5 py-1 text-xs font-medium rounded-full transition-all cursor-pointer flex items-center gap-1 ${
-              filters.outcome === "No Answer"
-                ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs border-transparent"
-                : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary-light)]"
-            }`}
-          >
-            <PhoneOff className={`w-3.5 h-3.5 ${filters.outcome === "No Answer" ? "text-white" : "text-[var(--color-primary)]"}`} />
-            <span>No Answer</span>
-          </button>
-        </div>
-
+      {/* Outcome filtering lives in the cards and tabs above; this row only holds the report actions */}
+      <div className="flex items-center justify-end gap-2 overflow-x-auto pb-1 scrollbar-thin">
         {/* Action Controls: Qualification Rules, Executive Summary Report, Export CSV */}
         <div className="shrink-0 flex items-center gap-2">
           {onOpenRuleEditor && (
