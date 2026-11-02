@@ -543,10 +543,11 @@ class LeadIntelligenceService:
                 prev_no_answer += 1
 
         def calc_pct_change(curr: int, prev: int) -> Optional[float]:
+            # Only calculate percentage change if a previous comparative window exists and had baseline activity
+            if not prev_start_dt or not prev_end_dt or date_range == "all":
+                return None
             if prev > 0:
                 return round(((curr - prev) / prev) * 100, 1)
-            elif curr > 0:
-                return 100.0
             return None
 
         avg_score = round(total_score / scored_calls, 1) if scored_calls > 0 else 0.0

@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import {
   PhoneCall,
+  LayoutDashboard,
   PhoneOutgoing,
   Bot,
   Sliders,
@@ -27,10 +28,11 @@ import {
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 
-export type NavTab = "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin" | "usage_credits";
+export type NavTab = "role_dashboard" | "dashboard" | "ai_dialer" | "voice_agent" | "lead_intelligence" | "campaigns" | "prospects" | "business_profile" | "twilio" | "theme" | "admin" | "superadmin" | "usage_credits";
 
 export const TAB_ROUTE_MAP: Record<NavTab, string> = {
-  dashboard: "/dashboard",
+  role_dashboard: "/overview",
+  dashboard: "/calling-console",
   ai_dialer: "/dialer",
   voice_agent: "/agents",
   lead_intelligence: "/lead-intelligence",
@@ -45,8 +47,10 @@ export const TAB_ROUTE_MAP: Record<NavTab, string> = {
 };
 
 export const ROUTE_TAB_MAP: Record<string, NavTab> = {
-  "/": "dashboard",
-  "/dashboard": "dashboard",
+  "/": "role_dashboard",
+  "/overview": "role_dashboard",
+  "/dashboard": "role_dashboard",
+  "/calling-console": "dashboard",
   "/dialer": "ai_dialer",
   "/ai-dialer": "ai_dialer",
   "/agents": "voice_agent",
@@ -156,6 +160,12 @@ export function Sidebar({
     {
       title: "Workspace",
       items: [
+        {
+          id: "role_dashboard",
+          label: "Dashboard",
+          icon: LayoutDashboard,
+          visible: true,
+        },
         {
           id: "dashboard",
           label: "Calling Console",

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   User,
   PhoneForwarded,
   ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 import { fetchApi, LIVE } from "../../api-client";
 import { CalendarEvent, CampaignLeadStat, AgentLeadStat } from "../../types";
@@ -46,6 +48,7 @@ const STATUS_STYLE: Record<string, string> = {
   scheduled: "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/20",
   missed: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   cancelled: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20",
+  completed: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
 };
 
 function rangeFor(view: View, cursor: Date): { from: Date; to: Date } {
@@ -84,6 +87,26 @@ export function CalendarView({ campaigns, agents, refreshKey = 0, onSelectProspe
   const [campaignFilter, setCampaignFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
   const [selected, setSelected] = useState<CalendarEvent | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const handleToggleComplete = async (event: CalendarEvent) => {
+    const nextStatus = event.status === "completed" ? "scheduled" : "completed";
+    try {
+      setIsUpdatingStatus(true);
+      await fetchApi(`/lead-intelligence/calendar/${event.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      // Update local state immediately
+      const updated = { ...event, status: nextStatus as any };
+      setSelected(updated);
+      setEvents((prev) => prev.map((e) => (e.id === event.id ? updated : e)));
+    } catch (err) {
+      console.error("Failed to update appointment status:", err);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const { from, to } = useMemo(() => rangeFor(view, cursor), [view, cursor]);
 
@@ -258,18 +281,32 @@ export function CalendarView({ campaigns, agents, refreshKey = 0, onSelectProspe
       </div>
 
       {/* Details drawer */}
-      {selected && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelected(null)}>
+      {selected && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex justify-end bg-slate-900/50 backdrop-blur-xs cursor-pointer" onClick={() => setSelected(null)}>
           <div
-            className="w-full max-w-md h-full bg-[var(--color-surface)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto p-5 space-y-4"
+            className="w-full max-w-md h-full bg-[var(--color-surface)] border-l border-t-0 border-[var(--color-border)] shadow-2xl overflow-y-auto p-5 space-y-4 cursor-default"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <h4 className="text-base font-bold text-[var(--color-heading)]">{selected.title}</h4>
-                <div className="flex gap-1.5">
-                  <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold capitalize ${TYPE_STYLE[selected.type]}`}>{selected.type}</span>
-                  <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold capitalize ${STATUS_STYLE[selected.status] || STATUS_STYLE.scheduled}`}>{selected.status}</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold capitalize ${TYPE_STYLE[selected.type]}`}>{selected.type}</span>
+                    <span className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold capitalize ${STATUS_STYLE[selected.status] || STATUS_STYLE.scheduled}`}>
+                      {selected.status === "completed" ? "completed" : selected.status}
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] cursor-pointer hover:bg-[var(--color-surface-muted)] text-[11px] text-[var(--color-heading)] font-medium">
+                    <input
+                      type="checkbox"
+                      checked={selected.status === "completed"}
+                      disabled={isUpdatingStatus}
+                      onChange={() => handleToggleComplete(selected)}
+                      className="rounded border-[var(--color-border)] text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>{selected.status === "completed" ? "Done" : "Mark Done"}</span>
+                  </label>
                 </div>
               </div>
               <button onClick={() => setSelected(null)} className="cursor-pointer text-[var(--color-muted)]" aria-label="Close"><X className="w-4 h-4" /></button>
@@ -315,7 +352,8 @@ export function CalendarView({ campaigns, agents, refreshKey = 0, onSelectProspe
               </Button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

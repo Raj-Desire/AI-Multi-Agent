@@ -59,6 +59,7 @@ class CallSession(BaseModel):
     phone_number: str = ""          # Twilio phone number
     destination_number: str = ""    # Customer number
     direction: str = "outbound"     # "inbound" | "outbound"
+    is_test: bool = False           # a test call from the agent editor or the test console: not a real lead or booking
     status: str = "initiated"       # "initiated" | "ringing" | "in-progress" | "completed" | "failed"
 
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

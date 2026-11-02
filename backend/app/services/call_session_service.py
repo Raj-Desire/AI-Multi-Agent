@@ -64,7 +64,8 @@ class CallSessionService:
         twilio_call_sid: Optional[str] = None,
         twilio_stream_sid: Optional[str] = None,
         custom_prompt: Optional[str] = None,
-        agent_config_snapshot: Optional[Dict[str, Any]] = None
+        agent_config_snapshot: Optional[Dict[str, Any]] = None,
+        is_test: bool = False
     ) -> CallSession:
         """Initializes a new live CallSession in memory and active registry."""
         session = CallSession(
@@ -76,6 +77,7 @@ class CallSessionService:
             phone_number=phone_number,
             destination_number=destination_number,
             direction=direction,
+            is_test=is_test,
             status="initiated",
             agent_name=agent_name,
             agent_role=agent_role,
@@ -319,6 +321,7 @@ class CallSessionService:
             call_doc.classification = analytics_data.get("classification") or existing_call.classification
             call_doc.callback_datetime = analytics_data.get("callback_datetime") or existing_call.callback_datetime
             call_doc.analytics_status = "pending"
+            call_doc.is_test = bool(getattr(session, "is_test", False) or getattr(existing_call, "is_test", False))
             call_doc.analytics = analytics_data if analytics_data else existing_call.analytics
             call_doc.latency_metrics = latency_dict or existing_call.latency_metrics
             call_doc.updated_at = session.ended_at
@@ -366,6 +369,7 @@ class CallSessionService:
                 classification=analytics_data.get("classification"),
                 callback_datetime=analytics_data.get("callback_datetime"),
                 analytics_status="pending",
+                is_test=bool(getattr(session, "is_test", False)),
                 analytics=analytics_data if analytics_data else None,
                 latency_metrics=latency_dict,
                 created_at=session.started_at,
@@ -671,7 +675,8 @@ class CallSessionService:
                 call_doc.outcome = resolved_outcome
                 call_doc.business_outcome = resolved_outcome
                 await self.call_repo.save(call_doc)
-                if analytics_data:
+                # A test call (agent editor / test console) is only a rehearsal: no meeting is put in the calendar
+                if analytics_data and not getattr(call_doc, "is_test", False):
                     from app.services.appointment_service import AppointmentService
                     await AppointmentService().upsert_from_call(call_doc, analytics_data)
         except Exception as e:

@@ -7,6 +7,8 @@ from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.repositories.call_repository import CallRepository
 from app.repositories.activity_log_repository import ActivityLogRepository
+from app.repositories.campaign_repository import CampaignRepository
+from app.repositories.agent_repository import AgentRepository
 from app.services.twilio_service import TwilioService
 from app.services.cost_calculator import CostCalculatorService
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, TwilioDirectAccountUsageResponse
@@ -450,6 +452,39 @@ async def get_platform_usage_and_cost(
         organizations=all_orgs,
         markup_multiplier=max(1.0, markup)
     )
+
+    # Enrich each organization with real counts of campaigns, agents, and users
+    camp_repo = CampaignRepository()
+    agent_repo = AgentRepository()
+
+    for org_entry in telemetry.get("organizations", []):
+        org_id = org_entry.get("organization_id", "")
+        matched_raw = next((o for o in all_orgs if o.get("organization_id") == org_id), {})
+        org_entry["user_count"] = matched_raw.get("user_count", 0)
+        org_entry["admin_count"] = matched_raw.get("admin_count", 0)
+        org_entry["total_members"] = matched_raw.get("total_members", 0)
+        org_entry["created_at"] = matched_raw.get("created_at", "")
+
+        # Count campaigns
+        try:
+            _, total_camps = await camp_repo.list_by_org(org_id)
+            org_entry["total_campaigns"] = total_camps
+        except Exception:
+            org_entry["total_campaigns"] = 0
+
+        # Count only custom created agents (excluding default global templates)
+        try:
+            agents_list = await agent_repo.list_by_org(org_id)
+            custom_agents = [
+                a for a in agents_list
+                if a.organization_id == org_id
+                and a.scope != "GLOBAL"
+                and not a.agent_id.startswith("agt_receptionist_default")
+                and not a.agent_id.startswith("agt_custom_global")
+            ]
+            org_entry["total_agents"] = len(custom_agents)
+        except Exception:
+            org_entry["total_agents"] = 0
 
     telemetry["time_range"] = time_range
     return telemetry

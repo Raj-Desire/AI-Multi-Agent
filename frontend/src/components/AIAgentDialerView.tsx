@@ -849,25 +849,6 @@ export function AIAgentDialerView({
               )}
             </div>
 
-            {/* Stage Latency Gauges */}
-            <div className="grid grid-cols-4 gap-2 text-center pt-1 border-t border-[var(--color-border)]">
-              <div className="p-2 border border-[var(--color-border)] rounded bg-[var(--color-surface-muted)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">STT Latency</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.stt}ms</span>
-              </div>
-              <div className="p-2 border border-[var(--color-border)] rounded bg-[var(--color-surface-muted)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">LLM Reasoning</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.llm}ms</span>
-              </div>
-              <div className="p-2 border border-[var(--color-border)] rounded bg-[var(--color-surface-muted)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">TTS Synthesis</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-heading)]">{latestLatency.tts}ms</span>
-              </div>
-              <div className="p-2 border border-[var(--color-border)] rounded bg-[var(--color-surface-muted)]">
-                <span className="text-[10px] text-[var(--color-muted)] block">Total Turn</span>
-                <span className="font-mono text-xs font-semibold text-[var(--color-primary)]">{latestLatency.turn}ms</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>

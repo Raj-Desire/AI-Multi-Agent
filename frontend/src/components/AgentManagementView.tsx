@@ -417,7 +417,8 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
           to_number: cleanNumber,
           from_number: fromNum,
           agent_id: testAgent.agent_id,
-          agent_config_override: testAgent
+          agent_config_override: testAgent,
+          is_test: true
         })
       });
 

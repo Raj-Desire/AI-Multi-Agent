@@ -95,6 +95,7 @@ class TestAICallRequest(BaseModel):
     custom_prompt: Optional[str] = None
     agent_config_override: Optional[Dict[str, Any]] = None
     prospect_id: Optional[str] = None
+    is_test: bool = False  # rehearsal from the agent editor or the test console: nothing is booked in the calendar
 
 
 class HangupCallRequest(BaseModel):
@@ -1311,7 +1312,8 @@ async def initiate_ai_test_call(
         voice=agent_config.voice.voice,
         model=agent_config.llm.model,
         custom_prompt=payload.custom_prompt.strip() if payload.custom_prompt and payload.custom_prompt.strip() else None,
-        agent_config_snapshot=agent_config.model_dump(mode="json")
+        agent_config_snapshot=agent_config.model_dump(mode="json"),
+        is_test=payload.is_test
     )
 
     # Build TwiML containing <Connect><Stream> with immediate hangup on stream completion

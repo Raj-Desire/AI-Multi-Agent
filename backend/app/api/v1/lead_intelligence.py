@@ -1,5 +1,6 @@
 from typing import Optional, List
 from datetime import datetime, timezone
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Query, Request, Response
 from app.services.activity_log_service import log_action
 from app.core.dependencies import TenantContext, get_tenant_context
@@ -240,6 +241,24 @@ async def get_calendar_event(
     ctx: TenantContext = Depends(get_tenant_context),
 ):
     row = await AppointmentService().get(ctx, appointment_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    return ApiResponse.ok(row)
+
+
+class UpdateAppointmentStatusPayload(BaseModel):
+    status: str = Field(..., description="Target status: 'completed', 'scheduled', or 'cancelled'")
+
+
+@router.patch("/calendar/{appointment_id}/status", response_model=ApiResponse[dict])
+async def update_calendar_event_status(
+    appointment_id: str,
+    payload: UpdateAppointmentStatusPayload,
+    ctx: TenantContext = Depends(get_tenant_context),
+):
+    if payload.status not in ("completed", "scheduled", "cancelled"):
+        raise HTTPException(status_code=400, detail="Invalid status. Must be 'completed', 'scheduled', or 'cancelled'.")
+    row = await AppointmentService().update_status(ctx, appointment_id, payload.status)
     if not row:
         raise HTTPException(status_code=404, detail="Appointment not found.")
     return ApiResponse.ok(row)

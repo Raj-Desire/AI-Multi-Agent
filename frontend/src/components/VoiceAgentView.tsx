@@ -273,7 +273,8 @@ export function VoiceAgentView() {
           from_number: selectedFromNumber ? selectedFromNumber.trim() : undefined,
           agent_id: agent?.agent_id || "agt_receptionist_default",
           custom_prompt: customTestPrompt.trim() || undefined,
-          agent_config_override: agent || undefined
+          agent_config_override: agent || undefined,
+          is_test: true
         })
       });
 

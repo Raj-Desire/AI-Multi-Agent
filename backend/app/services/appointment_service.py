@@ -106,10 +106,23 @@ class AppointmentService:
     @staticmethod
     def _present(appt: Appointment, now_str: str) -> Dict[str, Any]:
         data = appt.model_dump(mode="json")
-        # Derived, not stored: a scheduled slot whose end has passed is shown as missed.
+        # If explicitly completed, keep completed (success); only mark missed if still pending/scheduled and time passed
         if appt.status == "scheduled" and appt.end_at_utc < now_str:
             data["status"] = "missed"
         return data
+
+    async def update_status(self, ctx: TenantContext, appointment_id: str, new_status: str) -> Optional[Dict[str, Any]]:
+        appt = await self.repo.get_by_id(ctx.organization_id, appointment_id)
+        if not appt:
+            return None
+        appt.status = new_status
+        now_iso = datetime.now(dt_timezone.utc).strftime(UTC_FMT)
+        appt.history.append({
+            "at": now_iso,
+            "event": f"Status changed to {new_status} by {ctx.user_id or 'user'}"
+        })
+        await self.repo.save(appt)
+        return self._present(appt, now_iso)
 
     async def list_range(
         self, ctx: TenantContext, start: datetime, end: datetime,

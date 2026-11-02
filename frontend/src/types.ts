@@ -1414,7 +1414,7 @@ export interface SuperAdminOrgCreditItem extends OrgCreditStatus {
 export interface CalendarEvent {
   id: string;
   type: "meeting" | "callback";
-  status: "scheduled" | "missed" | "cancelled";
+  status: "scheduled" | "missed" | "cancelled" | "completed";
   start_at_utc: string;
   end_at_utc: string;
   timezone: string;

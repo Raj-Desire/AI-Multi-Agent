@@ -1,35 +1,25 @@
 import { TranscriptChat } from "../ui/TranscriptChat";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { fetchApi } from "../../api-client";
 import {
   LeadDetailResponse,
-  LeadActionRequest,
-  ConversationTurnMessage
+  LeadActionRequest
 } from "../../types";
 import {
   X,
   Sparkles,
-  Flame,
   Phone,
   Building,
-  Mail,
-  Calendar,
-  Clock,
   CheckCircle2,
-  AlertCircle,
   HelpCircle,
   Shield,
   ArrowRight,
-  User,
-  Bot,
   Copy,
   Check,
-  Tag,
   Save,
   Megaphone,
   History,
-  FileText,
-  PhoneForwarded,
   MessageSquare,
   Search,
   ArrowLeft
@@ -174,14 +164,17 @@ export function LeadDetailDrawer({
     return content.includes(query);
   });
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs animate-fade-in-soft">
+  const drawerNode = (
+    <div
+      className="fixed inset-0 z-[100] flex justify-end bg-slate-900/50 backdrop-blur-xs animate-fade-in-soft cursor-pointer"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-2xl h-full bg-[var(--color-surface)] border-l border-[var(--color-border)] shadow-2xl flex flex-col justify-between overflow-hidden relative animate-slide-in-right text-left"
+        className="w-full max-w-2xl h-full bg-[var(--color-surface)] border-l border-t-0 border-[var(--color-border)] shadow-2xl flex flex-col justify-between overflow-hidden relative animate-slide-in-right text-left cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drawer Header Bar */}
-        <div className="p-4 sm:p-5 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-start justify-between gap-4 sticky top-0 z-10">
+        <div className="p-4 sm:p-5 border-t-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] flex items-start justify-between gap-4 sticky top-0 z-10 shadow-none">
           <div className="space-y-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-bold text-[var(--color-heading)] truncate">
@@ -707,4 +700,8 @@ export function LeadDetailDrawer({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(drawerNode, document.body)
+    : drawerNode;
 }

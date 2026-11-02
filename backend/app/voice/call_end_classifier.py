@@ -27,8 +27,10 @@ _SYSTEM = (
     "- is_machine: true if it is a voicemail greeting, answering machine, IVR keypad menu ('press 1...'), "
     "hold/queue message, carrier announcement, or a third-party automated screener.\n"
     "- wants_to_end: true ONLY if a live person clearly says they do not want to talk, are not interested, "
-    "do not need anything, or asks not to be called. A question, hesitation or 'busy right now, call later' "
-    "is NOT wants_to_end unless they refuse outright.\n"
+    "do not need anything, or asks not to be called. A question (including 'why are you calling me?' or "
+    "'who is this?'), hesitation, a misheard or nonsensical phrase, or 'busy right now, call later' "
+    "is NOT wants_to_end unless they refuse outright. Speech recognition often mishears words, so earlier "
+    "turns that make no sense are noise: decide wants_to_end from the LATEST turn only.\n"
     "- language: ISO 639-1 code of the language the other party spoke.\n"
     "- closing: ONE short polite goodbye (max 25 words) in that same language and script, thanking them "
     "and saying they can get in touch if they need help later. For a machine, make it a brief "
@@ -50,7 +52,8 @@ class CallEndVerdict:
 
 
 async def classify_turn(text: str, agent_languages: Optional[List[str]] = None,
-                        stt_language: Optional[str] = None, speaking: Optional[str] = None) -> Optional[CallEndVerdict]:
+                        stt_language: Optional[str] = None, speaking: Optional[str] = None,
+                        latest: Optional[str] = None) -> Optional[CallEndVerdict]:
     """Returns a verdict, or None if no LLM is configured or the call failed (caller keeps regex result)."""
     if not text or len(text.split()) < 2:
         return None
@@ -67,6 +70,9 @@ async def classify_turn(text: str, agent_languages: Optional[List[str]] = None,
                  f"Never answer '{stt_language}' just because of the script: decide from the words and sounds.")
     if speaking:
         hint += f"\nThe agent is currently replying in {LANG_NAMES.get(speaking, speaking)}."
+    # The recent turns help spot a menu spread over several segments; the refusal decision belongs to the newest one
+    if latest and latest.strip() and latest.strip() != text.strip():
+        text = f"Earlier turns (may be misheard, do not judge wants_to_end from them): {text}\nLATEST turn: {latest.strip()}"
     try:
         if _llm.is_azure_configured():
             raw = await _llm._call_azure_openai(_SYSTEM + hint, text)

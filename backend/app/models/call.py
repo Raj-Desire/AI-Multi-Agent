@@ -21,6 +21,7 @@ class Call(BaseModel):
     # Prospect & Campaign Association
     prospect_id: Optional[str] = None
     campaign_id: Optional[str] = None
+    is_test: bool = False  # test call: its analysis is kept, but no calendar appointment is created
 
     # Agent Traceability & Immutable Snapshot
     agent_id: Optional[str] = None

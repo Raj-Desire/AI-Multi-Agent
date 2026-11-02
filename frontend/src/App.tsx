@@ -13,6 +13,7 @@ import { LoginPage } from "./components/LoginPage";
 import { AdminPanel } from "./components/AdminPanel";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { DashboardView } from "./components/DashboardView";
+import { RoleDashboardPage } from "./components/dashboards/RoleDashboardPage";
 import { TwilioSettingsView } from "./components/TwilioSettingsView";
 import { ThemeStudioView } from "./components/ThemeStudioView";
 import { VoiceAgentView } from "./components/VoiceAgentView";
@@ -346,17 +347,31 @@ function MainContent() {
         <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">
           <Routes>
             {/* Root Redirect to Scoped Workspace */}
-            <Route path="/" element={<Navigate to={`/${userOrgId}/dashboard`} replace />} />
+            <Route path="/" element={<Navigate to={`/${userOrgId}/overview`} replace />} />
 
             {/* Platform SuperAdmin Route */}
             <Route
               path="/superadmin"
-              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to={`/${userOrgId}/dashboard`} replace />}
+              element={isSuperAdmin ? <SuperAdminPanel /> : <Navigate to={`/${userOrgId}/overview`} replace />}
             />
 
             {/* Scoped Organization Routes (/:orgId/...) */}
             <Route
+              path="/:orgId/overview"
+              element={
+                <RoleDashboardPage
+                  onNavigateTab={(tab) => handleTabSelect(tab as NavTab)}
+                  onStartDialer={(phone) => handleTabSelect("ai_dialer")}
+                  onNavigateTenant={(tenantId) => navigate(`/${tenantId}/overview`)}
+                />
+              }
+            />
+            <Route
               path="/:orgId/dashboard"
+              element={<Navigate to={`/${effectiveOrgId}/overview`} replace />}
+            />
+            <Route
+              path="/:orgId/calling-console"
               element={<DashboardView onNavigateSettings={() => handleTabSelect("twilio")} />}
             />
             <Route
@@ -430,7 +445,9 @@ function MainContent() {
             />
 
             {/* Legacy Flat Route Redirections (Forwarding to scoped organization URLs) */}
-            <Route path="/dashboard" element={<Navigate to={`/${userOrgId}/dashboard`} replace />} />
+            <Route path="/overview" element={<Navigate to={`/${userOrgId}/overview`} replace />} />
+            <Route path="/dashboard" element={<Navigate to={`/${userOrgId}/overview`} replace />} />
+            <Route path="/calling-console" element={<Navigate to={`/${userOrgId}/calling-console`} replace />} />
             <Route path="/dialer" element={<Navigate to={`/${userOrgId}/dialer`} replace />} />
             <Route path="/ai-dialer" element={<Navigate to={`/${userOrgId}/dialer`} replace />} />
             <Route path="/agents" element={<Navigate to={`/${userOrgId}/agents`} replace />} />
@@ -454,7 +471,7 @@ function MainContent() {
             <Route path="/admin" element={<Navigate to={`/${userOrgId}/team`} replace />} />
 
             {/* Catch-all Wildcard Route */}
-            <Route path="*" element={<Navigate to={`/${effectiveOrgId}/dashboard`} replace />} />
+            <Route path="*" element={<Navigate to={`/${effectiveOrgId}/overview`} replace />} />
           </Routes>
         </main>
 

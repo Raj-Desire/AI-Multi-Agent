@@ -8,7 +8,7 @@ class Appointment(BaseModel):
     id: str                                  # "appt_{call_id}" so re-analysis updates instead of duplicating
     organization_id: str
     type: str = "meeting"                    # meeting | callback
-    status: str = "scheduled"                # scheduled | cancelled (missed is derived at read time)
+    status: str = "scheduled"                # scheduled | completed | cancelled (missed is derived at read time)
     start_at_utc: str                        # "YYYY-MM-DDTHH:MM:SSZ" (sortable string)
     end_at_utc: str
     timezone: str = "UTC"                    # IANA zone the time was agreed in

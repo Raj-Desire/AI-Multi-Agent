@@ -654,15 +654,22 @@ async def voice_stream_websocket(websocket: WebSocket):
         langs = []
         if agent_config and getattr(agent_config, "language", None):
             langs = [agent_config.language.primary, *agent_config.language.secondary]
-        verdict = await classify_turn(heard_text, langs, stt_language=stt_language(), speaking=get_language_tracker().current)
-        if not is_concluding_call and not (verdict and verdict.should_end):
+        verdict = await classify_turn(heard_text, langs, stt_language=stt_language(), speaking=get_language_tracker().current, latest=latest_text)
+        # A question ("Why are you calling me?", "Who is this?") is never a refusal, whatever the model says
+        words = latest_text.strip().lower().split()
+        is_question = bool(words) and (
+            latest_text.strip().endswith("?")
+            or words[0] in ("why", "what", "who", "how", "when", "where", "which", "can", "could", "do", "does", "is", "are", "will", "would")
+        )
+        should_end = bool(verdict) and (verdict.is_machine or (verdict.wants_to_end and not is_question))
+        if not is_concluding_call and not should_end:
             # The model's verdict wins: it knows Hindi that a Gujarati-tuned recognizer wrote in Gujarati script.
             verdict_lang = verdict.language if verdict and verdict.language else None
             # Same offline guess as the instant path wins; the model's verdict only decides what the words cannot.
             local = script_language(latest_text) or guess_latin_language(latest_text)
             detected = local if local and local != stt_language() else (verdict_lang or local)
             await follow_caller_language(detected, latest_text, confident=bool(verdict_lang))
-        if not verdict or not verdict.should_end or is_concluding_call:
+        if not verdict or not should_end or is_concluding_call:
             return
         is_concluding_call = True
         from app.api.v1.voice import detect_caller_farewell

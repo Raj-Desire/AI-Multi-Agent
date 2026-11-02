@@ -215,7 +215,9 @@ class DocumentParserService:
             header = "[" + " > ".join(hpath[-2:]) + "]"
             body_words = sum(len(b.split()) for b in body)
             if body_words < 40 and len(hpath) <= 2:
-                # intro-only heading: keep it and prepend to the next section
+                # short section: keep it, with its own title, and prepend it to the next section. Without the title its
+                # text would sit under the next heading ("Business hours" facts labelled "Service areas").
+                carry.append(f"{title}:")
                 carry.extend(body)
                 continue
             lines = carry + body

@@ -604,6 +604,51 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         return _EXAMPLE_DATE.sub("a real upcoming weekday and date from today's calendar", text or "")
 
     @staticmethod
+    def _build_speaking_limits(response_length: Optional[str]) -> str:
+        """Hard limits placed right after the agent's own instructions. The longer rules further down are easy for the model
+        to lose in a long prompt, which is how a 'short' agent ended up giving four-sentence explanations."""
+        key = (response_length or "short").lower()
+        if key in ("detailed", "long"):
+            sentences, words = "4", "75"
+        elif key in ("balanced", "medium"):
+            sentences, words = "3", "45"
+        else:
+            sentences, words = "2", "30"
+        return (
+            "[HOW YOU SPEAK - HARD LIMITS, THEY BEAT EVERY OTHER INSTRUCTION]\n"
+            f"- Every reply is at most {sentences} short sentences and about {words} words, even when the caller says \"explain\" or "
+            "\"tell me more\". Give the single most useful point, then stop or ask ONE short question. Never list several services or tools; "
+            "name one that fits what they said.\n"
+            "- Ask only one question per reply.\n"
+            "- Don't start with filler like \"Perfect!\" or \"Glad to hear that!\" on every turn; answer what they said.\n"
+            "- BOOKING FLOW, one step per reply. What you book is whatever YOUR instructions say (a technician visit, an appointment, a demo, "
+            "a meeting, a call): use that exact kind of booking and never swap it for another, such as a \"call with a specialist\". "
+            "If booking is your main goal and the caller has described what they need, offer the booking in one short sentence and ask for the "
+            "day and time in the same reply (for example \"I can send a technician. What day and time suit you?\"). If booking is only a side "
+            "step (sales or discovery), first ask whether they would like it and wait for a yes, then ask for the day and time. Then repeat the "
+            "chosen day, date and time back once and wait for a yes; only after that yes say it is booked. Never say \"scheduled\" or "
+            "\"booked\" before they confirmed. Collect anything else your instructions require (address, name, device) one item per reply."
+        )
+
+    @staticmethod
+    def _outbound_rewrite(text: str) -> str:
+        """A saved prompt written for inbound calls says 'Thank you for calling! How can I assist you today?'. On a call the
+        agent placed, those lines are wrong and the model repeats them, so they are replaced for outbound calls only."""
+        text = re.sub(r"Thank you for calling[^.!?\n]*[.!?]\s*", "", text or "", flags=re.I)
+        return re.sub(r"(?:How can I|What can I) (?:help|assist)(?: you)?(?: with)?(?: today)?\s*\?", "Is now a good time for a quick chat?", text, flags=re.I)
+
+    @staticmethod
+    def _build_outbound_anchor() -> str:
+        return (
+            "[OUTBOUND CALL - YOU PLACED THIS CALL]\n"
+            "- The customer did not call you. Never say \"Thank you for calling\", \"How can I help you today\" or \"How can I assist you today\", "
+            "even if other instructions show those lines.\n"
+            "- If the customer sounds confused, says something unclear or asks why you called, answer in ONE sentence with the reason for "
+            "your call, then ask ONE short question. Never end the call yourself because of an unclear or odd reply, and never say "
+            "goodbye unless the customer clearly refuses or says goodbye first."
+        )
+
+    @staticmethod
     def _build_date_anchor(
         business_profile: Optional[Union[dict, Any]] = None,
         config: Optional[AgentConfiguration] = None,
@@ -619,19 +664,20 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             f"{(now + timedelta(days=i)).strftime('%A %B %d')}" for i in range(2, 8)
         )
         return (
-            "[TODAY'S DATE & MEETING BOOKING RULES - ALWAYS FOLLOW]\n"
+            "[TODAY'S DATE & BOOKING RULES - ALWAYS FOLLOW]\n"
             f"- Today is {now.strftime('%A, %B %d, %Y')}, {now.strftime('%I:%M %p')} ({schedule.timezone_label}). "
             f"Tomorrow is {tomorrow.strftime('%A, %B %d')}. After that: {following}.\n"
             "- NEVER invent, guess or recite a date from memory. Any weekday, month or date written elsewhere in your instructions "
             "is only a pattern; take real dates from this calendar. A date before today is never valid.\n"
-            "- When you propose a meeting, offer a real upcoming slot from this calendar, for example "
-            f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\".\n"
+            "- When you ask for or offer a booking time, use real upcoming days from this calendar, for example "
+            f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\". If booking is only a side step in your job, do not offer a slot in the "
+            "same reply that asks whether they want it.\n"
             "- When the caller names a day or time (\"tomorrow 5 PM\", \"Friday\"), confirm it back in ONE sentence with the weekday, the "
             f"calendar date, the time and the timezone, for example \"{tomorrow.strftime('%A, %B %d')} at 5 PM {schedule.timezone_label}\". "
             "If they gave no day or no time, ask for the missing part. If they gave only a day, ask the time, and the other way round.\n"
             "- Speak only words meant for the caller. Never say bracketed notes or stage directions such as \"[Scheduling the meeting...]\" "
             "and never say \"please hold on\". Do not promise an email or calendar invite unless your facts say you send one.\n"
-            "- Once the meeting is confirmed, say so once and ask if there is anything else. When the caller says bye, thanks or that's all, "
+            "- Once the booking is confirmed, say so once and ask if there is anything else. When the caller says bye, thanks or that's all, "
             "reply with ONE short goodbye that includes the word \"goodbye\", then stop talking."
         )
 
@@ -889,6 +935,9 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 
         temporal_rule = VoicePromptBuilder._build_temporal_context(business_profile, config)
         date_anchor = VoicePromptBuilder._build_date_anchor(business_profile, config)
+        is_outbound = getattr(config, "_call_direction", "") == "outbound"
+        outbound_anchor = VoicePromptBuilder._build_outbound_anchor() if is_outbound else ""
+        speaking_limits = VoicePromptBuilder._build_speaking_limits(config.response_length)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
@@ -971,7 +1020,10 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             # The prompt is cut at the tail when over the limit, so the facts the agent must answer from (knowledge
             # and the live-lookup instruction) come right after its own instructions instead of after ~20k of rules.
             parts = [
-                VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()),
+                VoicePromptBuilder._outbound_rewrite(VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()))
+                if is_outbound else VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()),
+                speaking_limits,
+                outbound_anchor,
                 date_anchor,
                 knowledge_section,
                 personality_section,
@@ -1002,6 +1054,8 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             parts = [
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
                 f"PRIMARY GOAL: {config.objective}",
+                speaking_limits,
+                outbound_anchor,
                 date_anchor,
                 personality_section,
                 guardrails_section,
