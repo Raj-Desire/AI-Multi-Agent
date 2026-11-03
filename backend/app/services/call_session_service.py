@@ -377,6 +377,11 @@ class CallSessionService:
             )
 
         call_saved = False
+        if session.callback_at:
+            # The customer asked to be called back: the call record states exactly when, instead of a generic outcome
+            call_doc.callback_datetime = session.callback_at.isoformat()
+            call_doc.next_action = f"Call back {session.callback_label or 'as requested'}"
+
         try:
             await self.call_repo.save(call_doc)
             call_saved = True
@@ -434,7 +439,8 @@ class CallSessionService:
                         call_id=call_doc.id,
                         duration=session.call_duration,
                         outcome=resolved_business_outcome,
-                        is_success=(final_status == "completed" or session.call_duration > 0)
+                        is_success=(final_status == "completed" or session.call_duration > 0),
+                        callback_at=session.callback_at
                     )
             except Exception as cmp_err:
                 logger.warning(f"[CallSessionService] Could not sync campaign member outcome: {cmp_err}")
@@ -656,20 +662,25 @@ class CallSessionService:
         try:
             call_doc = await self.call_repo.get_by_id(call_id)
             if call_doc:
+                # The customer asked to be called back at a specific time while the call ran: that exact time and next
+                # action are facts from the call, so the (estimating) analysis must not replace them.
+                callback_locked = (call_doc.business_outcome or "") == "Callback Requested" and bool(call_doc.callback_datetime)
                 call_doc.summary = analytics_data.get("summary") or call_doc.summary
                 call_doc.key_insights = analytics_data.get("key_insights") or call_doc.key_insights
                 call_doc.key_requirements = analytics_data.get("key_requirements") or call_doc.key_requirements
                 call_doc.customer_questions = analytics_data.get("customer_questions") or call_doc.customer_questions
                 call_doc.objections = analytics_data.get("objections") or call_doc.objections
                 call_doc.important_info = analytics_data.get("important_info") or call_doc.important_info
-                call_doc.next_action = analytics_data.get("next_action") or call_doc.next_action
+                if not callback_locked:
+                    call_doc.next_action = analytics_data.get("next_action") or call_doc.next_action
                 call_doc.intent = analytics_data.get("intent") or call_doc.intent
                 call_doc.sentiment = analytics_data.get("sentiment") or call_doc.sentiment
                 if analytics_data.get("lead_score") is not None:
                     call_doc.lead_score = analytics_data.get("lead_score")
                 call_doc.interest_level = analytics_data.get("interest_level") or call_doc.interest_level
                 call_doc.classification = analytics_data.get("classification") or call_doc.classification
-                call_doc.callback_datetime = analytics_data.get("callback_datetime") or call_doc.callback_datetime
+                if not callback_locked:
+                    call_doc.callback_datetime = analytics_data.get("callback_datetime") or call_doc.callback_datetime
                 call_doc.analytics = analytics_data if analytics_data else call_doc.analytics
                 call_doc.analytics_status = "ready" if analytics_data else "unavailable"
                 call_doc.outcome = resolved_outcome

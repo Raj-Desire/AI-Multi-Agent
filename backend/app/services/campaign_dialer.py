@@ -191,7 +191,7 @@ class CampaignDialerEngine:
 
             # Advance day by day until date matches start_date and day is in allowed calling_days
             allowed_days = [d.strip().capitalize() for d in sched.calling_days]
-            for _ in range(30):  # Look up to 30 days ahead
+            for _ in range(400):  # Look up to ~13 months ahead (a campaign can be scheduled far in advance)
                 day_name = target_time.strftime("%A")
                 date_str = target_time.strftime("%Y-%m-%d")
                 if sched.start_date and date_str < sched.start_date:
@@ -261,11 +261,68 @@ class CampaignDialerEngine:
 
         return True, "Inside calling window."
 
+    def schedule_has_ended(self, campaign: Campaign, now_utc: Optional[datetime] = None) -> Tuple[bool, str]:
+        """True once a campaign with an end date can place no further call: the end date has passed, or no allowed
+        calling day remains between now and the end date (counting today only while its window is still open)."""
+        sched = campaign.schedule
+        if not sched.end_date:
+            return False, ""
+        now = now_utc or datetime.now(timezone.utc)
+        try:
+            now_tz = now.astimezone(ZoneInfo(sched.timezone))
+            end_parts = [int(p) for p in sched.calling_end_time.split(":")]
+        except Exception:
+            return False, ""
+        today = now_tz.strftime("%Y-%m-%d")
+        if today > sched.end_date:
+            return True, f"the end date {sched.end_date} has passed"
+        allowed = [d.strip().capitalize() for d in sched.calling_days]
+        window_open_today = now_tz.hour * 60 + now_tz.minute < end_parts[0] * 60 + end_parts[1]
+        try:
+            last_day = datetime.strptime(sched.end_date, "%Y-%m-%d").date()
+        except ValueError:
+            return False, ""
+        day = now_tz.date() if window_open_today else now_tz.date() + timedelta(days=1)
+        for _ in range(400):
+            if day > last_day:
+                break
+            if day.strftime("%A") in allowed:
+                return False, ""
+            day += timedelta(days=1)
+        return True, f"no calling day remains up to the end date {sched.end_date}"
+
+    async def _end_campaign_by_schedule(self, campaign: Campaign, reason: str):
+        """Closes a campaign whose end date has been reached; contacts that were never reached stay as they are."""
+        members = await self.member_repo.get_all_by_campaign(campaign.id)
+        not_called = sum(1 for m in members if str(getattr(m.status, "value", m.status)).lower() in ("queued", "retrying"))
+        campaign.status = CampaignStatus.COMPLETED
+        campaign.completed_at = datetime.now(timezone.utc)
+        campaign.updated_at = campaign.completed_at
+        await self.campaign_repo.save(campaign)
+        await self.event_repo.log_event(
+            organization_id=campaign.organization_id,
+            campaign_id=campaign.id,
+            event_type=CampaignEventType.COMPLETED,
+            message=f"Campaign '{campaign.name}' ended on schedule: {reason}. {not_called} contact(s) were not reached before the end date.",
+            details={"reason": "schedule_ended", "end_date": campaign.schedule.end_date, "not_called": not_called}
+        )
+        await self.campaign_service.recalculate_campaign_stats(campaign.id)
+        logger.info(f"[CampaignDialer] Campaign {campaign.id} ended on schedule ({reason}); {not_called} contact(s) not reached.")
+
     # -------------------------------------------------------------
     # Process Single Campaign
     # Returns (is_actively_calling: bool, delay_until_next_attempt: Optional[float])
     # -------------------------------------------------------------
     async def process_campaign(self, campaign: Campaign) -> Tuple[bool, Optional[float]]:
+        # 0. The campaign's end date: after it (or after the last allowed calling window) no call is ever placed again
+        if campaign.status in (CampaignStatus.RUNNING, CampaignStatus.SCHEDULED):
+            ended, ended_reason = self.schedule_has_ended(campaign)
+            if ended:
+                if await self.member_repo.count_in_flight_calls(campaign.id) > 0:
+                    return True, None  # let calls that are still in progress finish first
+                await self._end_campaign_by_schedule(campaign, ended_reason)
+                return False, None
+
         # 1. Check if campaign status is SCHEDULED and time to activate
         is_in_window, reason = self.is_inside_calling_window(campaign)
 
@@ -472,6 +529,7 @@ class CampaignDialerEngine:
             # 3. Transition member to CALLING and increment attempt counter
             member.status = CampaignMemberStatus.CALLING
             member.live_phase = "dialing"
+            member.callback_at = None  # this call IS the promised call-back (or a normal attempt)
             member.attempts += 1
             member.last_attempt_at = now
             member.updated_at = now

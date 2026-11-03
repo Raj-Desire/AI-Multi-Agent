@@ -1,6 +1,7 @@
 import React from "react";
 import { LeadListItem } from "../../types";
 import {
+  Bot,
   Sparkles,
   PhoneForwarded,
   HelpCircle,
@@ -12,6 +13,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { Button } from "../ui/Button";
+import { Tooltip } from "../ui/Tooltip";
 
 interface LeadTableProps {
   leads: LeadListItem[];
@@ -54,7 +56,7 @@ export function LeadTable({
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
           <PhoneForwarded className="w-3 h-3" />
-          <span>Callback Requested</span>
+          <span>Callback</span>
         </span>
       );
     }
@@ -70,7 +72,7 @@ export function LeadTable({
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
           <HelpCircle className="w-3 h-3" />
-          <span>Information Requested</span>
+          <span>Requested</span>
         </span>
       );
     }
@@ -91,44 +93,6 @@ export function LeadTable({
     );
   };
 
-  const getInterestBadge = (level: string, outcome: string, score?: number) => {
-    const l = (level || "").toLowerCase();
-    const o = (outcome || "").toLowerCase();
-    const sc = score !== undefined ? score : null;
-
-    if (o.includes("callback") || l.includes("callback")) {
-      return (
-        <span className="inline-flex items-center text-[11px] font-semibold text-purple-500">
-          <span>Callback</span>
-        </span>
-      );
-    }
-
-    // High qualification / Hot: Score >= qualificationThreshold or explicit "Hot" or "Interested" with sufficient score
-    if ((sc !== null && sc >= qualificationThreshold) || (sc === null && (l === "hot" || l === "interested"))) {
-      return (
-        <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-          <span>Interested</span>
-        </span>
-      );
-    }
-
-    // Moderate engagement / Warm / Information requested: Score >= warmThreshold (e.g. >= 53)
-    if ((sc !== null && sc >= warmThreshold) || (sc === null && (l.includes("warm") || o.includes("information") || o.includes("asked")))) {
-      return (
-        <span className="inline-flex items-center text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-          <span>Warm Interested</span>
-        </span>
-      );
-    }
-
-    // Direct connect or score < warmThreshold -> Cold / No Answer
-    return (
-      <span className="inline-flex items-center text-[11px] text-[var(--color-muted)] font-medium">
-        <span>No Answer</span>
-      </span>
-    );
-  };
 
   const getScoreMeter = (score: number) => {
     let color = "bg-rose-500";
@@ -152,21 +116,23 @@ export function LeadTable({
     );
   };
 
-  const formatLastCallTime = (isoString?: string | null) => {
-    if (!isoString) return "N/A";
+  const renderLastCallTime = (isoString?: string | null) => {
+    if (!isoString) {
+      return <span className="text-[var(--color-muted)] italic text-[11px]">—</span>;
+    }
     try {
       const d = new Date(isoString);
-      const now = new Date();
-      const diffHours = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+      const datePart = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const timePart = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-      if (diffHours < 24 && d.getDate() === now.getDate()) {
-        return `Today ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-      } else if (diffHours < 48) {
-        return `Yesterday ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-      }
-      return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)]/70 text-[11px] shadow-2xs group-hover:border-[var(--color-border)] transition-colors">
+          <span className="font-medium text-[var(--color-heading)]">{datePart}</span>
+          <span className="text-[10px] text-[var(--color-muted)] font-mono">{timePart}</span>
+        </span>
+      );
     } catch {
-      return isoString;
+      return <span className="text-[var(--color-muted)] text-[11px]">{isoString}</span>;
     }
   };
 
@@ -241,10 +207,25 @@ export function LeadTable({
                     <ArrowUpDown className="w-3 h-3 opacity-60" />
                   </div>
                 </th>
-                <th className="py-3 px-3">Company</th>
-                <th className="py-3 px-3">Campaign</th>
+                <th
+                  onClick={() => onSortChange("campaign")}
+                  className="py-3 px-3 cursor-pointer hover:text-[var(--color-text)] transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Campaign</span>
+                    <ArrowUpDown className="w-3 h-3 opacity-60" />
+                  </div>
+                </th>
+                <th
+                  onClick={() => onSortChange("agent")}
+                  className="py-3 px-3 cursor-pointer hover:text-[var(--color-text)] transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Agent</span>
+                    <ArrowUpDown className="w-3 h-3 opacity-60" />
+                  </div>
+                </th>
                 <th className="py-3 px-3">Outcome</th>
-                <th className="py-3 px-2">Interest</th>
                 <th
                   onClick={() => onSortChange("lead_score")}
                   className="py-3 px-3 cursor-pointer hover:text-[var(--color-text)] transition-colors"
@@ -264,7 +245,6 @@ export function LeadTable({
                   </div>
                 </th>
                 <th className="py-3 px-3">Next Action</th>
-                <th className="py-3 px-3">Status</th>
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -287,43 +267,88 @@ export function LeadTable({
                     </div>
                   </td>
 
-                  {/* Company */}
-                  <td className="py-3 px-3 text-[var(--color-text)]">
-                    {lead.company ? (
-                      <span className="truncate max-w-[140px] block font-medium">
-                        {lead.company}
-                      </span>
-                    ) : (
-                      <span className="text-[var(--color-muted)] italic text-[11px]">—</span>
-                    )}
-                  </td>
 
                   {/* Campaign */}
                   <td className="py-3 px-3">
                     <span className="inline-block max-w-[150px] truncate text-xs text-[var(--color-text)] font-medium">
-                      {lead.campaign_name || "Campaign Call"}
+                      {lead.campaign_name && lead.campaign_name !== "Direct Inbound/Outbound" ? lead.campaign_name : "AI Dialer"}
                     </span>
+                  </td>
+
+                  {/* Agent */}
+                  <td className="py-3 px-3">
+                    <Tooltip
+                      position="top"
+                      maxWidth={260}
+                      content={
+                        <div className="space-y-0.5 text-left">
+                          <span className="text-[10px] text-[var(--color-muted)] font-medium block">Voice Agent</span>
+                          <span className="font-semibold text-xs text-[var(--color-heading)] block">
+                            {lead.agent_name || "Voice Assistant"}
+                          </span>
+                        </div>
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-heading)] font-medium cursor-help">
+                        <span className="w-5 h-5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                          <Bot className="w-3 h-3" />
+                        </span>
+                        <span className="truncate max-w-[130px]">
+                          {lead.agent_name || "Voice Assistant"}
+                        </span>
+                      </span>
+                    </Tooltip>
                   </td>
 
                   {/* Outcome */}
                   <td className="py-3 px-3">{getOutcomeBadge(lead.business_outcome)}</td>
 
-                  {/* Interest Level */}
-                  <td className="py-3 px-2">{getInterestBadge(lead.interest_level, lead.business_outcome, lead.lead_score)}</td>
 
                   {/* Lead Score */}
                   <td className="py-3 px-3">{getScoreMeter(lead.lead_score)}</td>
 
                   {/* Last Call */}
                   <td className="py-3 px-3 text-[var(--color-muted)] text-[11px] whitespace-nowrap">
-                    {formatLastCallTime(lead.last_call_at)}
+                    {renderLastCallTime(lead.last_call_at)}
                   </td>
 
                   {/* Next Action */}
                   <td className="py-3 px-3">
-                    <span className="inline-block max-w-[180px] truncate text-xs font-medium text-[var(--color-heading)]">
-                      {lead.next_action || "Follow up with prospect"}
-                    </span>
+                    {lead.next_action || lead.summary ? (
+                      <Tooltip
+                        position="top"
+                        maxWidth={320}
+                        content={
+                          <div className="space-y-1.5 text-left">
+                            <div className="font-semibold text-[var(--color-heading)] text-xs flex items-center gap-1">
+                              <span>Next Action:</span>
+                              <span className="font-normal text-[var(--color-text)]">
+                                {lead.next_action || "Follow up with prospect"}
+                              </span>
+                            </div>
+                            {lead.summary && (
+                              <div className="pt-1 border-t border-[var(--color-border)]/60 text-[11px] text-[var(--color-muted)] leading-relaxed">
+                                <span className="font-medium text-[var(--color-heading)] block mb-0.5">Call Summary:</span>
+                                {lead.summary}
+                              </div>
+                            )}
+                            {formatMeeting(lead) && (
+                              <div className="pt-1 border-t border-[var(--color-border)]/60 text-[10px] text-[var(--color-primary)] font-medium">
+                                {formatMeeting(lead)}
+                              </div>
+                            )}
+                          </div>
+                        }
+                      >
+                        <span className="inline-block max-w-[200px] truncate text-xs font-medium text-[var(--color-heading)] cursor-help">
+                          {lead.next_action || "Follow up with prospect"}
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <span className="inline-block max-w-[200px] truncate text-xs font-medium text-[var(--color-heading)]">
+                        Follow up with prospect
+                      </span>
+                    )}
                     {formatMeeting(lead) && (
                       <span className="mt-1 flex w-fit items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-background)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-heading)] whitespace-nowrap">
                         {formatMeeting(lead)}
@@ -331,12 +356,6 @@ export function LeadTable({
                     )}
                   </td>
 
-                  {/* CRM Status */}
-                  <td className="py-3 px-3">
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-background)] border border-[var(--color-border)] text-[var(--color-muted)] font-medium">
-                      {lead.prospect_status === "Converted" || lead.prospect_status === "Qualified" ? "Interested" : lead.prospect_status}
-                    </span>
-                  </td>
 
                   {/* Quick Action Button */}
                   <td

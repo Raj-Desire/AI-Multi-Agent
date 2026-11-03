@@ -757,7 +757,7 @@ export function CampaignCreateWizardView({
         toast.error("Please select a start date.");
         return;
       }
-      if (scheduleMode === "date_range" && endDate && endDate < startDate) {
+      if (scheduleMode !== "single_day" && endDate && endDate < startDate) {
         toast.error("End date cannot be earlier than start date.");
         return;
       }
@@ -1719,7 +1719,8 @@ export function CampaignCreateWizardView({
                       type="button"
                       onClick={() => {
                         setScheduleMode("recurring");
-                        setEndDate("");
+                        // Coming from "Single Specific Date" the end date only mirrored the start date: drop that one
+                        if (endDate && endDate === startDate) setEndDate("");
                       }}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "recurring"
                         ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
@@ -1730,7 +1731,7 @@ export function CampaignCreateWizardView({
                         <span className="text-xs font-bold text-[var(--color-heading)]">Ongoing Schedule</span>
                         {scheduleMode === "recurring" && <Check className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
                       </div>
-                      <p className="text-[11px] text-[var(--color-muted)]">Run continuously during allowed calling hours.</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">Call every selected day within calling hours, from the start date until an optional end date.</p>
                     </button>
                   </div>
                 </div>
@@ -1751,11 +1752,11 @@ export function CampaignCreateWizardView({
                     />
                   </div>
 
-                  {scheduleMode === "date_range" && (
+                  {(scheduleMode === "date_range" || scheduleMode === "recurring") && (
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
                         <CalendarDays className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                        <span>End Date (Optional)</span>
+                        <span>{scheduleMode === "recurring" ? "Run Until (End Date, Optional)" : "End Date (Optional)"}</span>
                       </label>
                       <input
                         type="date"
@@ -1767,6 +1768,15 @@ export function CampaignCreateWizardView({
                     </div>
                   )}
                 </div>
+
+                {/* What the chosen dates mean */}
+                {scheduleMode !== "single_day" && (
+                  <p className="text-[11px] leading-snug text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md px-3 py-2">
+                    {endDate
+                      ? `Calls are placed on each selected weekday from ${startDate || "the start date"} through ${endDate}, only inside the calling window. The campaign ends automatically after ${endDate}: no call is made on any later day.`
+                      : `Calls are placed on each selected weekday from ${startDate || "the start date"} inside the calling window, and continue until you stop the campaign. Pick an end date to stop automatically.`}
+                  </p>
+                )}
 
                 {/* Calling Days Selection */}
                 <div className="space-y-1.5 pt-1">

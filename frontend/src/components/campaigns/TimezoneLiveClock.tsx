@@ -61,6 +61,19 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
           if (p.type === "weekday") tzDay = p.value;
         });
 
+        // 2a. Campaign dates (compared on the campaign's own calendar day)
+        const todayInTz = new Intl.DateTimeFormat("en-CA", { timeZone: targetTz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+        if (schedule.end_date && todayInTz > schedule.end_date) {
+          setIsInsideWindow(false);
+          setWindowStatusReason(`Campaign ended on ${schedule.end_date}, no more calls`);
+          return;
+        }
+        if (schedule.start_date && todayInTz < schedule.start_date) {
+          setIsInsideWindow(false);
+          setWindowStatusReason(`Starts on ${schedule.start_date} at ${schedule.calling_start_time}`);
+          return;
+        }
+
         // 2. Validate day of week
         const allowedDays = (schedule.calling_days || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]).map(
           (d) => d.trim().toLowerCase()
@@ -98,7 +111,7 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
           setWindowStatusReason(`Closed at ${schedule.calling_end_time}`);
         } else {
           setIsInsideWindow(true);
-          setWindowStatusReason(`Active until ${schedule.calling_end_time}`);
+          setWindowStatusReason(schedule.end_date ? `Active until ${schedule.calling_end_time}, runs through ${schedule.end_date}` : `Active until ${schedule.calling_end_time}`);
         }
       } catch (e) {
         setCurrentTimeStr(now.toLocaleTimeString());
@@ -111,7 +124,7 @@ export function TimezoneLiveClock({ schedule, className = "" }: TimezoneLiveCloc
     updateClock();
     const timer = setInterval(updateClock, 1000);
     return () => clearInterval(timer);
-  }, [schedule?.timezone, schedule?.calling_start_time, schedule?.calling_end_time, schedule?.calling_days]);
+  }, [schedule?.timezone, schedule?.calling_start_time, schedule?.calling_end_time, schedule?.calling_days, schedule?.start_date, schedule?.end_date]);
 
   const cleanTzName = (schedule?.timezone || "UTC").replace(/_/g, " ");
 

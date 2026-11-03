@@ -93,10 +93,17 @@ export function LeadFilterBar({
     });
   }
   if (filters.campaignId !== "all" && filters.campaignId) {
-    const cmpName = campaigns.find((c) => c.campaign_id === filters.campaignId)?.campaign_name || filters.campaignId;
+    let cmpLabel = filters.campaignId;
+    if (filters.campaignId === "ai_dialer") {
+      cmpLabel = "AI Dialer";
+    } else if (filters.campaignId === "all_campaigns") {
+      cmpLabel = "All Campaigns (No Dialer)";
+    } else {
+      cmpLabel = campaigns.find((c) => c.campaign_id === filters.campaignId)?.campaign_name || filters.campaignId;
+    }
     activeChips.push({
       id: "campaignId",
-      label: `Campaign: ${cmpName}`,
+      label: `Campaign: ${cmpLabel}`,
       onRemove: () => onFilterChange({ campaignId: "all" }),
     });
   }
@@ -144,8 +151,8 @@ export function LeadFilterBar({
   if (filters.followUp !== "all" && filters.followUp) {
     const fuLabels: Record<string, string> = {
       needs_follow_up: "Needs Follow-up",
-      scheduled: "Callback Scheduled",
-      none: "No Follow-up",
+      scheduled: "Call-back / Meeting Scheduled",
+      none: "No Follow-up Needed",
     };
     activeChips.push({
       id: "followUp",
@@ -247,6 +254,8 @@ export function LeadFilterBar({
             className="px-2.5 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-text)] font-medium focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)] cursor-pointer max-w-[180px] truncate"
           >
             <option value="all">Campaign: All</option>
+            <option value="all_campaigns">Only Campaigns</option>
+            <option value="ai_dialer">AI Dialer</option>
             {campaigns.map((cmp) => (
               <option key={cmp.campaign_id} value={cmp.campaign_id}>
                 {cmp.campaign_name}
@@ -335,9 +344,14 @@ export function LeadFilterBar({
               <option value="all">All CRM Statuses</option>
               <option value="New">New</option>
               <option value="Contacted">Contacted</option>
+              <option value="Connected">Connected</option>
               <option value="Interested">Interested</option>
               <option value="Callback Requested">Callback Requested</option>
+              <option value="Qualified">Qualified</option>
+              <option value="Converted">Converted</option>
+              <option value="Not Interested">Not Interested</option>
               <option value="Do Not Contact">Do Not Call (DNC)</option>
+              <option value="Invalid">Invalid Number</option>
             </select>
           </div>
 
@@ -352,9 +366,9 @@ export function LeadFilterBar({
               className="w-full px-2.5 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-text)]"
             >
               <option value="all">All Follow-ups</option>
-              <option value="needs_follow_up">Needs Follow-up</option>
-              <option value="scheduled">Callback Scheduled</option>
-              <option value="none">No Follow-up</option>
+              <option value="needs_follow_up">Needs Follow-up (hot / warm, nothing booked)</option>
+              <option value="scheduled">Scheduled (call-back or meeting booked)</option>
+              <option value="none">No Follow-up Needed</option>
             </select>
           </div>
 

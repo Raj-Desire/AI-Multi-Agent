@@ -39,6 +39,7 @@ async def get_summary_kpis(
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
+    agent_id: Optional[str] = Query(None, description="Filter by AI voice agent ID or 'all'"),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -50,7 +51,8 @@ async def get_summary_kpis(
         date_range=date_range,
         custom_start=custom_start,
         custom_end=custom_end,
-        campaign_id=campaign_id
+        campaign_id=campaign_id,
+        agent_id=agent_id
     )
     return ApiResponse.ok(res)
 
@@ -62,6 +64,7 @@ async def get_lead_trends(
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
+    agent_id: Optional[str] = Query(None, description="Filter by AI voice agent ID or 'all'"),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -74,7 +77,8 @@ async def get_lead_trends(
         date_range=date_range,
         custom_start=custom_start,
         custom_end=custom_end,
-        campaign_id=campaign_id
+        campaign_id=campaign_id,
+        agent_id=agent_id
     )
     return ApiResponse.ok(res)
 
@@ -85,6 +89,7 @@ async def get_outcome_distribution(
     custom_start: Optional[str] = Query(None, description="ISO timestamp for custom start date"),
     custom_end: Optional[str] = Query(None, description="ISO timestamp for custom end date"),
     campaign_id: Optional[str] = Query(None, description="Filter by campaign ID or 'all'"),
+    agent_id: Optional[str] = Query(None, description="Filter by AI voice agent ID or 'all'"),
     ctx: TenantContext = Depends(get_tenant_context),
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
@@ -96,7 +101,8 @@ async def get_outcome_distribution(
         date_range=date_range,
         custom_start=custom_start,
         custom_end=custom_end,
-        campaign_id=campaign_id
+        campaign_id=campaign_id,
+        agent_id=agent_id
     )
     return ApiResponse.ok(res)
 
@@ -362,7 +368,8 @@ async def get_cohort_analytics(
         date_range=date_range,
         custom_start=custom_start,
         custom_end=custom_end,
-        campaign_id=campaign_id
+        campaign_id=campaign_id,
+        agent_id=agent_id
     )
     return ApiResponse.ok(res)
 

@@ -64,6 +64,9 @@ class CallSession(BaseModel):
 
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     connected_at: Optional[datetime] = None
+    # Call-back the customer asked for during this call (resolved to an exact UTC instant by callback_intent)
+    callback_at: Optional[datetime] = None
+    callback_label: Optional[str] = None
     ended_at: Optional[datetime] = None
     call_duration: int = 0          # in seconds
 

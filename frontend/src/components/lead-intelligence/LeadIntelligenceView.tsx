@@ -138,6 +138,7 @@ export function LeadIntelligenceView() {
       if (filters.customStart) params.set("custom_start", filters.customStart);
       if (filters.customEnd) params.set("custom_end", filters.customEnd);
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
+      if (filters.agentId !== "all") params.set("agent_id", filters.agentId);
 
       const queryStr = params.toString() ? `?${params.toString()}` : "";
 
@@ -160,7 +161,7 @@ export function LeadIntelligenceView() {
     } finally {
       setIsLoadingSummary(false);
     }
-  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, cacheScope]);
+  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, filters.agentId, cacheScope]);
 
   const loadAnalyticsDetails = useCallback(async () => {
     setIsLoadingTrends(true);
@@ -170,6 +171,7 @@ export function LeadIntelligenceView() {
       if (filters.customStart) params.set("custom_start", filters.customStart);
       if (filters.customEnd) params.set("custom_end", filters.customEnd);
       if (filters.campaignId !== "all") params.set("campaign_id", filters.campaignId);
+      if (filters.agentId !== "all") params.set("agent_id", filters.agentId);
 
       const queryStr = params.toString() ? `?${params.toString()}` : "";
 
@@ -188,7 +190,7 @@ export function LeadIntelligenceView() {
     } finally {
       setIsLoadingTrends(false);
     }
-  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, trendMetric, cacheScope]);
+  }, [filters.dateRange, filters.customStart, filters.customEnd, filters.campaignId, filters.agentId, trendMetric, cacheScope]);
 
   const loadLeads = useCallback(async () => {
     setIsLoadingLeads(true);

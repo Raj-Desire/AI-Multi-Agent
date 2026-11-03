@@ -149,6 +149,9 @@ class CampaignMember(BaseModel):
     # Real-time phase of the call in flight (dialing / ringing / in-progress); cleared when the call finishes
     live_phase: Optional[str] = None
 
+    # Set when the customer asked to be called back at a specific time: the exact instant of the promised call
+    callback_at: Optional[datetime] = None
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

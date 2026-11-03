@@ -1,4 +1,5 @@
 import io
+import re
 import csv
 import asyncio
 import time
@@ -87,6 +88,60 @@ def normalize_outcome_bucket(
 
     # All remaining outcomes go to No Answer
     return "No Answer"
+
+
+NO_OUTREACH_HINTS = ("no further", "no action", "not required", "do not contact", "do not call", "dnc", "mark contact")
+
+
+def infer_prospect_status(call: Any, bucket: str) -> str:
+    """CRM status for a contact that has no prospect record, from what happened on the call. (Every such contact
+    used to be reported as "Interested", so the "Interested" status filter returned no-answer calls.)"""
+    raw = str(call.business_outcome or call.outcome or "").strip().lower().replace("_", " ").replace("-", " ")
+    if "do not" in raw or "dnc" in raw:
+        return "Do Not Contact"
+    if "not interested" in raw:
+        return "Not Interested"
+    if bucket == "Callback Requested":
+        return "Callback Requested"
+    if bucket == "Interested":
+        return "Interested"
+    return "Contacted"
+
+
+def follow_up_state(bucket: str, has_scheduled_time: bool) -> str:
+    """One definition of follow-up for the whole page; every lead is in exactly one state:
+      scheduled       a call-back time or a meeting is booked
+      needs_follow_up a hot / warm lead (interested, wants information, or asked for a call back) with nothing booked yet
+      none            nothing to chase: not interested, do-not-call, voicemail or never answered
+    """
+    if has_scheduled_time:
+        return "scheduled"
+    if bucket in ("Interested", "Information Requested", "Callback Requested"):
+        return "needs_follow_up"
+    return "none"
+
+
+def search_matches(query: str, name: str, phone: str, email: Optional[str], company: Optional[str]) -> bool:
+    """Search by contact name, company, email or phone. Phone search ignores spaces, dashes and brackets, so
+    '90236 71902' finds +919023671902."""
+    q = (query or "").strip().lower()
+    if not q:
+        return True
+    if q in (name or "").lower() or (email and q in email.lower()) or (company and q in company.lower()) or q in (phone or "").lower():
+        return True
+    digits = re.sub(r"\D", "", q)
+    return len(digits) >= 3 and digits in re.sub(r"\D", "", phone or "")
+
+
+def matches_campaign_filter(call_campaign_id: Optional[str], filter_campaign_id: Optional[str]) -> bool:
+    if not filter_campaign_id or filter_campaign_id == "all":
+        return True
+    cid = (call_campaign_id or "").strip()
+    if filter_campaign_id == "ai_dialer":
+        return not bool(cid)
+    if filter_campaign_id == "all_campaigns":
+        return bool(cid)
+    return cid == filter_campaign_id
 
 
 def is_callback_call(call: Any) -> bool:
@@ -439,7 +494,8 @@ class LeadIntelligenceService:
         date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
-        campaign_id: Optional[str] = None
+        campaign_id: Optional[str] = None,
+        agent_id: Optional[str] = None
     ) -> LeadKPISummary:
         calls, prospects_dict, campaigns_dict = await self._get_all_org_data(ctx)
         calls = await self._all_ai_calls(ctx) or calls
@@ -451,7 +507,9 @@ class LeadIntelligenceService:
         prev_calls: List[Call] = []
 
         for c in calls:
-            if campaign_id and campaign_id != "all" and c.campaign_id != campaign_id:
+            if not matches_campaign_filter(c.campaign_id, campaign_id):
+                continue
+            if agent_id and agent_id != "all" and c.agent_id != agent_id:
                 continue
 
             cdt = self._get_call_created_at(c)
@@ -582,7 +640,8 @@ class LeadIntelligenceService:
         date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
-        campaign_id: Optional[str] = None
+        campaign_id: Optional[str] = None,
+        agent_id: Optional[str] = None
     ) -> LeadTrendsResponse:
         calls, _, _ = await self._get_all_org_data(ctx)
         start_dt, end_dt, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end)
@@ -600,7 +659,8 @@ class LeadIntelligenceService:
         if start_dt.year < 2000 or end_dt.year > 3000:
             call_dates = [
                 self._get_call_created_at(c) for c in calls
-                if not (campaign_id and campaign_id != "all" and c.campaign_id != campaign_id)
+                if matches_campaign_filter(c.campaign_id, campaign_id)
+                and not (agent_id and agent_id != "all" and c.agent_id != agent_id)
             ]
             start_dt = min(call_dates) if call_dates else now_utc - timedelta(days=30)
             start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -645,7 +705,9 @@ class LeadIntelligenceService:
 
         # Aggregate matching calls
         for c in calls:
-            if campaign_id and campaign_id != "all" and c.campaign_id != campaign_id:
+            if not matches_campaign_filter(c.campaign_id, campaign_id):
+                continue
+            if agent_id and agent_id != "all" and c.agent_id != agent_id:
                 continue
 
             cdt = self._get_call_created_at(c)
@@ -711,7 +773,8 @@ class LeadIntelligenceService:
         date_range: Optional[str] = "all",
         custom_start: Optional[str] = None,
         custom_end: Optional[str] = None,
-        campaign_id: Optional[str] = None
+        campaign_id: Optional[str] = None,
+        agent_id: Optional[str] = None
     ) -> LeadOutcomeDistributionResponse:
         calls, _, _ = await self._get_all_org_data(ctx)
         calls = await self._all_ai_calls(ctx) or calls
@@ -730,7 +793,9 @@ class LeadIntelligenceService:
         # Index latest call per unique prospect in date range
         latest_by_prospect: Dict[str, Call] = {}
         for c in calls:
-            if campaign_id and campaign_id != "all" and c.campaign_id != campaign_id:
+            if not matches_campaign_filter(c.campaign_id, campaign_id):
+                continue
+            if agent_id and agent_id != "all" and c.agent_id != agent_id:
                 continue
             cdt = self._get_call_created_at(c)
             if not (start_dt <= cdt <= end_dt):
@@ -991,6 +1056,18 @@ class LeadIntelligenceService:
             if getattr(pr, "normalized_phone", None):
                 phone_index[pr.normalized_phone] = pr
 
+        # Date, campaign and agent narrow the calls FIRST; the latest call per contact is then picked from what is
+        # left. (Picking the latest call overall and filtering afterwards hid a contact from "Yesterday" or from a
+        # campaign as soon as they had any newer call outside it.)
+        scope_dated = bool(date_range and date_range != "all")
+        scope_start, scope_end, _, _, _, _ = parse_date_range(date_range, custom_start, custom_end) if scope_dated else (None, None, None, None, "", None)
+        calls = [
+            c for c in calls
+            if matches_campaign_filter(c.campaign_id, campaign_id)
+            and not (agent_id and agent_id != "all" and c.agent_id != agent_id)
+            and not (scope_dated and not (scope_start <= self._get_call_created_at(c) <= scope_end))
+        ]
+
         # One row per contact: the latest call, except that a call with a booked meeting is kept ahead of later calls
         # without one, so a follow-up call never hides the booking.
         latest_calls_by_prospect: Dict[str, Call] = {}
@@ -1022,18 +1099,6 @@ class LeadIntelligenceService:
         for p_key, call_rec in latest_calls_by_prospect.items():
             call_dt = self._get_call_created_at(call_rec)
 
-            # Date Range check
-            if has_date_filter and not (start_dt <= call_dt <= end_dt):
-                continue
-
-            # Campaign filter
-            if campaign_id and campaign_id != "all" and call_rec.campaign_id != campaign_id:
-                continue
-
-            # Agent filter
-            if agent_id and agent_id != "all" and call_rec.agent_id != agent_id:
-                continue
-
             # Resolve outcome & score
             score = call_rec.lead_score or (call_rec.analytics.get("lead_score") if call_rec.analytics else None) or 0
             norm_outcome = bucket_for_call(
@@ -1060,8 +1125,7 @@ class LeadIntelligenceService:
 
             # Outcome filter check
             if outcome and outcome != "all":
-                target_out = outcome.strip().lower()
-                if target_out not in norm_outcome.lower() and norm_outcome.lower() not in target_out:
+                if norm_outcome.lower() != outcome.strip().lower():
                     continue
 
             # Interest level check
@@ -1088,7 +1152,7 @@ class LeadIntelligenceService:
             p_phone = p.phone_number if p else call_rec.to_number
             p_email = p.email if p else None
             p_company = p.company if p else (call_rec.analytics.get("company_name") if call_rec.analytics else None)
-            p_status = str(getattr(p.status, "value", p.status)) if p else "Interested"
+            p_status = str(getattr(p.status, "value", p.status)) if p else infer_prospect_status(call_rec, norm_outcome)
             p_tags = list(p.tags) if p else []
 
             # Prospect status check
@@ -1098,31 +1162,17 @@ class LeadIntelligenceService:
 
             # Follow up status check
             if follow_up and follow_up != "all":
-                fu = follow_up.strip().lower()
-                has_callback = bool(call_rec.callback_datetime) or bool(appt)
-                if fu == "needs_follow_up" and (not call_rec.next_action or call_rec.next_action.lower() in ["none", "retry"]):
-                    continue
-                elif fu == "scheduled" and not has_callback:
-                    continue
-                elif fu == "none" and (call_rec.next_action or has_callback):
+                if follow_up_state(norm_outcome, bool(call_rec.callback_datetime) or bool(appt)) != follow_up.strip().lower():
                     continue
 
             # Search query check (name, phone, email, company)
             if search and search.strip():
-                s = search.strip().lower()
-                matches = (
-                    s in p_name.lower()
-                    or s in p_phone.lower()
-                    or (p_email and s in p_email.lower())
-                    or (p_company and s in p_company.lower())
-                    or (call_rec.summary and s in call_rec.summary.lower())
-                )
-                if not matches:
+                if not search_matches(search, p_name, p_phone, p_email, p_company):
                     continue
 
             # Resolve Campaign & Agent names
             cmp = campaigns_dict.get(call_rec.campaign_id or "")
-            cmp_name = cmp.name if cmp else ("Direct Inbound/Outbound" if not call_rec.campaign_id else f"Campaign {call_rec.campaign_id[:8]}")
+            cmp_name = cmp.name if cmp else ("AI Dialer" if not call_rec.campaign_id else f"Campaign {call_rec.campaign_id[:8]}")
             agent_label = call_rec.agent_name or "AI Voice Assistant"
 
             lead_items.append(LeadListItem(
@@ -1162,6 +1212,8 @@ class LeadIntelligenceService:
             lead_items.sort(key=lambda x: x.full_name.lower(), reverse=reverse)
         elif sort_by == "campaign" or sort_by == "campaign_name":
             lead_items.sort(key=lambda x: (x.campaign_name or "").lower(), reverse=reverse)
+        elif sort_by == "agent" or sort_by == "agent_name":
+            lead_items.sort(key=lambda x: (x.agent_name or "").lower(), reverse=reverse)
         elif sort_by == "outcome":
             lead_items.sort(key=lambda x: x.business_outcome.lower(), reverse=reverse)
         elif sort_by == "callback_datetime":
@@ -1229,7 +1281,7 @@ class LeadIntelligenceService:
             if outcome != "Callback Requested":
                 continue
 
-            if campaign_id and campaign_id != "all" and c.campaign_id != campaign_id:
+            if not matches_campaign_filter(c.campaign_id, campaign_id):
                 continue
 
             # Resolve prospect
@@ -1245,18 +1297,11 @@ class LeadIntelligenceService:
             p_status = str(getattr(p.status, "value", p.status)) if p else "Callback Requested"
 
             if search and search.strip():
-                s = search.strip().lower()
-                matches = (
-                    s in p_name.lower()
-                    or s in p_phone.lower()
-                    or (p_email and s in p_email.lower())
-                    or (p_company and s in p_company.lower())
-                )
-                if not matches:
+                if not search_matches(search, p_name, p_phone, p_email, p_company):
                     continue
 
             cmp = campaigns_dict.get(c.campaign_id or "")
-            cmp_name = cmp.name if cmp else ("Direct Inbound/Outbound" if not c.campaign_id else f"Campaign {c.campaign_id[:8]}")
+            cmp_name = cmp.name if cmp else ("AI Dialer" if not c.campaign_id else f"Campaign {c.campaign_id[:8]}")
             score = c.lead_score if c.lead_score is not None else ((c.analytics.get("lead_score") if c.analytics else None) or 0)
 
             callback_items.append(CallbackListItem(
@@ -1644,7 +1689,7 @@ class LeadIntelligenceService:
 
         # Filter calls by campaign if specified
         if campaign_id and campaign_id != "all":
-            calls = [c for c in calls if c.campaign_id == campaign_id]
+            calls = [c for c in calls if matches_campaign_filter(c.campaign_id, campaign_id)]
 
         # Parse date range filter for cohorts
         has_date_filter = date_range and date_range != "all"

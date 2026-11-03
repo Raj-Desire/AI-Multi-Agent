@@ -21,6 +21,7 @@ from app.voice.duration_policy import billing_elapsed, effective_limit, limit_ac
 from app.voice.call_ending import closing_audio_expected_seconds, playback_complete
 from app.voice.silence_policy import MIN_SILENCE_SECONDS, STUCK_SPEAKING_SECONDS, silence_action
 from app.services.language_text import silence_messages
+from app.services.callback_intent import CallbackTracker, is_callback_confirmation
 from app.voice.events import telemetry_broadcaster, VoiceEventMessage, VoiceEventType
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.agents.configuration import AgentConfiguration, AgentRuntimeSettings
@@ -111,6 +112,8 @@ async def voice_stream_websocket(websocket: WebSocket):
 
     # Outbound audio metrics
     startup_timing: dict = {}  # perf_counter marks for the answer -> first-greeting-audio path
+    callback_tracker: Optional[CallbackTracker] = None   # follows "call me back ..." requests during the call
+    callback_conclude_task: Optional[asyncio.Task] = None
     # Per-turn response-latency marks (perf_counter): user_start -> user_final -> thinking -> first_audio.
     # Logged once per turn so we can see which stage (endpointing, LLM, TTS) dominates the reply delay.
     turn_marks: dict = {}
@@ -378,6 +381,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         """Record transcript turns, check for IVR/Machine patterns, and record latencies."""
         nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke, real_conversation
         nonlocal orchestrator, live_transcript_turns, handoff_controller, turn_counter, cached_rules_map, cached_inbound_forward_number
+        nonlocal callback_tracker, callback_conclude_task
         nonlocal caller_farewell_at
         if not session:
             return
@@ -402,6 +406,25 @@ async def voice_stream_websocket(websocket: WebSocket):
             live_transcript_turns.append({"role": "user", "content": content})
             turn_counter += 1
             await call_session_service.record_user_transcript(session, content, stt_latency_ms=turn_latency)
+
+            # The customer is speaking again: hold off any pending hang-up after a call-back promise
+            if callback_conclude_task and not callback_conclude_task.done():
+                callback_conclude_task.cancel()
+
+            # "Call me after five minutes": resolve the exact time now, in code, and remember it for the campaign
+            if callback_tracker is not None:
+                change = callback_tracker.feed(content)
+                if change == "scheduled" and callback_tracker.request:
+                    req = callback_tracker.request
+                    session.callback_at, session.callback_label = req.at, req.label
+                    if not session.outcome or session.outcome == "Callback Requested":
+                        session.outcome = "Callback Requested"
+                    logger.info(f"[VoiceGateway:Callback] Customer asked for a call back {req.label} -> {req.at.isoformat()} (exact={req.exact})")
+                elif change == "cancelled":
+                    session.callback_at = session.callback_label = None
+                    if session.outcome == "Callback Requested":
+                        session.outcome = None
+                    logger.info("[VoiceGateway:Callback] Customer withdrew the call-back request.")
 
             # The caller said goodbye: the agent's reply may not contain a farewell word of its own, and the line must
             # not stay open after the caller has left. The next agent turn ends the call; a silent agent is cut after 7s.
@@ -486,6 +509,21 @@ async def voice_stream_websocket(websocket: WebSocket):
             if handoff_controller:
                 asyncio.create_task(handoff_controller.on_assistant_turn(content))
             # ─────────────────────────────────────────────────────────────────
+
+            # The agent promised a call back. End the call shortly after, unless the customer says more: a spoken
+            # "I'll call you back in five minutes" must not leave the line open until the silence timeout.
+            if callback_conclude_task and not callback_conclude_task.done():
+                callback_conclude_task.cancel()
+            if callback_tracker is not None and callback_tracker.request is not None and not is_concluding_call and is_callback_confirmation(content):
+                async def _conclude_after_callback_promise(promised_at: float):
+                    try:
+                        await asyncio.sleep(6.0)
+                        if not is_concluding_call and last_user_speech_time < promised_at and not is_user_speaking:
+                            logger.info("[VoiceGateway:Callback] Call-back confirmed and the customer is silent: ending the call.")
+                            await end_call_gracefully(None)
+                    except asyncio.CancelledError:
+                        pass
+                callback_conclude_task = asyncio.create_task(_conclude_after_callback_promise(time.time()))
 
             # Check for live human transfer cues in Assistant speech
             lower_content = content.lower()
@@ -981,9 +1019,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                 c_id = session.campaign_id if session else custom_params.get("campaign_id")
                 if p_id and c_id and org_id:
                     try:
-                        from app.repositories.campaign_repository import CampaignRepository
-                        camp_repo = CampaignRepository()
-                        member = await camp_repo.get_by_campaign_and_prospect(c_id, p_id)
+                        from app.repositories.campaign_repository import CampaignMemberRepository
+                        member = await CampaignMemberRepository().get_by_campaign_and_prospect(c_id, p_id)
                         if member:
                             prospect_data = {
                                 "name": getattr(member, "prospect_name", "") or "",
@@ -991,6 +1028,24 @@ async def voice_stream_websocket(websocket: WebSocket):
                             }
                     except Exception as p_err:
                         logger.debug(f"[VoiceGateway] Notice fetching prospect details for greeting: {p_err}")
+
+                # Call-back tracking: starts with the agent's timezone and a 30-minute default for "call me later", then
+                # switches to the campaign's own timezone and retry delay without delaying the greeting.
+                from app.services.appointment_time import agent_timezone
+                callback_tracker = CallbackTracker(agent_timezone(session.agent_config_snapshot if session else None), 30)
+
+                async def _load_campaign_callback_defaults(campaign_id_for_defaults):
+                    try:
+                        from app.repositories.campaign_repository import CampaignRepository
+                        camp = await CampaignRepository().get_by_id("global", campaign_id_for_defaults)
+                        if camp and callback_tracker is not None:
+                            callback_tracker.tz_iana = camp.schedule.timezone or callback_tracker.tz_iana
+                            callback_tracker.default_minutes = max(1, int(camp.calling_config.retry_delay_minutes or 30))
+                    except Exception as cb_err:
+                        logger.debug(f"[VoiceGateway] Notice loading campaign call-back defaults: {cb_err}")
+
+                if c_id:
+                    asyncio.create_task(_load_campaign_callback_defaults(c_id))
 
                 # Attach runtime call context onto agent_config object for dynamic variable resolution
                 agent_config._call_direction = direction

@@ -96,6 +96,25 @@ class CampaignService:
         if not schedule.calling_days:
             schedule.calling_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
+        # Start / end dates: a campaign runs every selected day from the start date through the end date (inclusive)
+        for field_name, label in (("start_date", "Start date"), ("end_date", "End date")):
+            raw = getattr(schedule, field_name)
+            cleaned = raw.strip() if isinstance(raw, str) else raw
+            if not cleaned:
+                setattr(schedule, field_name, None)
+                continue
+            try:
+                datetime.strptime(cleaned, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"{label} must be a valid date (YYYY-MM-DD).")
+            setattr(schedule, field_name, cleaned)
+        if schedule.start_date and schedule.end_date and schedule.end_date < schedule.start_date:
+            raise HTTPException(status_code=400, detail="End date cannot be earlier than the start date.")
+        if schedule.end_date:
+            today_local = datetime.now(ZoneInfo(schedule.timezone)).strftime("%Y-%m-%d")
+            if schedule.end_date < today_local:
+                raise HTTPException(status_code=400, detail=f"End date {schedule.end_date} has already passed in the campaign timezone ({schedule.timezone}).")
+
     async def _validate_agent_and_caller(self, org_id: str, calling_config: CampaignCallingConfig):
         """Validates AI Agent and Twilio Caller ID ownership."""
         # 1. Agent verification
@@ -227,7 +246,7 @@ class CampaignService:
         if payload.start_immediately:
             # Check if schedule specifies a future start date
             if payload.schedule.start_date:
-                today_str = now.strftime("%Y-%m-%d")
+                today_str = now.astimezone(ZoneInfo(payload.schedule.timezone)).strftime("%Y-%m-%d")
                 if payload.schedule.start_date > today_str:
                     initial_status = CampaignStatus.SCHEDULED
                 else:
@@ -338,7 +357,14 @@ class CampaignService:
     ) -> Campaign:
         campaign = await self.get_campaign(ctx, campaign_id)
 
-        if campaign.status in [CampaignStatus.COMPLETED, CampaignStatus.STOPPED]:
+        reopen_after_extend = False
+        if str(getattr(campaign.status, "value", campaign.status)).lower() == "completed" and payload.schedule is not None:
+            # Completed only because its end date passed? Then extending the schedule continues the unfinished contacts.
+            members_now = await self.member_repo.get_all_by_campaign(campaign_id)
+            reopen_after_extend = any(
+                str(getattr(m.status, "value", m.status)).lower() in ("queued", "retrying") for m in members_now
+            )
+        if campaign.status in [CampaignStatus.COMPLETED, CampaignStatus.STOPPED] and not reopen_after_extend:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot edit campaign in {str(campaign.status).upper()} state."
@@ -356,6 +382,9 @@ class CampaignService:
         if payload.schedule is not None:
             self._validate_schedule(payload.schedule)
             campaign.schedule = payload.schedule
+            if reopen_after_extend:
+                campaign.status = CampaignStatus.RUNNING
+                campaign.completed_at = None
 
         campaign.updated_at = datetime.now(timezone.utc)
         campaign.updated_by = ctx.email or ctx.user_id
@@ -769,7 +798,8 @@ class CampaignService:
         duration: int,
         outcome: Optional[str] = None,
         is_success: bool = True,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        callback_at: Optional[datetime] = None
     ) -> Optional[CampaignMember]:
         member = await self.member_repo.get_by_id("global", member_id)
         if not member:
@@ -779,6 +809,13 @@ class CampaignService:
         campaign = await self.campaign_repo.get_by_id("global", campaign_id)
         if not campaign:
             return None
+
+        # A call-back is already scheduled for this member. Every call that ends is reported more than once (provider
+        # webhook, media-stream close, stale-call sweep); a later report of the same call must not undo the schedule.
+        # New calls only start after the dialer clears callback_at, so this can never swallow a real new outcome.
+        if callback_at is None and member.callback_at is not None and str(getattr(member.status, "value", member.status)).lower() == "retrying":
+            logger.info(f"[CampaignService] Member {member_id} has a call-back scheduled for {member.callback_at}; ignoring duplicate outcome '{outcome}'.")
+            return member
 
         clean_outcome = (outcome or ("connected" if (is_success and duration > 0) else "failed")).lower()
         now = datetime.now(timezone.utc)
@@ -790,6 +827,9 @@ class CampaignService:
         member.live_phase = None
         member.last_attempt_at = now
         member.updated_at = now
+
+        if callback_at is not None:
+            return await self._schedule_callback(campaign, member, call_id, duration, callback_at, now)
 
         max_attempts = campaign.calling_config.max_attempts_per_prospect
         retry_delay = campaign.calling_config.retry_delay_minutes
@@ -836,6 +876,67 @@ class CampaignService:
 
         await self.member_repo.save(member)
         await self.recalculate_campaign_stats(campaign_id)
+        return member
+
+    async def _schedule_callback(self, campaign, member, call_id, duration, callback_at, now):
+        """The customer asked to be called back: re-queue this member for exactly that time, without spending
+        one of the campaign's retry attempts (a call-back is a promise, not a failed attempt)."""
+        if callback_at.tzinfo is None:
+            callback_at = callback_at.replace(tzinfo=timezone.utc)
+        end_date = campaign.schedule.end_date
+        if end_date:
+            try:
+                callback_day = callback_at.astimezone(ZoneInfo(campaign.schedule.timezone or "UTC")).strftime("%Y-%m-%d")
+            except Exception:
+                callback_day = callback_at.strftime("%Y-%m-%d")
+            if callback_day > end_date:
+                # The campaign stops calling after its end date, so a later call-back is recorded but not scheduled
+                member.last_call_outcome = "callback_requested"
+                member.status = CampaignMemberStatus.COMPLETED
+                member.next_attempt_at = None
+                member.callback_at = None
+                await self.member_repo.save(member)
+                await self.event_repo.log_event(
+                    organization_id=campaign.organization_id,
+                    campaign_id=campaign.id,
+                    event_type=CampaignEventType.CALL_COMPLETED,
+                    message=f"{member.prospect_name} asked to be called back on {callback_day}, after the campaign end date ({end_date}). The call-back was not scheduled.",
+                    details={"member_id": member.id, "call_id": call_id, "callback_at": callback_at.isoformat(), "reason": "callback_after_end_date"}
+                )
+                await self.recalculate_campaign_stats(campaign.id)
+                return member
+        member.last_call_outcome = "callback_requested"
+        member.status = CampaignMemberStatus.RETRYING
+        member.next_attempt_at = callback_at
+        member.callback_at = callback_at
+        member.attempts = max(0, member.attempts - 1)
+        member.last_error = None
+        await self.member_repo.save(member)
+
+        # The provider webhook may have finished the call first and the campaign auto-completed: reopen it
+        if str(getattr(campaign.status, "value", campaign.status)).lower() == "completed":
+            campaign.status = CampaignStatus.RUNNING
+            campaign.completed_at = None
+            await self.campaign_repo.save(campaign)
+
+        try:
+            tz = ZoneInfo(campaign.schedule.timezone or "UTC")
+        except Exception:
+            tz = timezone.utc
+        when = callback_at.astimezone(tz).strftime("%d %b %I:%M %p").lstrip("0")
+        await self.event_repo.log_event(
+            organization_id=campaign.organization_id,
+            campaign_id=campaign.id,
+            event_type=CampaignEventType.RETRY_SCHEDULED,
+            message=f"{member.prospect_name} ({member.phone_number}) asked to be called back. Call-back scheduled for {when} ({campaign.schedule.timezone}).",
+            details={"member_id": member.id, "call_id": call_id, "callback_at": callback_at.isoformat(), "reason": "customer_requested_callback"}
+        )
+        await self.recalculate_campaign_stats(campaign.id)
+        try:
+            from app.services.campaign_dialer import campaign_dialer_engine
+            campaign_dialer_engine.notify_schedule_changed()  # wake the dialer so it re-plans around the new time
+        except Exception:
+            pass
         return member
 
     # -------------------------------------------------------------

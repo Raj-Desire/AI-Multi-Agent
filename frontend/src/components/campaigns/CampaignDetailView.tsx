@@ -49,6 +49,7 @@ import {
 import { CallDetailDrawer } from "./CallDetailDrawer";
 import { CampaignCharts } from "./CampaignCharts";
 import { TimezoneLiveClock } from "./TimezoneLiveClock";
+import { CampaignScheduleEditor } from "./CampaignScheduleEditor";
 
 interface CampaignDetailViewProps {
   campaignId: string;
@@ -286,6 +287,7 @@ export function CampaignDetailView({
 
   // Confirmation modal state
   const [showStopConfirmModal, setShowStopConfirmModal] = useState<boolean>(false);
+  const [showScheduleEditor, setShowScheduleEditor] = useState<boolean>(false);
 
   const handleStop = () => {
     setShowStopConfirmModal(true);
@@ -412,7 +414,17 @@ export function CampaignDetailView({
     }
   };
 
-  const getMemberStatusBadge = (st: string, livePhase?: string | null) => {
+  const getMemberStatusBadge = (st: string, livePhase?: string | null, callbackAt?: string | null) => {
+    if (st === "retrying" && callbackAt) {
+      const when = new Date(callbackAt);
+      const mins = Math.round((when.getTime() - Date.now()) / 60000);
+      const rel = mins <= 0 ? "due now" : mins < 60 ? `in ${mins}m` : `in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-300 dark:border-violet-800 whitespace-nowrap" title="The customer asked to be called back at this time">
+          <PhoneOutgoing className="w-3 h-3 shrink-0" /> <span>Callback {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ({rel})</span>
+        </span>
+      );
+    }
     const callingLabel = livePhase === "ringing" ? "Ringing" : livePhase === "in-progress" ? "On call" : livePhase === "dialing" ? "Dialing" : "Calling";
     switch (st) {
       case "calling":
@@ -978,7 +990,7 @@ export function CampaignDetailView({
                         {m.phone_number}
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        {getMemberStatusBadge(m.status, m.live_phase)}
+                        {getMemberStatusBadge(m.status, m.live_phase, m.callback_at)}
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="font-semibold text-[var(--color-heading)]">{m.attempts}</span>
@@ -1229,7 +1241,14 @@ export function CampaignDetailView({
             </div>
 
             <div className="p-4 bg-[var(--color-surface-muted)] rounded-xl border border-[var(--color-border)] space-y-2.5">
-              <span className="font-bold text-[var(--color-heading)] block text-xs">Schedule & Timezone Rules</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-[var(--color-heading)] block text-xs">Schedule & Timezone Rules</span>
+                {campaign.status !== "stopped" && (
+                  <Button variant="outline" size="sm" onClick={() => setShowScheduleEditor(true)} className="text-[11px] h-6 px-2">
+                    Edit Schedule
+                  </Button>
+                )}
+              </div>
               <p className="text-[var(--color-muted)]">
                 Allowed Calling Days: <strong className="text-[var(--color-heading)]">{campaign.schedule.calling_days.join(", ")}</strong>
               </p>
@@ -1249,6 +1268,17 @@ export function CampaignDetailView({
           </div>
         </div>
       )}
+
+      <CampaignScheduleEditor
+        campaignId={campaignId}
+        schedule={campaign.schedule}
+        isOpen={showScheduleEditor}
+        onClose={() => setShowScheduleEditor(false)}
+        onSaved={(updated) => {
+          setCampaign(updated);
+          loadCampaignData(true);
+        }}
+      />
 
       {/* Call Detail Drawer */}
       <CallDetailDrawer
