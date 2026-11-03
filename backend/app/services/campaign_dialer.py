@@ -471,6 +471,7 @@ class CampaignDialerEngine:
 
             # 3. Transition member to CALLING and increment attempt counter
             member.status = CampaignMemberStatus.CALLING
+            member.live_phase = "dialing"
             member.attempts += 1
             member.last_attempt_at = now
             member.updated_at = now
@@ -531,7 +532,8 @@ class CampaignDialerEngine:
                     from_number=campaign.calling_config.caller_phone_number,
                     agent_id=campaign.calling_config.agent_id,
                     prospect_id=member.prospect_id,
-                    campaign_id=campaign.id
+                    campaign_id=campaign.id,
+                    ring_timeout_seconds=campaign.calling_config.call_timeout_seconds
                 )
 
                 # Link campaign_id to Call record for complete traceability

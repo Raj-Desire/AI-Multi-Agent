@@ -47,7 +47,8 @@ class CallService:
         prompt: Optional[str] = None,
         agent_id: Optional[str] = None,
         prospect_id: Optional[str] = None,
-        campaign_id: Optional[str] = None
+        campaign_id: Optional[str] = None,
+        ring_timeout_seconds: Optional[int] = None
     ) -> Call:
         # 1. Strict Backend DNC Enforcement
         from app.services.prospect_service import ProspectService
@@ -155,6 +156,9 @@ class CallService:
                     credit_cap = int(auth_check.get("remaining_seconds", 14400))
                 agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
                 create_kwargs["time_limit"] = twilio_backstop_seconds(agent_max, credit_cap)
+                if ring_timeout_seconds:
+                    # How long Twilio lets the phone ring before reporting no-answer (default is ~60s)
+                    create_kwargs["timeout"] = max(5, min(int(ring_timeout_seconds), 120))
                 if status_callback_url:
                     # Audio-based voicemail detection: catches answering machines in any language.
                     create_kwargs["machine_detection"] = "Enable"
@@ -162,7 +166,8 @@ class CallService:
                     create_kwargs["async_amd_status_callback"] = f"{base_url}/api/v1/twilio/voice/amd"
                     create_kwargs["async_amd_status_callback_method"] = "POST"
                     create_kwargs["status_callback"] = status_callback_url
-                    create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed", "busy", "no-answer", "canceled"]
+                    # Twilio only accepts these four events; busy / no-answer / canceled all arrive as "completed"
+                    create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed"]
                     create_kwargs["status_callback_method"] = "POST"
                 return client.calls.create(**create_kwargs)
 

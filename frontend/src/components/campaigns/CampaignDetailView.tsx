@@ -412,12 +412,13 @@ export function CampaignDetailView({
     }
   };
 
-  const getMemberStatusBadge = (st: string) => {
+  const getMemberStatusBadge = (st: string, livePhase?: string | null) => {
+    const callingLabel = livePhase === "ringing" ? "Ringing" : livePhase === "in-progress" ? "On call" : livePhase === "dialing" ? "Dialing" : "Calling";
     switch (st) {
       case "calling":
         return (
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 animate-pulse whitespace-nowrap">
-            <PhoneOutgoing className="w-3 h-3 shrink-0" /> <span>Calling</span>
+            <PhoneOutgoing className="w-3 h-3 shrink-0" /> <span>{callingLabel}</span>
           </span>
         );
       case "queued":
@@ -977,7 +978,7 @@ export function CampaignDetailView({
                         {m.phone_number}
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap">
-                        {getMemberStatusBadge(m.status)}
+                        {getMemberStatusBadge(m.status, m.live_phase)}
                       </td>
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="font-semibold text-[var(--color-heading)]">{m.attempts}</span>

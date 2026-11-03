@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, FileSpreadsheet, FileText, Download, CheckCircle2, Calendar, Sparkles, Printer, Filter } from "lucide-react";
 import { Button } from "../ui/Button";
 import { LeadKPISummary, CampaignLeadStat, AgentLeadStat, LeadListItem, LeadListPaginationResponse } from "../../types";
@@ -235,9 +236,9 @@ export function ExecutiveReportExportModal({
     onClose();
   };
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs cursor-pointer"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs cursor-pointer"
       onClick={onClose}
     >
       <div
@@ -375,4 +376,8 @@ export function ExecutiveReportExportModal({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 }

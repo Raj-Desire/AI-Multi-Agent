@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { fetchApi, getAuthHeaders } from "../../api-client";
-import { fetchWithCache, hasCached } from "../../utils/swrCache";
+import { fetchWithCache, hasCached, clearSwrCache } from "../../utils/swrCache";
+import { invalidateApiCache } from "../../api-client";
 import { useAuth } from "../../context/AuthContext";
 import {
   LeadKPISummary,
@@ -322,6 +323,8 @@ export function LeadIntelligenceView() {
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
     try {
+      clearSwrCache(cacheScope);
+      invalidateApiCache("/lead-intelligence");
       const promises: Promise<any>[] = [loadSummary()];
       if (activeTab === "all_leads" || activeTab === "interested") promises.push(loadLeads());
       if (activeTab === "analytics") promises.push(loadAnalyticsDetails());

@@ -787,6 +787,7 @@ class CampaignService:
         member.last_call_outcome = outcome or clean_outcome
         member.last_call_duration = duration
         member.last_error = error
+        member.live_phase = None
         member.last_attempt_at = now
         member.updated_at = now
 

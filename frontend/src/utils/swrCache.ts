@@ -9,6 +9,18 @@ export function hasCached(key: string): boolean {
   return store.has(key);
 }
 
+export function clearSwrCache(prefix?: string): void {
+  if (!prefix) {
+    store.clear();
+    return;
+  }
+  for (const k of store.keys()) {
+    if (k.includes(prefix)) {
+      store.delete(k);
+    }
+  }
+}
+
 /**
  * Calls onData with the cached value first (if any), then with the fresh value.
  * Returns true when a cached value was available. A null/undefined fetch result never overwrites the cache.

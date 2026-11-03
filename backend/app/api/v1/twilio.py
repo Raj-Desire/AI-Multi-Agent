@@ -324,11 +324,18 @@ async def voice_status_webhook(request: Request):
                 from app.repositories.campaign_repository import CampaignMemberRepository
                 mem_repo = CampaignMemberRepository()
                 target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
-                if target_mem and target_mem.status in [CampaignMemberStatus.QUEUED, CampaignMemberStatus.RETRYING]:
-                    target_mem.status = CampaignMemberStatus.CALLING
-                    await mem_repo.save(target_mem)
-                    cmp_svc = CampaignService()
-                    await cmp_svc.recalculate_campaign_stats(target_campaign_id)
+                if target_mem:
+                    phase = {"queued": "dialing", "initiated": "dialing", "ringing": "ringing",
+                             "in-progress": "in-progress", "answered": "in-progress"}.get(call_status)
+                    needs_status = target_mem.status in [CampaignMemberStatus.QUEUED, CampaignMemberStatus.RETRYING]
+                    if needs_status:
+                        target_mem.status = CampaignMemberStatus.CALLING
+                    if needs_status or (phase and target_mem.live_phase != phase and target_mem.status == CampaignMemberStatus.CALLING):
+                        target_mem.live_phase = phase
+                        await mem_repo.save(target_mem)
+                        if needs_status:
+                            cmp_svc = CampaignService()
+                            await cmp_svc.recalculate_campaign_stats(target_campaign_id)
 
         elif call_status in TERMINAL_STATUSES:
             # Check if conversation actually took place (via audio stream / transcript / existing call state)

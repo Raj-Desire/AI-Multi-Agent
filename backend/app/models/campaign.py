@@ -146,6 +146,9 @@ class CampaignMember(BaseModel):
     last_call_duration: int = 0
     last_error: Optional[str] = None
 
+    # Real-time phase of the call in flight (dialing / ringing / in-progress); cleared when the call finishes
+    live_phase: Optional[str] = None
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

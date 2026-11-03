@@ -874,6 +874,7 @@ export interface CampaignMember {
   last_call_outcome?: string | null;
   last_call_duration: number;
   last_error?: string | null;
+  live_phase?: string | null;
   created_at: string;
   updated_at: string;
 }
