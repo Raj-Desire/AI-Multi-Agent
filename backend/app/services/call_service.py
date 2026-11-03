@@ -102,6 +102,15 @@ class CallService:
         if not agent_config:
             agent_config = await self.agent_repo.get_by_id("global", "agt_receptionist_default")
 
+        # Render the greeting now, while the phone rings, so it can play the moment the customer answers.
+        # (The gateway only names the prospect in the greeting for campaign calls, so the key has to match that.)
+        from app.voice.greeting_cache import greeting_audio_cache
+        greeting_audio_cache.prewarm(
+            agent_config,
+            prospect_name=(getattr(matched_prospect, "full_name", "") or "") if (campaign_id and resolved_prospect_id and matched_prospect) else "",
+            direction="outbound",
+        )
+
         agent_snapshot = agent_config.model_dump(mode="json") if agent_config else None
         agent_name = agent_config.name if agent_config else "AI Receptionist"
         agent_version = agent_config.version if agent_config else 1

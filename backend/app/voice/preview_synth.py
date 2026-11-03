@@ -80,10 +80,9 @@ def pcm_to_wav(pcm: bytes, sample_rate: int = PREVIEW_SAMPLE_RATE) -> bytes:
     return buf.getvalue()
 
 
-async def _synthesize_once(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
-                                   speed: float = 1.0, timeout: float = 20.0,
-                                   client_factory=DeepgramVoiceAgentClient) -> bytes:
-    """Returns WAV bytes of `text` spoken by the Sonic voice through the voice engine."""
+async def _collect_audio(settings: DeepgramSettingsConfiguration, timeout: float, min_bytes: int,
+                         client_factory=DeepgramVoiceAgentClient) -> bytes:
+    """Opens an engine session with `settings` (its greeting is the text) and returns the raw audio it streams back."""
     chunks: list = []
     done = asyncio.Event()
     errors: list = []
@@ -102,7 +101,6 @@ async def _synthesize_once(text: str, voice_id: str, language: Optional[str], mo
         done.set()
 
     client = client_factory(on_audio=on_audio, on_agent_audio_done=on_done, on_error=on_error)
-    settings = build_preview_settings(text, voice_id, language, model_id, speed)
     try:
         await client.connect_and_configure(settings, timeout=10.0)
         deadline = time.monotonic() + timeout
@@ -123,12 +121,40 @@ async def _synthesize_once(text: str, voice_id: str, language: Optional[str], mo
         except Exception:
             pass
 
-    pcm = b"".join(chunks)
-    if errors and not pcm:
+    audio = b"".join(chunks)
+    if errors and not audio:
         raise PreviewSynthesisError(errors[0])
-    if len(pcm) < PREVIEW_SAMPLE_RATE // 5 * 2:  # under ~0.2s of audio means nothing was really spoken
+    if len(audio) < min_bytes:  # under ~0.2s of audio means nothing was really spoken
         raise PreviewSynthesisError("The voice engine returned no audio for the preview.")
+    return audio
+
+
+async def _synthesize_once(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
+                                   speed: float = 1.0, timeout: float = 20.0,
+                                   client_factory=DeepgramVoiceAgentClient) -> bytes:
+    """Returns WAV bytes of `text` spoken by the Sonic voice through the voice engine."""
+    settings = build_preview_settings(text, voice_id, language, model_id, speed)
+    pcm = await _collect_audio(settings, timeout, PREVIEW_SAMPLE_RATE // 5 * 2, client_factory)
     return pcm_to_wav(pcm)
+
+
+async def synthesize_phone_audio(text: str, speak_provider: DeepgramSpeakProvider, timeout: float = 20.0,
+                                 attempts: int = 2, client_factory=DeepgramVoiceAgentClient) -> bytes:
+    """Raw 8 kHz mu-law (what Twilio plays) of `text` spoken by the exact speak provider a call uses."""
+    settings = build_preview_settings(text, "-", None)
+    settings.agent.speak = DeepgramSpeakConfig(provider=speak_provider)
+    settings.audio = DeepgramAudioConfig(
+        input=DeepgramAudioInput(encoding="mulaw", sample_rate=8000),
+        output=DeepgramAudioOutput(encoding="mulaw", sample_rate=8000, container="none"),
+    )
+    last_error: Optional[Exception] = None
+    for attempt in range(attempts):
+        try:
+            return await _collect_audio(settings, timeout, 1600, client_factory)
+        except PreviewSynthesisError as e:
+            last_error = e
+            logger.warning(f"[PreviewSynth] phone audio attempt {attempt + 1}/{attempts} failed: {e}")
+    raise last_error  # type: ignore[misc]
 
 
 async def synthesize_sonic_preview(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",

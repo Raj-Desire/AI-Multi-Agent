@@ -81,8 +81,14 @@ class DeepgramSpeakConfig(BaseModel):
         return self.provider.model or "flux-hannah-en"
 
 
+class DeepgramAgentContext(BaseModel):
+    """Conversation so far, so the model knows what was already said (e.g. a greeting played from pre-rendered audio)."""
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class DeepgramAgentConfig(BaseModel):
     greeting: Optional[str] = None
+    context: Optional[DeepgramAgentContext] = None
     listen: DeepgramListenConfig = Field(default_factory=DeepgramListenConfig)
     think: DeepgramThinkConfig
     speak: DeepgramSpeakConfig = Field(default_factory=DeepgramSpeakConfig)

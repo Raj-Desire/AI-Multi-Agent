@@ -1298,6 +1298,10 @@ async def initiate_ai_test_call(
     ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://")
     stream_url = f"{ws_base}/api/v1/voice/stream"
 
+    # Render the opening greeting while the phone rings so it plays the moment the call is answered.
+    from app.voice.greeting_cache import greeting_audio_cache
+    greeting_audio_cache.prewarm(agent_config, direction="outbound")
+
     # Pre-create CallSession with full config snapshot
     session = await call_session_service.create_session(
         organization_id=ctx.organization_id,

@@ -15,6 +15,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
+from app.voice.greeting_cache import greeting_audio_cache
+from app.providers.deepgram.configuration import DeepgramAgentContext
 from app.voice.session import CallSession, active_sessions
 from app.voice.language_follow import LanguageFollower
 from app.voice.duration_policy import billing_elapsed, effective_limit, limit_action, limit_deadline
@@ -1091,6 +1093,33 @@ async def voice_stream_websocket(websocket: WebSocket):
                     platform_rules=cached_platform_rules,
                 )
 
+                # ── Instant greeting ───────────────────────────────────────────────
+                # Play the pre-rendered opening greeting right now (typically rendered while the phone rang) instead of
+                # waiting for the voice engine to connect and speak it. The engine joins in parallel with the greeting
+                # recorded as already said, so it carries on from the customer's first reply.
+                preplayed_greeting_s = 0.0
+                if deepgram_settings.agent.greeting and deepgram_settings.agent.greeting.strip():
+                    spoken_greeting = PronunciationNormalizer.normalize(
+                        deepgram_settings.agent.greeting, getattr(agent_config, "pronunciation_rules", None)
+                    )
+                    greeting_audio = greeting_audio_cache.get(spoken_greeting, deepgram_settings.agent.speak.provider)
+                    if greeting_audio:
+                        await handle_deepgram_audio(greeting_audio)
+                        preplayed_greeting_s = len(greeting_audio) / 8000.0
+                        deepgram_settings.agent.greeting = None
+                        deepgram_settings.agent.context = DeepgramAgentContext(
+                            messages=[{"type": "History", "role": "assistant", "content": spoken_greeting}]
+                        )
+                        asyncio.create_task(handle_transcript("assistant", spoken_greeting))
+                        logger.info(f"[VoiceGateway:Startup] Played pre-rendered greeting ({preplayed_greeting_s:.1f}s) before the voice engine connected")
+                    elif greeting_audio_cache.renderable(deepgram_settings.agent.speak.provider):
+                        # Not rendered yet: the engine speaks it this time, and the render makes the next call instant.
+                        logger.info("[VoiceGateway:Startup] Greeting audio not cached for this call; the voice engine will speak it (rendering now for next time)")
+                        asyncio.create_task(greeting_audio_cache.ensure(spoken_greeting, deepgram_settings.agent.speak.provider))
+                    else:
+                        sp = deepgram_settings.agent.speak.provider
+                        logger.info(f"[VoiceGateway:Startup] Greeting audio cannot be pre-rendered for this voice (type={sp.type}, model={sp.model or sp.model_id}, speed={sp.speed}); the voice engine will speak it")
+
                 # ── Multi-Agent Orchestrator Initialization ────────────────────────
                 if agent_config.is_orchestrator and agent_config.orchestrator_config:
                     try:
@@ -1255,11 +1284,14 @@ async def voice_stream_websocket(websocket: WebSocket):
                 # Execute official handshake (Welcome -> Settings -> SettingsApplied -> Inject Greeting)
                 try:
                     # Use the fully resolved greeting (with dynamic variables like {{company_name}} and {{caller_name}} replaced)
-                    raw_greeting = deepgram_settings.agent.greeting if deepgram_settings and deepgram_settings.agent and deepgram_settings.agent.greeting else agent_config.greeting
-                    norm_greeting = PronunciationNormalizer.normalize(
-                        raw_greeting,
-                        getattr(agent_config, "pronunciation_rules", None)
-                    ) if raw_greeting else None
+                    if preplayed_greeting_s:
+                        norm_greeting = None  # already played from pre-rendered audio
+                    else:
+                        raw_greeting = deepgram_settings.agent.greeting if deepgram_settings and deepgram_settings.agent and deepgram_settings.agent.greeting else agent_config.greeting
+                        norm_greeting = PronunciationNormalizer.normalize(
+                            raw_greeting,
+                            getattr(agent_config, "pronunciation_rules", None)
+                        ) if raw_greeting else None
                     startup_timing["handshake_begin"] = time.perf_counter()
                     await deepgram_client.connect_and_configure(
                         settings=deepgram_settings,
@@ -1277,7 +1309,10 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                     # Calculate greeting duration to ensure silence monitor does not fire during opening statement
                     greeting_text = (agent_config.greeting or "").strip()
-                    if greeting_text:
+                    if preplayed_greeting_s:
+                        # handle_deepgram_audio already tracked how long the pre-rendered greeting keeps playing.
+                        last_user_speech_time = last_agent_speech_done_time
+                    elif greeting_text:
                         words_count = len(greeting_text.split())
                         estimated_intro_duration = max(4.0, (words_count / 2.0))
                         last_agent_speech_done_time = time.time() + estimated_intro_duration
