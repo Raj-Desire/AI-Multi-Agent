@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { fetchApi, getAuthHeaders } from "../../api-client";
 import { fetchWithCache, hasCached, clearSwrCache } from "../../utils/swrCache";
 import { invalidateApiCache } from "../../api-client";
@@ -64,6 +65,11 @@ const INITIAL_FILTERS: LeadFilterState = {
 
 export function LeadIntelligenceView() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlCallId = searchParams.get("call_id") || searchParams.get("callId") || null;
+  const urlProspectId = searchParams.get("prospect_id") || searchParams.get("prospectId") || null;
+  // The detail drawer opens only when asked for (?drawer=true); arriving from the dialer just highlights the row.
+  const autoDrawer = searchParams.get("drawer") === "true";
   // Cache entries are scoped per organization so one tenant's data is never shown to another
   const cacheScope = user?.organization_id || "default";
 
@@ -110,9 +116,45 @@ export function LeadIntelligenceView() {
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
   const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const [highlightedCallId, setHighlightedCallId] = useState<string | null>(null);
+  const [highlightedProspectId, setHighlightedProspectId] = useState<string | null>(null);
   // "call": one row for every call (any agent, dialer or campaign); "contact": one row per person (latest call)
   const [leadsGroupBy, setLeadsGroupBy] = useState<"call" | "contact">("call");
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+
+  // Sync with URL parameters when redirected from AI Dialer or other views
+  useEffect(() => {
+    if (urlCallId || urlProspectId) {
+      if (urlCallId) setHighlightedCallId(urlCallId);
+      // One call is one row: highlight by call id. The contact id would light up every call of that person.
+      if (!urlCallId && urlProspectId) setHighlightedProspectId(urlProspectId);
+      if (autoDrawer) {
+        setSelectedCallId(urlCallId);
+        setSelectedProspectId(urlProspectId || (urlCallId ? `temp_${urlCallId}` : null));
+        setIsDrawerOpen(true);
+      }
+    }
+  }, [urlCallId, urlProspectId, autoDrawer]);
+
+  // Bring the highlighted row into view once it is in the table, then let the highlight fade after about 2 seconds.
+  const highlightTargetId = highlightedCallId || highlightedProspectId;
+  const highlightRowLoaded = Boolean(
+    highlightTargetId && leads.some((l) => (highlightedCallId ? l.last_call_id === highlightedCallId : l.prospect_id === highlightedProspectId))
+  );
+  useEffect(() => {
+    if (!highlightTargetId || !highlightRowLoaded) return;
+    const scrollTimer = setTimeout(() => {
+      document.getElementById(`lead-row-${highlightTargetId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    const fadeTimer = setTimeout(() => {
+      setHighlightedCallId(null);
+      setHighlightedProspectId(null);
+    }, 2200);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(fadeTimer);
+    };
+  }, [highlightTargetId, highlightRowLoaded]);
 
   // Modal States
   const [isExecutiveReportOpen, setIsExecutiveReportOpen] = useState<boolean>(false);
@@ -236,9 +278,18 @@ export function LeadIntelligenceView() {
         leadsKey,
         () => fetchApi<LeadListPaginationResponse>(leadsUrl).catch(() => null),
         (res) => {
-          setLeads(res.items || []);
+          const items = res.items || [];
+          setLeads(items);
           setLeadsTotal(res.total || 0);
           setLeadsTotalPages(res.total_pages || 1);
+
+          // If arriving via urlCallId, resolve the real prospect_id from matching lead item
+          if (urlCallId) {
+            const matched = items.find((l) => l.last_call_id === urlCallId);
+            if (matched && autoDrawer) {
+              setSelectedProspectId(matched.prospect_id);
+            }
+          }
         }
       );
     } catch (err) {
@@ -265,6 +316,8 @@ export function LeadIntelligenceView() {
     activeTab,
     leadsGroupBy,
     cacheScope,
+    urlCallId,
+    autoDrawer,
   ]);
 
   const loadCallbacks = useCallback(async () => {
@@ -344,9 +397,8 @@ export function LeadIntelligenceView() {
   useEffect(() => {
     if (!user) return;
     const orgId = user.organization_id || "default";
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/voice/telemetry/org_${orgId}`;
+    const rawApiBase = import.meta.env.VITE_API_BASE_URL || `http://${window.location.hostname}:8000/api/v1`;
+    const wsUrl = rawApiBase.replace(/^http/, "ws").replace(/\/api\/v1\/?$/, "") + `/api/v1/voice/telemetry/org_${orgId}`;
 
     let socket: WebSocket | null = null;
 
@@ -707,6 +759,8 @@ export function LeadIntelligenceView() {
             isLoading={isLoadingLeads}
             sortBy={leadsSortBy}
             sortOrder={leadsSortOrder}
+            highlightedCallId={highlightedCallId}
+            highlightedProspectId={highlightedProspectId}
             onSortChange={(field) => {
               if (leadsSortBy === field) {
                 setLeadsSortOrder(leadsSortOrder === "desc" ? "asc" : "desc");

@@ -31,6 +31,8 @@ interface LeadTableProps {
   onQuickCall?: (phoneNumber: string) => void;
   qualificationThreshold?: number;
   warmThreshold?: number;
+  highlightedCallId?: string | null;
+  highlightedProspectId?: string | null;
 }
 
 export function LeadTable({
@@ -49,6 +51,8 @@ export function LeadTable({
   onQuickCall,
   qualificationThreshold = 70,
   warmThreshold = 40,
+  highlightedCallId,
+  highlightedProspectId,
 }: LeadTableProps) {
   const getOutcomeBadge = (outcome: string) => {
     const o = outcome.toLowerCase();
@@ -249,12 +253,22 @@ export function LeadTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]/60">
-              {leads.map((lead) => (
-                <tr
-                  key={lead.last_call_id || lead.prospect_id}
-                  onClick={() => onSelectLead(lead)}
-                  className="hover:bg-[var(--color-surface-hover,var(--color-border)/20)] transition-colors cursor-pointer group"
-                >
+              {leads.map((lead) => {
+                // Highlight exactly the one call that was asked for; the contact id is only a fallback when no call is given.
+                const isHighlighted = highlightedCallId
+                  ? lead.last_call_id === highlightedCallId
+                  : Boolean(highlightedProspectId && lead.prospect_id === highlightedProspectId);
+                return (
+                  <tr
+                    key={lead.last_call_id || lead.prospect_id}
+                    id={`lead-row-${lead.last_call_id || lead.prospect_id}`}
+                    onClick={() => onSelectLead(lead)}
+                    className={`transition-[background-color,box-shadow] duration-700 ease-out cursor-pointer group ${
+                      isHighlighted
+                        ? "bg-[var(--color-primary)]/10 shadow-[inset_3px_0_0_var(--color-primary)]"
+                        : "hover:bg-[var(--color-surface-hover,var(--color-border)/20)]"
+                    }`}
+                  >
                   {/* Prospect Name & Phone/Email */}
                   <td className="py-3 px-4">
                     <div className="space-y-0.5">
@@ -384,7 +398,8 @@ export function LeadTable({
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -256,7 +256,7 @@ export function CampaignCreateWizardModal({
 
   // Step 5: Schedule & Timezone
   const todayStr = new Date().toISOString().split("T")[0];
-  const [scheduleMode, setScheduleMode] = useState<"single_day" | "date_range" | "recurring">("date_range");
+  const [scheduleMode, setScheduleMode] = useState<"single_day" | "recurring">("recurring");
   const [startDate, setStartDate] = useState<string>(todayStr);
   const [endDate, setEndDate] = useState<string>("");
   const [callingDays, setCallingDays] = useState<string[]>([
@@ -354,7 +354,7 @@ export function CampaignCreateWizardModal({
   };
 
   // When schedule mode changes or single day date changes
-  const handleScheduleModeChange = (mode: "single_day" | "date_range" | "recurring") => {
+  const handleScheduleModeChange = (mode: "single_day" | "recurring") => {
     setScheduleMode(mode);
     if (mode === "single_day") {
       const validStart = startDate || todayStr;
@@ -363,16 +363,9 @@ export function CampaignCreateWizardModal({
       const day = getWeekdayFromDate(validStart);
       setCallingDays([day]);
     } else if (mode === "recurring") {
-      setEndDate("");
+      if (endDate && endDate === startDate) setEndDate("");
       if (callingDays.length === 1) {
         setCallingDays(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
-      }
-    } else if (mode === "date_range") {
-      if (!endDate || endDate === startDate) {
-        // Set end date to 5 days ahead
-        const parts = startDate.split("-").map(Number);
-        const nextDate = new Date(parts[0], parts[1] - 1, parts[2] + 4);
-        setEndDate(nextDate.toISOString().split("T")[0]);
       }
     }
   };
@@ -612,7 +605,7 @@ export function CampaignCreateWizardModal({
         toast.error("Please select a Campaign Start Date.");
         return false;
       }
-      if (scheduleMode === "date_range" && endDate && endDate < startDate) {
+      if (scheduleMode !== "single_day" && endDate && endDate < startDate) {
         toast.error("End date cannot be earlier than start date.");
         return false;
       }
@@ -666,10 +659,8 @@ export function CampaignCreateWizardModal({
       let finalEndDate: string | null = null;
       if (scheduleMode === "single_day") {
         finalEndDate = finalStartDate;
-      } else if (scheduleMode === "date_range") {
-        finalEndDate = endDate || finalStartDate;
       } else {
-        finalEndDate = null;
+        finalEndDate = endDate || null;
       }
 
       const payload: CreateCampaignPayload = {
@@ -1380,7 +1371,7 @@ export function CampaignCreateWizardModal({
                 {/* Campaign Schedule Mode Selection */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[var(--color-heading)]">Campaign Schedule Type</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => handleScheduleModeChange("single_day")}
@@ -1395,25 +1386,7 @@ export function CampaignCreateWizardModal({
                         <span className="text-xs font-semibold text-[var(--color-heading)]">Single Specific Date</span>
                       </div>
                       <p className="text-[11px] text-[var(--color-muted)] mt-1">
-                        Runs only on one scheduled date (e.g. Sept 1)
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleScheduleModeChange("date_range")}
-                      className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
-                        scheduleMode === "date_range"
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.06))] ring-1 ring-[var(--color-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                        <span className="text-xs font-semibold text-[var(--color-heading)]">Date Range Window</span>
-                      </div>
-                      <p className="text-[11px] text-[var(--color-muted)] mt-1">
-                        From start date to end date on selected days
+                        Runs strictly on one scheduled calendar date (e.g. Sept 1)
                       </p>
                     </button>
 
@@ -1428,10 +1401,10 @@ export function CampaignCreateWizardModal({
                     >
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                        <span className="text-xs font-semibold text-[var(--color-heading)]">Ongoing Schedule</span>
+                        <span className="text-xs font-semibold text-[var(--color-heading)]">Recurring / Ongoing Schedule</span>
                       </div>
                       <p className="text-[11px] text-[var(--color-muted)] mt-1">
-                        Starts on date and repeats every week on chosen days
+                        Calls on chosen days from Start Date until an optional End Date
                       </p>
                     </button>
                   </div>
@@ -1453,15 +1426,24 @@ export function CampaignCreateWizardModal({
                     />
                   </div>
 
-                  {scheduleMode === "date_range" && (
+                  {scheduleMode === "recurring" && (
                     <div className="space-y-1 animate-in fade-in duration-150">
-                      <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center justify-between">
-                        <span>End Date <span className="text-red-500">*</span></span>
-                        <span className="text-[10px] text-[var(--color-muted)]">Day: {endDate ? getWeekdayFromDate(endDate) : "—"}</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[var(--color-heading)]">
+                          End Date (Optional)
+                        </label>
+                        {endDate && (
+                          <button
+                            type="button"
+                            onClick={() => setEndDate("")}
+                            className="text-[10px] text-[var(--color-muted)] hover:text-red-500 underline cursor-pointer"
+                          >
+                            Clear (Run Indefinitely)
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="date"
-                        required
                         value={endDate}
                         min={startDate}
                         onChange={(e) => setEndDate(e.target.value)}
@@ -1469,13 +1451,16 @@ export function CampaignCreateWizardModal({
                       />
                     </div>
                   )}
-
-                  {scheduleMode === "recurring" && (
-                    <div className="flex items-center text-xs text-[var(--color-muted)] p-2">
-                      <span>Runs continuously on selected days starting from <strong>{startDate}</strong> until stopped or completed.</span>
-                    </div>
-                  )}
                 </div>
+
+                {/* What chosen dates mean in modal */}
+                {scheduleMode !== "single_day" && (
+                  <p className="text-[11px] leading-snug text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md px-3 py-2">
+                    {endDate
+                      ? `Calls are placed on each selected weekday from ${startDate || "the start date"} through ${endDate}, only inside the calling window. The campaign ends automatically after ${endDate}.`
+                      : `Calls are placed on each selected weekday from ${startDate || "the start date"} inside the calling window, and continue until you stop the campaign. Set an end date anytime to stop automatically.`}
+                  </p>
+                )}
 
                 {/* Weekday Buttons */}
                 <div className="space-y-1.5">
@@ -1588,14 +1573,9 @@ export function CampaignCreateWizardModal({
                         Calls will only be placed on <strong>{getWeekdayFromDate(startDate)}, {startDate}</strong> between <strong>{startTime} - {endTime}</strong> ({timezone}). {maxAttempts === 1 ? "Each contact receives 1 attempt." : `Max ${maxAttempts} attempts.`}
                       </span>
                     )}
-                    {scheduleMode === "date_range" && (
-                      <span>
-                        Calls will only be made on <strong>{callingDays.map(d => d.slice(0, 3)).join(", ")}</strong> occurring between <strong>{startDate}</strong> and <strong>{endDate || startDate}</strong> during <strong>{startTime} - {endTime}</strong> ({timezone}).
-                      </span>
-                    )}
                     {scheduleMode === "recurring" && (
                       <span>
-                        Calls will run continuously every week on <strong>{callingDays.map(d => d.slice(0, 3)).join(", ")}</strong> starting from <strong>{startDate}</strong> during <strong>{startTime} - {endTime}</strong> ({timezone}).
+                        Calls will be placed on <strong>{callingDays.map(d => d.slice(0, 3)).join(", ")}</strong> starting from <strong>{startDate}</strong>{endDate ? <span> through <strong>{endDate}</strong></span> : " (ongoing)"} during <strong>{startTime} - {endTime}</strong> ({timezone}).
                       </span>
                     )}
                   </div>
@@ -1831,7 +1811,7 @@ export function CampaignCreateWizardModal({
                     <p className="font-semibold text-[var(--color-heading)] mt-0.5">
                       {scheduleMode === "single_day"
                         ? `Single Day: ${startDate} (${getWeekdayFromDate(startDate)})`
-                        : scheduleMode === "date_range"
+                        : endDate
                         ? `${startDate} to ${endDate} (${callingDays.map(d => d.slice(0, 3)).join(", ")})`
                         : `Ongoing from ${startDate} (${callingDays.map(d => d.slice(0, 3)).join(", ")})`}
                     </p>

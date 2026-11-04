@@ -59,7 +59,7 @@ def normalize_outcome_bucket(
     """
     if not raw_outcome and score is None:
         return "No Answer"
-    
+
     o = (raw_outcome or "").strip().lower().replace("-", " ").replace("_", " ")
 
     if "callback" in o:
@@ -121,16 +121,49 @@ def follow_up_state(bucket: str, has_scheduled_time: bool) -> str:
     return "none"
 
 
-def search_matches(query: str, name: str, phone: str, email: Optional[str], company: Optional[str]) -> bool:
-    """Search by contact name, company, email or phone. Phone search ignores spaces, dashes and brackets, so
-    '90236 71902' finds +919023671902."""
-    q = (query or "").strip().lower()
+def search_matches(
+    query: str,
+    name: Optional[str] = None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
+    company: Optional[str] = None,
+    campaign_name: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    summary: Optional[str] = None,
+) -> bool:
+    """Search by contact name, company, email, phone, campaign, agent, or summary.
+    Performs case-insensitive matching and alphanumeric normalization so that
+    e.g. 'Test 3', 'test3', 'Test3', 'TEST 3', 'test 3' match interchangeably across all records.
+    Phone search also strips non-digits so '+91 90236 71902' matches '9023671902'.
+    """
+    q = (query or "").strip()
     if not q:
         return True
-    if q in (name or "").lower() or (email and q in email.lower()) or (company and q in company.lower()) or q in (phone or "").lower():
-        return True
-    digits = re.sub(r"\D", "", q)
-    return len(digits) >= 3 and digits in re.sub(r"\D", "", phone or "")
+
+    q_lower = q.lower()
+    norm_q = re.sub(r"[^a-z0-9]", "", q_lower)
+    digits_q = re.sub(r"\D", "", q)
+
+    fields = [name, phone, email, company, campaign_name, agent_name, summary]
+    for field in fields:
+        if not field:
+            continue
+        f_lower = field.lower()
+        # 1. Direct or partial substring match (case-insensitive)
+        if q_lower in f_lower:
+            return True
+        # 2. Normalized alphanumeric match (handles spaces, hyphens e.g. 'Test 3' vs 'test3')
+        if norm_q:
+            norm_f = re.sub(r"[^a-z0-9]", "", f_lower)
+            if norm_q in norm_f:
+                return True
+        # 3. Phone digits match
+        if len(digits_q) >= 3:
+            digits_f = re.sub(r"\D", "", field)
+            if digits_q in digits_f:
+                return True
+
+    return False
 
 
 def matches_campaign_filter(call_campaign_id: Optional[str], filter_campaign_id: Optional[str]) -> bool:
@@ -176,11 +209,11 @@ def normalize_interest_level(
 ) -> str:
     """Normalizes interest level respecting organization qualification thresholds and call outcome."""
     norm_o = normalize_outcome_bucket(outcome or raw_level)
-    
+
     # Explicit callback intent
     if norm_o == "Callback Requested":
         return "Callback"
-    
+
     # If a score is available, prioritize rules-based qualification status
     if score is not None:
         if score >= qualification_threshold:
@@ -1165,15 +1198,24 @@ class LeadIntelligenceService:
                 if follow_up_state(norm_outcome, bool(call_rec.callback_datetime) or bool(appt)) != follow_up.strip().lower():
                     continue
 
-            # Search query check (name, phone, email, company)
-            if search and search.strip():
-                if not search_matches(search, p_name, p_phone, p_email, p_company):
-                    continue
-
-            # Resolve Campaign & Agent names
+            # Resolve Campaign & Agent names first so they can be searched
             cmp = campaigns_dict.get(call_rec.campaign_id or "")
             cmp_name = cmp.name if cmp else ("AI Dialer" if not call_rec.campaign_id else f"Campaign {call_rec.campaign_id[:8]}")
             agent_label = call_rec.agent_name or "AI Voice Assistant"
+
+            # Search query check (name, phone, email, company, campaign, agent, summary)
+            if search and search.strip():
+                if not search_matches(
+                    query=search,
+                    name=p_name,
+                    phone=p_phone,
+                    email=p_email,
+                    company=p_company,
+                    campaign_name=cmp_name,
+                    agent_name=agent_label,
+                    summary=call_rec.summary or "",
+                ):
+                    continue
 
             lead_items.append(LeadListItem(
                 prospect_id=p_id,
@@ -1296,12 +1338,22 @@ class LeadIntelligenceService:
             p_company = p.company if p else (c.analytics.get("company_name") if c.analytics else None)
             p_status = str(getattr(p.status, "value", p.status)) if p else "Callback Requested"
 
-            if search and search.strip():
-                if not search_matches(search, p_name, p_phone, p_email, p_company):
-                    continue
-
             cmp = campaigns_dict.get(c.campaign_id or "")
             cmp_name = cmp.name if cmp else ("AI Dialer" if not c.campaign_id else f"Campaign {c.campaign_id[:8]}")
+            agent_label = c.agent_name or "AI Voice Assistant"
+
+            if search and search.strip():
+                if not search_matches(
+                    query=search,
+                    name=p_name,
+                    phone=p_phone,
+                    email=p_email,
+                    company=p_company,
+                    campaign_name=cmp_name,
+                    agent_name=agent_label,
+                    summary=c.summary or "",
+                ):
+                    continue
             score = c.lead_score if c.lead_score is not None else ((c.analytics.get("lead_score") if c.analytics else None) or 0)
 
             callback_items.append(CallbackListItem(
@@ -1875,7 +1927,7 @@ class LeadIntelligenceService:
         if org_id in _LEAD_RULES_STORE:
             data = _LEAD_RULES_STORE[org_id]
             return LeadQualificationRules.model_validate(data)
-        
+
         default_rules = self._get_default_rules(org_id)
         _LEAD_RULES_STORE[org_id] = default_rules.model_dump()
         return default_rules

@@ -369,7 +369,6 @@ async def get_cohort_analytics(
         custom_start=custom_start,
         custom_end=custom_end,
         campaign_id=campaign_id,
-        agent_id=agent_id
     )
     return ApiResponse.ok(res)
 

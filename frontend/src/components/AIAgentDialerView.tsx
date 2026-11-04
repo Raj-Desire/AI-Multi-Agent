@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchApi, LIVE } from "../api-client";
 import { TwilioConfig, CallRecord, AvailableAgentsResponse, AgentConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
+  Flame,
   Bot,
   PhoneCall,
   PhoneOutgoing,
@@ -53,6 +55,7 @@ export function AIAgentDialerView({
   onNavigateAgents,
 }: AIAgentDialerViewProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [config, setConfig] = useState<TwilioConfig | null>(null);
   const [availableAgents, setAvailableAgents] = useState<AvailableAgentsResponse>({
     my_agents: [],
@@ -446,6 +449,14 @@ export function AIAgentDialerView({
     return hasLeadingPlus ? `+${digitsOnly}` : digitsOnly;
   }
 
+  function handleViewLeadScoring(c: CallRecord) {
+    const orgId = user?.organization_id || "default";
+    const params = new URLSearchParams();
+    if (c.id) params.set("call_id", c.id);
+    if (c.prospect_id) params.set("prospect_id", c.prospect_id);
+    navigate(`/${orgId}/lead-intelligence?${params.toString()}`);
+  }
+
   const columns: Column<CallRecord>[] = [
     {
       key: "status",
@@ -523,15 +534,26 @@ export function AIAgentDialerView({
       header: "Details",
       className: "text-right",
       render: (c) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setSelectedCall(c)}
-          leftIcon={<FileText className="w-3.5 h-3.5" />}
-          className="h-7 px-2 text-xs"
-        >
-          Inspect
-        </Button>
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleViewLeadScoring(c)}
+            rightIcon={<ArrowUpRight className="w-3 h-3 opacity-60" />}
+            className="h-7 px-2 text-xs font-medium"
+          >
+            Lead Score
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedCall(c)}
+            leftIcon={<FileText className="w-3.5 h-3.5" />}
+            className="h-7 px-2 text-xs"
+          >
+            Inspect
+          </Button>
+        </div>
       ),
     },
   ];
@@ -941,7 +963,15 @@ export function AIAgentDialerView({
                       <Badge variant="neutral" size="sm">{selectedCall.interest_level}</Badge>
                     )}
                     {selectedCall.lead_score !== undefined && selectedCall.lead_score !== null && (
-                      <Badge variant="neutral" size="sm">Lead score {selectedCall.lead_score}</Badge>
+                      <button
+                        type="button"
+                        onClick={() => handleViewLeadScoring(selectedCall)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-main,0.375rem)] text-xs font-medium bg-[var(--color-background)] border border-[var(--color-border)] text-[var(--color-heading)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors cursor-pointer"
+                        title="Open in Lead Intelligence"
+                      >
+                        <span>Lead Score: {selectedCall.lead_score}/100</span>
+                        <ArrowUpRight className="w-3 h-3 text-[var(--color-muted)]" />
+                      </button>
                     )}
                     {selectedCall.sentiment && (
                       <Badge variant="neutral" size="sm">{selectedCall.sentiment}</Badge>

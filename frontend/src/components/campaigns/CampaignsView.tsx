@@ -46,7 +46,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
   const [search, setSearch] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState<number>(1);
-  const [pageSize] = useState<number>(15);
+  const [pageSize] = useState<number>(8);
   const [total, setTotal] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
 
@@ -206,28 +206,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
     });
   };
 
-  const handleDeleteCampaign = (campaign: Campaign, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConfirmModalConfig({
-      isOpen: true,
-      title: "Delete Campaign",
-      description: `Are you sure you want to delete campaign "${campaign.name}" and all its queue records? This action cannot be undone.`,
-      confirmText: "Delete Campaign",
-      confirmVariant: "danger",
-      onConfirm: async () => {
-        setConfirmModalConfig((prev) => ({ ...prev, isLoading: true }));
-        try {
-          await fetchApi(`/campaigns/${campaign.id}`, { method: "DELETE" });
-          toast.success(`Campaign "${campaign.name}" deleted.`);
-          loadCampaigns(true);
-          setConfirmModalConfig((prev) => ({ ...prev, isOpen: false, isLoading: false }));
-        } catch (err: any) {
-          toast.error("Failed to delete: " + err.message);
-          setConfirmModalConfig((prev) => ({ ...prev, isLoading: false }));
-        }
-      },
-    });
-  };
+
 
   // If a detail view is active
   if (selectedCampaignId) {
@@ -624,16 +603,7 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
                     </>
                   )}
 
-                  {cmp.status !== "running" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleDeleteCampaign(cmp, e)}
-                      className="text-slate-400 hover:text-rose-600"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
+
 
                   <Button
                     variant="ghost"
@@ -648,29 +618,62 @@ export function CampaignsView({ onEditorDirtyChange }: CampaignsViewProps) {
           })}
 
           {/* Pagination */}
-          <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg flex items-center justify-between text-xs text-[var(--color-muted)]">
-            <span>
-              Showing {campaigns.length} of {total} campaigns
-            </span>
+          <div className="px-4 py-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--color-muted)]">
+            <div className="flex items-center gap-2">
+              <span>
+                Showing <strong className="text-[var(--color-heading)]">{total === 0 ? 0 : (page - 1) * pageSize + 1}</strong> to <strong className="text-[var(--color-heading)]">{Math.min(page * pageSize, total)}</strong> of <strong className="text-[var(--color-heading)]">{total}</strong> campaigns
+              </span>
+              {search.trim() && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--color-primary-subtle,rgba(59,130,246,0.1))] text-[var(--color-primary)] font-medium">
+                  Search active across all {total} results
+                </span>
+              )}
+            </div>
+
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+                disabled={page <= 1 || isLoading}
+                leftIcon={<ChevronLeft className="w-3.5 h-3.5" />}
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                Previous
               </Button>
-              <span>
-                Page {page} of {totalPages}
-              </span>
+
+              <div className="flex items-center gap-1 px-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                  .map((p, idx, arr) => {
+                    const prevP = arr[idx - 1];
+                    const showEllipsis = prevP && p - prevP > 1;
+                    return (
+                      <React.Fragment key={p}>
+                        {showEllipsis && <span className="px-1 text-[var(--color-muted)]">…</span>}
+                        <button
+                          type="button"
+                          onClick={() => setPage(p)}
+                          className={`min-w-[28px] h-7 text-xs rounded-md font-medium transition-all ${
+                            page === p
+                              ? "bg-[var(--color-primary)] text-white font-semibold"
+                              : "text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)]"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
+                disabled={page >= totalPages || isLoading}
+                rightIcon={<ChevronRight className="w-3.5 h-3.5" />}
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                Next
               </Button>
             </div>
           </div>

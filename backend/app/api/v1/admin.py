@@ -12,6 +12,9 @@ class CreateUserRequest(BaseModel):
     password: str = Field(..., min_length=6)
     role: str = Field("user", description="Must be 'user'")
 
+class ToggleUserStatusRequest(BaseModel):
+    is_active: bool
+
 class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, description="New password for the user account")
 
@@ -109,6 +112,52 @@ async def reset_user_password(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update password.")
 
     return {"message": f"Password for user '{target_user['email']}' has been updated successfully."}
+
+@router.patch("/users/{user_id}/status", response_model=UserSummaryResponse, status_code=status.HTTP_200_OK)
+async def toggle_user_status(
+    user_id: str,
+    req: ToggleUserStatusRequest,
+    current_admin: Dict[str, Any] = Depends(require_admin)
+):
+    target_user = await UserRepository.get_by_id(user_id)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User account not found.")
+
+    if target_user["id"] == current_admin["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin cannot deactivate their own active account."
+        )
+
+    # Scoped strictly to the admin's organization
+    if current_admin.get("role") != "superadmin":
+        admin_org_id = current_admin.get("organization_id") or current_admin["id"]
+        target_org_id = target_user.get("organization_id") or target_user["id"]
+        if admin_org_id != target_org_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to manage users from another organization."
+            )
+        if target_user.get("role") in ["admin", "superadmin"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Org Admins cannot deactivate Admin accounts. Contact Super Admin."
+            )
+
+    updated = await UserRepository.update_user(user_id=user_id, is_active=req.is_active)
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update user status.")
+
+    return UserSummaryResponse(
+        id=updated["id"],
+        username=updated.get("username", "User"),
+        email=updated["email"],
+        role=updated.get("role", "user"),
+        organization_id=updated.get("organization_id"),
+        org_name=updated.get("org_name"),
+        is_active=updated.get("is_active", True),
+        created_at=updated.get("created_at", "")
+    )
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
 async def delete_user(user_id: str, current_admin: Dict[str, Any] = Depends(require_admin)):

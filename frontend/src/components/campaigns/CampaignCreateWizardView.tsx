@@ -315,7 +315,7 @@ export function CampaignCreateWizardView({
 
   // Step 5: Schedule & Timezone
   const todayStr = new Date().toISOString().split("T")[0];
-  const [scheduleMode, setScheduleMode] = useState<"single_day" | "date_range" | "recurring">("date_range");
+  const [scheduleMode, setScheduleMode] = useState<"single_day" | "recurring">("recurring");
   const [startDate, setStartDate] = useState<string>(todayStr);
   const [endDate, setEndDate] = useState<string>("");
   const [callingDays, setCallingDays] = useState<string[]>([
@@ -1678,7 +1678,7 @@ export function CampaignCreateWizardView({
                 {/* Schedule Mode Selector */}
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[var(--color-heading)]">Campaign Schedule Type</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => {
@@ -1702,25 +1702,12 @@ export function CampaignCreateWizardView({
 
                     <button
                       type="button"
-                      onClick={() => setScheduleMode("date_range")}
-                      className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "date_range"
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
-                        : "border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
-                        }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-[var(--color-heading)]">Date Range Window</span>
-                        {scheduleMode === "date_range" && <Check className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
-                      </div>
-                      <p className="text-[11px] text-[var(--color-muted)]">Run between start &amp; end dates on selected weekdays.</p>
-                    </button>
-
-                    <button
-                      type="button"
                       onClick={() => {
                         setScheduleMode("recurring");
-                        // Coming from "Single Specific Date" the end date only mirrored the start date: drop that one
                         if (endDate && endDate === startDate) setEndDate("");
+                        if (callingDays.length === 1) {
+                          setCallingDays(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
+                        }
                       }}
                       className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${scheduleMode === "recurring"
                         ? "border-[var(--color-primary)] bg-[var(--color-primary-subtle,rgba(59,130,246,0.08))] ring-1 ring-[var(--color-primary)]"
@@ -1728,10 +1715,10 @@ export function CampaignCreateWizardView({
                         }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold text-[var(--color-heading)]">Ongoing Schedule</span>
+                        <span className="text-xs font-bold text-[var(--color-heading)]">Recurring / Ongoing Schedule</span>
                         {scheduleMode === "recurring" && <Check className="w-3.5 h-3.5 text-[var(--color-primary)]" />}
                       </div>
-                      <p className="text-[11px] text-[var(--color-muted)]">Call every selected day within calling hours, from the start date until an optional end date.</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">Calls on selected days within calling hours from Start Date until an optional End Date.</p>
                     </button>
                   </div>
                 </div>
@@ -1752,12 +1739,23 @@ export function CampaignCreateWizardView({
                     />
                   </div>
 
-                  {(scheduleMode === "date_range" || scheduleMode === "recurring") && (
+                  {scheduleMode === "recurring" && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-[var(--color-primary)]" />
-                        <span>{scheduleMode === "recurring" ? "Run Until (End Date, Optional)" : "End Date (Optional)"}</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[var(--color-heading)] flex items-center gap-1.5">
+                          <CalendarDays className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                          <span>End Date (Optional)</span>
+                        </label>
+                        {endDate && (
+                          <button
+                            type="button"
+                            onClick={() => setEndDate("")}
+                            className="text-[10px] text-[var(--color-muted)] hover:text-red-500 underline cursor-pointer"
+                          >
+                            Clear (Run Indefinitely)
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="date"
                         min={startDate}
@@ -1773,8 +1771,8 @@ export function CampaignCreateWizardView({
                 {scheduleMode !== "single_day" && (
                   <p className="text-[11px] leading-snug text-[var(--color-muted)] bg-[var(--color-surface-muted)] border border-[var(--color-border)] rounded-md px-3 py-2">
                     {endDate
-                      ? `Calls are placed on each selected weekday from ${startDate || "the start date"} through ${endDate}, only inside the calling window. The campaign ends automatically after ${endDate}: no call is made on any later day.`
-                      : `Calls are placed on each selected weekday from ${startDate || "the start date"} inside the calling window, and continue until you stop the campaign. Pick an end date to stop automatically.`}
+                      ? `Calls are placed on each selected weekday from ${startDate || "the start date"} through ${endDate}, only inside the calling window. The campaign ends automatically after ${endDate}.`
+                      : `Calls are placed on each selected weekday from ${startDate || "the start date"} inside the calling window, and continue until you stop the campaign. Set an end date anytime to stop automatically.`}
                   </p>
                 )}
 

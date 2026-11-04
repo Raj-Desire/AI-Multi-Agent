@@ -28,8 +28,8 @@ export const UserDashboardView: React.FC<{
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await fetchApi<{ data: CallRecord[] }>("/calls", LIVE);
-      const fetchedCalls = Array.isArray(res?.data) ? res.data : [];
+      const res = await fetchApi<any>("/calls", LIVE);
+      const fetchedCalls = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
       setCalls(fetchedCalls);
       if (fetchedCalls.length > 0 && !selectedCall) {
         setSelectedCall(fetchedCalls[0]);

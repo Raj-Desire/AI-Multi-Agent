@@ -151,9 +151,11 @@ async def delete_campaign(
     ctx: TenantContext = Depends(get_tenant_context),
     service: CampaignService = Depends(get_campaign_service)
 ):
-    """Deletes a campaign and its associated queue records."""
-    success = await service.delete_campaign(ctx, campaign_id)
-    return ApiResponse.ok({"deleted": success, "campaign_id": campaign_id})
+    """Campaign deletion is permanently disabled to prevent data loss. Campaigns must be stopped instead."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Campaigns cannot be deleted to preserve compliance records, call history, and lead intelligence. Please use 'Stop Campaign' instead."
+    )
 
 
 @router.post("/{campaign_id}/start", response_model=ApiResponse[CampaignResponse])

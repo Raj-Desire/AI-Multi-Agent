@@ -59,6 +59,32 @@ export interface OrgCostUsage {
   total_cost: number;
   suggested_billed: number;
   margin: number;
+  model_usage?: Record<string, {
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost: number;
+    calls_count: number;
+  }>;
+}
+
+export interface ModelUsageStat {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost: number;
+  calls_count: number;
+}
+
+export interface VoiceUsageStat {
+  voice: string;
+  display_name?: string;
+  rate_per_1k: number;
+  characters: number;
+  cost: number;
+  calls_count: number;
 }
 
 export interface PlatformCostSummary {
@@ -79,15 +105,30 @@ export interface PlatformCostSummary {
   pricing_rates: {
     telephony_per_min: number;
     stt_per_min: number;
-    tts_per_1k_chars: number;
+    tts_rates_per_1k?: Record<string, number>;
+    llm_rates_per_1k?: Record<string, { input: number; output: number }>;
+    tts_per_1k_chars?: number;
     markup_multiplier: number;
   };
+  models_usage?: ModelUsageStat[];
+  voices_usage?: VoiceUsageStat[];
+}
+
+export interface VoiceEngineAccountTelemetry {
+  connected: boolean;
+  balance?: number | null;
+  currency: string;
+  project_name?: string | null;
+  project_id?: string | null;
+  requires_billing_scope?: boolean;
+  message?: string | null;
 }
 
 export interface SuperAdminCostTelemetryResponse {
   time_range: string;
   summary: PlatformCostSummary;
   organizations: OrgCostUsage[];
+  voice_engine?: VoiceEngineAccountTelemetry;
 }
 
 export interface TwilioConfig {

@@ -51,6 +51,8 @@ export function LeadDetailDrawer({
 
   // Active sub-tab in drawer: "summary" | "transcript" | "history" | "actions"
   const [drawerTab, setDrawerTab] = useState<"summary" | "transcript" | "history" | "actions">("summary");
+  const [historyPage, setHistoryPage] = useState<number>(1);
+  const HISTORY_PAGE_SIZE = 20;
 
   // Follow-up Action Form State
   const [newStatus, setNewStatus] = useState<string>("");
@@ -81,6 +83,7 @@ export function LeadDetailDrawer({
     setIsChatOpen(false);
     setIsChatClosing(false);
     if (isOpen && prospectId) {
+      setHistoryPage(1);
       loadLeadDetail(prospectId, callId);
     } else {
       setDetail(null);
@@ -453,50 +456,85 @@ export function LeadDetailDrawer({
                       No historical calls recorded.
                     </div>
                   ) : (
-                    <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[var(--color-border)]">
-                      {detail.call_history.map((hist, idx) => (
-                        <div
-                          key={idx}
-                          className={`relative space-y-1 rounded-md p-2 -m-2 cursor-pointer transition-colors ${
-                            hist.call_id === detail.latest_call_id ? "bg-[var(--color-primary)]/5" : "hover:bg-[var(--color-background)]/60"
-                          }`}
-                          onClick={() => {
-                            if (prospectId && hist.call_id !== detail.latest_call_id) {
-                              loadLeadDetail(prospectId, hist.call_id);
-                              setDrawerTab("summary");
-                            }
-                          }}
-                        >
-                          {/* Dot marker */}
-                          <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-[var(--color-primary)] ring-4 ring-[var(--color-surface)]" />
+                    <>
+                      <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[var(--color-border)]">
+                        {detail.call_history
+                          .slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
+                          .map((hist, idx) => (
+                          <div
+                            key={idx}
+                            className={`relative space-y-1 rounded-md p-2 -m-2 cursor-pointer transition-colors ${
+                              hist.call_id === detail.latest_call_id ? "bg-[var(--color-primary)]/5" : "hover:bg-[var(--color-background)]/60"
+                            }`}
+                            onClick={() => {
+                              if (prospectId && hist.call_id !== detail.latest_call_id) {
+                                loadLeadDetail(prospectId, hist.call_id);
+                                setDrawerTab("summary");
+                              }
+                            }}
+                          >
+                            {/* Dot marker */}
+                            <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-[var(--color-primary)] ring-4 ring-[var(--color-surface)]" />
 
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-[var(--color-heading)]">
-                              {hist.outcome}
-                            </span>
-                            <span className="text-[11px] text-[var(--color-muted)] font-mono">
-                              {new Date(hist.created_at).toLocaleString()}
-                            </span>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-[var(--color-heading)]">
+                                {hist.outcome}
+                              </span>
+                              <span className="text-[11px] text-[var(--color-muted)] font-mono">
+                                {new Date(hist.created_at).toLocaleString()}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] text-[var(--color-muted)]">
+                              {hist.source || "Call"}
+                              {hist.campaign_name ? ` · ${hist.campaign_name}` : ""} &bull; Talking time: {hist.duration}s &bull; Handled by {hist.agent_name || "AI Agent"}
+                              {typeof hist.score === "number" ? ` • Score ${hist.score}/100` : hist.analytics_status === "pending" ? " • Analysis in progress" : ""}
+                              {` • ${hist.turns ?? 0} messages`}
+                              {hist.meeting_at
+                                ? ` • Meeting ${new Date(hist.meeting_at).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: hist.meeting_timezone || undefined, timeZoneName: "short" })}`
+                                : ""}
+                            </div>
+
+                            {hist.summary && (
+                              <p className="text-xs text-[var(--color-text)] bg-[var(--color-background)]/60 p-2.5 rounded border border-[var(--color-border)]/50">
+                                {hist.summary}
+                              </p>
+                            )}
                           </div>
+                        ))}
+                      </div>
 
-                          <div className="text-[11px] text-[var(--color-muted)]">
-                            {hist.source || "Call"}
-                            {hist.campaign_name ? ` · ${hist.campaign_name}` : ""} &bull; Talking time: {hist.duration}s &bull; Handled by {hist.agent_name || "AI Agent"}
-                            {typeof hist.score === "number" ? ` • Score ${hist.score}/100` : hist.analytics_status === "pending" ? " • Analysis in progress" : ""}
-                            {` • ${hist.turns ?? 0} messages`}
-                            {hist.meeting_at
-                              ? ` • Meeting ${new Date(hist.meeting_at).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: hist.meeting_timezone || undefined, timeZoneName: "short" })}`
-                              : ""}
+                      {/* Pagination for History (Top 20 per page) */}
+                      {detail.call_history.length > HISTORY_PAGE_SIZE && (
+                        <div className="pt-3 border-t border-[var(--color-border)] flex items-center justify-between text-xs text-[var(--color-muted)]">
+                          <span>
+                            Showing {(historyPage - 1) * HISTORY_PAGE_SIZE + 1} to{" "}
+                            {Math.min(historyPage * HISTORY_PAGE_SIZE, detail.call_history.length)} of {detail.call_history.length}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                              disabled={historyPage <= 1}
+                              className="px-2 py-1 rounded border border-[var(--color-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--color-background)] cursor-pointer text-[11px]"
+                            >
+                              Previous
+                            </button>
+                            <span className="px-2 font-mono font-semibold text-[var(--color-heading)] text-[11px]">
+                              {historyPage} / {Math.ceil(detail.call_history.length / HISTORY_PAGE_SIZE)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setHistoryPage((p) => Math.min(Math.ceil(detail.call_history.length / HISTORY_PAGE_SIZE), p + 1))}
+                              disabled={historyPage >= Math.ceil(detail.call_history.length / HISTORY_PAGE_SIZE)}
+                              className="px-2 py-1 rounded border border-[var(--color-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--color-background)] cursor-pointer text-[11px]"
+                            >
+                              Next
+                            </button>
                           </div>
-
-                          {hist.summary && (
-                            <p className="text-xs text-[var(--color-text)] bg-[var(--color-background)]/60 p-2.5 rounded border border-[var(--color-border)]/50">
-                              {hist.summary}
-                            </p>
-                          )}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

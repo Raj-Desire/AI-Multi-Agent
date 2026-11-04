@@ -1,3 +1,4 @@
+import re
 import asyncio
 import time
 import uuid
@@ -108,10 +109,15 @@ class CampaignRepository:
 
             filtered = all_campaigns
             if search and search.strip():
-                s = search.strip().lower()
+                s = search.strip()
+                s_lower = s.lower()
+                norm_s = re.sub(r"[^a-z0-9]", "", s_lower)
                 filtered = [
                     c for c in filtered
-                    if (s in c.name.lower()) or (s in (c.description or "").lower())
+                    if (
+                        s_lower in (c.name or "").lower()
+                        or (norm_s and norm_s in re.sub(r"[^a-z0-9]", "", (c.name or "").lower()))
+                    )
                 ]
 
             if status and status.strip() and status.lower() != "all":

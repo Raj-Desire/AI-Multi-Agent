@@ -487,6 +487,57 @@ async def get_platform_usage_and_cost(
             org_entry["total_agents"] = 0
 
     telemetry["time_range"] = time_range
+
+    # 4. Fetch Live Voice Engine Provider Account & Credit Telemetry
+    import os
+    voice_engine_telemetry: Dict[str, Any] = {
+        "connected": False,
+        "balance": None,
+        "currency": "USD",
+        "project_name": None,
+        "project_id": None,
+        "requires_billing_scope": False,
+        "message": None,
+    }
+    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+    if deepgram_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                p_resp = await client.get(
+                    "https://api.deepgram.com/v1/projects",
+                    headers={"Authorization": f"Token {deepgram_key}"}
+                )
+                if p_resp.status_code == 200:
+                    p_data = p_resp.json()
+                    projects = p_data.get("projects", [])
+                    if projects:
+                        target_proj = projects[0]
+                        proj_id = target_proj.get("project_id")
+                        voice_engine_telemetry["connected"] = True
+                        voice_engine_telemetry["project_id"] = proj_id
+                        voice_engine_telemetry["project_name"] = target_proj.get("name")
+
+                        # Attempt to query project balance if key possesses billing:read scope
+                        b_resp = await client.get(
+                            f"https://api.deepgram.com/v1/projects/{proj_id}/balances",
+                            headers={"Authorization": f"Token {deepgram_key}"}
+                        )
+                        if b_resp.status_code == 200:
+                            b_data = b_resp.json()
+                            balances = b_data.get("balances", [])
+                            total_balance = sum(float(b.get("amount", 0.0)) for b in balances)
+                            voice_engine_telemetry["balance"] = round(total_balance, 2)
+                        elif b_resp.status_code in (401, 403):
+                            voice_engine_telemetry["requires_billing_scope"] = True
+                            voice_engine_telemetry["message"] = (
+                                "Connected. To display live credit balance, grant the 'billing:read' or 'Admin' scope to this API key in your voice engine project console."
+                            )
+        except Exception as e:
+            logger.warning(f"[SuperAdmin] Voice engine balance check skipped: {e}")
+            voice_engine_telemetry["message"] = "Telemetry service unavailable"
+
+    telemetry["voice_engine"] = voice_engine_telemetry
     return telemetry
 
 

@@ -348,11 +348,11 @@ export const SuperAdminUsageCostTab: React.FC = () => {
       )}
 
       {/* Executive Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Card 1: Total Provider Cost */}
         <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-muted)] font-medium">Provider Cost (Wholesale)</span>
+            <span className="text-xs text-[var(--color-muted)] font-medium">Wholesale Spend</span>
             <div className="w-6 h-6 rounded bg-rose-500/10 text-rose-500 flex items-center justify-center">
               <DollarSign className="w-3.5 h-3.5" />
             </div>
@@ -361,14 +361,14 @@ export const SuperAdminUsageCostTab: React.FC = () => {
             ${summary ? summary.total_infrastructure_cost.toFixed(2) : "0.00"}
           </div>
           <p className="text-[11px] text-[var(--color-muted)] mt-1">
-            Total infrastructure spend across all tenants
+            Total infrastructure spend
           </p>
         </div>
 
         {/* Card 2: Suggested Client Billing */}
         <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-muted)] font-medium">Suggested Client Billing</span>
+            <span className="text-xs text-[var(--color-muted)] font-medium">Client Billing</span>
             <div className="w-6 h-6 rounded bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
               <TrendingUp className="w-3.5 h-3.5" />
             </div>
@@ -378,16 +378,16 @@ export const SuperAdminUsageCostTab: React.FC = () => {
           </div>
           <div className="flex items-center gap-1.5 mt-1 text-[11px]">
             <span className="text-emerald-700 dark:text-emerald-300 font-semibold font-mono">
-              +${summary ? summary.projected_gross_profit.toFixed(2) : "0.00"} profit
+              +${summary ? summary.projected_gross_profit.toFixed(2) : "0.00"}
             </span>
-            <span className="text-[var(--color-muted)]">({summary?.gross_margin_percentage || 0}% margin)</span>
+            <span className="text-[var(--color-muted)]">({summary?.gross_margin_percentage || 0}%)</span>
           </div>
         </div>
 
         {/* Card 3: Total Voice Minutes */}
         <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-muted)] font-medium">Total Voice Minutes</span>
+            <span className="text-xs text-[var(--color-muted)] font-medium">Voice Minutes</span>
             <div className="w-6 h-6 rounded bg-blue-500/10 text-blue-500 flex items-center justify-center">
               <Clock className="w-3.5 h-3.5" />
             </div>
@@ -396,14 +396,14 @@ export const SuperAdminUsageCostTab: React.FC = () => {
             {summary ? summary.total_duration_minutes.toLocaleString() : "0"} <span className="text-xs font-normal text-[var(--color-muted)]">mins</span>
           </div>
           <p className="text-[11px] text-[var(--color-muted)] mt-1">
-            Across {summary ? summary.total_calls : 0} total telephone calls
+            Across {summary ? summary.total_calls : 0} calls
           </p>
         </div>
 
         {/* Card 4: Total LLM Tokens */}
         <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-muted)] font-medium">Total LLM Tokens</span>
+            <span className="text-xs text-[var(--color-muted)] font-medium">LLM Tokens</span>
             <div className="w-6 h-6 rounded bg-purple-500/10 text-purple-500 flex items-center justify-center">
               <Cpu className="w-3.5 h-3.5" />
             </div>
@@ -412,7 +412,27 @@ export const SuperAdminUsageCostTab: React.FC = () => {
             {summary ? summary.total_tokens.toLocaleString() : "0"}
           </div>
           <p className="text-[11px] text-[var(--color-muted)] mt-1">
-            System prompts & conversational reasoning turns
+            System & reasoning turns
+          </p>
+        </div>
+
+        {/* Card 5: Voice Engine Provider Balance */}
+        <div className="p-4 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xs relative overflow-hidden col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--color-muted)] font-medium">Voice Engine Credits</span>
+            <div className="w-6 h-6 rounded bg-amber-500/10 text-amber-500 flex items-center justify-center">
+              <Volume2 className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-2 font-mono">
+            {data?.voice_engine?.balance !== null && data?.voice_engine?.balance !== undefined
+              ? `$${data.voice_engine.balance.toFixed(2)}`
+              : data?.voice_engine?.connected
+              ? "Active"
+              : "Not Configured"}
+          </div>
+          <p className="text-[11px] text-[var(--color-muted)] mt-1 truncate" title={data?.voice_engine?.project_name || "Real-Time Spoken AI Account"}>
+            {data?.voice_engine?.project_name ? `${data.voice_engine.project_name}` : "Connected Provider"}
           </p>
         </div>
       </div>
@@ -485,6 +505,122 @@ export const SuperAdminUsageCostTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Model & Voice Telemetry Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* LLM Models Usage & Cost */}
+        <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-heading)]">
+              <Cpu className="w-4 h-4 text-purple-500" />
+              <span>LLM Model Token Usage & Cost</span>
+            </div>
+            <span className="text-xs text-[var(--color-muted)]">
+              {summary?.models_usage?.length || 0} models detected
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {!summary?.models_usage || summary.models_usage.length === 0 ? (
+              <p className="text-xs text-[var(--color-muted)] py-4 text-center">
+                No LLM token consumption recorded in this timeframe.
+              </p>
+            ) : (
+              summary.models_usage.map((m) => {
+                const pct = summary.total_tokens > 0 ? Math.round((m.total_tokens / summary.total_tokens) * 100) : 0;
+                return (
+                  <div
+                    key={m.model}
+                    className="p-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-muted)]/50 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-[var(--color-heading)]">
+                          {m.model}
+                        </span>
+                        <Badge variant="neutral" size="sm">
+                          {m.calls_count} calls
+                        </Badge>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono text-xs font-semibold text-purple-600 dark:text-purple-400">
+                          ${m.cost.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+                      <span>Total: <strong className="text-[var(--color-heading)]">{m.total_tokens.toLocaleString()}</strong> tokens ({pct}%)</span>
+                      <span className="space-x-2">
+                        <span>In: <strong className="text-[var(--color-heading)]">{m.input_tokens.toLocaleString()}</strong></span>
+                        <span>Out: <strong className="text-[var(--color-heading)]">{m.output_tokens.toLocaleString()}</strong></span>
+                      </span>
+                    </div>
+
+                    <div className="h-1.5 w-full bg-[var(--color-surface-muted)] rounded-full overflow-hidden">
+                      <div
+                        style={{ width: `${pct}%` }}
+                        className="bg-purple-500 h-full rounded-full transition-all"
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* TTS Voices Usage & Cost */}
+        <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-heading)]">
+              <Volume2 className="w-4 h-4 text-amber-500" />
+              <span>Voice Synthesis Usage & Cost</span>
+            </div>
+            <span className="text-xs text-[var(--color-muted)]">
+              {summary?.voices_usage?.length || 0} voice engines detected
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {!summary?.voices_usage || summary.voices_usage.length === 0 ? (
+              <p className="text-xs text-[var(--color-muted)] py-4 text-center">
+                No voice synthesis recorded in this timeframe.
+              </p>
+            ) : (
+              summary.voices_usage.map((v) => {
+                return (
+                  <div
+                    key={v.voice}
+                    className="p-3 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-muted)]/50 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-[var(--color-heading)]">
+                          {v.display_name || v.voice}
+                        </span>
+                        <Badge variant="neutral" size="sm">
+                          ${v.rate_per_1k.toFixed(3)} / 1K chars
+                        </Badge>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono text-xs font-semibold text-amber-600 dark:text-amber-400">
+                          ${v.cost.toFixed(4)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-[var(--color-muted)]">
+                      <span>Synthesized: <strong className="text-[var(--color-heading)]">{v.characters.toLocaleString()}</strong> characters</span>
+                      <span>Calls: <strong className="text-[var(--color-heading)]">{v.calls_count}</strong></span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Per-Organization Cost & Token Usage Breakdown Table */}
       <div className="space-y-3">

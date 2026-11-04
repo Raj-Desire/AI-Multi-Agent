@@ -21,7 +21,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { fetchApi, invalidateApiCache } from "../../api-client";
+import { fetchApi, invalidateApiCache, LIVE } from "../../api-client";
 import {
   LeadKPISummary,
   LeadOutcomeDistributionResponse,
@@ -55,24 +55,41 @@ export const AdminDashboardView: React.FC<{
       }
       setLoading(true);
 
-      const requestOpts = forceBypassCache ? { cache: "reload" as RequestCache } : undefined;
+      const requestOpts = forceBypassCache ? { cache: "reload" as RequestCache } : LIVE;
 
-      // Fires with smart in-memory TTL caching; repeated tab visits and filter toggles respond in <1ms without hitting the server
+      // Fires with LIVE request options to ensure real-time telemetry from Cosmos DB
       const [summaryRes, distRes, agentsRes, campaignsRes, callsRes] = await Promise.all([
-        fetchApi<{ data: LeadKPISummary }>(`/lead-intelligence/summary?time_range=${timeRange}`, requestOpts).catch(() => null),
-        fetchApi<{ data: LeadOutcomeDistributionResponse }>(`/lead-intelligence/distribution?time_range=${timeRange}`, requestOpts).catch(() => null),
-        fetchApi<{ data: AgentConfig[] }>("/agents", requestOpts).catch(() => null),
-        fetchApi<{ data: { items: Campaign[] } }>("/campaigns?page=1&page_size=50", requestOpts).catch(() => null),
-        fetchApi<{ data: CallRecord[] }>("/calls", requestOpts).catch(() => null),
+        fetchApi<any>(`/lead-intelligence/summary?date_range=${timeRange}`, requestOpts).catch(() => null),
+        fetchApi<any>(`/lead-intelligence/distribution?date_range=${timeRange}`, requestOpts).catch(() => null),
+        fetchApi<any>("/agents", requestOpts).catch(() => null),
+        fetchApi<any>("/campaigns?page=1&page_size=50", requestOpts).catch(() => null),
+        fetchApi<any>("/calls", requestOpts).catch(() => null),
       ]);
 
-      if (summaryRes?.data) setSummary(summaryRes.data);
-      if (distRes?.data) setDistribution(distRes.data);
-      if (agentsRes?.data) setAgents(agentsRes.data);
-      if (campaignsRes?.data?.items) setCampaigns(campaignsRes.data.items);
-      
-      const allCalls = Array.isArray(callsRes?.data) ? callsRes.data : [];
-      setCampaignCalls(allCalls);
+      const resolvedSummary = summaryRes?.data ?? summaryRes;
+      if (resolvedSummary && typeof resolvedSummary === "object") setSummary(resolvedSummary);
+
+      const resolvedDist = distRes?.data ?? distRes;
+      if (resolvedDist && typeof resolvedDist === "object") setDistribution(resolvedDist);
+
+      const resolvedAgents = Array.isArray(agentsRes) ? agentsRes : agentsRes?.data;
+      if (Array.isArray(resolvedAgents)) setAgents(resolvedAgents);
+
+      const resolvedCampaigns = Array.isArray(campaignsRes?.items)
+        ? campaignsRes.items
+        : Array.isArray(campaignsRes?.data?.items)
+        ? campaignsRes.data.items
+        : Array.isArray(campaignsRes)
+        ? campaignsRes
+        : [];
+      if (resolvedCampaigns.length > 0) setCampaigns(resolvedCampaigns);
+
+      const resolvedCalls = Array.isArray(callsRes)
+        ? callsRes
+        : Array.isArray(callsRes?.data)
+        ? callsRes.data
+        : [];
+      setCampaignCalls(resolvedCalls);
     } catch (err) {
       console.error("Failed to load dashboard data from DB:", err);
     } finally {

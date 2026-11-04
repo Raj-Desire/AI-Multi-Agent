@@ -10,6 +10,9 @@ import {
   User,
   Mail,
   Lock,
+  UserCheck,
+  UserX,
+  ShieldOff,
 } from "lucide-react";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -43,6 +46,35 @@ export const AdminPanel: React.FC = () => {
   // Delete user confirmation modal state
   const [userToDelete, setUserToDelete] = useState<UserSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Status toggle state
+  const [userToToggle, setUserToToggle] = useState<UserSummary | null>(null);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+
+  const handleToggleStatus = async () => {
+    if (!userToToggle) return;
+    setIsTogglingStatus(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    const targetStatus = !userToToggle.is_active;
+    try {
+      await fetchApi<UserSummary>(`/admin/users/${userToToggle.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: targetStatus }),
+      });
+
+      setSuccessMsg(
+        `User '${userToToggle.username}' has been ${targetStatus ? "activated" : "deactivated"}.`
+      );
+      setUserToToggle(null);
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message || "Failed to update user status.");
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -168,7 +200,13 @@ export const AdminPanel: React.FC = () => {
     {
       key: "status",
       header: "Status",
-      render: () => <StatusIndicator status="active" label="Active" />,
+      render: (u) => (
+        u.is_active ? (
+          <StatusIndicator status="active" label="Active" />
+        ) : (
+          <StatusIndicator status="inactive" label="Deactivated" />
+        )
+      ),
     },
     {
       key: "created_at",
@@ -184,30 +222,56 @@ export const AdminPanel: React.FC = () => {
       key: "actions",
       header: "Actions",
       className: "text-right",
-      render: (u) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelectedUser(u)}
-            className="h-7 px-2 text-xs"
-            title="Reset Password"
-          >
-            <Key className="w-3.5 h-3.5" />
-          </Button>
-          {u.role !== "admin" && u.role !== "superadmin" && (
+      render: (u) => {
+        const isSelf = currentUser?.id === u.id;
+        const isProtectedAdmin = u.role === "admin" || u.role === "superadmin";
+
+        return (
+          <div className="flex items-center justify-end gap-1">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setUserToDelete(u)}
-              className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
-              title="Remove Member"
+              onClick={() => setSelectedUser(u)}
+              className="h-7 px-2 text-xs"
+              title="Reset Password"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Key className="w-3.5 h-3.5" />
             </Button>
-          )}
-        </div>
-      ),
+
+            {!isSelf && !isProtectedAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setUserToToggle(u)}
+                className={`h-7 px-2 text-xs transition-colors ${
+                  u.is_active
+                    ? "text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                    : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                }`}
+                title={u.is_active ? "Deactivate User (Disable Login)" : "Activate User"}
+              >
+                {u.is_active ? (
+                  <UserX className="w-3.5 h-3.5" />
+                ) : (
+                  <UserCheck className="w-3.5 h-3.5" />
+                )}
+              </Button>
+            )}
+
+            {!isSelf && !isProtectedAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setUserToDelete(u)}
+                className="h-7 px-2 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+                title="Remove Member"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -391,6 +455,66 @@ export const AdminPanel: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Deactivate / Activate User Modal */}
+      <Modal
+        isOpen={!!userToToggle}
+        onClose={() => setUserToToggle(null)}
+        title={userToToggle?.is_active ? "Deactivate User Account" : "Activate User Account"}
+        description={
+          userToToggle?.is_active
+            ? "Disable login access for this user while preserving all their records and call data."
+            : "Restore login access to the workspace for this user."
+        }
+        maxWidth="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setUserToToggle(null)}
+              disabled={isTogglingStatus}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant={userToToggle?.is_active ? "primary" : "primary"}
+              size="sm"
+              isLoading={isTogglingStatus}
+              leftIcon={userToToggle?.is_active ? <UserX className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
+              onClick={handleToggleStatus}
+              className={userToToggle?.is_active ? "bg-amber-600 hover:bg-amber-700 text-white border-transparent" : "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"}
+            >
+              {userToToggle?.is_active ? "Deactivate Account" : "Activate Account"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface-muted)] border border-[var(--color-border)]">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+              userToToggle?.is_active ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500"
+            }`}>
+              {userToToggle?.is_active ? <ShieldOff className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-[var(--color-heading)] truncate">
+                {userToToggle?.username}
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] truncate">
+                {userToToggle?.email} • <span className="capitalize">{userToToggle?.role}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-[var(--color-muted)] leading-relaxed">
+            {userToToggle?.is_active
+              ? <span>Deactivating will <strong>immediately prevent login access</strong> for <strong>{userToToggle?.email}</strong>. All associated call records, lead intelligence notes, and activity logs are <strong>fully preserved</strong>.</span>
+              : <span>Activating will allow <strong>{userToToggle?.email}</strong> to sign in to this workspace and resume their normal workflow.</span>}
+          </p>
+        </div>
       </Modal>
 
       {/* Delete User Confirmation Modal */}
