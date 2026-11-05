@@ -200,6 +200,15 @@ def bucket_for_call(
     )
 
 
+def score_label_for(score: Optional[int], rules: Any) -> Optional[str]:
+    """The organisation's own word for a score (highest tier whose minimum the score reaches), or None."""
+    tiers = getattr(rules, "score_tiers", None) or []
+    if score is None or not tiers:
+        return None
+    reached = [t for t in tiers if score >= t.min_score]
+    return max(reached, key=lambda t: t.min_score).label if reached else None
+
+
 def normalize_interest_level(
     raw_level: Optional[str],
     score: Optional[int] = None,
@@ -1239,6 +1248,8 @@ class LeadIntelligenceService:
                 meeting_at=appt.start_at_utc if appt else None,
                 meeting_timezone=appt.timezone if appt else None,
                 meeting_type=appt.type if appt else None,
+                score_label=score_label_for(score, rules),
+                goal_status=(call_rec.analytics or {}).get("goal_status"),
                 call_source="Campaign" if (call_rec.campaign_id or "").strip() else "Agent dialer",
                 call_status=call_rec.status,
                 analytics_status=call_rec.analytics_status,
@@ -1569,6 +1580,9 @@ class LeadIntelligenceService:
             callback_datetime=callback_dt,
             agent_id=agent_id,
             agent_name=agent_name,
+            score_label=score_label_for(score, rules),
+            goal_status=(latest_call.analytics or {}).get("goal_status") if latest_call else None,
+            goal_summary=(latest_call.analytics or {}).get("goal_summary") if latest_call else None,
             call_source=("Campaign" if (latest_call.campaign_id or "").strip() else "Agent dialer") if latest_call else None,
             call_status=latest_call.status if latest_call else None,
             call_duration=(latest_call.duration or 0) if latest_call else 0,
@@ -1921,12 +1935,63 @@ class LeadIntelligenceService:
             updated_at=datetime.now(timezone.utc).isoformat()
         )
 
+    @staticmethod
+    def _read_saved_rules(org_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            from app.core.cosmos import get_lead_rules_container
+            container = get_lead_rules_container()
+            if not container:
+                return None
+            item = container.read_item(item=f"lead_rules_{org_id}", partition_key=org_id)
+            return {k: v for k, v in item.items() if not k.startswith("_") and k != "id"}
+        except Exception:
+            return None
+
+    @staticmethod
+    def _write_saved_rules(org_id: str, data: Dict[str, Any]) -> None:
+        try:
+            from app.core.cosmos import get_lead_rules_container
+            container = get_lead_rules_container()
+            if container:
+                container.upsert_item(body={**data, "id": f"lead_rules_{org_id}", "organization_id": org_id})
+        except Exception as e:
+            logger.warning(f"[LeadIntelligence] Could not save rules for {org_id} to the database: {e}")
+
+    @staticmethod
+    async def scoring_guidance_for_org(org_id: str) -> str:
+        """The organisation's own scoring instructions (empty when none), without needing a service instance."""
+        data = _LEAD_RULES_STORE.get(org_id) or await asyncio.to_thread(LeadIntelligenceService._read_saved_rules, org_id) or {}
+        parts = [str(data.get("scoring_guidance") or "").strip()]
+        # The signal phrases an organisation edited in its rules now count: they used to be saved but never read by scoring.
+        # Only rules the organisation saved itself are used, not the platform's starter examples.
+        if data.get("updated_by"):
+            def _line(label: str, rows: Any) -> str:
+                items = [f"\"{r.get('phrase')}\" ({int(r.get('weight', 0)):+d})" for r in (rows or []) if isinstance(r, dict) and r.get("phrase")]
+                return f"{label}: " + ", ".join(items[:15]) if items else ""
+            parts.append(_line("Signals that raise the result when the caller says something like them (only if they matter for this agent's goal)", data.get("positive_signals")))
+            parts.append(_line("Signals that lower the result", data.get("negative_signals")))
+        return "\n".join(p for p in parts if p)
+
+    async def get_qualification_rules_for_org(self, org_id: str) -> LeadQualificationRules:
+        """Rules by organisation id, for code that has no request context (post-call analysis)."""
+        return await self.get_qualification_rules(TenantContext(organization_id=org_id, user_id="system", email="", role="admin"))
+
     async def get_qualification_rules(self, ctx: TenantContext) -> LeadQualificationRules:
         """Returns the active lead qualification scoring rules for the tenant organization."""
         org_id = ctx.organization_id
         if org_id in _LEAD_RULES_STORE:
             data = _LEAD_RULES_STORE[org_id]
             return LeadQualificationRules.model_validate(data)
+
+        # Saved rules live in the database, so they survive a restart and are the same on every server
+        saved = await asyncio.to_thread(self._read_saved_rules, org_id)
+        if saved:
+            try:
+                rules = LeadQualificationRules.model_validate(saved)
+                _LEAD_RULES_STORE[org_id] = rules.model_dump()
+                return rules
+            except Exception as e:
+                logger.warning(f"[LeadIntelligence] Saved rules for {org_id} are unreadable, using defaults: {e}")
 
         default_rules = self._get_default_rules(org_id)
         _LEAD_RULES_STORE[org_id] = default_rules.model_dump()
@@ -1944,6 +2009,7 @@ class LeadIntelligenceService:
         rules.updated_by = ctx.email
 
         _LEAD_RULES_STORE[org_id] = rules.model_dump()
+        await asyncio.to_thread(self._write_saved_rules, org_id, rules.model_dump())
         # Immediately invalidate in-memory cached call aggregations so dashboard refreshes instantly
         self.invalidate_cache(org_id)
         logger.info(f"[LeadIntelligence] Saved qualification rules for tenant {org_id}")

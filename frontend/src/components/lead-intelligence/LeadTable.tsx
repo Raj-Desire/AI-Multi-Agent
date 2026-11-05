@@ -319,7 +319,12 @@ export function LeadTable({
 
 
                   {/* Lead Score */}
-                  <td className="py-3 px-3">{getScoreMeter(lead.lead_score)}</td>
+                  <td className="py-3 px-3">
+                    {getScoreMeter(lead.lead_score)}
+                    {lead.score_label && (
+                      <span className="mt-1 inline-block text-[11px] font-semibold text-[var(--color-heading)]">{lead.score_label}</span>
+                    )}
+                  </td>
 
                   {/* Last Call */}
                   <td className="py-3 px-3 text-[var(--color-muted)] text-[11px] whitespace-nowrap">

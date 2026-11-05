@@ -1071,6 +1071,8 @@ export interface LeadListItem {
   meeting_at?: string | null;
   meeting_timezone?: string | null;
   meeting_type?: string | null;
+  score_label?: string | null;
+  goal_status?: string | null;
   call_source?: string | null;
   call_status?: string | null;
   analytics_status?: string | null;
@@ -1142,6 +1144,9 @@ export interface LeadDetailResponse {
   callback_datetime?: string | null;
   agent_id?: string | null;
   agent_name?: string | null;
+  score_label?: string | null;
+  goal_status?: string | null;
+  goal_summary?: string | null;
   call_source?: string | null;
   call_status?: string | null;
   call_duration?: number;
@@ -1226,8 +1231,15 @@ export interface LeadQualificationRules {
   auto_qualify_on_budget_approval: boolean;
   auto_tag_qualified_leads: boolean;
   qualification_tag: string;
+  score_tiers?: ScoreTier[];
+  scoring_guidance?: string;
   updated_at?: string;
   updated_by?: string;
+}
+
+export interface ScoreTier {
+  min_score: number;
+  label: string;
 }
 
 

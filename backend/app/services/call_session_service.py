@@ -478,6 +478,7 @@ class CallSessionService:
                 call_duration=session.call_duration or 0,
                 call_status=final_status,
                 timezone_iana=agent_timezone(getattr(stored_call, "agent_config_snapshot", None)),
+                **await self._analysis_inputs(session.organization_id, getattr(stored_call, "agent_config_snapshot", None) or session.agent_config_snapshot),
             ) or {}
             logger.info(
                 f"[CallSessionService:Analytics] Processed transcript for {session.call_session_id}: "
@@ -619,6 +620,50 @@ class CallSessionService:
                     logger.error(f"[CallSessionService:Alert Dispatch] Could not schedule alert: {alert_dispatch_err}")
 
 
+    @staticmethod
+    async def _analysis_inputs(org_id: str, agent_snapshot: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """What the analysis needs to judge a call fairly: this agent's own goal and the organisation's scoring words."""
+        from app.services.call_analytics_service import CallAnalyticsService
+        guidance = ""
+        try:
+            from app.services.lead_intelligence_service import LeadIntelligenceService
+            guidance = await LeadIntelligenceService.scoring_guidance_for_org(org_id)
+        except Exception as e:
+            logger.debug(f"[CallSessionService] No scoring guidance for {org_id}: {e}")
+        return {"agent_context": CallAnalyticsService.build_agent_context(agent_snapshot), "scoring_guidance": guidance}
+
+    async def reanalyze_calls(self, org_id: str, call_ids: Optional[List[str]] = None, limit: int = 300, on_row=None) -> List[Dict[str, Any]]:
+        """Scores existing calls again against their own agent's goal (older calls used the fixed sales rubric).
+        Calls without a conversation are left alone. Returns one before/after row per call that was analysed."""
+        from app.services.call_analytics_service import CallAnalyticsService
+        from app.services.appointment_time import agent_timezone
+        rows: List[Dict[str, Any]] = []
+        for call in await self.call_repo.list_all_calls(limit=limit * 5):
+            if call.organization_id != org_id or (call_ids and call.id not in call_ids):
+                continue
+            records = [t.model_dump(mode="json") if hasattr(t, "model_dump") else dict(t) for t in (call.transcript or [])]
+            if sum(1 for r in records if r.get("role") in ("user", "customer")) < 1:
+                continue
+            analytics = await CallAnalyticsService().analyze_call_transcript(
+                records, call_duration=call.duration or 0, call_status=call.status or "completed",
+                timezone_iana=agent_timezone(getattr(call, "agent_config_snapshot", None)),
+                **await self._analysis_inputs(org_id, getattr(call, "agent_config_snapshot", None)),
+            ) or {}
+            if not analytics:
+                continue
+            # only a live end reason (refusal, machine) can outrank the analysis; an older analysed label cannot
+            live = call.outcome if (call.outcome in _END_REASONS or str(call.outcome or "").startswith("IVR_DETECTED")) else None
+            outcome = resolve_final_outcome(live, analytics)
+            rows.append({"call_id": call.id, "agent": call.agent_name, "before_score": call.lead_score, "before_outcome": call.business_outcome,
+                         "after_score": analytics.get("lead_score"), "after_outcome": outcome, "goal": analytics.get("goal_status"),
+                         "goal_summary": analytics.get("goal_summary")})
+            await self._apply_analytics(call.id, analytics, outcome)
+            if on_row:
+                on_row(rows[-1])
+            if len(rows) >= limit:
+                break
+        return rows
+
     async def recover_pending_analytics(self, min_age_seconds: int = 180, max_age_hours: int = 72) -> int:
         """Analyses calls whose post-call analysis never finished (the server restarted while it was running), so their
         lead, outcome and calendar appointment still appear. Returns how many calls were recovered."""
@@ -647,6 +692,7 @@ class CallSessionService:
                     call_duration=call.duration or 0,
                     call_status=call.status or "completed",
                     timezone_iana=agent_timezone(getattr(call, "agent_config_snapshot", None)),
+                    **await self._analysis_inputs(call.organization_id, getattr(call, "agent_config_snapshot", None)),
                 ) or {}
                 outcome = resolve_final_outcome(call.outcome, analytics) if analytics else (call.outcome or "Completed")
                 await self._apply_analytics(call.id, analytics, outcome)

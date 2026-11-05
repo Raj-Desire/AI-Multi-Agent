@@ -69,7 +69,10 @@ async def get_call(
             try:
                 from app.services.call_analytics_service import CallAnalyticsService
                 analytics_svc = CallAnalyticsService()
-                new_analytics = await analytics_svc.analyze_call_transcript(call.transcript or [])
+                new_analytics = await analytics_svc.analyze_call_transcript(
+                    call.transcript or [],
+                    agent_context=analytics_svc.build_agent_context(getattr(call, "agent_config_snapshot", None)),
+                )
                 if new_analytics and new_analytics.get("business_outcome") not in ["No Answer", "Voicemail"]:
                     call.business_outcome = new_analytics.get("business_outcome")
                     call.outcome = new_analytics.get("business_outcome")
@@ -120,6 +123,7 @@ async def analyze_call(
         call.transcript,
         call_duration=call.duration or 0,
         call_status=call.status or "completed",
+        agent_context=CallAnalyticsService.build_agent_context(getattr(call, "agent_config_snapshot", None)),
     )
 
     call.summary = data.get("summary") or call.summary

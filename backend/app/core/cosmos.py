@@ -30,6 +30,7 @@ COSMOS_CONTAINER_USAGE_LEDGER = os.getenv("COSMOS_CONTAINER_USAGE_LEDGER", "usag
 COSMOS_CONTAINER_CREDIT_LOGS = os.getenv("COSMOS_CONTAINER_CREDIT_LOGS", "credit_assignment_log")
 COSMOS_CONTAINER_ACTIVITY_LOGS = os.getenv("COSMOS_CONTAINER_ACTIVITY_LOGS", "activity_logs")
 COSMOS_CONTAINER_APPOINTMENTS = os.getenv("COSMOS_CONTAINER_APPOINTMENTS", "appointments")
+COSMOS_CONTAINER_LEAD_RULES = os.getenv("COSMOS_CONTAINER_LEAD_RULES", "lead_rules")
 
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@desireai.com")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -52,6 +53,7 @@ _ledger_container = None
 _credit_logs_container = None
 _activity_logs_container = None
 _appointments_container = None
+_lead_rules_container = None
 
 def get_cosmos_client() -> Optional[CosmosClient]:
     global _client
@@ -320,9 +322,23 @@ def get_appointments_container():
         print(f"[CosmosDB Error] Failed to get appointments container: {e}")
         return None
 
+def get_lead_rules_container():
+    global _lead_rules_container
+    if _lead_rules_container is not None:
+        return _lead_rules_container
+    db = get_database()
+    if not db:
+        return None
+    try:
+        _lead_rules_container = db.get_container_client(COSMOS_CONTAINER_LEAD_RULES)
+        return _lead_rules_container
+    except Exception as e:
+        print(f"[CosmosDB Error] Failed to get lead rules container: {e}")
+        return None
+
 def init_cosmos_db():
     """Initializes database, containers, and seeds/syncs initial Admin user."""
-    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container, _agent_versions_container, _credits_container, _ledger_container, _credit_logs_container, _activity_logs_container, _appointments_container
+    global _database, _users_container, _twilio_container, _calls_container, _themes_container, _agents_container, _prospects_container, _campaigns_container, _campaign_members_container, _campaign_events_container, _knowledge_documents_container, _knowledge_chunks_container, _agent_versions_container, _credits_container, _ledger_container, _credit_logs_container, _activity_logs_container, _appointments_container, _lead_rules_container
     client = get_cosmos_client()
     if not client:
         print("[CosmosDB Warning] Cosmos client unavailable during startup.")
@@ -349,6 +365,7 @@ def init_cosmos_db():
         # Activity audit trail: auto-expire entries after 180 days
         _activity_logs_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_ACTIVITY_LOGS, partition_key=PartitionKey(path="/organization_id"), default_ttl=15552000)
         _appointments_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_APPOINTMENTS, partition_key=PartitionKey(path="/organization_id"))
+        _lead_rules_container = db.create_container_if_not_exists(id=COSMOS_CONTAINER_LEAD_RULES, partition_key=PartitionKey(path="/organization_id"))
     except Exception as e:
         print(f"[CosmosDB Error] Container verification during startup: {e}")
 

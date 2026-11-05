@@ -245,6 +245,84 @@ export function LeadQualificationRuleEditorModal({
                 </div>
               </div>
 
+              {/* Score words: the organisation's own labels for score ranges */}
+              <div className="bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-heading)]">Your words for scores</h3>
+                  <span className="text-[11px] text-[var(--color-muted)]">Shown next to the score in the lead list. Leave empty to use the standard words.</span>
+                </div>
+                {(rules.score_tiers || []).map((tier, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs">
+                    <span className="text-[var(--color-muted)]">From score</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      disabled={!isAdmin}
+                      value={tier.min_score}
+                      onChange={(e) => {
+                        const next = [...(rules.score_tiers || [])];
+                        next[idx] = { ...tier, min_score: Math.max(0, Math.min(100, parseInt(e.target.value) || 0)) };
+                        setRules({ ...rules, score_tiers: next });
+                      }}
+                      className="w-20 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)]"
+                    />
+                    <span className="text-[var(--color-muted)]">show</span>
+                    <input
+                      type="text"
+                      maxLength={40}
+                      disabled={!isAdmin}
+                      value={tier.label}
+                      placeholder="e.g. Booked, Hot lead, Needs follow-up"
+                      onChange={(e) => {
+                        const next = [...(rules.score_tiers || [])];
+                        next[idx] = { ...tier, label: e.target.value };
+                        setRules({ ...rules, score_tiers: next });
+                      }}
+                      className="flex-1 px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)]"
+                    />
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        aria-label="Remove this word"
+                        onClick={() => setRules({ ...rules, score_tiers: (rules.score_tiers || []).filter((_, i) => i !== idx) })}
+                        className="p-1 text-[var(--color-muted)] hover:text-red-500 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRules({ ...rules, score_tiers: [...(rules.score_tiers || []), { min_score: 80, label: "" }] })}
+                    leftIcon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    Add a word
+                  </Button>
+                )}
+              </div>
+
+              {/* Scoring instructions given to the model together with each agent's own instructions */}
+              <div className="bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg p-5 space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-heading)]">How to judge a good call</h3>
+                <p className="text-[11px] text-[var(--color-muted)]">
+                  Every call is already judged against the goal in its own agent's instructions. Add anything specific to your business here, for example
+                  "a caller who only asks our opening hours and gets them counts as a success", or "a booking only counts when an address was given".
+                </p>
+                <textarea
+                  rows={4}
+                  maxLength={1500}
+                  disabled={!isAdmin}
+                  value={rules.scoring_guidance || ""}
+                  onChange={(e) => setRules({ ...rules, scoring_guidance: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded border border-[var(--color-border)] bg-[var(--color-surface)] resize-y"
+                  placeholder="Optional. Applies to calls analysed after you save."
+                />
+              </div>
+
               {/* Positive Signals Configuration */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">

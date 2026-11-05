@@ -195,8 +195,13 @@ class CallAnalyticsService:
         call_duration: int,
         is_machine: bool,
         llm_available: bool,
+        goal_status: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Returns outcome, interest level, 0-100 score and an explainable breakdown."""
+        """Returns outcome, interest level, 0-100 score and an explainable breakdown.
+
+        goal_status is the model's judgement of THIS agent's own goal (booking a visit, answering questions, qualifying a
+        lead...): "achieved", "partial" or "not_achieved". A reached goal is the best result for any agent, so it outranks
+        the keyword rules below and always scores in the top range."""
         has_dnc = _matches(_DNC_PATTERNS, customer_text)
         has_not_interested = _matches(_NOT_INTERESTED_PATTERNS, customer_text)
         has_buying = _matches(_BUYING_PATTERNS, customer_text)
@@ -236,6 +241,37 @@ class CallAnalyticsService:
         if has_dnc:
             return fixed("Do Not Call", "Customer asked not to be contacted again",
                          next_action="Mark contact as Do Not Contact (DNC)", override_next=True)
+
+        # --- The agent's own goal -------------------------------------------
+        goal = (goal_status or "").strip().lower().replace(" ", "_")
+        slot_confirmed = (
+            str(parsed.get("scheduled_confidence") or "").lower() == "confirmed"
+            and str(parsed.get("scheduled_type") or "").lower() in ("meeting", "callback")
+        )
+        if slot_confirmed and str(parsed.get("scheduled_type") or "").lower() == "meeting":
+            goal = "achieved"  # a booked visit or meeting is the goal of every agent that books
+        if goal == "achieved":
+            engagement = self._engagement_points(customer_word_count, customer_turns, call_duration)
+            qualification = min(sum([
+                bool(_matches(_BUDGET_PATTERNS, customer_text)),
+                bool(_matches(_TIMELINE_PATTERNS, customer_text)),
+                bool(_matches(_AUTHORITY_PATTERNS, customer_text)),
+                bool(parsed.get("key_requirements")),
+            ]) * 5, 20)
+            sentiment = {"positive": 10, "neutral": 5, "negative": 0}.get(str(parsed.get("sentiment") or "Neutral").lower(), 5)
+            objections = parsed.get("objections") or []
+            objection_pts = -min(len(objections) * 5, 15) if isinstance(objections, list) else 0
+            commitment = 15 if slot_confirmed else 0
+            raw = engagement + 40 + qualification + sentiment + commitment + objection_pts  # 0..110
+            # 80..99, spread by how rich the conversation was, so two reached goals never tie at one fixed number
+            score = min(99, 80 + round(max(raw, 0) / 110 * 19))
+            breakdown = {
+                "goal": "achieved", "engagement": engagement, "intent": 40, "qualification": qualification,
+                "sentiment": sentiment, "objections": objection_pts, "commitment": commitment,
+                "raw_total": raw, "total": score, "customer_words": customer_word_count,
+                "customer_turns": customer_turns, "source": "llm+rules" if llm_available else "rules",
+            }
+            return result("Interested", score, breakdown)
 
         # --- Pick the outcome from the strongest evidence -------------------
         if has_not_interested and not has_buying:
@@ -290,13 +326,11 @@ class CallAnalyticsService:
         objection_pts = -min(len(objections) * 5, 15) if isinstance(objections, list) else 0
 
         # A concrete day and time agreed on the call is a commitment, worth more than saying "yes" to the idea
-        confirmed_slot = (
-            str(parsed.get("scheduled_confidence") or "").lower() == "confirmed"
-            and str(parsed.get("scheduled_type") or "").lower() in ("meeting", "callback")
-        )
-        commitment = 15 if confirmed_slot and outcome in ("Interested", "Callback Requested", "Transferred to Specialist", "Asked Details") else 0
+        commitment = 15 if slot_confirmed and outcome in ("Interested", "Callback Requested", "Transferred to Specialist", "Asked Details") else 0
+        # Real progress toward the agent's goal that stops short of reaching it
+        goal_progress = 10 if goal == "partial" else 0
 
-        raw = engagement + intent_pts + qualification + sentiment + commitment + objection_pts
+        raw = engagement + intent_pts + qualification + sentiment + commitment + goal_progress + objection_pts
         lo, hi = self.OUTCOME_BANDS[outcome]
         score = max(lo, min(raw, hi))
 
@@ -307,6 +341,8 @@ class CallAnalyticsService:
             "sentiment": sentiment,
             "objections": objection_pts,
             "commitment": commitment,
+            "goal": goal or None,
+            "goal_progress": goal_progress,
             "raw_total": raw,
             "total": score,
             "customer_words": customer_word_count,
@@ -315,15 +351,33 @@ class CallAnalyticsService:
         }
         return result(outcome, score, breakdown, next_action=next_action, override_next=override)
 
+    @staticmethod
+    def build_agent_context(snapshot: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """What this agent was supposed to do, taken from the agent settings saved on the call."""
+        if not isinstance(snapshot, dict):
+            return None
+        ctx = {
+            "name": snapshot.get("name"),
+            "role": snapshot.get("role"),
+            "objective": snapshot.get("objective") or snapshot.get("description"),
+            "instructions": snapshot.get("system_prompt"),
+        }
+        return ctx if any(ctx.values()) else None
+
     async def analyze_call_transcript(
         self,
         transcript_array: List[Dict[str, Any]],
         call_duration: int = 0,
         call_status: str = "completed",
         timezone_iana: Optional[str] = None,
+        agent_context: Optional[Dict[str, Any]] = None,
+        scoring_guidance: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Analyzes full transcript turns and produces structured evaluation intelligence:
+        Analyzes full transcript turns and produces structured evaluation intelligence.
+        agent_context (name, role, objective, instructions) tells the model what THIS agent was supposed to achieve, and
+        scoring_guidance is the organisation's own scoring instructions; both shape the goal judgement.
+        Produces:
         - Business outcome (taxonomic)
         - Executive summary
         - Customer intent
@@ -405,16 +459,22 @@ class CallAnalyticsService:
 Analyze the following transcript of an outbound/inbound telephone call between an AI voice assistant and a customer/prospect.
 Extract actionable lead intelligence in JSON format. Output valid raw JSON only.
 
-SCORING & CLASSIFICATION GUIDELINES (Production-Grade Commercial Intent):
-- Base Score: A connected call with meaningful human dialogue starts at 30.
-- POSITIVE BUYING INTENT (Score 70 - 95, Classification "Hot", Outcome "Interested"):
-  Customer explicitly wants a demo, requests pricing/quote, asks to book/schedule an appointment, says "ready to buy", "sign up", or agrees to onboarding/trial.
-- WARM ENGAGEMENT (Score 40 - 65, Classification "Warm", Outcome "Asked Details" or "Callback Requested"):
-  Customer asks detailed questions about features, services, or pricing without committing to demo, or explicitly requests to be called back later ("call tomorrow", "busy right now", "send info first").
-- COLD / LOW INTENT (Score 10 - 25, Classification "Cold", Outcome "Not Interested" or "Do Not Call"):
-  Customer says "not interested", "wrong number", "don't call again", raises insurmountable objections ("no budget", "we use a competitor"), or hangs up shortly after greeting.
-- DIRECT HANGUP / NO DIALOGUE (Score 10, Classification "Cold"):
-  Customer answered phone but hung up immediately without dialogue.
+JUDGE THE AGENT'S OWN GOAL (this decides the result, not a fixed sales checklist):
+- Every agent has its own job, described in AGENT INSTRUCTIONS below. Work out that goal first. Examples: an appointment or visit
+  booking agent reaches its goal when a day and time were agreed; a receptionist or information agent reaches it when the caller got
+  the answer or help they asked for; a lead-qualification agent when the needed details were captured; a support agent when the
+  issue was resolved or correctly routed; an outreach agent when the next step (meeting, demo, callback time) was agreed.
+- goal_status = "achieved": the goal was reached. A caller who only asked questions and got good answers from an information agent
+  HAS achieved the goal. Set business_outcome "Interested" and classification "Hot".
+- goal_status = "partial": real progress but not finished (interest shown, a callback agreed, part of the details captured).
+- goal_status = "not_achieved": the caller declined, hung up, was not reachable, or the agent failed to help.
+- Judge only from what was actually said. Never mark achieved because the agent claimed something the caller did not accept.
+
+SCORING & CLASSIFICATION GUIDELINES:
+- Goal achieved: score 80 - 99, Classification "Hot", Outcome "Interested".
+- Partial progress or a detailed question without a decision: score 40 - 79, Classification "Warm", Outcome "Asked Details" or "Callback Requested".
+- Caller declined, wrong number, do not call, or hung up shortly after the greeting: score 10 - 25, Classification "Cold".
+- Connected but no dialogue: score 10, Classification "Cold".
 
 CRITICAL RULE FOR SUMMARY:
 If the customer did NOT reply meaningfully (e.g. voicemail greeting, automated IVR, answering machine, or disconnected with silence), set "summary" to "" (empty string) and "business_outcome" to "No Answer" or "Voicemail".
@@ -444,6 +504,8 @@ JSON OUTPUT STRUCTURE:
   "intent": "Primary customer intent, e.g., 'Demo Request', 'Service Inquiry', 'Callback Request', 'Not Interested'",
   "business_outcome": "Interested | Asked Details | Callback Requested | Follow-up | Not Interested | Do Not Call | Voicemail | No Answer",
   "interest_level": "Hot | Warm | Cold",
+  "goal_status": "achieved | partial | not_achieved",
+  "goal_summary": "ONE short sentence: what this agent's goal was and what happened toward it",
   "lead_score": 0-100,
   "sentiment": "Positive | Neutral | Negative",
   "key_insights": ["Key point 1", "Key point 2"],
@@ -462,6 +524,21 @@ JSON OUTPUT STRUCTURE:
   "needs_audio_recording": false,
   "recording_retention_reason": "Escalation / Negative Sentiment / AI Confusion / None"
 }"""
+
+        ctx_lines = []
+        if agent_context:
+            for label, key in (("Agent name", "name"), ("Role", "role"), ("Objective", "objective")):
+                if agent_context.get(key):
+                    ctx_lines.append(f"{label}: {str(agent_context[key]).strip()[:400]}")
+            if agent_context.get("instructions"):
+                ctx_lines.append("Instructions the agent was given:\n" + str(agent_context["instructions"]).strip()[:1800])
+        if ctx_lines:
+            system_prompt += "\n\nAGENT INSTRUCTIONS (the goal to judge against):\n" + "\n".join(ctx_lines)
+        if scoring_guidance and scoring_guidance.strip():
+            system_prompt += (
+                "\n\nORGANIZATION SCORING INSTRUCTIONS (follow these when judging goal_status and the outcome; they come from the "
+                "business that owns this agent):\n" + scoring_guidance.strip()[:1500]
+            )
 
         from app.services.appointment_time import local_reference
         system_prompt += (
@@ -509,6 +586,7 @@ JSON OUTPUT STRUCTURE:
             call_duration=call_duration,
             is_machine=is_machine,
             llm_available=bool(parsed),
+            goal_status=parsed.get("goal_status"),
         )
         raw_outcome = scoring["outcome"]
         interest_lvl = scoring["interest_level"]
@@ -566,6 +644,8 @@ JSON OUTPUT STRUCTURE:
             "classification": interest_lvl,
             "lead_score": final_score,
             "score_breakdown": scoring["breakdown"],
+            "goal_status": (scoring["breakdown"].get("goal") or str(parsed.get("goal_status") or "").lower().replace(" ", "_") or None),
+            "goal_summary": parsed.get("goal_summary"),
             "sentiment": parsed.get("sentiment", "Positive" if interest_lvl in ["Hot", "Warm"] else "Neutral"),
             "key_insights": parsed.get("key_insights", []),
             "key_requirements": parsed.get("key_requirements", []),

@@ -105,6 +105,8 @@ class LeadListItem(BaseModel):
     meeting_at: Optional[str] = None
     meeting_timezone: Optional[str] = None
     meeting_type: Optional[str] = None
+    score_label: Optional[str] = None      # the organisation's own word for this score, when it set tiers
+    goal_status: Optional[str] = None      # achieved | partial | not_achieved: did the agent reach ITS goal
     call_source: Optional[str] = None      # Campaign | Agent dialer
     call_status: Optional[str] = None      # completed, busy, no-answer, ...
     analytics_status: Optional[str] = None  # ready | pending | unavailable
@@ -183,6 +185,9 @@ class LeadDetailResponse(BaseModel):
     callback_datetime: Optional[str] = None
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
+    score_label: Optional[str] = None
+    goal_status: Optional[str] = None
+    goal_summary: Optional[str] = None
     call_source: Optional[str] = None       # Campaign | Agent dialer
     call_status: Optional[str] = None
     call_duration: int = 0
@@ -251,6 +256,11 @@ class SignalRule(BaseModel):
     category: str = "buying_intent"  # "buying_intent", "decision_maker", "budget_approved", "objection", "negative"
 
 
+class ScoreTier(BaseModel):
+    min_score: int = Field(ge=0, le=100)
+    label: str = Field(min_length=1, max_length=40)
+
+
 class LeadQualificationRules(BaseModel):
     organization_id: str
     qualification_threshold: int = 70
@@ -261,6 +271,10 @@ class LeadQualificationRules(BaseModel):
     auto_qualify_on_budget_approval: bool = True
     auto_tag_qualified_leads: bool = True
     qualification_tag: str = "AI-Qualified"
+    # The organisation's own words for score ranges, e.g. 85 -> "Booked", 60 -> "Promising". Empty = platform words.
+    score_tiers: List[ScoreTier] = Field(default_factory=list)
+    # The organisation's own scoring instructions, given to the model with each agent's instructions
+    scoring_guidance: str = Field(default="", max_length=1500)
     updated_at: Optional[str] = None
     updated_by: Optional[str] = None
 

@@ -348,10 +348,27 @@ export function LeadDetailDrawer({
                           Lead Viability Score:
                         </span>
                         <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          {detail.lead_score}/100
+                          {detail.lead_score}/100{detail.score_label ? ` · ${detail.score_label}` : ""}
                         </span>
                       </div>
                     </div>
+
+                    {detail.goal_status && (
+                      <div className="flex items-start gap-2 text-[11px]">
+                        <span
+                          className={`shrink-0 px-2 py-0.5 rounded-full font-semibold border ${
+                            detail.goal_status === "achieved"
+                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                              : detail.goal_status === "partial"
+                                ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                : "bg-slate-500/10 text-slate-600 border-slate-500/20"
+                          }`}
+                        >
+                          {detail.goal_status === "achieved" ? "Goal reached" : detail.goal_status === "partial" ? "Goal partly reached" : "Goal not reached"}
+                        </span>
+                        {detail.goal_summary && <span className="text-[var(--color-muted)] leading-snug">{detail.goal_summary}</span>}
+                      </div>
+                    )}
 
                     <p className="text-xs text-[var(--color-text)] leading-relaxed italic bg-[var(--color-background)]/60 p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)]/50">
                       "{detail.summary || "Conversation completed. Customer expressed interest in features and services."}"
