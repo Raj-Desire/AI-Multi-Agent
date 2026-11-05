@@ -116,7 +116,9 @@ export async function fetchApi<T>(path: string, options: RequestInit = {}): Prom
           }
         }
 
-        throw new Error(errDetail || `API request failed with status ${res.status}`);
+        const apiError: Error & { status?: number } = new Error(errDetail || `API request failed with status ${res.status}`);
+        apiError.status = res.status;
+        throw apiError;
       }
 
       const resultData = (json.success !== undefined && json.data !== undefined) ? json.data : json;

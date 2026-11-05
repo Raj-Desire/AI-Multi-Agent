@@ -60,7 +60,7 @@ import {
 } from "lucide-react";
 
 function MainContent() {
-  const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin } = useAuth();
+  const { user, isLoading: isAuthLoading, isAdmin, isSuperAdmin, sessionError, retrySession } = useAuth();
   const { draftTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -157,6 +157,26 @@ function MainContent() {
         subMessage="Signing into your voice workspace"
         size="md"
       />
+    );
+  }
+
+  // The saved sign-in is still there but the server did not answer (restarting, or waking up): offer a retry, not the sign-in page
+  if (!user && sessionError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] p-6">
+        <div className="max-w-sm text-center space-y-4">
+          <h1 className="text-lg font-semibold text-[var(--color-heading)]">Can't reach the server</h1>
+          <p className="text-sm text-[var(--color-muted)]">
+            Your sign-in is saved. The server did not respond yet, which usually means it is restarting or waking up.
+          </p>
+          <button
+            onClick={retrySession}
+            className="px-4 py-2 rounded-md bg-[var(--color-primary)] text-white text-sm font-medium cursor-pointer"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
     );
   }
 

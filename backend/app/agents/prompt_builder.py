@@ -625,9 +625,13 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "a meeting, a call): use that exact kind of booking and never swap it for another, such as a \"call with a specialist\". "
             "If booking is your main goal and the caller has described what they need, offer the booking in one short sentence and ask for the "
             "day and time in the same reply (for example \"I can send a technician. What day and time suit you?\"). If booking is only a side "
-            "step (sales or discovery), first ask whether they would like it and wait for a yes, then ask for the day and time. Then repeat the "
-            "chosen day, date and time back once and wait for a yes; only after that yes say it is booked. Never say \"scheduled\" or "
-            "\"booked\" before they confirmed. Collect anything else your instructions require (address, name, device) one item per reply."
+            "step (sales or discovery), first ask whether they would like it and wait for a yes, then ask for the day and time.\n"
+            "- BOOK DIRECTLY AND SAY IT ONCE. As soon as the caller gives a clear day and time (for example \"tomorrow 3\"), it is booked: say so in "
+            "ONE short sentence with the weekday, date and time, like \"Done, you're booked for tomorrow, Friday, November 6, at 3 PM.\" Do NOT ask "
+            "\"is that correct?\", do not ask them to confirm, and do not read it back again later; repeat it only if the caller asks. If they "
+            "correct you (\"no, 2 PM\"), say the new time once the same way and carry on. If they gave only a day or only a time, ask for the "
+            "missing part. Never say the time zone or a region name (such as Asia/Kolkata) in a sentence: say \"3 PM\", nothing more. Collect "
+            "anything else your instructions require (address, name, device) one item per reply."
         )
 
     @staticmethod
@@ -672,12 +676,15 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "- When you ask for or offer a booking time, use real upcoming days from this calendar, for example "
             f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\". If booking is only a side step in your job, do not offer a slot in the "
             "same reply that asks whether they want it.\n"
-            "- When the caller names a day or time (\"tomorrow 5 PM\", \"Friday\"), confirm it back in ONE sentence with the weekday, the "
-            f"calendar date, the time and the timezone, for example \"{tomorrow.strftime('%A, %B %d')} at 5 PM {schedule.timezone_label}\". "
-            "If they gave no day or no time, ask for the missing part. If they gave only a day, ask the time, and the other way round.\n"
+            "- When the caller names a day and a time (\"tomorrow 5 PM\", \"Friday 3\"), book it right away and say it ONCE with the weekday, the "
+            f"calendar date and the time, for example \"Done, you're booked for {tomorrow.strftime('%A, %B %d')} at 5 PM.\" Do not ask them to confirm "
+            "it and do not repeat it later unless they ask. If they change it, say the new time once and continue. If they gave only a day or only "
+            "a time, ask for the missing part.\n"
+            "- Never say the time zone or a region name (a city, \"Asia/...\", \"IST\") in a sentence; say \"5 PM\". Mention a zone only if the caller "
+            "says they are in a different one, and then only once.\n"
             "- Speak only words meant for the caller. Never say bracketed notes or stage directions such as \"[Scheduling the meeting...]\" "
             "and never say \"please hold on\". Do not promise an email or calendar invite unless your facts say you send one.\n"
-            "- Once the booking is confirmed, say so once and ask if there is anything else. When the caller says bye, thanks or that's all, "
+            "- After you say the booking once, add at most a short \"anything else?\", and only the first time: after a correction just state the new time. When the caller says bye, thanks or that's all, "
             "reply with ONE short goodbye that includes the word \"goodbye\", then stop talking."
         )
 

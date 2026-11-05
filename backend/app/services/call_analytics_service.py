@@ -518,7 +518,7 @@ JSON OUTPUT STRUCTURE:
   "scheduled_type": "meeting | callback | null. 'meeting' only when a demo/appointment/visit was explicitly agreed; 'callback' when a call-back time was agreed",
   "scheduled_date": "YYYY-MM-DD in the business timezone for the AGREED date, or null",
   "scheduled_time": "HH:MM 24-hour in the business timezone for the AGREED time, or null",
-  "scheduled_confidence": "confirmed only if BOTH a specific date and a specific time were clearly agreed by the customer; otherwise tentative. Never guess; vague phrases like 'sometime next week' are tentative with null date/time",
+  "scheduled_confidence": "confirmed only if BOTH a specific date and a specific time were clearly named or accepted by the customer (for example the customer answering 'tomorrow 3' to a booking question is confirmed even if they never say yes afterwards); otherwise tentative. If the customer changed the time later in the call, use the FINAL date and time. Never guess; vague phrases like 'sometime next week' are tentative with null date/time",
   "customer_name": "Customer name if mentioned or null",
   "company_name": "Company name if mentioned or null",
   "needs_audio_recording": false,
