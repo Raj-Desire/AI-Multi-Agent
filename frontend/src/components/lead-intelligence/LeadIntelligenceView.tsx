@@ -26,7 +26,6 @@ import { LeadTable } from "./LeadTable";
 import { CalendarView } from "./CalendarView";
 import { CallbackRequestsView } from "./CallbackRequestsView";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
-import { LeadCohortAnalyticsSection } from "./LeadCohortAnalyticsSection";
 import { ExecutiveReportExportModal } from "./ExecutiveReportExportModal";
 import { LeadQualificationRuleEditorModal } from "./LeadQualificationRuleEditorModal";
 import {
@@ -74,7 +73,7 @@ export function LeadIntelligenceView() {
   const cacheScope = user?.organization_id || "default";
 
   // Navigation View Tab: "all_leads" | "interested" | "callbacks" | "analytics" | "cohorts"
-  const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "calendar" | "analytics" | "cohorts">("all_leads");
+  const [activeTab, setActiveTab] = useState<"all_leads" | "interested" | "callbacks" | "calendar" | "analytics">("all_leads");
 
   // Filter State
   const [filters, setFilters] = useState<LeadFilterState>(INITIAL_FILTERS);
@@ -692,20 +691,6 @@ export function LeadIntelligenceView() {
             <span>Campaign Analytics &amp; Trends</span>
           </button>
 
-          <button
-            onClick={() => {
-              setActiveTab("cohorts");
-              handleFilterChange({ outcome: "all" });
-            }}
-            className={`py-2 px-3.5 text-xs font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === "cohorts"
-                ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                : "border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]"
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Cohort Retention Matrix</span>
-          </button>
         </div>
       </div>
 
@@ -854,12 +839,6 @@ export function LeadIntelligenceView() {
         </div>
       )}
 
-      {/* TAB 4: COHORT RETENTION & PROGRESSION MATRIX */}
-      {activeTab === "cohorts" && (
-        <div className="space-y-4">
-          <LeadCohortAnalyticsSection campaignId={filters.campaignId} />
-        </div>
-      )}
 
       {/* Lead Detail Drawer Modal */}
       <LeadDetailDrawer
