@@ -341,11 +341,13 @@ function MainContent() {
 
           {/* Right Status Indicators */}
           <div className="flex items-center gap-2.5">
-            {/* Header Battery/Charging Credit Gauge Pill */}
-            <HeaderCreditWidget
-              creditStatus={creditStatus}
-              onNavigateToDashboard={() => handleTabSelect("usage_credits")}
-            />
+            {/* Header Battery/Charging Credit Gauge Pill - Superadmin Only */}
+            {isSuperAdmin && (
+              <HeaderCreditWidget
+                creditStatus={creditStatus}
+                onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+              />
+            )}
 
             {/* Tenant Organization */}
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-muted)]">
@@ -355,13 +357,15 @@ function MainContent() {
           </div>
         </header>
 
-        {/* Organization Credit Low/Exhausted Warning Banner */}
-        <LowCreditBanner
-          status={creditStatus?.status || "healthy"}
-          remainingMinutes={creditStatus?.remaining_minutes || 0}
-          totalMinutes={creditStatus?.total_credits_minutes || 0}
-          onNavigateToDashboard={() => handleTabSelect("usage_credits")}
-        />
+        {/* Organization Credit Low/Exhausted Warning Banner - Superadmin Only */}
+        {isSuperAdmin && (
+          <LowCreditBanner
+            status={creditStatus?.status || "healthy"}
+            remainingMinutes={creditStatus?.remaining_minutes || 0}
+            totalMinutes={creditStatus?.total_credits_minutes || 0}
+            onNavigateToDashboard={() => handleTabSelect("usage_credits")}
+          />
+        )}
 
         {/* Dynamic Route View - Full Width & Fully Responsive */}
         <main className="flex-1 w-full max-w-full px-3 sm:px-5 lg:px-7 py-4 sm:py-6 text-left">

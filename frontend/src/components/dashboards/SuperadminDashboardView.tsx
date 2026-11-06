@@ -100,6 +100,9 @@ export const SuperadminDashboardView: React.FC<{ onNavigateTenant?: (orgId: stri
 
   const summary = telemetry?.summary;
   const orgs = telemetry?.organizations || [];
+  // The card counts every call; the table below counts completed ones. Showing both keeps the two numbers explainable.
+  const completedCalls = orgs.reduce((sum, o) => sum + (o.completed_calls || 0), 0);
+  const otherCalls = Math.max(0, (summary?.total_calls ?? 0) - completedCalls);
 
   return (
     <div className="space-y-4">
@@ -115,10 +118,13 @@ export const SuperadminDashboardView: React.FC<{ onNavigateTenant?: (orgId: stri
               <span className="text-2xl font-bold text-foreground">
                 {loading ? "..." : (summary?.total_calls ?? 0).toLocaleString()}
               </span>
-              <span className="text-xs text-muted-foreground">in database</span>
+              <span className="text-xs text-muted-foreground">all calls</span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
-              {summary?.total_duration_minutes ? `${summary.total_duration_minutes.toFixed(1)} billed mins` : "Real-time records"}
+              {loading
+                ? "..."
+                : `${completedCalls} completed · ${otherCalls} busy, failed, no answer or in progress`}
+              {summary?.total_duration_minutes ? ` · ${summary.total_duration_minutes.toFixed(1)} billed mins` : ""}
             </p>
           </CardContent>
         </Card>

@@ -348,7 +348,7 @@ export function LeadDetailDrawer({
                           Lead Viability Score:
                         </span>
                         <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          {detail.lead_score}/100{detail.score_label ? ` · ${detail.score_label}` : ""}
+                          {detail.lead_score}/100{detail.tier_label ? ` · ${detail.tier_label}` : detail.score_label ? ` · ${detail.score_label}` : ""}
                         </span>
                       </div>
                     </div>

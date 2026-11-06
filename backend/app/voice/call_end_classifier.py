@@ -30,7 +30,9 @@ _SYSTEM = (
     "do not need anything, or asks not to be called. A question (including 'why are you calling me?' or "
     "'who is this?'), hesitation, a misheard or nonsensical phrase, or 'busy right now, call later' "
     "is NOT wants_to_end unless they refuse outright. Speech recognition often mishears words, so earlier "
-    "turns that make no sense are noise: decide wants_to_end from the LATEST turn only.\n"
+    "turns that make no sense are noise: decide wants_to_end from the LATEST turn only. What the agent said just before is given: "
+    "'I'm good', 'I'm fine', 'doing well' or 'all good' answering 'how are you today?' is a friendly answer, NEVER a refusal. "
+    "Only 'no thanks, I'm good' or 'I'm good, not interested' in reply to an offer or a pitch is a refusal.\n"
     "- language: ISO 639-1 code of the language the other party spoke.\n"
     "- closing: ONE short polite goodbye (max 25 words) in that same language and script, thanking them "
     "and saying they can get in touch if they need help later. For a machine, make it a brief "
@@ -53,7 +55,7 @@ class CallEndVerdict:
 
 async def classify_turn(text: str, agent_languages: Optional[List[str]] = None,
                         stt_language: Optional[str] = None, speaking: Optional[str] = None,
-                        latest: Optional[str] = None) -> Optional[CallEndVerdict]:
+                        latest: Optional[str] = None, agent_last: Optional[str] = None) -> Optional[CallEndVerdict]:
     """Returns a verdict, or None if no LLM is configured or the call failed (caller keeps regex result)."""
     if not text or len(text.split()) < 2:
         return None
@@ -70,6 +72,8 @@ async def classify_turn(text: str, agent_languages: Optional[List[str]] = None,
                  f"Never answer '{stt_language}' just because of the script: decide from the words and sounds.")
     if speaking:
         hint += f"\nThe agent is currently replying in {LANG_NAMES.get(speaking, speaking)}."
+    if agent_last and agent_last.strip():
+        text = f"The agent's previous line: {agent_last.strip()[:300]}\n{text}"
     # The recent turns help spot a menu spread over several segments; the refusal decision belongs to the newest one
     if latest and latest.strip() and latest.strip() != text.strip():
         text = f"Earlier turns (may be misheard, do not judge wants_to_end from them): {text}\nLATEST turn: {latest.strip()}"

@@ -1,3 +1,4 @@
+import os
 import time
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
@@ -7,6 +8,9 @@ from app.core.cosmos import get_calls_container
 
 _CALLS_CACHE: Dict[str, Tuple[List[Call], float]] = {}
 CALLS_CACHE_TTL_SECONDS = 15.0
+# The most calls one list loads. This used to be a hard 100, so an organisation's call list, lead count and dashboards stopped
+# growing at 100: every new call pushed the oldest one out of view.
+MAX_CALLS_PER_LIST = int(os.getenv("CALLS_LIST_MAX", "5000"))
 
 # The calls container is partitioned by /user_id, but most lookups only know the call id or Twilio SID.
 # Remember each call's partition value as calls are listed / saved so later lookups can be 1-RU point reads
@@ -61,7 +65,7 @@ class CallRepository:
                     return [c for c in all_calls if c.agent_id and c.agent_id != ""]
                 return all_calls
 
-            query = "SELECT TOP 100 * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
+            query = f"SELECT TOP {MAX_CALLS_PER_LIST} * FROM c WHERE c.organization_id = @organization_id ORDER BY c.created_at DESC"
             params = [{"name": "@organization_id", "value": organization_id}]
             try:
                 items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
@@ -160,7 +164,7 @@ class CallRepository:
             elif call_type == "ai":
                 type_filter = " AND IS_DEFINED(c.agent_id) AND NOT IS_NULL(c.agent_id) AND c.agent_id != ''"
             query = (
-                f"SELECT TOP 100 {_LIGHT_COLUMNS} FROM c WHERE c.organization_id = @organization_id{type_filter} "
+                f"SELECT TOP {MAX_CALLS_PER_LIST} {_LIGHT_COLUMNS} FROM c WHERE c.organization_id = @organization_id{type_filter} "
                 "ORDER BY c.created_at DESC"
             )
             params = [{"name": "@organization_id", "value": organization_id}]

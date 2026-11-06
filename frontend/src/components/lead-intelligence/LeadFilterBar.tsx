@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CampaignLeadStat, AgentLeadStat } from "../../types";
+import { CampaignLeadStat, AgentLeadStat, QualificationTier } from "../../types";
 import {
   Search,
   X,
@@ -22,6 +22,7 @@ export interface LeadFilterState {
   agentId: string;
   prospectStatus: string;
   followUp: string;
+  selectedTiers?: string[]; // Array of selected tier names
 }
 
 interface LeadFilterBarProps {
@@ -30,6 +31,7 @@ interface LeadFilterBarProps {
   onResetFilters: () => void;
   campaigns: CampaignLeadStat[];
   agents: AgentLeadStat[];
+  qualificationTiers?: QualificationTier[];
   onExportCsv: () => void;
   isExporting: boolean;
   onOpenExecutiveReport?: () => void;
@@ -42,6 +44,7 @@ export function LeadFilterBar({
   onResetFilters,
   campaigns,
   agents,
+  qualificationTiers,
   onExportCsv,
   isExporting,
   onOpenExecutiveReport,
@@ -158,6 +161,13 @@ export function LeadFilterBar({
       id: "followUp",
       label: fuLabels[filters.followUp] || filters.followUp,
       onRemove: () => onFilterChange({ followUp: "all" }),
+    });
+  }
+  if (filters.selectedTiers && filters.selectedTiers.length > 0) {
+    activeChips.push({
+      id: "selectedTiers",
+      label: `Tiers (${filters.selectedTiers.length}): ${filters.selectedTiers.join(", ")}`,
+      onRemove: () => onFilterChange({ selectedTiers: [] }),
     });
   }
 
@@ -294,7 +304,61 @@ export function LeadFilterBar({
 
       {/* Collapsible Advanced Filters Bar */}
       {showAdvanced && (
-        <div className="p-3.5 rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)]/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs animate-in fade-in-50 duration-200">
+        <div className="p-3.5 rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)]/80 shadow-xs space-y-3 text-xs animate-in fade-in-50 duration-200">
+          {/* Multi-Checkbox Qualification Parameter Tiers Filter */}
+          {qualificationTiers && qualificationTiers.length > 0 && (
+            <div className="p-2.5 rounded-md bg-[var(--color-background)] border border-[var(--color-border)] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-[var(--color-heading)] flex items-center gap-1.5 uppercase tracking-wider">
+                  <Sliders className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  Filter by Qualification Tiers (Multi-select)
+                </span>
+                {filters.selectedTiers && filters.selectedTiers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onFilterChange({ selectedTiers: [] })}
+                    className="text-[11px] text-[var(--color-primary)] hover:underline cursor-pointer"
+                  >
+                    Clear Selected
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {qualificationTiers.map((tier) => {
+                  const isChecked = filters.selectedTiers?.includes(tier.name) ?? false;
+                  return (
+                    <label
+                      key={tier.id}
+                      className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-md border text-xs cursor-pointer select-none transition-colors ${
+                        isChecked
+                          ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)] font-semibold shadow-2xs"
+                          : "bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-border-hover,var(--color-border))]"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const current = filters.selectedTiers || [];
+                          const updated = e.target.checked
+                            ? [...current, tier.name]
+                            : current.filter((n) => n !== tier.name);
+                          onFilterChange({ selectedTiers: updated });
+                        }}
+                        className="rounded text-[var(--color-primary)] focus:ring-0 cursor-pointer"
+                      />
+                      <span>{tier.name}</span>
+                      <span className="text-[10px] opacity-70 font-mono">
+                        {tier.is_fallback ? "< fallback" : `≥ ${tier.min_score}`}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Lead Score Range */}
           <div>
             <label className="block text-[11px] font-semibold text-[var(--color-muted)] mb-1">
@@ -323,7 +387,8 @@ export function LeadFilterBar({
               className="w-full px-2.5 py-1.5 text-xs bg-[var(--color-background)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-text)]"
             >
               <option value="all">All Agents</option>
-              {agents.map((ag) => (
+              {/* Deduplicate agents by name defensively on frontend as well */}
+              {Array.from(new Map(agents.map((ag) => [ag.agent_name.trim().toLowerCase(), ag])).values()).map((ag) => (
                 <option key={ag.agent_id} value={ag.agent_id}>
                   {ag.agent_name}
                 </option>
@@ -400,6 +465,7 @@ export function LeadFilterBar({
             </div>
           )}
         </div>
+      </div>
       )}
 
       {/* Active Filter Chips & Clear All */}

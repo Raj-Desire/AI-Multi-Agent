@@ -531,10 +531,8 @@ async def voice_stream_websocket(websocket: WebSocket):
             lower_content = content.lower()
             transfer_target = getattr(agent_config.guardrails, "human_transfer_phone_number", None) if (agent_config and agent_config.guardrails and getattr(agent_config.guardrails, "human_transfer_enabled", True)) else None
             
-            # Fallback to pre-cached Twilio config default forward number if no agent-specific transfer number configured
-            if not transfer_target and cached_inbound_forward_number:
-                transfer_target = cached_inbound_forward_number
-
+            # Only this agent's own transfer number counts. The organisation's default forward number is not borrowed:
+            # an agent set up without forwarding must not start forwarding calls.
             is_transfer_announcement = any(k in lower_content for k in [
                 "transferring you to", "transfer you to", "connect you with a human",
                 "connect you to a human", "transferring to our team", "transferring your call",
@@ -694,14 +692,19 @@ async def voice_stream_websocket(websocket: WebSocket):
         langs = []
         if agent_config and getattr(agent_config, "language", None):
             langs = [agent_config.language.primary, *agent_config.language.secondary]
-        verdict = await classify_turn(heard_text, langs, stt_language=stt_language(), speaking=get_language_tracker().current, latest=latest_text)
+        last_agent_line = next((t.get("content", "") for t in reversed(live_transcript_turns) if t.get("role") == "assistant"), "")
+        verdict = await classify_turn(heard_text, langs, stt_language=stt_language(), speaking=get_language_tracker().current,
+                                      latest=latest_text, agent_last=last_agent_line)
         # A question ("Why are you calling me?", "Who is this?") is never a refusal, whatever the model says
         words = latest_text.strip().lower().split()
         is_question = bool(words) and (
             latest_text.strip().endswith("?")
             or words[0] in ("why", "what", "who", "how", "when", "where", "which", "can", "could", "do", "does", "is", "are", "will", "would")
         )
-        should_end = bool(verdict) and (verdict.is_machine or (verdict.wants_to_end and not is_question))
+        # "I'm good" answering "how are you today?" is a friendly reply, not a refusal, whatever the model says
+        from app.api.v1.voice import is_wellbeing_answer
+        friendly = is_wellbeing_answer(latest_text, last_agent_line, turn_counter)
+        should_end = bool(verdict) and (verdict.is_machine or (verdict.wants_to_end and not is_question and not friendly))
         if not is_concluding_call and not should_end:
             # The model's verdict wins: it knows Hindi that a Gujarati-tuned recognizer wrote in Gujarati script.
             verdict_lang = verdict.language if verdict and verdict.language else None

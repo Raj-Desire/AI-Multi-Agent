@@ -60,6 +60,7 @@ const INITIAL_FILTERS: LeadFilterState = {
   agentId: "all",
   prospectStatus: "all",
   followUp: "all",
+  selectedTiers: [],
 };
 
 export function LeadIntelligenceView() {
@@ -253,6 +254,9 @@ export function LeadIntelligenceView() {
       if (filters.agentId !== "all") params.set("agent_id", filters.agentId);
       if (filters.prospectStatus !== "all") params.set("prospect_status", filters.prospectStatus);
       if (filters.followUp !== "all") params.set("follow_up", filters.followUp);
+      if (filters.selectedTiers && filters.selectedTiers.length > 0) {
+        params.set("qualification_tiers", filters.selectedTiers.join(","));
+      }
 
       if (filters.scoreRange === "70_100" || filters.scoreRange === "81_100") {
         params.set("min_score", "70");
@@ -312,6 +316,7 @@ export function LeadIntelligenceView() {
     filters.agentId,
     filters.prospectStatus,
     filters.followUp,
+    filters.selectedTiers,
     activeTab,
     leadsGroupBy,
     cacheScope,
@@ -527,6 +532,9 @@ export function LeadIntelligenceView() {
       if (filters.agentId !== "all") params.set("agent_id", filters.agentId);
       if (filters.prospectStatus !== "all") params.set("prospect_status", filters.prospectStatus);
       if (filters.followUp !== "all") params.set("follow_up", filters.followUp);
+      if (filters.selectedTiers && filters.selectedTiers.length > 0) {
+        params.set("qualification_tiers", filters.selectedTiers.join(","));
+      }
       if (filters.scoreRange === "70_100" || filters.scoreRange === "81_100") {
         params.set("min_score", "70");
         params.set("max_score", "100");
@@ -704,6 +712,7 @@ export function LeadIntelligenceView() {
             onResetFilters={handleResetFilters}
             campaigns={campaigns}
             agents={agents}
+            qualificationTiers={qualificationRules?.qualification_tiers || []}
             onExportCsv={handleExportCsv}
             isExporting={isExporting}
             onOpenExecutiveReport={() => setIsExecutiveReportOpen(true)}
@@ -869,6 +878,7 @@ export function LeadIntelligenceView() {
         filters={filters}
         activeTab={activeTab}
         dateRangeLabel={summary?.period_label || filters.dateRange}
+        qualificationTiers={qualificationRules?.qualification_tiers || []}
       />
 
       {/* Custom Lead Qualification Rule Editor Modal */}

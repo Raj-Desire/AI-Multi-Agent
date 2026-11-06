@@ -50,7 +50,21 @@ class AgentService:
         return await self.agent_repo.get_available_for_org(ctx.organization_id)
 
     async def create_agent(self, ctx: TenantContext, config: AgentConfiguration) -> AgentConfiguration:
-        """Creates a new AI Agent, strictly enforcing scope and RBAC permissions."""
+        """Creates a new AI Agent, strictly enforcing scope, RBAC permissions, and duplicate name prevention."""
+        org_id = "global" if config.scope == "GLOBAL" else ctx.organization_id
+        target_name = (config.name or "").strip()
+
+        # Prevent duplicate agent names in the same organization (case-insensitive)
+        if target_name:
+            existing_agents = await self.agent_repo.list_by_org(org_id, include_global=False)
+            for ag in existing_agents:
+                if ag.name and ag.name.strip().lower() == target_name.lower():
+                    if getattr(ag, "status", "ACTIVE").upper() != "DELETED":
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"An agent named '{target_name}' already exists in your organization. Please choose a unique name."
+                        )
+
         if not config.agent_id:
             config.agent_id = f"agt_{uuid.uuid4().hex[:10]}"
 
@@ -101,6 +115,18 @@ class AgentService:
                     status_code=403,
                     detail="You do not have permission to modify this organization agent."
                 )
+
+        # Prevent duplicate agent names when updating name
+        target_name = (payload.name or "").strip()
+        if target_name:
+            existing_agents = await self.agent_repo.list_by_org(existing.organization_id or ctx.organization_id, include_global=False)
+            for ag in existing_agents:
+                if ag.agent_id != agent_id and ag.name and ag.name.strip().lower() == target_name.lower():
+                    if getattr(ag, "status", "ACTIVE").upper() != "DELETED":
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"An agent named '{target_name}' already exists in your organization. Please choose a unique name."
+                        )
 
         payload.agent_id = agent_id
         payload.organization_id = existing.organization_id

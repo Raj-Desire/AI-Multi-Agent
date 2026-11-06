@@ -1,11 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Sliders, Plus, Trash2, CheckCircle2, ShieldAlert, Sparkles, Save, RotateCcw, Lock } from "lucide-react";
+import { X, Sliders, Plus, Trash2, CheckCircle2, ShieldAlert, Sparkles, Save, RotateCcw, Lock, Palette } from "lucide-react";
 import { Button } from "../ui/Button";
-import { LeadQualificationRules, SignalRule } from "../../types";
+import { LeadQualificationRules, SignalRule, QualificationTier } from "../../types";
 import { fetchApi } from "../../api-client";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
+
+const AVAILABLE_COLORS = [
+  { id: "emerald", label: "Emerald", border: "border-emerald-500/30", bg: "bg-emerald-500/10", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" },
+  { id: "teal", label: "Teal", border: "border-teal-500/30", bg: "bg-teal-500/10", text: "text-teal-600 dark:text-teal-400", dot: "bg-teal-500" },
+  { id: "blue", label: "Blue", border: "border-blue-500/30", bg: "bg-blue-500/10", text: "text-blue-600 dark:text-blue-400", dot: "bg-blue-500" },
+  { id: "indigo", label: "Indigo", border: "border-indigo-500/30", bg: "bg-indigo-500/10", text: "text-indigo-600 dark:text-indigo-400", dot: "bg-indigo-500" },
+  { id: "purple", label: "Purple", border: "border-purple-500/30", bg: "bg-purple-500/10", text: "text-purple-600 dark:text-purple-400", dot: "bg-purple-500" },
+  { id: "amber", label: "Amber", border: "border-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" },
+  { id: "orange", label: "Orange", border: "border-orange-500/30", bg: "bg-orange-500/10", text: "text-orange-600 dark:text-orange-400", dot: "bg-orange-500" },
+  { id: "rose", label: "Rose", border: "border-rose-500/30", bg: "bg-rose-500/10", text: "text-rose-600 dark:text-rose-400", dot: "bg-rose-500" },
+  { id: "slate", label: "Slate", border: "border-slate-500/30", bg: "bg-slate-500/10", text: "text-slate-600 dark:text-slate-400", dot: "bg-slate-500" },
+];
+
+export function getColorConfig(colorName?: string) {
+  const match = AVAILABLE_COLORS.find((c) => c.id === colorName);
+  return match || AVAILABLE_COLORS[0];
+}
 
 interface LeadQualificationRuleEditorModalProps {
   isOpen: boolean;
@@ -42,6 +59,35 @@ export function LeadQualificationRuleEditorModal({
     setIsLoading(true);
     try {
       const res = await fetchApi<LeadQualificationRules>("/lead-intelligence/qualification-rules");
+      // Ensure qualification_tiers exists with defaults if missing
+      if (!res.qualification_tiers || res.qualification_tiers.length === 0) {
+        res.qualification_tiers = [
+          {
+            id: "tier_hot",
+            name: "Qualified (Hot)",
+            min_score: res.qualification_threshold ?? 70,
+            color: "emerald",
+            description: "Leads scoring above this receive top priority and immediate CRM assignment.",
+            is_fallback: false,
+          },
+          {
+            id: "tier_warm",
+            name: "Warm Interested",
+            min_score: res.warm_threshold ?? 40,
+            color: "amber",
+            description: "Leads with moderate engagement queued for proactive follow-up.",
+            is_fallback: false,
+          },
+          {
+            id: "tier_cold",
+            name: "Cold Lead",
+            min_score: 0,
+            color: "slate",
+            description: "Scores below warm threshold are classified as Cold.",
+            is_fallback: true,
+          },
+        ];
+      }
       setRules(res);
     } catch (err: any) {
       toast.error("Failed to load qualification rules: " + (err.message || "Unknown error"));
@@ -172,76 +218,174 @@ export function LeadQualificationRuleEditorModal({
                 </div>
               )}
 
-              {/* Threshold Sliders */}
+              {/* Dynamic Qualification Tiers (Custom names, colors & score logic: 2 to 5 tiers) */}
               <div className="bg-[var(--color-background)] border border-[var(--color-border)] rounded-lg p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-heading)] flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
-                    Classification Thresholds (0 - 100)
-                  </h3>
-                  <span className="text-[11px] text-[var(--color-muted)]">
-                    Defines Hot, Warm, and Cold categorization
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-heading)] flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+                      Organization Qualification Parameters ({rules.qualification_tiers?.length || 3}/5)
+                    </h3>
+                    <span className="text-[11px] text-[var(--color-muted)]">
+                      Customize tier names, colors, and scoring rules for your organization.
+                    </span>
+                  </div>
+                  {isAdmin && (rules.qualification_tiers?.length || 0) < 5 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const current = rules.qualification_tiers || [];
+                        const nonFallback = current.filter((t) => !t.is_fallback);
+                        const lastScore = nonFallback.length > 0 ? nonFallback[nonFallback.length - 1].min_score : 50;
+                        const newScore = Math.max(10, lastScore - 15);
+                        const newTier: QualificationTier = {
+                          id: "tier_" + Date.now(),
+                          name: `Tier ${current.length + 1}`,
+                          min_score: newScore,
+                          color: AVAILABLE_COLORS[(current.length) % AVAILABLE_COLORS.length].id,
+                          description: "Custom lead qualification tier",
+                          is_fallback: false,
+                        };
+                        // Insert right before fallback tier
+                        const fallbackIdx = current.findIndex((t) => t.is_fallback);
+                        const nextTiers = fallbackIdx >= 0
+                          ? [...current.slice(0, fallbackIdx), newTier, ...current.slice(fallbackIdx)]
+                          : [...current, newTier];
+                        setRules({ ...rules, qualification_tiers: nextTiers });
+                      }}
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                    >
+                      Add Parameter
+                    </Button>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Qualified / Hot */}
-                  <div className="p-3 rounded-md bg-[var(--color-surface)] border border-emerald-500/20 shadow-2xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Qualified (Hot)
-                      </span>
-                      <span className="text-xs font-bold text-emerald-600">≥ {rules.qualification_threshold}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="50"
-                      max="95"
-                      disabled={!isAdmin}
-                      value={rules.qualification_threshold}
-                      onChange={(e) =>
-                        setRules({ ...rules, qualification_threshold: parseInt(e.target.value) })
-                      }
-                      className={`w-full accent-[var(--color-primary)] ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
-                    />
-                    <p className="text-[10px] text-[var(--color-muted)]">
-                      Leads scoring above this receive top priority and immediate CRM assignment.
-                    </p>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {(rules.qualification_tiers || []).map((tier, idx) => {
+                    const colorCfg = getColorConfig(tier.color);
+                    const isFallback = Boolean(tier.is_fallback);
 
-                  {/* Warm */}
-                  <div className="p-3 rounded-md bg-[var(--color-surface)] border border-amber-500/20 shadow-2xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-amber-600">Warm Interested</span>
-                      <span className="text-xs font-bold text-amber-600">≥ {rules.warm_threshold}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="25"
-                      max="65"
-                      disabled={!isAdmin}
-                      value={rules.warm_threshold}
-                      onChange={(e) =>
-                        setRules({ ...rules, warm_threshold: parseInt(e.target.value) })
-                      }
-                      className={`w-full accent-amber-600 ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
-                    />
-                    <p className="text-[10px] text-[var(--color-muted)]">
-                      Leads with moderate engagement queued for proactive follow-up.
-                    </p>
-                  </div>
+                    // Find previous tier threshold to show < X boundary on fallback
+                    const prevTier = idx > 0 ? (rules.qualification_tiers || [])[idx - 1] : null;
 
-                  {/* Cold */}
-                  <div className="p-3 rounded-md bg-[var(--color-surface)] border border-slate-500/20 shadow-2xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-500">Cold Lead</span>
-                      <span className="text-xs font-bold text-slate-500">&lt; {rules.warm_threshold}</span>
-                    </div>
-                    <div className="text-[11px] text-[var(--color-muted)] pt-1">
-                      Scores below warm threshold are classified as Cold.
-                    </div>
-                  </div>
+                    return (
+                      <div
+                        key={tier.id || idx}
+                        className={`p-3.5 rounded-lg bg-[var(--color-surface)] border ${colorCfg.border} shadow-2xs space-y-3 flex flex-col justify-between`}
+                      >
+                        <div className="space-y-2.5">
+                          {/* Header: Name input & Score badge */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              <span className={`w-2.5 h-2.5 rounded-full ${colorCfg.dot} shrink-0`} />
+                              <input
+                                type="text"
+                                disabled={!isAdmin}
+                                value={tier.name}
+                                onChange={(e) => {
+                                  const next = [...(rules.qualification_tiers || [])];
+                                  next[idx] = { ...tier, name: e.target.value };
+                                  setRules({ ...rules, qualification_tiers: next });
+                                }}
+                                placeholder="Tier name"
+                                className={`text-xs font-bold ${colorCfg.text} bg-transparent border-b border-transparent hover:border-[var(--color-border)] focus:border-[var(--color-primary)] focus:outline-none w-full truncate`}
+                              />
+                            </div>
+
+                            <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded-md ${colorCfg.bg} ${colorCfg.text} shrink-0`}>
+                              {isFallback ? (prevTier ? `< ${prevTier.min_score}` : "< 40") : `≥ ${tier.min_score}`}
+                            </span>
+
+                            {isAdmin && !isFallback && (rules.qualification_tiers || []).length > 2 && (
+                              <button
+                                type="button"
+                                title="Remove parameter"
+                                onClick={() => {
+                                  const next = (rules.qualification_tiers || []).filter((_, i) => i !== idx);
+                                  setRules({ ...rules, qualification_tiers: next });
+                                }}
+                                className="text-[var(--color-muted)] hover:text-rose-500 p-0.5 cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Color picker selector */}
+                          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-[var(--color-border)]/50">
+                            <div className="flex items-center justify-between text-[10px] text-[var(--color-muted)] font-medium">
+                              <span className="flex items-center gap-1">
+                                <Palette className="w-3 h-3" />
+                                Color Theme:
+                              </span>
+                              <span className="capitalize font-semibold text-[var(--color-heading)]">{colorCfg.label}</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 py-0.5">
+                              {AVAILABLE_COLORS.map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  disabled={!isAdmin}
+                                  title={c.label}
+                                  onClick={() => {
+                                    const next = [...(rules.qualification_tiers || [])];
+                                    next[idx] = { ...tier, color: c.id };
+                                    setRules({ ...rules, qualification_tiers: next });
+                                  }}
+                                  className={`w-4 h-4 rounded-full ${c.dot} transition-transform cursor-pointer ${
+                                    tier.color === c.id ? "ring-2 ring-offset-1 ring-slate-900 dark:ring-white scale-125" : "opacity-60 hover:opacity-100 hover:scale-110"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Slider / Range (if not fallback) */}
+                          {!isFallback ? (
+                            <div className="space-y-1 pt-1">
+                              <div className="flex justify-between items-center text-[10px] text-[var(--color-muted)]">
+                                <span>Minimum Score</span>
+                                <span className="font-mono font-semibold">{tier.min_score}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="10"
+                                max="95"
+                                disabled={!isAdmin}
+                                value={tier.min_score}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  const next = [...(rules.qualification_tiers || [])];
+                                  next[idx] = { ...tier, min_score: val };
+                                  setRules({ ...rules, qualification_tiers: next });
+                                }}
+                                className={`w-full accent-[var(--color-primary)] ${isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
+                              />
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-[var(--color-muted)] pt-1 italic">
+                              Fallback tier for any caller score below the thresholds above.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Description field */}
+                        <input
+                          type="text"
+                          disabled={!isAdmin}
+                          value={tier.description || ""}
+                          placeholder="Short description (optional)..."
+                          onChange={(e) => {
+                            const next = [...(rules.qualification_tiers || [])];
+                            next[idx] = { ...tier, description: e.target.value };
+                            setRules({ ...rules, qualification_tiers: next });
+                          }}
+                          className="text-[10px] text-[var(--color-muted)] bg-transparent border-t border-[var(--color-border)]/40 pt-1.5 focus:outline-none focus:text-[var(--color-text)]"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

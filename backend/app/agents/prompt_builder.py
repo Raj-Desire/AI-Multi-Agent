@@ -635,6 +635,34 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         )
 
     @staticmethod
+    def _transfer_number(config: AgentConfiguration) -> Optional[str]:
+        """The number this agent may forward callers to: its own, and only while forwarding is switched on."""
+        guard = getattr(config, "guardrails", None)
+        if not guard or not getattr(guard, "human_transfer_enabled", True):
+            return None
+        number = (getattr(guard, "human_transfer_phone_number", None) or "").strip()
+        return number or None
+
+    @staticmethod
+    def _build_transfer_rule(config: AgentConfiguration) -> str:
+        if VoicePromptBuilder._transfer_number(config):
+            return (
+                "[CALL TRANSFER - AVAILABLE, THIS BEATS ANY OTHER INSTRUCTION ABOUT TRANSFERS]\n"
+                "- You can connect the caller to a specialist by phone. Do it only when the caller asks to speak to a person, a senior person or a "
+                "specialist, or when you truly cannot help. Say one short line such as \"Sure, I'll connect you to a specialist now.\" and nothing more.\n"
+                "- Do not offer a transfer when you can answer or book yourself."
+            )
+        return (
+            "[CALL TRANSFER - NOT AVAILABLE ON THIS AGENT, THIS BEATS ANY OTHER INSTRUCTION ABOUT TRANSFERS]\n"
+            "- You cannot transfer, forward or connect calls. Never offer it, never say \"I'll transfer you\", \"connect you\" or \"please hold\", "
+            "even if your other instructions mention a live transfer or a specialist on the line.\n"
+            "- If the caller asks for a person, a manager, a senior person or a specialist, say politely in one or two short sentences: "
+            "\"I'm sorry, I can't connect you right now, but our team will reach out to you soon.\" Then, if your job includes booking, "
+            "add \"Would you like me to schedule a meeting or a call with them?\" If it does not, add \"Is there anything I can note down for them?\"\n"
+            "- If they accept the meeting or call, book it as usual. If they decline, thank them and finish politely."
+        )
+
+    @staticmethod
     def _outbound_rewrite(text: str) -> str:
         """A saved prompt written for inbound calls says 'Thank you for calling! How can I assist you today?'. On a call the
         agent placed, those lines are wrong and the model repeats them, so they are replaced for outbound calls only."""
@@ -945,6 +973,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         is_outbound = getattr(config, "_call_direction", "") == "outbound"
         outbound_anchor = VoicePromptBuilder._build_outbound_anchor() if is_outbound else ""
         speaking_limits = VoicePromptBuilder._build_speaking_limits(config.response_length)
+        transfer_rule = VoicePromptBuilder._build_transfer_rule(config)
         length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
@@ -961,10 +990,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
 3. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions. If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
 4. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Briefly reflect their key point in your own words when it helps; short acknowledgments like "I understand" or "That makes sense" are fine occasionally, but never the same stock phrase every turn and deliver a direct, tailored response addressing their core points.
 5. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team!") and smoothly continue answering their inquiry.
-6. HUMAN ESCALATION & TRANSFER: ONLY if the caller EXPLICITLY demands to speak to an actual live human person or supervisor (e.g., "Transfer me to a live human right now", "I want to talk to a real person", "transfer my call"):
-- If on a live telephone line: "I understand completely. Please hold while I transfer you to our specialist right away."
-- If in a live browser test preview: "I understand completely! In this live preview environment, direct telephone transfers are simulated, but on a live inbound call you will be immediately transferred to our specialist."
-Do NOT offer this unprompted when the caller is simply asking about products, pricing, or bookings!
+6. HUMAN ESCALATION & TRANSFER: follow the [CALL TRANSFER] block near the top of this prompt exactly. Transfer only exists when that block says it is available, and never offer it unprompted when the caller is simply asking about products, pricing, or bookings.
 7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
 8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
 9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
@@ -1032,6 +1058,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 VoicePromptBuilder._outbound_rewrite(VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()))
                 if is_outbound else VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()),
                 speaking_limits,
+                transfer_rule,
                 outbound_anchor,
                 date_anchor,
                 knowledge_section,
@@ -1056,7 +1083,10 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
             skills_directives = []
             if config.skills:
                 skills_directives.append("[AUTHORIZED CALL CAPABILITIES & ACTIONS]")
+                can_transfer = bool(VoicePromptBuilder._transfer_number(config))
                 for sk in config.skills:
+                    if "transfer" in sk.lower() and not can_transfer:
+                        continue  # a listed skill must not promise forwarding when no transfer number is set
                     skills_directives.append(f"- {sk}: Fully authorized to execute this capability during calls when relevant.")
             skills_text = "\n".join(skills_directives) if skills_directives else ""
 
@@ -1064,6 +1094,7 @@ Do NOT offer this unprompted when the caller is simply asking about products, pr
                 f"You are {config.name}, a {config.role} speaking on a live telephone call.",
                 f"PRIMARY GOAL: {config.objective}",
                 speaking_limits,
+                transfer_rule,
                 outbound_anchor,
                 date_anchor,
                 personality_section,

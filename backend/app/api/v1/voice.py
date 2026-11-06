@@ -155,6 +155,23 @@ def detect_conversation_conclusion(text: str) -> bool:
     return any(p in last for p in _FAREWELL_PHRASES) or bool(_FAREWELL_WORD.search(last)) or bool(_FAREWELL_WISH.search(last))
 
 
+_WELLBEING_WORDS = ("good", "fine", "great", "well", "okay", "ok", "alright", "not bad", "awesome", "excellent")
+_REFUSAL_WORDS = re.compile(r"\b(no|not|don'?t|do not|stop|busy|later|nothing|never|can'?t)\b")
+
+
+def is_wellbeing_answer(text: str, agent_last: str = "", caller_turns: int = 99) -> bool:
+    """The caller answering 'how are you?': 'I'm good', 'doing well, you?'. It sounds like 'no thanks, I'm good', so it
+    is told apart by what was asked: right after the greeting, or after any 'how are you', it is only a friendly answer."""
+    words = re.findall(r"[\w']+", (text or "").lower())
+    if not words or len(words) > 8:
+        return False
+    low = " ".join(words)
+    if _REFUSAL_WORDS.search(low) or not any(w in low for w in _WELLBEING_WORDS):
+        return False
+    asked = bool(re.search(r"how are you|how're you|how's it going|how do you do|hope you('re| are) (well|good|doing)", (agent_last or "").lower()))
+    return asked or caller_turns <= 1
+
+
 def detect_caller_farewell(text: str) -> bool:
     """The caller is saying goodbye ("Okay. Bye.", "thanks, goodbye"): a short turn that ends in a farewell.
     Long turns are excluded so a goodbye mentioned inside a sentence never ends the call."""

@@ -166,10 +166,11 @@ async def get_twilio_balance(
     ctx: TenantContext = Depends(get_tenant_context),
     service: TwilioService = Depends(get_twilio_service)
 ):
-    if ctx.role not in ["admin", "superadmin"]:
+    # Confidential balance: strictly restricted to superadmins only
+    if ctx.role != "superadmin":
         raise HTTPException(
             status_code=403,
-            detail="Forbidden: Only Organization Administrators or Superadmins can view Twilio account balance."
+            detail="Forbidden: Twilio account balance and billing details are confidential and restricted to platform Superadmins."
         )
 
     target_org_id = ctx.organization_id

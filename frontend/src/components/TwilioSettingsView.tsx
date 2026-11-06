@@ -125,6 +125,7 @@ export function TwilioSettingsView() {
   }
 
   async function loadBalance(targetOrgId?: string) {
+    if (!isSuperAdmin) return;
     try {
       setLoadingBalance(true);
       const url = targetOrgId && isSuperAdmin
@@ -433,7 +434,7 @@ export function TwilioSettingsView() {
         }
         actions={
           <div className="flex items-center gap-2">
-            {config && balanceInfo?.balance && (
+            {isSuperAdmin && config && balanceInfo?.balance && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs shadow-2xs">
                 <Wallet className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
                 <span className="font-semibold text-[var(--color-heading)] font-mono">
@@ -671,8 +672,8 @@ export function TwilioSettingsView() {
         {/* TAB 1: Credentials & Numbers */}
         {activeTab === "credentials" && (
           <div className="divide-y divide-[var(--color-border)]">
-            {/* Account Balance Overview Card */}
-            {config && (
+            {/* Account Balance Overview Card - Superadmin Only */}
+            {isSuperAdmin && config && (
               <FormSection
                 title="Twilio Account Balance & Billing"
                 description="Live balance on your connected Twilio account. Keep a positive balance for uninterrupted outbound and inbound AI calls."

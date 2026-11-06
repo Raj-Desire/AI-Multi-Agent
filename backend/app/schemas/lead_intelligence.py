@@ -105,7 +105,9 @@ class LeadListItem(BaseModel):
     meeting_at: Optional[str] = None
     meeting_timezone: Optional[str] = None
     meeting_type: Optional[str] = None
-    score_label: Optional[str] = None      # the organisation's own word for this score, when it set tiers
+    score_label: Optional[str] = None
+    tier_label: Optional[str] = None
+    tier_color: Optional[str] = None      # the organisation's own word for this score, when it set tiers
     goal_status: Optional[str] = None      # achieved | partial | not_achieved: did the agent reach ITS goal
     call_source: Optional[str] = None      # Campaign | Agent dialer
     call_status: Optional[str] = None      # completed, busy, no-answer, ...
@@ -186,6 +188,8 @@ class LeadDetailResponse(BaseModel):
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
     score_label: Optional[str] = None
+    tier_label: Optional[str] = None
+    tier_color: Optional[str] = None
     goal_status: Optional[str] = None
     goal_summary: Optional[str] = None
     call_source: Optional[str] = None       # Campaign | Agent dialer
@@ -261,11 +265,21 @@ class ScoreTier(BaseModel):
     label: str = Field(min_length=1, max_length=40)
 
 
+class QualificationTier(BaseModel):
+    id: str
+    name: str = Field(min_length=1, max_length=50)
+    min_score: int = Field(ge=0, le=100, default=0)
+    color: str = Field(default="emerald")  # emerald, teal, blue, indigo, purple, amber, orange, rose, slate
+    description: Optional[str] = None
+    is_fallback: bool = False  # Catches everything below the lowest threshold
+
+
 class LeadQualificationRules(BaseModel):
     organization_id: str
     qualification_threshold: int = 70
     warm_threshold: int = 40
     cold_threshold: int = 20
+    qualification_tiers: Optional[List[QualificationTier]] = None
     positive_signals: List[SignalRule] = Field(default_factory=list)
     negative_signals: List[SignalRule] = Field(default_factory=list)
     auto_qualify_on_budget_approval: bool = True

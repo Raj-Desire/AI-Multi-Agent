@@ -1072,6 +1072,8 @@ export interface LeadListItem {
   meeting_timezone?: string | null;
   meeting_type?: string | null;
   score_label?: string | null;
+  tier_label?: string | null;
+  tier_color?: string | null;
   goal_status?: string | null;
   call_source?: string | null;
   call_status?: string | null;
@@ -1145,6 +1147,8 @@ export interface LeadDetailResponse {
   agent_id?: string | null;
   agent_name?: string | null;
   score_label?: string | null;
+  tier_label?: string | null;
+  tier_color?: string | null;
   goal_status?: string | null;
   goal_summary?: string | null;
   call_source?: string | null;
@@ -1221,11 +1225,21 @@ export interface SignalRule {
   category: "buying_intent" | "decision_maker" | "budget_approved" | "objection" | "negative";
 }
 
+export interface QualificationTier {
+  id: string;
+  name: string;
+  min_score: number;
+  color: string; // "emerald" | "teal" | "blue" | "indigo" | "purple" | "amber" | "orange" | "rose" | "slate"
+  description?: string;
+  is_fallback?: boolean;
+}
+
 export interface LeadQualificationRules {
   organization_id: string;
   qualification_threshold: number;
   warm_threshold: number;
   cold_threshold: number;
+  qualification_tiers?: QualificationTier[];
   positive_signals: SignalRule[];
   negative_signals: SignalRule[];
   auto_qualify_on_budget_approval: boolean;

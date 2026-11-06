@@ -98,12 +98,43 @@ export function LeadTable({
   };
 
 
-  const getScoreMeter = (score: number) => {
+  const getTierColorClass = (colorName?: string) => {
+    switch (colorName) {
+      case "emerald":
+        return { bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" };
+      case "teal":
+        return { bar: "bg-teal-500", text: "text-teal-600 dark:text-teal-400", bg: "bg-teal-500/10", border: "border-teal-500/20" };
+      case "blue":
+        return { bar: "bg-blue-500", text: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" };
+      case "indigo":
+        return { bar: "bg-indigo-500", text: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-500/10", border: "border-indigo-500/20" };
+      case "purple":
+        return { bar: "bg-purple-500", text: "text-purple-600 dark:text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" };
+      case "amber":
+        return { bar: "bg-amber-500", text: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" };
+      case "orange":
+        return { bar: "bg-orange-500", text: "text-orange-600 dark:text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" };
+      case "rose":
+        return { bar: "bg-rose-500", text: "text-rose-600 dark:text-rose-400", bg: "bg-rose-500/10", border: "border-rose-500/20" };
+      case "slate":
+      default:
+        return { bar: "bg-slate-500", text: "text-slate-600 dark:text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" };
+    }
+  };
+
+  const getScoreMeter = (score: number, tierColor?: string | null) => {
     let color = "bg-rose-500";
-    if (score >= qualificationThreshold) color = "bg-emerald-500";
-    else if (score >= warmThreshold) color = "bg-blue-500";
-    else if (score > 0) color = "bg-amber-500";
-    else color = "bg-[var(--color-border)]";
+    if (tierColor) {
+      color = getTierColorClass(tierColor).bar;
+    } else if (score >= qualificationThreshold) {
+      color = "bg-emerald-500";
+    } else if (score >= warmThreshold) {
+      color = "bg-blue-500";
+    } else if (score > 0) {
+      color = "bg-amber-500";
+    } else {
+      color = "bg-[var(--color-border)]";
+    }
 
     return (
       <div className="flex items-center gap-2">
@@ -230,12 +261,13 @@ export function LeadTable({
                   </div>
                 </th>
                 <th className="py-3 px-3">Outcome</th>
+                <th className="py-3 px-3">Qualification Tier</th>
                 <th
                   onClick={() => onSortChange("lead_score")}
                   className="py-3 px-3 cursor-pointer hover:text-[var(--color-text)] transition-colors"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Lead Score</span>
+                    <span>Score</span>
                     <ArrowUpDown className="w-3 h-3 opacity-60" />
                   </div>
                 </th>
@@ -253,7 +285,7 @@ export function LeadTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]/60">
-              {leads.map((lead) => {
+              {leads.map((lead, idx) => {
                 // Highlight exactly the one call that was asked for; the contact id is only a fallback when no call is given.
                 const isHighlighted = highlightedCallId
                   ? lead.last_call_id === highlightedCallId
@@ -263,7 +295,8 @@ export function LeadTable({
                     key={lead.last_call_id || lead.prospect_id}
                     id={`lead-row-${lead.last_call_id || lead.prospect_id}`}
                     onClick={() => onSelectLead(lead)}
-                    className={`transition-[background-color,box-shadow] duration-700 ease-out cursor-pointer group ${
+                    style={{ animationDelay: `${Math.min(idx * 35, 350)}ms` }}
+                    className={`animate-row-rise transition-[background-color,box-shadow] duration-500 ease-out cursor-pointer group ${
                       isHighlighted
                         ? "bg-[var(--color-primary)]/10 shadow-[inset_3px_0_0_var(--color-primary)]"
                         : "hover:bg-[var(--color-surface-hover,var(--color-border)/20)]"
@@ -317,13 +350,25 @@ export function LeadTable({
                   {/* Outcome */}
                   <td className="py-3 px-3">{getOutcomeBadge(lead.business_outcome)}</td>
 
+                  {/* Qualification Parameter / Tier */}
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    {lead.tier_label ? (
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ${getTierColorClass(lead.tier_color || "").bg} ${getTierColorClass(lead.tier_color || "").text} border ${getTierColorClass(lead.tier_color || "").border} shadow-2xs`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${getTierColorClass(lead.tier_color || "").bar}`} />
+                        <span>{lead.tier_label}</span>
+                      </span>
+                    ) : lead.score_label ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20">
+                        {lead.score_label}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-[var(--color-muted)] italic">—</span>
+                    )}
+                  </td>
 
                   {/* Lead Score */}
                   <td className="py-3 px-3">
-                    {getScoreMeter(lead.lead_score)}
-                    {lead.score_label && (
-                      <span className="mt-1 inline-block text-[11px] font-semibold text-[var(--color-heading)]">{lead.score_label}</span>
-                    )}
+                    {getScoreMeter(lead.lead_score, lead.tier_color)}
                   </td>
 
                   {/* Last Call */}

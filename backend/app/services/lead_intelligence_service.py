@@ -34,7 +34,8 @@ from app.schemas.lead_intelligence import (
     CohortGroup,
     CohortStageMetrics,
     LeadQualificationRules,
-    SignalRule
+    SignalRule,
+    QualificationTier
 )
 
 logger = logging.getLogger("lead_intelligence_service")
@@ -198,6 +199,35 @@ def bucket_for_call(
         qualification_threshold=qualification_threshold,
         warm_threshold=warm_threshold,
     )
+
+
+def qualification_tier_for(score: Optional[int], rules: Any) -> Tuple[Optional[str], Optional[str]]:
+    """Returns (tier_name, tier_color) based on organization qualification tiers (max 5).
+    Falls back to score_label or default classification."""
+    if score is None:
+        return None, None
+    q_tiers = getattr(rules, "qualification_tiers", None) or []
+    if q_tiers:
+        # Sort non-fallback tiers by min_score descending
+        active_tiers = [t for t in q_tiers if not getattr(t, "is_fallback", False)]
+        active_tiers.sort(key=lambda t: getattr(t, "min_score", 0), reverse=True)
+        for t in active_tiers:
+            if score >= getattr(t, "min_score", 0):
+                return getattr(t, "name", None), getattr(t, "color", "emerald")
+        # Lowest fallback tier
+        fallback = next((t for t in q_tiers if getattr(t, "is_fallback", False)), None)
+        if fallback:
+            return getattr(fallback, "name", None), getattr(fallback, "color", "slate")
+
+    # If no custom qualification_tiers, fallback to standard thresholds
+    q_thresh = getattr(rules, "qualification_threshold", 70) if rules else 70
+    w_thresh = getattr(rules, "warm_threshold", 40) if rules else 40
+    if score >= q_thresh:
+        return "Qualified (Hot)", "emerald"
+    elif score >= w_thresh:
+        return "Warm Interested", "amber"
+    else:
+        return "Cold Lead", "slate"
 
 
 def score_label_for(score: Optional[int], rules: Any) -> Optional[str]:
@@ -1008,13 +1038,21 @@ class LeadIntelligenceService:
 
         agents_map: Dict[str, Dict[str, Any]] = {}
 
+        # Fetch currently active/valid agents from database to filter out deleted agents and deduplicate by name
+        active_agents_list = await self.agent_repo.list_by_org(ctx.organization_id, include_global=True)
+        active_agent_ids = {a.agent_id: a.name for a in active_agents_list if getattr(a, "status", "ACTIVE").upper() != "DELETED"}
+
         for c in calls:
             cdt = self._get_call_created_at(c)
             if not (start_dt <= cdt <= end_dt):
                 continue
 
             agent_id = c.agent_id or "default_agent"
-            agent_name = c.agent_name or "AI Voice Assistant"
+            # If agent was deleted or is not an active agent in this org, exclude from agent performance filter list
+            if active_agent_ids and agent_id != "default_agent" and agent_id not in active_agent_ids:
+                continue
+
+            agent_name = active_agent_ids.get(agent_id) or c.agent_name or "AI Voice Assistant"
 
             if agent_id not in agents_map:
                 agents_map[agent_id] = {
@@ -1047,8 +1085,11 @@ class LeadIntelligenceService:
                 entry["scored_calls"] += 1
 
         result: List[AgentLeadStat] = []
+        seen_names = set()
         for aid, data in agents_map.items():
-            if data["total_calls"] > 0:
+            norm_name = data["name"].strip().lower()
+            if data["total_calls"] > 0 and norm_name not in seen_names:
+                seen_names.add(norm_name)
                 avg_score = round(data["total_score"] / data["scored_calls"], 1) if data["scored_calls"] > 0 else 0.0
                 result.append(AgentLeadStat(
                     agent_id=aid,
@@ -1075,6 +1116,7 @@ class LeadIntelligenceService:
         campaign_id: Optional[str] = None,
         outcome: Optional[str] = None,
         interest_level: Optional[str] = None,
+        qualification_tiers: Optional[str] = None,
         min_score: Optional[int] = None,
         max_score: Optional[int] = None,
         agent_id: Optional[str] = None,
@@ -1175,6 +1217,14 @@ class LeadIntelligenceService:
                 if interest_lvl.lower() != interest_level.strip().lower():
                     continue
 
+            # Qualification tier multi-filter check
+            if qualification_tiers and qualification_tiers != "all":
+                allowed_tiers = [t.strip().lower() for t in qualification_tiers.split(",") if t.strip()]
+                curr_tier_name, _ = qualification_tier_for(score, rules)
+                curr_name_lower = (curr_tier_name or "").lower()
+                if not any(target in curr_name_lower or curr_name_lower in target for target in allowed_tiers):
+                    continue
+
             # Score range check
             if min_score is not None and score < min_score:
                 continue
@@ -1249,6 +1299,8 @@ class LeadIntelligenceService:
                 meeting_timezone=appt.timezone if appt else None,
                 meeting_type=appt.type if appt else None,
                 score_label=score_label_for(score, rules),
+                tier_label=qualification_tier_for(score, rules)[0],
+                tier_color=qualification_tier_for(score, rules)[1],
                 goal_status=(call_rec.analytics or {}).get("goal_status"),
                 call_source="Campaign" if (call_rec.campaign_id or "").strip() else "Agent dialer",
                 call_status=call_rec.status,
@@ -1581,6 +1633,8 @@ class LeadIntelligenceService:
             agent_id=agent_id,
             agent_name=agent_name,
             score_label=score_label_for(score, rules),
+            tier_label=qualification_tier_for(score, rules)[0],
+            tier_color=qualification_tier_for(score, rules)[1],
             goal_status=(latest_call.analytics or {}).get("goal_status") if latest_call else None,
             goal_summary=(latest_call.analytics or {}).get("goal_summary") if latest_call else None,
             call_source=("Campaign" if (latest_call.campaign_id or "").strip() else "Agent dialer") if latest_call else None,
@@ -1660,6 +1714,7 @@ class LeadIntelligenceService:
         campaign_id: Optional[str] = None,
         outcome: Optional[str] = None,
         interest_level: Optional[str] = None,
+        qualification_tiers: Optional[str] = None,
         min_score: Optional[int] = None,
         max_score: Optional[int] = None,
         agent_id: Optional[str] = None,
@@ -1914,6 +1969,11 @@ class LeadIntelligenceService:
             qualification_threshold=70,
             warm_threshold=40,
             cold_threshold=20,
+            qualification_tiers=[
+                QualificationTier(id="tier_hot", name="Qualified (Hot)", min_score=70, color="emerald", description="Leads scoring above this receive top priority and immediate CRM assignment.", is_fallback=False),
+                QualificationTier(id="tier_warm", name="Warm Interested", min_score=40, color="amber", description="Leads with moderate engagement queued for proactive follow-up.", is_fallback=False),
+                QualificationTier(id="tier_cold", name="Cold Lead", min_score=0, color="slate", description="Scores below warm threshold are classified as Cold.", is_fallback=True),
+            ],
             positive_signals=[
                 SignalRule(id="pos_1", phrase="budget approved", weight=25, category="budget_approved"),
                 SignalRule(id="pos_2", phrase="decision maker", weight=20, category="decision_maker"),
@@ -2007,6 +2067,20 @@ class LeadIntelligenceService:
         rules.organization_id = org_id
         rules.updated_at = datetime.now(timezone.utc).isoformat()
         rules.updated_by = ctx.email
+
+        # Sync top-level qualification_threshold and warm_threshold from qualification_tiers if provided
+        if rules.qualification_tiers:
+            # Enforce max 5, min 2 tiers
+            if len(rules.qualification_tiers) > 5:
+                rules.qualification_tiers = rules.qualification_tiers[:5]
+            non_fallback = [t for t in rules.qualification_tiers if not t.is_fallback]
+            non_fallback.sort(key=lambda t: t.min_score, reverse=True)
+            if non_fallback:
+                rules.qualification_threshold = non_fallback[0].min_score
+                if len(non_fallback) > 1:
+                    rules.warm_threshold = non_fallback[1].min_score
+                else:
+                    rules.warm_threshold = max(20, non_fallback[0].min_score // 2)
 
         _LEAD_RULES_STORE[org_id] = rules.model_dump()
         await asyncio.to_thread(self._write_saved_rules, org_id, rules.model_dump())

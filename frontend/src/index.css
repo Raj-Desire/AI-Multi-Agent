@@ -985,8 +985,25 @@ body {
 .animate-slide-in-right { animation: slideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-slide-out-right { animation: slideOutRight 0.22s cubic-bezier(0.4, 0, 1, 1) both; }
 .animate-fade-in-soft { animation: fadeInSoft 0.25s ease-out both; }
+
+/* Elegant Minimalist Bottom-to-Top Rise Animation for Table Rows */
+@keyframes rowRise {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-row-rise {
+  animation: rowRise 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-slide-in-right, .animate-slide-out-right, .animate-fade-in-soft { animation-duration: 0.01ms; }
+  .animate-slide-in-right, .animate-slide-out-right, .animate-fade-in-soft, .animate-row-rise { animation-duration: 0.01ms; }
 }
 
 
