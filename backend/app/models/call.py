@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 class Call(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -32,6 +32,8 @@ class Call(BaseModel):
 
     # Call Outcomes, Telemetry & Analytics
     transcript: Optional[List[Dict[str, Any]]] = None
+    # Turn count of a call loaded WITHOUT its transcript (reporting views). Never persisted.
+    transcript_turns: Optional[int] = Field(default=None, exclude=True)
     outcome: Optional[str] = None
     business_outcome: Optional[str] = None
     summary: Optional[str] = None

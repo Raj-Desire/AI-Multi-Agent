@@ -1,10 +1,15 @@
+import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Request, status
 from pydantic import BaseModel, EmailStr
 from typing import Dict, Any, Optional
 from app.repositories.user_repository import UserRepository
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password_constant_time, is_legacy_hash, create_access_token
+from app.core.rate_limit import login_limiter, login_keys
+from app.repositories.activity_log_repository import get_client_ip
 from app.core.dependencies import get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 class LoginRequest(BaseModel):
@@ -26,18 +31,28 @@ class TokenResponse(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(req: LoginRequest, request: Request):
-    email_or_user = req.email.strip()
-    user = await UserRepository.get_by_email(email_or_user)
-    
-    # If not found by email, try searching by username in user list
-    if not user:
-        users = await UserRepository.list_users()
-        for u in users:
-            if u.get("username", "").lower() == email_or_user.lower():
-                user = await UserRepository.get_by_id(u["id"])
-                break
+    identifier = req.email.strip()
+    keys = login_keys(get_client_ip(request), identifier)
 
-    if not user or not verify_password(req.password, user.get("hashed_password", "")):
+    wait = max(login_limiter.retry_after(k) for k in keys)
+    if wait:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed sign-in attempts. Please try again later.",
+            headers={"Retry-After": str(wait)},
+        )
+
+    # One lookup (email partition, or a single filtered username query). The record includes the password hash,
+    # which is why it is used only here and never cached or returned.
+    user = await UserRepository.get_auth_record(identifier)
+
+    # Same work whether or not the account exists, so response time does not reveal valid accounts.
+    password_ok = await asyncio.to_thread(
+        verify_password_constant_time, req.password, user.get("hashed_password") if user else None
+    )
+    if not user or not password_ok:
+        for k in keys:
+            login_limiter.record_failure(k)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email/username or password."
@@ -49,12 +64,23 @@ async def login(req: LoginRequest, request: Request):
             detail="Account is deactivated."
         )
 
+    for k in keys:
+        login_limiter.reset(k)
+
+    if is_legacy_hash(user.get("hashed_password", "")):
+        # Retire old SHA-256 hashes: the password was just proven correct, so store it with bcrypt.
+        try:
+            await UserRepository.upgrade_password_hash(user, req.password)
+        except Exception as e:
+            logger.warning("Password hash upgrade skipped: %s", e)
+
     access_token = create_access_token(data={
         "sub": user["id"],
         "email": user["email"],
         "role": user.get("role", "user"),
         "organization_id": user.get("organization_id", user["id"]),
-        "org_name": user.get("org_name")
+        "org_name": user.get("org_name"),
+        "tv": int(user.get("token_version", 0)),
     })
 
     from app.services.activity_log_service import log_login

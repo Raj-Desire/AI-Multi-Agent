@@ -430,11 +430,17 @@ async def get_platform_usage_and_cost(
     """
     from datetime import datetime, timezone, timedelta
 
-    all_calls = await call_repo.list_all_calls(limit=10000)
+    now = datetime.now(timezone.utc)
+    # Push the date window into the query: reading 10,000 calls (with transcripts) to keep the last 7 days was the cost.
+    window_start = {
+        "today": now.replace(hour=0, minute=0, second=0, microsecond=0),
+        "7d": now - timedelta(days=7),
+        "30d": now - timedelta(days=30),
+    }.get(time_range)
+    all_calls = await call_repo.list_all_calls(limit=10000, since=window_start)
     all_orgs = await UserRepository.list_organizations()
 
     # Filter calls by time_range
-    now = datetime.now(timezone.utc)
     filtered_calls = all_calls
 
     if time_range == "today":

@@ -152,11 +152,11 @@ class CreditService:
 
     async def get_org_resource_counters(self, organization_id: str) -> OrgResourceCounters:
         """Aggregates live count of agents, campaigns, and total calls."""
-        agents, campaigns_res, creds, ledger = await asyncio.gather(
+        agents, campaigns_res, creds, ledger_totals = await asyncio.gather(
             self.agent_repo.list_agents(organization_id, include_global=False),
             self.campaign_repo.list_by_org(organization_id),
             self.repo.get_or_create_org_credits(organization_id),
-            self.repo.list_ledger(organization_id, limit=1000),
+            self.repo.get_ledger_totals(organization_id),
         )
         if isinstance(campaigns_res, tuple):
             campaigns_count = campaigns_res[1]
@@ -165,14 +165,14 @@ class CreditService:
         else:
             campaigns_count = 0
 
-        total_duration = sum(item.duration_seconds for item in ledger)
+        total_duration = ledger_totals["seconds"]
 
         return OrgResourceCounters(
             total_agents=len(agents),
             max_agents_allowed=creds.max_agents_allowed,
             total_campaigns=campaigns_count,
             max_campaigns_allowed=creds.max_campaigns_allowed,
-            total_calls_count=len(ledger),
+            total_calls_count=ledger_totals["calls"],
             total_billed_minutes=round(total_duration / 60.0, 2)
         )
 

@@ -502,9 +502,11 @@ class LeadIntelligenceService:
         now = time.time()
 
         # 1. Fetch Calls
-        raw_calls = await self.call_repo.list_by_org(org_id)
+        # Reporting views: analytics are loaded, the bulky transcript and agent snapshot are not (see the detail view
+        # and the call-back hydration below, which fetch them only where they are really needed).
+        raw_calls = await self.call_repo.list_analytics_by_org(org_id)
         if not raw_calls and ctx.user_id and ctx.user_id != org_id:
-            raw_calls = await self.call_repo.list_by_org(ctx.user_id)
+            raw_calls = await self.call_repo.list_analytics_by_org(ctx.user_id)
 
         # Retain campaign calls plus AI-agent calls placed directly from the dialer/test-call path:
         # those have no campaign_id but are scored by post-call analytics and are real leads.
@@ -519,6 +521,11 @@ class LeadIntelligenceService:
         calls = [c for c in raw_calls if (c.campaign_id and c.campaign_id.strip()) or _is_scored_ai_call(c)]
         # Every call an AI agent placed or took, scored or not (a no-answer or an unfinished analysis is still a call)
         all_ai_calls = [c for c in raw_calls if getattr(c, "agent_id", None) or (c.campaign_id and c.campaign_id.strip())]
+
+        # Call-back scheduling reads the agent's time zone from the call's agent snapshot. Only call-back calls need it.
+        callback_calls = [c for c in all_ai_calls if is_callback_call(c)]
+        if callback_calls:
+            await self.call_repo.hydrate_agent_snapshots(callback_calls)
 
         # 2. Fetch Prospects dictionary
         prospects_list, _ = await self.prospect_repo.list_by_org(org_id, page=1, page_size=10000)
@@ -1585,6 +1592,10 @@ class LeadIntelligenceService:
 
         # 6. Transcript
         raw_transcript = latest_call.transcript if (latest_call and latest_call.transcript) else []
+        if latest_call and not raw_transcript and (latest_call.transcript_turns or 0) > 0:
+            # The org-wide list does not carry transcripts; fetch just this one call's.
+            full_call = await self.call_repo.get_by_id(latest_call.id)
+            raw_transcript = (full_call.transcript if full_call and full_call.transcript else [])
 
         # 7. Call History Summary
         history_list = []
@@ -1605,7 +1616,7 @@ class LeadIntelligenceService:
                 "interest_level": c.interest_level,
                 "status": c.status,
                 "analytics_status": c.analytics_status,
-                "turns": len(c.transcript or []),
+                "turns": c.transcript_turns if c.transcript_turns is not None else len(c.transcript or []),
                 "meeting_at": c_appt.start_at_utc if c_appt else None,
                 "meeting_timezone": c_appt.timezone if c_appt else None,
                 "selected": bool(latest_call and c.id == latest_call.id),

@@ -275,7 +275,7 @@ class ProspectService:
 
         # Reconcile true total_calls from actual Call records
         try:
-            all_calls = await self.call_repo.list_by_org(ctx.organization_id)
+            all_calls = await self.call_repo.list_analytics_by_org(ctx.organization_id)
             for p in items:
                 norm = p.normalized_phone or normalize_phone(p.phone_number)
                 prospect_calls = [
@@ -763,7 +763,7 @@ class ProspectService:
     # -------------------------------------------------------------
     async def get_prospect_calls(self, ctx: TenantContext, prospect_id: str) -> List[Dict[str, Any]]:
         p = await self.get_prospect(ctx, prospect_id)
-        all_calls = await self.call_repo.list_by_org(ctx.organization_id)
+        all_calls = await self.call_repo.list_analytics_by_org(ctx.organization_id)
 
         # Match by prospect_id or to_number == prospect.phone_number or prospect.normalized_phone
         matched = []
@@ -792,7 +792,7 @@ class ProspectService:
         if p:
             # Reconcile exact calls from CallRepository to prevent double-increments
             try:
-                all_calls = await self.call_repo.list_by_org(organization_id)
+                all_calls = await self.call_repo.list_analytics_by_org(organization_id)
                 prospect_calls = [
                     c for c in all_calls
                     if (hasattr(c, "prospect_id") and getattr(c, "prospect_id") == p.id) or

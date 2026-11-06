@@ -38,11 +38,20 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
             detail="Invalid token payload.",
         )
 
-    user = await UserRepository.get_by_id(user_id)
+    # The signed token carries the email, which is the users container's partition key: this makes the lookup a point read.
+    user = await UserRepository.get_by_id(user_id, email_hint=payload.get("email"))
     if not user or not user.get("is_active", True):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account not found or deactivated.",
+        )
+
+    # token_version is bumped on password change and deactivation, which revokes every token issued before it.
+    if int(payload.get("tv", 0)) != int(user.get("token_version", 0)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return user

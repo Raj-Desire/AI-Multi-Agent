@@ -269,7 +269,7 @@ class CampaignMemberRepository:
 
         return await asyncio.to_thread(_sync_get)
 
-    async def get_by_campaign_and_prospect(self, campaign_id: str, prospect_id: str) -> Optional[CampaignMember]:
+    async def get_by_campaign_and_prospect(self, campaign_id: str, prospect_id: str, organization_id: Optional[str] = None) -> Optional[CampaignMember]:
         def _sync_get():
             for m in self._memory_store.values():
                 if m.campaign_id == campaign_id and m.prospect_id == prospect_id:
@@ -285,7 +285,11 @@ class CampaignMemberRepository:
                 {"name": "@prospect_id", "value": prospect_id}
             ]
             try:
-                items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
+                if organization_id and organization_id != "global":
+                    # Members are partitioned by organization: stay inside one partition instead of fanning out
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id))
+                else:
+                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
                 if items:
                     m = CampaignMember.model_validate(items[0])
                     self._memory_store[m.id] = m

@@ -7,7 +7,7 @@ with full immutable agent snapshots and transcripts.
 
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -430,7 +430,7 @@ class CallSessionService:
                 from app.services.campaign_service import CampaignService
                 from app.repositories.campaign_repository import CampaignMemberRepository
                 mem_repo = CampaignMemberRepository()
-                target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id)
+                target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id, organization_id=session.organization_id)
                 if target_mem:
                     cmp_svc = CampaignService()
                     await cmp_svc.record_call_outcome(
@@ -514,7 +514,7 @@ class CallSessionService:
                     from app.services.campaign_service import CampaignService
                     from app.repositories.campaign_repository import CampaignMemberRepository
                     mem_repo = CampaignMemberRepository()
-                    target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id)
+                    target_mem = await mem_repo.get_by_campaign_and_prospect(session.campaign_id, session.prospect_id, organization_id=session.organization_id)
                     if target_mem and target_mem.last_call_id == call_id:
                         target_mem.last_call_outcome = resolved_outcome
                         await mem_repo.save(target_mem)
@@ -672,7 +672,13 @@ class CallSessionService:
 
         now = datetime.now(timezone.utc)
         recovered = 0
-        for call in await self.call_repo.list_all_calls(limit=1000):
+        # Filtered in the database: this runs on every startup and used to load 1000 recent calls of every tenant,
+        # transcripts included, just to find the few still marked "pending".
+        pending = await self.call_repo.list_pending_analytics(
+            created_after=now - timedelta(hours=max_age_hours),
+            created_before=now - timedelta(seconds=min_age_seconds),
+        )
+        for call in pending:
             try:
                 if getattr(call, "analytics_status", None) != "pending" or not call.transcript:
                     continue

@@ -15,7 +15,7 @@ async def log_login(request: Request, user: Dict[str, Any]) -> None:
 async def log_action(request: Request, ctx: TenantContext, action: str) -> None:
     """Records a major operation by the tenant user behind `ctx`. Never raises."""
     try:
-        user = await UserRepository.get_by_id(ctx.user_id) or {}
+        user = await UserRepository.get_by_id(ctx.user_id, email_hint=ctx.email) or {}
         user = {
             **user,
             "id": ctx.user_id,

@@ -324,7 +324,7 @@ async def voice_status_webhook(request: Request):
                 from app.services.campaign_service import CampaignService
                 from app.repositories.campaign_repository import CampaignMemberRepository
                 mem_repo = CampaignMemberRepository()
-                target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
+                target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id, organization_id=target_org_id)
                 if target_mem:
                     phase = {"queued": "dialing", "initiated": "dialing", "ringing": "ringing",
                              "in-progress": "in-progress", "answered": "in-progress"}.get(call_status)
@@ -415,7 +415,7 @@ async def voice_status_webhook(request: Request):
                     from app.services.campaign_service import CampaignService
                     from app.repositories.campaign_repository import CampaignMemberRepository
                     mem_repo = CampaignMemberRepository()
-                    target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id)
+                    target_mem = await mem_repo.get_by_campaign_and_prospect(target_campaign_id, target_prospect_id, organization_id=target_org_id)
                     if target_mem:
                         cmp_svc = CampaignService()
                         await cmp_svc.record_call_outcome(

@@ -403,10 +403,11 @@ class CreditRepository:
         def _sync_list():
             container = get_ledger_container()
             if container:
-                query = "SELECT * FROM c WHERE c.organization_id = @org_id ORDER BY c.created_at DESC"
+                # TOP is what limits the result: max_item_count only sets the page size, so the whole ledger was being read.
+                query = f"SELECT TOP {int(limit)} * FROM c WHERE c.organization_id = @org_id ORDER BY c.created_at DESC"
                 params = [{"name": "@org_id", "value": organization_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=False, max_item_count=limit))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id))
                     return [LedgerEntry.model_validate(it) for it in items[:limit]]
                 except Exception as e:
                     print(f"[CreditRepository] list_ledger query: {e}")
@@ -416,6 +417,29 @@ class CreditRepository:
             return entries[:limit]
 
         return await asyncio.to_thread(_sync_list)
+
+    async def get_ledger_totals(self, organization_id: str) -> Dict[str, Any]:
+        """Call count and billed seconds for an organisation, summed by the database (one tiny result row)
+        instead of downloading every ledger entry just to count and add them up."""
+        def _sync_totals():
+            container = get_ledger_container()
+            if container:
+                query = (
+                    "SELECT COUNT(1) AS calls, SUM(c.duration_seconds) AS seconds "
+                    "FROM c WHERE c.organization_id = @org_id"
+                )
+                params = [{"name": "@org_id", "value": organization_id}]
+                try:
+                    rows = list(container.query_items(query=query, parameters=params, partition_key=organization_id))
+                    if rows:
+                        return {"calls": int(rows[0].get("calls") or 0), "seconds": int(rows[0].get("seconds") or 0)}
+                except Exception as e:
+                    print(f"[CreditRepository] get_ledger_totals: {e}")
+
+            entries = self._memory_ledger.get(organization_id, [])
+            return {"calls": len(entries), "seconds": sum(e.duration_seconds for e in entries)}
+
+        return await asyncio.to_thread(_sync_totals)
 
     async def get_daily_usage_aggregates(self, organization_id: str, days: int = 30) -> List[Dict[str, Any]]:
         """Computes daily consumption for bar charts from usage_ledger."""
@@ -481,10 +505,10 @@ class CreditRepository:
         def _sync_logs():
             container = get_credit_logs_container()
             if container:
-                query = "SELECT * FROM c WHERE c.organization_id = @org_id ORDER BY c.created_at DESC"
+                query = f"SELECT TOP {int(limit)} * FROM c WHERE c.organization_id = @org_id ORDER BY c.created_at DESC"
                 params = [{"name": "@org_id", "value": organization_id}]
                 try:
-                    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=False, max_item_count=limit))
+                    items = list(container.query_items(query=query, parameters=params, partition_key=organization_id))
                     return [CreditAssignmentLog.model_validate(it) for it in items[:limit]]
                 except Exception as e:
                     print(f"[CreditRepository] list_assignment_logs: {e}")

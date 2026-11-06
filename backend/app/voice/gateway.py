@@ -1025,7 +1025,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                 if p_id and c_id and org_id:
                     try:
                         from app.repositories.campaign_repository import CampaignMemberRepository
-                        member = await CampaignMemberRepository().get_by_campaign_and_prospect(c_id, p_id)
+                        member = await CampaignMemberRepository().get_by_campaign_and_prospect(c_id, p_id, organization_id=org_id)
                         if member:
                             prospect_data = {
                                 "name": getattr(member, "prospect_name", "") or "",

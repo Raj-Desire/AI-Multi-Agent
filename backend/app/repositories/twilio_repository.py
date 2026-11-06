@@ -7,7 +7,17 @@ from app.core.cosmos import get_twilio_container
 _TWILIO_CACHE: Dict[str, Tuple[Optional[TwilioConfiguration], float]] = {}
 TWILIO_CACHE_TTL_SECONDS = 60.0
 
+# list_all() is a full cross-partition read and get_by_phone_number() a cross-partition CONTAINS scan that runs on
+# every inbound call webhook. Configurations change rarely, so both are cached briefly and dropped on any write.
+_TWILIO_LIST_CACHE: Dict[str, Tuple[List[TwilioConfiguration], float]] = {}
+_TWILIO_PHONE_CACHE: Dict[str, Tuple[Optional[TwilioConfiguration], float]] = {}
+TWILIO_LIST_TTL_SECONDS = 30.0
+_MAX_PHONE_CACHE = 500
+
+
 def _invalidate_twilio_cache(org_id: Optional[str] = None):
+    _TWILIO_LIST_CACHE.clear()
+    _TWILIO_PHONE_CACHE.clear()
     if org_id and org_id in _TWILIO_CACHE:
         del _TWILIO_CACHE[org_id]
     else:
@@ -99,6 +109,10 @@ class TwilioRepository:
             return None
         
     async def list_all(self) -> List[TwilioConfiguration]:
+        cached = _TWILIO_LIST_CACHE.get("all")
+        if cached and time.time() - cached[1] < TWILIO_LIST_TTL_SECONDS:
+            return cached[0]
+
         container = get_twilio_container()
         if not container:
             return []
@@ -127,6 +141,7 @@ class TwilioRepository:
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
                 ))
+            _TWILIO_LIST_CACHE["all"] = (configs, time.time())
             return configs
         except Exception as e:
             print(f"[TwilioRepository Error] list_all: {e}")
@@ -134,6 +149,10 @@ class TwilioRepository:
 
 
     async def get_by_phone_number(self, phone_number: str) -> Optional[TwilioConfiguration]:
+        cached = _TWILIO_PHONE_CACHE.get(phone_number)
+        if cached and time.time() - cached[1] < TWILIO_CACHE_TTL_SECONDS:
+            return cached[0]
+
         container = get_twilio_container()
         if not container:
             return None
@@ -149,7 +168,7 @@ class TwilioRepository:
             items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
             if items:
                 item = items[0]
-                return TwilioConfiguration(
+                found = TwilioConfiguration(
                     id=item.get("id", f"cfg_{item.get('user_id')}"),
                     organization_id=item.get("user_id"),
                     account_sid=item.get("account_sid", ""),
@@ -168,6 +187,10 @@ class TwilioRepository:
                     created_at=datetime.now(timezone.utc),
                     updated_at=datetime.now(timezone.utc)
                 )
+                if len(_TWILIO_PHONE_CACHE) >= _MAX_PHONE_CACHE:
+                    _TWILIO_PHONE_CACHE.clear()
+                _TWILIO_PHONE_CACHE[phone_number] = (found, time.time())
+                return found
         except Exception as e:
             print(f"[TwilioRepository Error] get_by_phone_number: {e}")
         
