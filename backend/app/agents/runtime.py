@@ -5,7 +5,7 @@ SettingsConfiguration, ensuring decoupled architecture and future extensibility.
 """
 
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.agents.configuration import AgentConfiguration
 from app.agents.prompt_builder import VoicePromptBuilder
 from app.voice.language_support import resolve_multilingual
@@ -33,6 +33,52 @@ def use_flux_multilingual() -> bool:
     """Flux multilingual recognizer for multi-language agents (STT_MULTI_ENGINE=nova switches back to nova-3 multi)."""
     return os.getenv("STT_MULTI_ENGINE", "flux").strip().lower() != "nova"
 BALANCED_ENDPOINTING_MS = 160
+
+FLUX_ENGLISH_MODEL = "flux-general-en"
+
+# End-of-turn presets for Flux, keyed by the agent's endpointing_mode. A higher eot_threshold waits for a more
+# certain end of turn (fewer cut-offs, slightly later reply); eager_eot_threshold lets the reply start early on a
+# likely end of turn. Starting values: tune against recorded calls (see the A/B notes in the review).
+FLUX_EOT_PRESETS = {
+    "rapid": {"eot_threshold": 0.6, "eager_eot_threshold": 0.4, "eot_timeout_ms": 3000},
+    "balanced": {"eot_threshold": 0.7, "eager_eot_threshold": 0.5, "eot_timeout_ms": 4000},
+    "adaptive": {"eot_threshold": 0.7, "eager_eot_threshold": 0.5, "eot_timeout_ms": 4000},
+    # Phone numbers, emails and long notes: wait longer and never start a reply early.
+    "dictation": {"eot_threshold": 0.8, "eager_eot_threshold": None, "eot_timeout_ms": 6000},
+}
+
+
+def use_flux_english(config: AgentConfiguration) -> bool:
+    """Flux end-of-turn detection for single-language English agents.
+
+    Off by default (the fixed-silence recognizer stays). Turn it on for every agent with STT_ENGLISH_ENGINE=flux,
+    or per agent by saving a listen model that starts with "flux".
+    """
+    listen_model = (getattr(getattr(config, "listen", None), "model", "") or "").lower()
+    if listen_model.startswith("flux"):
+        return True
+    return os.getenv("STT_ENGLISH_ENGINE", "nova").strip().lower() == "flux"
+
+
+def flux_end_of_turn_settings(config: AgentConfiguration) -> Dict[str, Any]:
+    """eot_threshold / eager_eot_threshold / eot_timeout_ms for the agent's listen config.
+
+    A value set explicitly on the agent (listen.eot_threshold) wins over the preset; listen.eager_eot=False turns
+    early replies off.
+    """
+    listen = getattr(config, "listen", None)
+    mode = (getattr(listen, "endpointing_mode", "balanced") or "balanced").lower()
+    settings = dict(FLUX_EOT_PRESETS.get(mode, FLUX_EOT_PRESETS["balanced"]))
+    explicit = getattr(listen, "eot_threshold", None)
+    if explicit is not None:
+        settings["eot_threshold"] = min(max(float(explicit), 0.5), 0.9)
+    if not getattr(listen, "eager_eot", True):
+        settings["eager_eot_threshold"] = None
+    eager = settings.get("eager_eot_threshold")
+    if eager is not None:
+        # The early-reply threshold must stay below the final one.
+        settings["eager_eot_threshold"] = min(eager, settings["eot_threshold"] - 0.1)
+    return settings
 
 
 def _sonic_language(multilingual: bool, voice_lang: Optional[str]) -> Optional[str]:
@@ -162,6 +208,26 @@ class AgentRuntimeBuilder:
                 smart_format=None,
                 endpointing=None,
                 language_hints=list(plan.languages),
+                keyterms=combined_keyterms if combined_keyterms else None,
+            )
+        elif (
+            not plan.enabled
+            and (configured_lang or "en").split("-")[0] == "en"
+            and use_flux_english(config)
+        ):
+            # Single-language English: Flux decides the end of a turn from meaning, not a fixed silence timer, so it
+            # waits through "um" and digit pauses but answers fast when the sentence is clearly finished.
+            eot = flux_end_of_turn_settings(config)
+            listen_provider = DeepgramListenProvider(
+                type="deepgram",
+                version="v2",
+                model=FLUX_ENGLISH_MODEL,
+                language=None,
+                smart_format=None,
+                endpointing=None,
+                eot_threshold=eot["eot_threshold"],
+                eager_eot_threshold=eot["eager_eot_threshold"],
+                eot_timeout_ms=eot["eot_timeout_ms"],
                 keyterms=combined_keyterms if combined_keyterms else None,
             )
         else:

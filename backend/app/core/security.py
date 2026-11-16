@@ -122,7 +122,10 @@ def decrypt_token(cipher_text: str) -> str:
     try:
         return get_fernet().decrypt(cipher_text.encode()).decode()
     except InvalidToken as exc:
-        raise ValueError("Stored credential could not be decrypted with the configured encryption key.") from exc
+        raise ValueError(
+            "Stored credential could not be decrypted with the configured encryption key. "
+            "Make sure ENCRYPTION_KEY in this environment matches the one used when the credential was saved."
+        ) from exc
 
 
 def mask_auth_token(token: str) -> str:

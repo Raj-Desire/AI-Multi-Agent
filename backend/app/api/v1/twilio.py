@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.core.dependencies import TenantContext, get_tenant_context
+from app.core.webhook_security import require_twilio_signature
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, AutoSetupTwilioRequest, AutoSetupResponse, TwilioBalanceResponse
 from app.schemas.common import ApiResponse
 from app.services.twilio_service import TwilioService
@@ -189,7 +190,7 @@ async def get_twilio_balance(
 
 
 
-@router.api_route("/voice/twiml", methods=["GET", "POST"])
+@router.api_route("/voice/twiml", methods=["GET", "POST"], dependencies=[Depends(require_twilio_signature)])
 async def voice_twiml_webhook(request: Request):
     """
     Public webhook endpoint invoked by Twilio when an in-browser WebRTC call connects.
@@ -228,7 +229,7 @@ async def voice_twiml_webhook(request: Request):
         return Response(content=fallback_xml, media_type="application/xml")
 
 
-@router.post("/voice/amd")
+@router.post("/voice/amd", dependencies=[Depends(require_twilio_signature)])
 async def voice_amd_webhook(request: Request):
     """Twilio async answering-machine-detection result. Language independent (audio based)."""
     try:
@@ -243,7 +244,7 @@ async def voice_amd_webhook(request: Request):
     return Response(content="", status_code=204)
 
 
-@router.api_route("/voice/status", methods=["GET", "POST"])
+@router.api_route("/voice/status", methods=["GET", "POST"], dependencies=[Depends(require_twilio_signature)])
 async def voice_status_webhook(request: Request):
     """
     Public webhook endpoint invoked by Twilio on call status transitions

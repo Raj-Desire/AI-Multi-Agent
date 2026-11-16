@@ -120,11 +120,14 @@ class CallService:
         base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
         stream_url = f"{ws_base}/api/v1/voice/stream"
+        from app.core.webhook_security import create_stream_token
+        stream_token = create_stream_token(ctx.organization_id, resolved_agent_id, "outbound")
 
         twiml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream url="{stream_url}">
+            <Parameter name="stream_token" value="{stream_token}" />
             <Parameter name="organization_id" value="{ctx.organization_id}" />
             <Parameter name="agent_id" value="{resolved_agent_id}" />
             <Parameter name="direction" value="outbound" />
@@ -323,10 +326,11 @@ class CallService:
                         org_id = tw_cfg.organization_id
                         break
         
-        # Fallback to the first available Twilio config if only one exists in system
+        # Single-tenant fallback ONLY: with several tenants, "the first configuration" belongs to a random one, so a
+        # request that matches nobody must not be handed another tenant's Twilio account, agent and credits.
         if not tw_cfg:
             all_configs = await self.twilio_repo.list_all()
-            if all_configs:
+            if len(all_configs) == 1:
                 tw_cfg = all_configs[0]
                 org_id = tw_cfg.organization_id
 
@@ -442,6 +446,8 @@ class CallService:
 
             connect = Connect()
             stream = Stream(url=stream_url)
+            from app.core.webhook_security import create_stream_token
+            stream.parameter(name="stream_token", value=create_stream_token(tw_cfg.organization_id, selected_agent_id, "inbound"))
             stream.parameter(name="organization_id", value=tw_cfg.organization_id)
             stream.parameter(name="agent_id", value=selected_agent_id)
             stream.parameter(name="direction", value="inbound")

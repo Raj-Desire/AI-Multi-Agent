@@ -1338,10 +1338,13 @@ async def initiate_ai_test_call(
     )
 
     # Build TwiML containing <Connect><Stream> with immediate hangup on stream completion
+    from app.core.webhook_security import create_stream_token
+    stream_token = create_stream_token(ctx.organization_id, agent_config.agent_id, "outbound", session.call_session_id)
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Connect>
         <Stream url="{stream_url}">
+            <Parameter name="stream_token" value="{stream_token}" />
             <Parameter name="organization_id" value="{ctx.organization_id}" />
             <Parameter name="agent_id" value="{agent_config.agent_id}" />
             <Parameter name="call_session_id" value="{session.call_session_id}" />

@@ -143,8 +143,11 @@ class VoicePromptBuilder:
             result = result.replace(token, val)
 
         # Clean double spaces or awkward punctuation from empty dynamic substitutions
-        import re
-        result = re.sub(r"\s+", " ", result)
+        # Collapse runs of spaces and blank lines only: the line breaks keep the prompt's structure (rule lists,
+        # headings), which the model uses to tell one rule from the next.
+        result = re.sub(r"[ \t]+", " ", result)
+        result = re.sub(r" ?\n ?", "\n", result)
+        result = re.sub(r"\n{3,}", "\n\n", result)
         result = result.replace(" ,", ",").replace(" ?", "?").replace(" !", "!").replace(" .", ".").strip()
 
         return result
@@ -232,6 +235,34 @@ class VoicePromptBuilder:
             directives.append("Curiosity: Minimal questions; answer only what was directly asked without probing.")
 
         return directives
+
+    @staticmethod
+    def _build_personality_summary(config: AgentConfiguration) -> str:
+        """Compact persona: only the dimensions that deviate from the middle are spelled out. Nine long paragraphs
+        used to be repeated on every turn and the model barely followed them."""
+        p = config.personality
+        # (attribute, label when 80+, label when below 35); the middle needs no instruction.
+        dims = [
+            ("professionalism", "polished and formal, no slang", "very casual, peer-to-peer"),
+            ("friendliness", "very warm and welcoming", "matter-of-fact, no small talk"),
+            ("empathy", "validate any concern or hesitation before solving it", "practical, straight to the solution"),
+            ("confidence", "decisive and assured", "modest and collaborative"),
+            ("patience", "unhurried, never pressure the caller", "fast and efficient"),
+            ("energy", "upbeat and lively", "calm and low-key"),
+            ("assertiveness", "steer firmly toward a concrete next step", "let the caller lead"),
+            ("humor", "light and playful when it fits", "serious, no jokes"),
+            ("curiosity", "ask thoughtful clarifying questions", "answer only what was asked"),
+        ]
+        traits = []
+        for attr, high, low in dims:
+            value = getattr(p, attr, 50)
+            if value >= 80:
+                traits.append(high)
+            elif value < 35:
+                traits.append(low)
+        style = (config.communication_style or "Conversational").strip()
+        line = f"Style: {style}. " + ("; ".join(traits) + "." if traits else "Warm, professional and natural.")
+        return "[PERSONA]\n" + line
 
     @staticmethod
     def _build_length_enforcement(response_length: Optional[str]) -> str:
@@ -334,18 +365,15 @@ class VoicePromptBuilder:
                         f"- Never reply in a language outside that list. Your opening language is {eng_name}.\n"
                         f"- The transcript can contain recognition errors; if a line looks garbled, use the surrounding conversation to "
                         f"infer the language, and only if you truly cannot tell, ask them to repeat.\n"
-                        f"- Start each reply with a natural 1-2 word acknowledgment in the language you are replying in.\n"
-                        f"- Use natural everyday phone phrasing, correct grammar, and keep to 1-2 short sentences per turn."
+                        f"- Use natural everyday phone phrasing and correct grammar."
                     )
                 return (
                     f"[MANDATORY LANGUAGE DIRECTIVE: {eng_name.upper()} ({native_name})]\n"
                     f"- PRIMARY CONVERSATIONAL LANGUAGE: The caller expects you to converse EXCLUSIVELY in {eng_name} ({native_name}).\n"
                     f"- LIVE TOKEN GENERATION: You MUST think, comprehend, and generate every single response token directly in natural, authentic spoken {eng_name} ({native_name}).\n"
-                    f"- INSTANT CONVERSATIONAL BRIDGE (ZERO LATENCY): Start your turn immediately with a natural 1-2 word spoken bridge or acknowledgment (e.g. for Hindi: 'हाँ जी', 'बिल्कुल', 'समझ गया', 'ज़रूर', 'जी', 'अच्छा') so speech begins instantaneously with real human cadence.\n"
-                    f"- SPOKEN IDIOMATIC FLUENCY: Use natural everyday phrasing, polite conversational markers, and correct grammar suitable for a real telephone call (e.g. '{sample_phrase}').\n"
+                    f"- SPOKEN IDIOMATIC FLUENCY: Use natural everyday phrasing, polite conversational markers, and correct grammar suitable for a real telephone call (e.g. '{sample_phrase}'). When you open with an acknowledgment, use a natural {eng_name} one (for Hindi: 'हाँ जी', 'बिल्कुल', 'समझ गया') and vary it.\n"
                     f"- STRICT NO-ENGLISH RULE: NEVER revert to English, reply in English, or mix English sentences when the caller speaks {eng_name}. Stay 100% in {eng_name}.\n"
-                    f"- ADAPTIVE CODE-SWITCHING: If the caller introduces bilingual loan words or code-switches (e.g. mixing everyday technical or local terms), understand them effortlessly and respond naturally in {eng_name} without breaking flow.\n"
-                    f"- BREVITY IN {eng_name.upper()}: Respect the strict 1-2 sentence conversational limit in {eng_name}. Do NOT output long paragraphs."
+                    f"- ADAPTIVE CODE-SWITCHING: If the caller introduces bilingual loan words or code-switches (e.g. mixing everyday technical or local terms), understand them effortlessly and respond naturally in {eng_name} without breaking flow."
                 )
 
         if lang.startswith("en") or lang == "english":
@@ -369,7 +397,7 @@ class VoicePromptBuilder:
             "[LANGUAGE MIRRORING & COMPREHENSION DIRECTIVE]\n"
             "- Understand caller speech in whatever language they speak.\n"
             "- ALWAYS seamlessly match and mirror the caller's spoken language in your response.\n"
-            "- Speak naturally, politely, and maintain the 1-2 sentence spoken phone brevity."
+            "- Speak naturally and politely."
         )
 
     @staticmethod
@@ -546,55 +574,29 @@ class VoicePromptBuilder:
         ]
         upcoming_map_str = "; ".join(upcoming_days)
 
-        # World clocks let the agent compare a caller's stated timezone with the business clock
-        world_clocks = []
-        try:
-            from zoneinfo import ZoneInfo
-            for city_label, z_key, tz_abbr in [
-                ("United Kingdom (UK)", "Europe/London", "GMT/BST"),
-                ("United States (US Eastern)", "America/New_York", "EST/EDT"),
-                ("United States (US Central)", "America/Chicago", "CST/CDT"),
-                ("United States (US Pacific)", "America/Los_Angeles", "PST/PDT"),
-                ("UAE / Gulf", "Asia/Dubai", "GST"),
-                ("India", "Asia/Kolkata", "IST"),
-            ]:
-                if z_key != schedule.iana:
-                    world_clocks.append(f"{city_label} ({tz_abbr}): {datetime.now(ZoneInfo(z_key)).strftime('%I:%M %p')}")
-        except Exception:
-            pass
-        world_clocks_str = "; ".join(world_clocks)
-
         business = schedule.business_name
         hours_text = schedule.hours_sentence()
         if schedule.hours_text:
-            working_hours_rule = f"""- STRICT OPERATING HOURS BOUNDARY FOR {business.upper()}:
-  * Hours: {schedule.hours_text} (all times in {schedule.timezone_label})
-  * BOUNDARY ENFORCEMENT: ONLY book appointments inside these hours for the requested day. Check the requested day AND time against the hours for THAT day (hours can differ by weekday). If a requested time is outside them or on a closed day, say the actual hours for that day and offer the nearest slots inside them. Never quote any other organization's hours."""
-            compliance_rule = f"""2. OPERATING HOURS COMPLIANCE:
-   - Verify every requested day and time against {business}'s hours: {schedule.hours_text}.
-   - Compare times correctly (e.g. 6 PM is before 7 PM, and equal to a 6 PM closing time, which means it is NOT bookable)."""
+            working_hours_rule = (
+                f"- OPERATING HOURS FOR {business.upper()}: {schedule.hours_text} (all times in {schedule.timezone_label}). "
+                "Hours can differ by weekday: check the requested day AND time against that day's hours. If it is outside them or on a "
+                "closed day, say the real hours for that day and offer the nearest slot inside them (6 PM is NOT bookable when closing is 6 PM). "
+                "Never quote another organization's hours."
+            )
         else:
-            working_hours_rule = f"- OPERATING HOURS FOR {business.upper()}: {hours_text}"
-            compliance_rule = f"""2. OPERATING HOURS COMPLIANCE:
-   - {business} has no fixed office-hours limit listed. Do not refuse a time because of office hours; follow the facts you have."""
+            working_hours_rule = (
+                f"- OPERATING HOURS FOR {business.upper()}: {hours_text}. If no fixed hours are listed, do not refuse a time because of office hours."
+            )
 
-        return f"""[REAL-TIME CALENDAR, MULTI-TIMEZONE REASONING & STRICT SCHEDULING RULES]
-- BUSINESS TIMEZONE FOR {business.upper()}: {schedule.timezone_label}. All appointment times you offer or confirm are in this timezone.
-- CURRENT MOMENT AT {business.upper()}: Today is {day_name}, {date_str} at {time_str} ({schedule.iana}).
-{f"- LIVE WORLD REFERENCE TIMES: {world_clocks_str}." if world_clocks_str else ""}
-- UPCOMING 7 DAYS CALENDAR DATES: {upcoming_map_str}.
-{working_hours_rule}
-
-MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
-1. ACCURATE CURRENT DATE & TIME COMPARISON (FUTURE VS PAST):
-   - Today's date is {date_str} and current time is {time_str}.
-   - YEAR ASSUMPTION: If the caller mentions a month and day without specifying a year (e.g., "September 21" or "October 15"), ALWAYS compare against today's date ({date_str}). If that month/day has already passed in the current year, assume they mean the NEXT upcoming occurrence of that date or today's date if requested today. NEVER dismiss future dates or state they have passed unless the full date (month, day, AND year) is strictly in the calendar past.
-   - Any time that is later than {time_str} today is in the FUTURE and can be accommodated if within operating hours.
-{compliance_rule}
-3. CROSS-TIMEZONE REASONING & CLARITY:
-   - When a caller mentions their country/timezone (e.g. "I'm in the UK", "5 PM UK time", "3 PM EST", "4 PM PST", "IST"), ALWAYS acknowledge and match their timezone explicitly, and state the equivalent time at {business}.
-4. MANDATORY EXACT DATE CONFIRMATION:
-   - ALWAYS specify BOTH the day name AND the explicit calendar date (e.g., "Monday, {upcoming_days[-1].split(': ')[1]}")."""
+        return (
+            "[SCHEDULING RULES]\n"
+            f"- BUSINESS TIMEZONE FOR {business.upper()}: {schedule.timezone_label}. Every appointment time you offer or confirm is in this timezone.\n"
+            f"{working_hours_rule}\n"
+            f"- A month and day without a year means the next occurrence on or after today ({date_str}). Never call a future date past.\n"
+            f"- Anything later than {time_str} today is in the future and can be booked if it is inside the hours.\n"
+            f"- If the caller names their own timezone or country (\"5 PM UK time\", \"3 PM EST\"), acknowledge it once and say the equivalent time at {business}.\n"
+            "- When you confirm, give the weekday AND the calendar date from the calendar above."
+        )
 
 
     @staticmethod
@@ -619,7 +621,7 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             f"- Every reply is at most {sentences} short sentences and about {words} words, even when the caller says \"explain\" or "
             "\"tell me more\". Give the single most useful point, then stop or ask ONE short question. Never list several services or tools; "
             "name one that fits what they said.\n"
-            "- Ask only one question per reply.\n"
+            "- Ask only one question per reply. Open with a short first clause so speech starts quickly.\n"
             "- Don't start with filler like \"Perfect!\" or \"Glad to hear that!\" on every turn; answer what they said.\n"
             "- BOOKING FLOW, one step per reply. What you book is whatever YOUR instructions say (a technician visit, an appointment, a demo, "
             "a meeting, a call): use that exact kind of booking and never swap it for another, such as a \"call with a specialist\". "
@@ -697,23 +699,19 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         )
         return (
             "[TODAY'S DATE & BOOKING RULES - ALWAYS FOLLOW]\n"
-            f"- Today is {now.strftime('%A, %B %d, %Y')}, {now.strftime('%I:%M %p')} ({schedule.timezone_label}). "
+            f"- Today is {now.strftime('%A, %B %d, %Y')}, {now.strftime('%I:%M %p')} ({schedule.timezone_label}) at the start of this call. "
             f"Tomorrow is {tomorrow.strftime('%A, %B %d')}. After that: {following}.\n"
-            "- NEVER invent, guess or recite a date from memory. Any weekday, month or date written elsewhere in your instructions "
-            "is only a pattern; take real dates from this calendar. A date before today is never valid.\n"
+            "- Take every date from this calendar. Never invent or recite a date from memory; a weekday or date written elsewhere in your "
+            "instructions is only a pattern. A date before today is never valid.\n"
             "- When you ask for or offer a booking time, use real upcoming days from this calendar, for example "
-            f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\". If booking is only a side step in your job, do not offer a slot in the "
-            "same reply that asks whether they want it.\n"
-            "- When the caller names a day and a time (\"tomorrow 5 PM\", \"Friday 3\"), book it right away and say it ONCE with the weekday, the "
-            f"calendar date and the time, for example \"Done, you're booked for {tomorrow.strftime('%A, %B %d')} at 5 PM.\" Do not ask them to confirm "
-            "it and do not repeat it later unless they ask. If they change it, say the new time once and continue. If they gave only a day or only "
-            "a time, ask for the missing part.\n"
-            "- Never say the time zone or a region name (a city, \"Asia/...\", \"IST\") in a sentence; say \"5 PM\". Mention a zone only if the caller "
-            "says they are in a different one, and then only once.\n"
+            f"\"tomorrow, {tomorrow.strftime('%A %B %d')}, at 11 AM\".\n"
+            "- When the caller names a day and a time (\"tomorrow 5 PM\", \"Friday 3\"), book it right away and say it ONCE with the weekday, "
+            f"the calendar date and the time, for example \"Done, you're booked for {tomorrow.strftime('%A, %B %d')} at 5 PM.\" Do not ask them to confirm "
+            "it and do not repeat it later unless they ask. If they change it, say the new time once. If they gave only a day or only a time, ask for the missing part.\n"
+            "- Never say a time zone or region name (\"Asia/...\", \"IST\") in a sentence; say \"5 PM\". Mention a zone only if the caller says they are in a different one.\n"
             "- Speak only words meant for the caller. Never say bracketed notes or stage directions such as \"[Scheduling the meeting...]\" "
             "and never say \"please hold on\". Do not promise an email or calendar invite unless your facts say you send one.\n"
-            "- After you say the booking once, add at most a short \"anything else?\", and only the first time: after a correction just state the new time. When the caller says bye, thanks or that's all, "
-            "reply with ONE short goodbye that includes the word \"goodbye\", then stop talking."
+            "- When the caller says bye, thanks or that's all, reply with ONE short goodbye that includes the word \"goodbye\", then stop talking."
         )
 
     @staticmethod
@@ -751,38 +749,33 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
     @staticmethod
     def _build_conversational_acoustics_section(config: AgentConfiguration) -> str:
         """Injects instructions for natural conversational fillers, phrasing rhythm, and spoken human acoustics."""
-        runtime = config.runtime
-        if not runtime or not getattr(runtime, "conversational_fillers_enabled", True):
-            return ""
-
-        phrases = getattr(runtime, "filler_phrases", None)
-        # Examples only: the agent must say them in the language it is currently replying in.
-        phrases_example = ", ".join([f'"{p}"' for p in (phrases[:3] if phrases else ["Got it, let me check that for you.", "Understood, give me one moment."])])
-
-        # The voice engine pacing is steered both through speed setting and personality energy/patience
+        # Spoken-style rules always apply (they used to vanish when thinking-fillers were switched off).
         speed = getattr(getattr(config, "voice", None), "speed", None) or 1.0
         p = getattr(config, "personality", None)
         energy_val = getattr(p, "energy", 70) if p else 70
         patience_val = getattr(p, "patience", 80) if p else 80
 
         if speed <= 0.9 or (patience_val >= 85 and energy_val <= 45):
-            pacing_line = "- PACING & ACOUSTICS: Speak in a calm, unhurried, measured way. Use gentle micro-pauses (commas) and allow thoughts to settle before advancing.\n"
+            pacing_line = "- Pace: calm and unhurried, with gentle pauses at commas.\n"
         elif speed >= 1.05 or energy_val >= 80:
-            pacing_line = "- PACING & ACOUSTICS: Maintain a lively, upbeat, dynamic vocal bounce. Speak briskly and decisively, using short punchy sentences.\n"
+            pacing_line = "- Pace: lively and brisk, with short punchy sentences.\n"
         elif patience_val <= 35:
-            pacing_line = "- PACING & ACOUSTICS: Keep answers brisk, direct, and time-efficient with zero lingering.\n"
+            pacing_line = "- Pace: brisk and direct, no lingering.\n"
         else:
-            pacing_line = "- PACING & ACOUSTICS: Balanced, relaxed conversational human pacing.\n"
+            pacing_line = "- Pace: relaxed, natural conversational pace.\n"
 
         return (
-            "[NATURAL CONVERSATIONAL CADENCE & HUMAN SPOKEN ACOUSTICS]\n"
+            "[HOW TO SOUND HUMAN]\n"
             f"{pacing_line}"
-            "- SPOKEN FORMAT: Write everything the way it is said aloud. Say prices in words ('two hundred fifty dollars', not '$250'), say dates as 'March third', say phone numbers as digit words in comma-separated groups (for example 'nine eight seven six five, four three two one zero'), and never use symbols, abbreviations like 'approx.', URLs read character by character, markdown, or emojis.\n"
-            "- IMMEDIATE CONVERSATIONAL BRIDGES (ZERO DEAD AIR): Begin your turn with a quick, natural acknowledgment in the SAME language you are replying in (English 'Got it' / 'Sure'; Hindi 'हाँ जी' / 'बिल्कुल'; Gujarati 'હા જી' / 'બરાબર'; or the equivalent in any other language). NEVER use an English bridge when replying in another language.\n"
-            "- MANDATORY SPOKEN CONTRACTIONS: Always speak using natural contractions ('I\\'m', 'we\\'ll', 'don\\'t', 'can\\'t', 'it\\'s', 'there\\'s') instead of rigid written phrasing ('I am', 'we will', 'do not', 'cannot', 'it is').\n"
-            "- FLUID INTER-SENTENCE PACING: Connect your sentences smoothly and naturally. NEVER insert ellipsis (...), trailing dots, or artificial pause marks between sentences, as this causes robotic speech pauses. Use standard commas for micro-breaths.\n"
-            "- GROUNDED CONFIDENT DELIVERY (NOT AN INTERROGATOR): Speak naturally and confidently. Do NOT interrogate the caller or force an inquiring question at the end of every sentence. State information, solutions, and observations as natural statements. Only ask a question when genuinely requiring caller input or scheduling selection.\n"
-            "- CONVERSATIONAL FLOW: Never produce dense paragraphs or list bullet points aloud. Speak warmly, articulately, and casually like an experienced human executive on the telephone."
+            "- Talk like a person on the phone, not like written text: use contractions (I'm, we'll, don't), vary sentence length, and "
+            "answer first, then add context only if it helps. No lists, no bullets, no stage directions.\n"
+            "- Write everything the way it is said aloud: prices in words ('two hundred fifty dollars'), dates like 'March third', "
+            "'per night' not '/night', 'square feet' not 'sq ft', no symbols, markdown, emojis or URLs read letter by letter.\n"
+            "- Openers: vary them. Often start straight with the answer; sometimes use a short natural acknowledgment (in the language "
+            "you are replying in), never the same one twice in a row.\n"
+            "- React to how the caller sounds: if they are frustrated or unsure, acknowledge it in a few words before helping.\n"
+            "- Use commas for micro-pauses. Never use ellipses (...) or trailing dots between sentences.\n"
+            "- State facts as statements. Ask a question only when you need an answer from the caller."
         )
 
     @staticmethod
@@ -815,9 +808,8 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             "- PHONE NUMBERS (CRITICAL): ALWAYS write every phone number, OTP, PIN, extension or ID as individual digit WORDS, grouped with commas so there is a natural breath between groups. Never write phone numbers as digits or as one big number, because the voice would read them as thousands or millions. "
             "Example: 9876543210 must be written as 'nine eight seven six five, four three two one zero'. A number with a country code such as +91 98765 43210 becomes 'plus nine one, nine eight seven six five, four three two one zero'. Use 'zero' for 0. "
             "When confirming a number the caller gave you, repeat it back in the same grouping and ask 'is that right?'.\n"
-            "- CURRENCIES & AMOUNTS: Spell out amounts clearly, in the SAME currency your facts use (e.g., '$280/night' is spoken as '280 dollars per night'; '₹1.5Cr' as '1.5 crore rupees'). Never convert or estimate a price in another currency.\n"
-            "- UNITS & DIMENSIONS: Speak full words for dimensions and units (e.g., say 'square feet', not 'sq ft'; say '2 B-H-K', not '2bhk').\n"
-            "- CLEAN SPOKEN TEXT: NEVER output asterisks, hashtags, or markdown tables. Speak pure natural conversational text."
+            "- CURRENCIES: say amounts in the SAME currency your facts use; never convert or estimate another currency.\n"
+            "- Units in full words ('square feet', '2 B-H-K')."
         )
 
         if not lines:
@@ -837,11 +829,10 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         if runtime and not getattr(runtime, "graceful_resumption_enabled", True):
             return ""
         return (
-            "[INTERRUPTION & GRACEFUL SPEECH RESUMPTION (MANDATORY)]\n"
-            "- AVOID RESTARTING: If the caller interrupts with brief acknowledgments, questions, or filler words ('Wait', 'Sorry', 'Go on', 'Continue', 'Yes', 'Okay'), NEVER restart your previous answer or greeting from the beginning.\n"
-            "- DIRECT RESOLUTION FIRST: If the caller asked a clarifying question or expressed an objection during the interruption, answer that question or objection first in 1 concise sentence.\n"
-            "- NATURAL BRIDGING: If the caller's interruption was a momentary acknowledgment or brief pause, bridge gracefully using natural conversational transitions (e.g., 'Right, as I was saying...', 'Sure thing — so as I mentioned...', 'Got it — coming back to that...') and conclude the unsaid thought concisely.\n"
-            "- NEVER DUMP TEXT: Even after an interruption, keep your resumed answer strictly under 2 sentences."
+            "[IF THE CALLER INTERRUPTS]\n"
+            "- A brief interjection ('wait', 'sorry', 'go on', 'okay') is not a new question: do not restart your answer or greeting.\n"
+            "- If they asked a question or raised an objection, answer that first in one sentence. Otherwise pick up the thought briefly "
+            "('Right, as I was saying...') and finish it in under two sentences."
         )
 
     @staticmethod
@@ -938,16 +929,16 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 lines.append(f"- {r}")
 
         lines.append(
-            "- POLITE OUT-OF-SCOPE HANDLING (DO NOT CUT THE CALL):\n"
-            "  * You represent and assist strictly within your defined business services and expertise.\n"
-            "  * If a caller asks about or brings up a topic, service, or product outside your scope (for example: bank loans, retail goods, mobile phones, or unrelated personal questions), NEVER cut the call and NEVER say a goodbye/farewell like 'आपका दिन शुभ हो' or 'Goodbye' unless the caller explicitly says they want to end the call or refused to talk.\n"
-            "  * LOOK BEFORE YOU DECLINE: if you have a `search_knowledge` function, call it with the caller's topic BEFORE saying you do not offer something. Speech recognition garbles product names (for example 'n eight n' is n8n, 'power apps' may be heard as 'power ops'), so search using the most likely real term. Decline ONLY if the search returns nothing relevant. A question like 'what other services do you offer?' is NEVER off-topic: answer it with 2-3 of your services in one sentence.\n"
-            "  * For something genuinely not covered, acknowledge it in ONE short, friendly sentence, offer a follow-up from the solution team instead of a flat refusal, and vary your wording (never repeat the same sentence twice in one call):\n"
-            "    - In Hindi: 'माफ़ कीजिए, यह हमने अभी तक नहीं किया है, लेकिन हमारी टीम इसे कन्फ़र्म कर सकती है। क्या मैं एक छोटी कॉल तय कर दूँ?'\n"
-            "    - In English: \"That's not something we've delivered so far, but I can have our solution team confirm. Want me to set up a quick call?\" or \"Hmm, that one's outside what we usually build, though our team can tell you for sure. Shall I arrange a quick chat?\"\n"
-            "    - Only for clearly unrelated consumer topics (internet service, loans, phones): \"Ah, that's not our area, we focus on [your authorized services]. Is there a software or Microsoft project on your mind?\"\n"
-            "  * NEVER repeat a fixed stock pitch (such as asking about 'automation' if the customer already asked for 'custom software'). Always honor the customer's prior statements and context!\n"
-            "  * CRITICAL: If the caller explicitly states they do NOT want to talk or are not interested, DO NOT use this redirection or apology. Immediately follow the Universal Refusal Rule by speaking only the closing farewell and concluding."
+            "- OUT-OF-SCOPE TOPICS (DO NOT CUT THE CALL): you assist strictly within your business services. Never end the call or say goodbye "
+            "over an off-topic question unless the caller asks to end it or refuses to talk.\n"
+            "  * Look before you decline: if you have a `search_knowledge` function, call it with the caller's topic first. Speech recognition "
+            "garbles product names ('n eight n' is n8n, 'power ops' may be 'Power Apps'), so search the most likely real term. 'What other "
+            "services do you offer?' is never off-topic: answer with two or three of your services in one sentence.\n"
+            "  * If something is truly not covered, say so in one short friendly sentence and offer a follow-up from the team, with varied "
+            "wording each time. English example: \"That's not something we've delivered so far, but I can have our solution team confirm. Want me to set up a quick call?\" "
+            "For clearly unrelated consumer topics (internet, loans, phones): say it is not your area and ask whether they have a project in your field.\n"
+            "  * Honor what the caller already told you; never repeat a fixed pitch they already answered.\n"
+            "  * If the caller says they do not want to talk or are not interested, skip all of this and follow the refusal rule."
         )
         return "\n".join(lines)
 
@@ -974,81 +965,34 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
         outbound_anchor = VoicePromptBuilder._build_outbound_anchor() if is_outbound else ""
         speaking_limits = VoicePromptBuilder._build_speaking_limits(config.response_length)
         transfer_rule = VoicePromptBuilder._build_transfer_rule(config)
-        length_rule = VoicePromptBuilder._build_length_enforcement(config.response_length)
         language_rule = VoicePromptBuilder._build_language_directives(config)
         knowledge_section = VoicePromptBuilder._build_business_knowledge_section(config, business_profile)
         platform_rules_text = VoicePromptBuilder._build_platform_rules_section(platform_rules)
         acoustics_rule = VoicePromptBuilder._build_conversational_acoustics_section(config)
-        turn_taking_rule = VoicePromptBuilder._build_turn_taking_directives(config)
         resumption_rule = VoicePromptBuilder._build_interruption_resumption_directives(config)
         pronunciation_rule = VoicePromptBuilder._build_pronunciation_rules_section(config)
         few_shot_section = VoicePromptBuilder._build_few_shot_examples_section(config)
 
-        telephony_rules = """[CRITICAL SPOKEN TELEPHONY & DIRECT ANSWERING RULES]
-1. CONCISENESS & CLARITY: Keep responses natural, conversational, and direct (1-2 sentences per turn). Deliver facts immediately without unnecessary introductory fluff.
-2. DIRECT KNOWLEDGE FIRST: When the caller asks about pricing, rates, plans, software features, or room availability, ANSWER IMMEDIATELY with the exact facts and figures from your knowledge base. NEVER say "I need to connect you with a specialist", "Would you like me to schedule a call with our specialist", or "Let me schedule a callback" when you already have or can provide the answer. Give the figures directly to the caller! If a price or detail is NOT written in your facts, never guess or estimate it; say you'll check that detail and ask one short follow-up question instead. Never send the caller to an email address, website or another team unless that exact contact is in your facts.
-3. SINGLE QUESTION CADENCE & OPENING CADENCE: Ask strictly ONE single question at a time to allow the caller to respond naturally. In the first turn following the opening greeting, never stack multiple questions. If the caller introduces themselves, warmly acknowledge their greeting first before asking for their inquiry.
-4. ACTIVE LISTENING & COMPREHENSION: When the user speaks at length, gives a long description, or shares detailed multi-part requirements, actively listen to every detail. Briefly reflect their key point in your own words when it helps; short acknowledgments like "I understand" or "That makes sense" are fine occasionally, but never the same stock phrase every turn and deliver a direct, tailored response addressing their core points.
-5. AI IDENTITY DISCLOSURE: If asked if you are an AI assistant or bot, acknowledge it warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team!") and smoothly continue answering their inquiry.
-6. HUMAN ESCALATION & TRANSFER: follow the [CALL TRANSFER] block near the top of this prompt exactly. Transfer only exists when that block says it is available, and never offer it unprompted when the caller is simply asking about products, pricing, or bookings.
-7. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullet points, or brackets) and NEVER number items ("1.", "2."). Your words are spoken aloud, so list-style formatting is read out literally. When there are several options, mention at most two in one natural sentence (e.g., "We have the Deluxe Ocean View Suite at 280 dollars a night, or the Standard King at 175."), then ask which one they'd like. Say "per night", not "/night".
-8. VOICEMAIL & MACHINE OVERRIDE: If you hear a voicemail greeting ("leave a message after the tone"), IVR menu ("press 1"), automated screener, or operator announcement, IMMEDIATELY say "Thank you for your time. Goodbye!" to conclude cleanly and save credits.
-9. STRICT CONFIDENTIALITY & NO INTERNAL TECHNICAL DISCLOSURE: NEVER explain, reveal, or discuss internal technology, VoIP mechanisms, audio pipelines, call-recording mechanisms, or platform operations under ANY circumstances (even if the caller directly asks "how does the phone work?" or "how do you record calls?"). Instead, focus strictly on business benefits (e.g., "Our platform helps streamline team communication and project tracking"). NEVER use technical jargon like "VoIP solution", "integrated capture", "call recording", or "pipeline".
-10. NO REPETITIVE MEETING PUSHING: Answer the caller's actual question directly first. NEVER push or repeatedly ask to book a meeting or schedule a specialist if the caller is just exploring or has already said "no". Treat the caller like a real human in a natural conversation.
-11. POLITE SERVICE BOUNDARY & REDIRECTION (FOR OFF-TOPIC PRODUCT INQUIRIES ONLY): You represent and assist with the services in your profile. If a caller asks about an unrelated topic, product, or service (e.g. loans, bank accounts, buying smartphones, or unrelated goods):
-- NEVER abruptly cut the call, and NEVER utter farewell phrases like "Goodbye", "Have a great day", or "आपका दिन शुभ हो" unless the caller has explicitly asked to end the call or refused to talk.
-- FIRST, if you have a `search_knowledge` function, call it with the caller's topic (use the likely real term: speech recognition turns "n eight n" into n8n). Questions such as "what other services do you provide?" are NEVER off-topic: answer with 2-3 of your services. Decline only if the search returns nothing relevant.
-- If it is truly not covered, say so in one short friendly sentence, offer a follow-up from the solution team, and vary your wording (never repeat the same sentence twice in a call):
-  * Hindi: "माफ़ कीजिए, यह हमने अभी तक नहीं किया है, लेकिन हमारी टीम इसे कन्फ़र्म कर सकती है। क्या मैं एक छोटी कॉल तय कर दूँ?"
-  * English: "That's not something we've delivered so far, but I can have our solution team confirm. Want me to set up a quick call?"
-  * Clearly unrelated consumer topics only (internet service, loans, phones): "Ah, that's not our area, we focus on [authorized services]. Is there a software or Microsoft project on your mind?"
-- CRITICAL EXCEPTION: If the caller says they do NOT want to talk or are not interested, Rule 12 (Universal Refusal) takes ABSOLUTE PRECEDENCE. NEVER use Rule 11's apology or redirection question when the caller refuses to talk!
-12. UNIVERSAL REFUSAL & IMMEDIATE CALL CONCLUSION (ALL 43 LANGUAGES & SCRIPTS - HIGHEST PRECEDENCE):
-- This rule OVERRIDES all other rules, including Rule 11 (Redirection).
-- If the caller clearly states in ANY language or script that they do not want to talk, are not interested, want to hang up, or ask you to stop calling (for example: Hindi "बात नहीं करनी", "मुझे आपसे बात ही नहीं करनी है", "मेरी आपसे बात नहीं करनी", "फोन रखो"; English "I don't want to talk with you", "not interested", "stop calling"; Gujarati "વાત નથી કરવી", "રસ નથી"; Spanish "no quiero hablar", "no me interesa"; French "je ne veux pas parler"; German "ich möchte nicht sprechen"):
-  * IMMEDIATELY RESPECT THEIR DECISION. NEVER apologize, never explain services, never ask if they need business automation/software, never counter-question, never argue, and never deflect.
-  * Speak ONLY ONE single polite closing farewell in the EXACT language they spoke, and nothing else:
-    - In Hindi: "समझ गया, आपके समय के लिए धन्यवाद। यदि भविष्य में किसी मदद की ज़रूरत हो तो कृपया संपर्क करें। अलविदा!"
-    - In Gujarati: "સમજી ગયો, તમારા સમય માટે આભાર. આવજો!"
-    - In English: "I understand, thank you for your time. Goodbye!"
-    - In Spanish: "Entendido, muchas gracias por su tiempo. ¡Hasta luego!"
-    - In French: "C'est compris, merci pour votre temps. Au revoir !"
-    - In German: "Verstanden, vielen Dank für Ihre Zeit. Auf Wiedersehen!"
-  * Concluding with a clear farewell immediately terminates the call cleanly.
-13. CONVERSATIONAL SELF-CORRECTION, GRACEFUL APOLOGY & IMMEDIATE PIVOT (SENIOR HUMAN EXECUTIVE STANDARD):
-- When the customer points out that you misunderstood them, gave an off-mark/wrong answer, went off-track, or asks why you are talking about something else (e.g. "मैंने ये नहीं पूछा", "आप automation क्यों पूछ रहे हैं, मुझे custom software चाहिए", "I didn't ask for that", "that's not what I meant", "you misunderstood me", "listen to what I am actually saying"):
-  * STEP 1 (IMMEDIATE WARM APOLOGY & OWNERSHIP): Acknowledge your mistake in 3-5 sincere words ("माफ़ कीजिए, मेरी ग़लती थी!", "I apologize, that was completely my mistake!", "Sorry about that misunderstanding!"). NEVER be defensive, never argue, and never repeat your previous mistake or robotic stock question.
-  * STEP 2 (DIRECT EMBRACE OF THEIR EXACT NEED): In the very same breath, pivot 100% to what they specifically asked for, confirm understanding, and ask a relevant discovery or follow-up question.
-  * Examples of senior human-grade recovery:
-    - Hindi: "माफ़ कीजिए, मेरी ग़लती थी! आप बिल्कुल सही कह रहे हैं — कस्टम सॉफ़्टवेयर के लिए हम आपकी ज़रूरत के अनुसार स्क्रैच से पूरा ऐप्लिकेशन तैयार करते हैं। आपको इसमें किस तरह के फ़ीचर्स चाहिए?"
-    - Hinglish / Conversational: "Sorry, मेरी गलती थी! बिल्कुल, custom software development में हम आपके requirements के हिसाब से tailored application बनाते हैं। क्या आप बता सकते हैं कि किस तरह का application आप plan कर रहे हैं?"
-    - English: "My apologies, that was completely my mistake! You're looking for custom software development from scratch. We build tailored applications specifically for that — what kind of application do you have in mind?"
-- This immediate, natural self-correction ensures the caller feels heard, respected, and confident they are talking to an attentive, top-tier executive.
-14. OUTBOUND CALL PURPOSE DISCLOSURE & "WHY ARE YOU CALLING ME?":
-- NEVER ask a customer you called: "How can I help you today?" or "What can I help you with today?". YOU initiated the outbound call!
-- In Turn 1 following the greeting (or whenever the customer says "I'm good / fine", "what's this about?", or "why are you calling me?"):
-  * STEP 1: Acknowledge their response in 2-3 words ("Glad to hear!").
-  * STEP 2: IMMEDIATELY state the exact purpose of the call in ONE direct, confident sentence, then ask ONE short question about their needs.
-    Take the purpose ONLY from YOUR OWN instructions, objective and services above: say who you are calling for and what you help with, in your own words, in the caller's language.
-    Pattern: "The reason I'm reaching out is pretty quick — <what you and your company help with, from your own instructions>. <one short question that fits your goal>?"
-    Never reuse a company description, partner status or service list that is not in your own instructions or knowledge.
-  * NEVER say vague robotic phrases like "I'm here to see if you have any questions about our services" or "What's on your mind?". State your purpose proactively!
-15. BUSY / CALL ME LATER RESCHEDULING & IMMEDIATE HANGUP (CRITICAL TELEPHONY RULE):
-- When a customer says they are busy, driving, in a meeting, or asks you to call back later (e.g., "Can you call me later?", "I am busy right now", "call back in 2 hours", "bad time"):
-  * STEP 1: Immediately agree without arguing or keeping them on the phone: "Sure thing! When would be a good time to call you back?"
-  * IF THEY ALREADY NAMED A TIME ("call me after five minutes", "in 2 hours", "tomorrow at 5"): do NOT ask "would that work for you?" or ask for a time again. Repeat the time back once and say goodbye in the SAME turn ("Sure, I'll call you back in five minutes. Talk to you then, goodbye!"). A relative time ("in five minutes") is repeated as spoken; never convert it to a clock time you are unsure of.
-  * STEP 2: When they give a time (e.g. "Tomorrow 5 PM" or "in 2 hours"), CONFIRM the appointment in ONE single sentence and ALWAYS finish with a clear closing farewell word (e.g. "Goodbye!" or "Talk to you then, goodbye!") so the telephone line disconnects instantly:
-    - English: "Perfect, I've got you down for tomorrow, <weekday and date>, at 5:00 PM. Talk to you then, goodbye!" (use tomorrow's real weekday and date from the calendar and never read the angle brackets aloud)
-    - Hindi: "बिल्कुल, मैं आपको कल शाम 5 बजे कॉल करूँगा। तब बात करते हैं, अलविदा!"
-    - Gujarati: "ચોક્કસ, હું તમને કાલે સાંજે 5 વાગ્યે કૉલ કરીશ. આવજો!"
-  * NEVER drag out the call with repetitive confirmations, calendar lectures, or open-ended lingering once the callback time is scheduled. Speak the confirmation and farewell so the call terminates immediately!"""
+        telephony_rules = """[SPOKEN TELEPHONY RULES]
+1. ANSWER DIRECTLY: When asked about pricing, plans, features or availability, answer immediately with the exact facts from your knowledge, in one or two sentences. Never hand the caller to a specialist or offer a callback when you can answer. If a price or detail is NOT in your facts, never guess or estimate it; say you'll check that detail and ask one short follow-up. Never send the caller to an email address, website or another team unless that exact contact is in your facts.
+2. SINGLE QUESTION CADENCE & OPENING CADENCE: ask strictly ONE single question at a time, and in the first turn after the greeting never stack multiple questions. If the caller introduces themselves, acknowledge them before asking anything.
+3. LISTEN AND REFLECT: when the caller gives a long or multi-part request, answer their core points specifically. Reflect their key point in your own words when it helps; never use the same stock phrase every turn.
+4. AI IDENTITY: if asked whether you are an AI or a bot, say so warmly and candidly ("Yes, I'm an AI voice assistant calling on behalf of our team!") and carry on helping.
+5. TRANSFER: follow the [CALL TRANSFER] block exactly. Never offer a transfer unprompted when the caller is just asking about products, pricing or bookings.
+6. CLEAN SPOKEN FORMATTING: NEVER output markdown symbols (asterisks, hashtags, bullets or brackets) and NEVER number items; your words are read aloud literally. With several options, mention at most two in one natural sentence, then ask which one they want.
+7. VOICEMAIL / IVR / MACHINE: if you hear a voicemail greeting ("leave a message after the tone"), a menu ("press 1"), a screener or an operator announcement, say "Thank you for your time. Goodbye!" and stop.
+8. CONFIDENTIALITY: never explain or discuss internal technology, call recording, audio pipelines or platform operations, even if asked. Talk about business benefits instead, and avoid technical jargon.
+9. NO MEETING-PUSHING: answer the actual question first. Never repeatedly push a meeting or specialist call if the caller is exploring or has said no.
+10. OFF-TOPIC REQUESTS: follow the out-of-scope handling in the boundaries block. Never end the call or say goodbye because of an off-topic question; call `search_knowledge` first if you have it and decline only when nothing relevant comes back. If the caller says they do not want to talk, Rule 11 wins.
+11. REFUSAL = IMMEDIATE END (ANY LANGUAGE, HIGHEST PRECEDENCE, OVERRIDES ALL OTHER RULES): if the caller says they do not want to talk, are not interested, want to hang up or ask you to stop calling ("not interested", "stop calling", "बात नहीं करनी", "વાત નથી કરવી", "no quiero hablar"), respect it at once. Do not apologize, explain, pitch, counter-question or argue. Say ONE polite farewell in the language they spoke and nothing else, for example "I understand, thank you for your time. Goodbye!" (Hindi: "समझ गया, आपके समय के लिए धन्यवाद। अलविदा!" Gujarati: "સમજી ગયો, તમારા સમય માટે આભાર. આવજો!"). A clear farewell ends the call.
+12. WHEN THE CALLER SAYS YOU MISUNDERSTOOD ("that's not what I asked", "you misunderstood me", "मैंने ये नहीं पूछा"): apologize in a few sincere words, never defend yourself, and in the same breath answer exactly what they asked, then ask one relevant follow-up. Never repeat the earlier mistake or stock question.
+13. OUTBOUND CALLS (you placed the call): never ask "How can I help you today?". When the caller says they're fine or asks why you are calling, acknowledge in two or three words, then state the purpose of the call in ONE confident sentence taken ONLY from your own instructions, objective and services, and ask ONE short question. Never reuse a company description or service list that is not in your own instructions.
+14. BUSY / CALL ME LATER: agree at once without arguing ("Sure thing! When would be a good time to call you back?"). If they already gave a time ("in five minutes", "tomorrow at 5"), do not ask again: repeat it once and say goodbye in the same turn ("Sure, I'll call you back in five minutes. Talk to you then, goodbye!"). Repeat a relative time as spoken; never convert it to a clock time you are unsure of. For a named day and time use the real weekday and date from the calendar. Once the callback is set, do not linger or repeat the confirmation."""
 
         guardrails_section = VoicePromptBuilder._build_guardrails_section(config)
         workflow_stages_rule = VoicePromptBuilder._build_workflow_stages_section(config)
 
-        personality_directives = VoicePromptBuilder._build_personality_instructions(config)
-        personality_lines = "\n".join(f"- {d}" for d in personality_directives)
-        personality_section = f"[PERSONALITY DIMENSIONS & BEHAVIORAL PROFILE]\nSTYLE: {config.communication_style or 'Conversational'}\n{personality_lines}"
+        personality_section = VoicePromptBuilder._build_personality_summary(config)
 
         # If custom system_prompt is provided, prioritize it directly while ensuring personality, language and length directives apply
         if config.system_prompt and config.system_prompt.strip():
@@ -1059,18 +1003,13 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 if is_outbound else VoicePromptBuilder._neutralize_example_dates(config.system_prompt.strip()),
                 speaking_limits,
                 transfer_rule,
-                outbound_anchor,
-                date_anchor,
                 knowledge_section,
                 personality_section,
                 guardrails_section,
                 telephony_rules,
-                temporal_rule,
                 language_rule,
                 workflow_stages_rule,
-                length_rule,
                 acoustics_rule,
-                turn_taking_rule,
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
@@ -1095,20 +1034,15 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
                 f"PRIMARY GOAL: {config.objective}",
                 speaking_limits,
                 transfer_rule,
-                outbound_anchor,
-                date_anchor,
                 personality_section,
                 guardrails_section,
                 telephony_rules,
-                temporal_rule,
                 language_rule,
                 role_directives,
                 workflow_stages_rule,
                 knowledge_section,
                 skills_text,
-                length_rule,
                 acoustics_rule,
-                turn_taking_rule,
                 resumption_rule,
                 pronunciation_rule,
                 few_shot_section,
@@ -1123,15 +1057,24 @@ MANDATORY TIMEZONE, TIME ARITHMETIC & CALENDAR DIRECTIVES:
             business_profile=business_profile
         ).strip()
 
-        # Telephony Performance Optimization: Deepgram managed LLMs have a hard 25,000 character limit.
-        # The full prompt (rules + knowledge + persona) is ~35k characters; the tail beyond the limit is dropped, so section
-        # ORDER decides what the model sees. 24,000 keeps the knowledge, refusal and language rules inside the limit.
-        # The language rule goes LAST (the model weighs the end of a long prompt most) and is added after trimming
-        # so it can never be cut off. It overrides any earlier "speak only X" wording, including a saved prompt.
+        # Per-call text (today's date, scheduling rules, outbound anchor) goes LAST so the long stable part above stays
+        # identical from call to call (friendlier to prompt caching) and the recent date sits where the model weighs it.
+        dynamic_text = VoicePromptBuilder.resolve_dynamic_variables(
+            "\n\n".join(p.strip() for p in (outbound_anchor, date_anchor, temporal_rule) if p and p.strip()),
+            config=config,
+            business_profile=business_profile,
+        ).strip()
+
+        # Deepgram managed LLMs have a hard 25,000 character limit. Only the stable part is ever cut; the per-call block
+        # and the language rule are appended after trimming so they can never be dropped. The language rule goes last
+        # and overrides any earlier "speak only X" wording, including a saved prompt.
         language_override = VoicePromptBuilder._build_language_override(config)
-        limit = PROMPT_CHAR_LIMIT - (len(language_override) + 2 if language_override else 0)
+        reserved = (len(dynamic_text) + 2 if dynamic_text else 0) + (len(language_override) + 2 if language_override else 0)
+        limit = PROMPT_CHAR_LIMIT - reserved
         if len(resolved_prompt) > limit:
             resolved_prompt = resolved_prompt[:limit]
+        if dynamic_text:
+            resolved_prompt = f"{resolved_prompt}\n\n{dynamic_text}"
         if language_override:
             resolved_prompt = f"{resolved_prompt}\n\n{language_override}"
 

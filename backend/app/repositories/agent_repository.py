@@ -128,12 +128,14 @@ class AgentRepository:
             # Memory fallback
             org_agents = self._memory_store.get(organization_id, {})
             if agent_id in org_agents:
-                res = org_agents[agent_id]
+                # Copies, like a database read: a caller editing the result must not edit the stored agent (or
+                # another tenant's, when both were served the same global default).
+                res = org_agents[agent_id].model_copy(deep=True)
                 _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
                 return res
             global_agents = self._memory_store.get("global", {})
             if agent_id in global_agents:
-                res = global_agents[agent_id]
+                res = global_agents[agent_id].model_copy(deep=True)
                 _AGENT_BY_ID_CACHE[cache_key] = (res, time.time())
                 return res
             return None
@@ -189,13 +191,13 @@ class AgentRepository:
             org_mem = self._memory_store.get(organization_id, {})
             for agt in org_mem.values():
                 if agt.agent_id not in seen_agent_ids:
-                    results.append(agt)
+                    results.append(agt.model_copy(deep=True))
                     seen_agent_ids.add(agt.agent_id)
 
             if include_global:
                 for g_agt in self._memory_store.get("global", {}).values():
                     if g_agt.agent_id not in seen_agent_ids:
-                        results.append(g_agt)
+                        results.append(g_agt.model_copy(deep=True))
                         seen_agent_ids.add(g_agt.agent_id)
 
             _AGENT_CACHE[cache_key] = (results, time.time())
@@ -229,7 +231,7 @@ class AgentRepository:
             org_key = config.organization_id or "global"
             if org_key not in self._memory_store:
                 self._memory_store[org_key] = {}
-            self._memory_store[org_key][config.agent_id] = config
+            self._memory_store[org_key][config.agent_id] = config.model_copy(deep=True)
 
             # Record snapshot
             snapshot = PromptVersionSnapshot(

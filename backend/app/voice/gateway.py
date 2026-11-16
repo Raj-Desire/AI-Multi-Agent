@@ -948,7 +948,25 @@ async def voice_stream_websocket(websocket: WebSocket):
                 call_sid = start_data.get("callSid")
                 custom_params = start_data.get("customParameters", {})
 
-                logger.info(f"[VoiceGateway] Received 'start' event. streamSid={stream_sid}, callSid={call_sid}, params={custom_params}")
+                logged_params = {k: v for k, v in custom_params.items() if k != "stream_token"}
+                logger.info(f"[VoiceGateway] Received 'start' event. streamSid={stream_sid}, callSid={call_sid}, params={logged_params}")
+
+                # Only a stream the platform itself set up (it signed organization, agent, direction and session into the
+                # TwiML) may start an AI session; otherwise anyone could open /voice/stream, name any organization and
+                # agent, and run sessions on that organization's credits.
+                from app.core.webhook_security import check_stream_start, stream_auth_mode
+                auth_mode = stream_auth_mode()
+                if auth_mode != "off" and not check_stream_start(custom_params):
+                    logger.warning(
+                        f"[VoiceGateway] Stream start without a valid token (callSid={call_sid}, org={custom_params.get('organization_id')}); "
+                        f"VOICE_STREAM_AUTH={auth_mode}"
+                    )
+                    if auth_mode == "enforce":
+                        try:
+                            await websocket.close(code=1008)
+                        except Exception:
+                            pass
+                        break
 
                 # 1. Resolve Organization, Agent, and Existing CallSession
                 req_session_id = custom_params.get("call_session_id")
