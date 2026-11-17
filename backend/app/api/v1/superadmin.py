@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Dict, Any, Optional
 import uuid
+from app.core.password_policy import validate_password
 from app.repositories.user_repository import UserRepository
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.platform_rules_repository import PlatformRulesRepository
@@ -28,12 +29,16 @@ class CreateOrganizationPayload(BaseModel):
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=6)
 
+    _check_password = field_validator("admin_password")(lambda cls, v: validate_password(v))
+
 class CreateAdminPayload(BaseModel):
     username: str = Field(..., min_length=2, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=6)
     organization_id: str
     org_name: str
+
+    _check_password = field_validator("password")(lambda cls, v: validate_password(v))
 
 class UpdateUserPayload(BaseModel):
     username: Optional[str] = None
@@ -47,6 +52,8 @@ class ToggleOrganizationStatusPayload(BaseModel):
 
 class SuperadminResetPasswordPayload(BaseModel):
     new_password: str = Field(..., min_length=6)
+
+    _check_password = field_validator("new_password")(lambda cls, v: validate_password(v))
 
 class OrganizationSummaryResponse(BaseModel):
     organization_id: str

@@ -19,6 +19,8 @@ import { Input } from "./ui/Input";
 import { Badge } from "./ui/Badge";
 import { Modal } from "./ui/Modal";
 import { Alert } from "./ui/Alert";
+import { PasswordRules } from "./ui/PasswordRules";
+import { isPasswordValid } from "../utils/password";
 import { PageHeader } from "./ui/PageHeader";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
@@ -385,6 +387,7 @@ export const AdminPanel: React.FC = () => {
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
           />
+          <PasswordRules password={password} />
           <div>
             <label className="block text-xs font-medium text-[var(--color-heading)] mb-1.5">
               Access Role
@@ -394,9 +397,14 @@ export const AdminPanel: React.FC = () => {
               onChange={(e) => setRole(e.target.value as "user" | "admin")}
               className="w-full h-9 text-xs px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none"
             >
+              {/* This page only creates standard users: the server rejects role "admin" here. */}
               <option value="user">User (Standard Calling & Agent Access)</option>
-              <option value="admin">Admin (Full Organization & Settings Access)</option>
             </select>
+            {currentUser?.role === "superadmin" && (
+              <p className="mt-1.5 text-[11px] text-[var(--color-muted)] leading-snug">
+                To add an Admin to an organization, open the Super Admin panel, find the organization and use "Add Admin".
+              </p>
+            )}
           </div>
           <div className="pt-2 flex justify-end gap-2">
             <Button
@@ -412,6 +420,7 @@ export const AdminPanel: React.FC = () => {
               variant="primary"
               size="md"
               isLoading={isSubmitting}
+              disabled={!isPasswordValid(password)}
             >
               Create Account
             </Button>
@@ -436,6 +445,7 @@ export const AdminPanel: React.FC = () => {
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
           />
+          <PasswordRules password={newPassword} />
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
@@ -450,6 +460,7 @@ export const AdminPanel: React.FC = () => {
               variant="primary"
               size="md"
               isLoading={isResetting}
+              disabled={!isPasswordValid(newPassword)}
             >
               Update Password
             </Button>

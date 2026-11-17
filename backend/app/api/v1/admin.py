@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Dict, Any, Optional
 from app.repositories.user_repository import UserRepository
 from app.core.dependencies import require_admin
+from app.core.password_policy import validate_password
 
 router = APIRouter(prefix="/admin", tags=["Admin Management"])
 
@@ -12,11 +13,15 @@ class CreateUserRequest(BaseModel):
     password: str = Field(..., min_length=6)
     role: str = Field("user", description="Must be 'user'")
 
+    _check_password = field_validator("password")(lambda cls, v: validate_password(v))
+
 class ToggleUserStatusRequest(BaseModel):
     is_active: bool
 
 class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, description="New password for the user account")
+
+    _check_password = field_validator("new_password")(lambda cls, v: validate_password(v))
 
 class UserSummaryResponse(BaseModel):
     id: str
@@ -31,10 +36,12 @@ class UserSummaryResponse(BaseModel):
 @router.post("/users", response_model=UserSummaryResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(req: CreateUserRequest, current_admin: Dict[str, Any] = Depends(require_admin)):
     if req.role.lower() in ["admin", "superadmin"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Org Admins can only create standard 'user' client accounts for their organization."
-        )
+        if current_admin.get("role") == "superadmin":
+            detail = ("This page creates standard 'user' accounts only. To add an Admin to an organization, "
+                      "use the Super Admin panel (Organizations > Add Admin).")
+        else:
+            detail = "Org Admins can only create standard 'user' client accounts for their organization."
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
     # Scoped strictly to the admin's organization
     admin_org_id = current_admin.get("organization_id") or current_admin["id"]

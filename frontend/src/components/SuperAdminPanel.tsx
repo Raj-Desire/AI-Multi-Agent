@@ -25,6 +25,8 @@ import { Input } from "./ui/Input";
 import { Badge } from "./ui/Badge";
 import { Modal } from "./ui/Modal";
 import { Alert } from "./ui/Alert";
+import { PasswordRules } from "./ui/PasswordRules";
+import { isPasswordValid } from "../utils/password";
 import { PageHeader } from "./ui/PageHeader";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
@@ -564,6 +566,7 @@ export const SuperAdminPanel: React.FC = () => {
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
           />
+          <PasswordRules password={adminPassword} />
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
@@ -578,6 +581,7 @@ export const SuperAdminPanel: React.FC = () => {
               variant="primary"
               size="md"
               isLoading={isCreatingOrg}
+              disabled={!isPasswordValid(adminPassword)}
             >
               Provision Organization
             </Button>
@@ -620,6 +624,7 @@ export const SuperAdminPanel: React.FC = () => {
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
           />
+          <PasswordRules password={extraAdminPass} />
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
@@ -634,6 +639,7 @@ export const SuperAdminPanel: React.FC = () => {
               variant="primary"
               size="md"
               isLoading={isCreatingAdmin}
+              disabled={!isPasswordValid(extraAdminPass)}
             >
               Assign Administrator
             </Button>
@@ -658,6 +664,7 @@ export const SuperAdminPanel: React.FC = () => {
             placeholder="••••••••••••"
             leftIcon={<Lock className="w-4 h-4" />}
           />
+          <PasswordRules password={newPassword} />
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
@@ -672,6 +679,7 @@ export const SuperAdminPanel: React.FC = () => {
               variant="primary"
               size="md"
               isLoading={isResetting}
+              disabled={!isPasswordValid(newPassword)}
             >
               Update Password
             </Button>
