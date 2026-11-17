@@ -59,6 +59,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   const scheduledSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
   const heartbeatIntervalRef = useRef<any>(null);
+  const connectTimeoutRef = useRef<any>(null);
+  const watchdogRef = useRef<any>(null);
+  const lastMessageAtRef = useRef<number>(0);
+  const intentionalCloseRef = useRef<boolean>(false);
+  const startedPromptRef = useRef<string>("");
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isIdle, setIsIdle] = useState(false);
+  const [promptChanged, setPromptChanged] = useState(false);
+
+  const CONNECT_TIMEOUT_MS = 15000;
+  const DEAD_SOCKET_MS = 20000; // the backend answers a ping every 5s, so 20s of silence means the link is dead
 
   useEffect(() => {
     return () => {
@@ -66,17 +77,16 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
     };
   }, []);
 
-  // Update prompt dynamically if agentConfig changes while session is active without restarting WS
+  // The live call keeps the instructions it started with. Pushing half-typed prompt text into a running call
+  // changed the agent mid-conversation (and dropped the platform rules), so we only tell the user to restart.
   useEffect(() => {
-    if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "update_prompt",
-          prompt: agentConfig.system_prompt || agentConfig.objective,
-        })
-      );
+    if (isConnected) {
+      const now = `${agentConfig.system_prompt || ""}||${agentConfig.objective || ""}`;
+      setPromptChanged(now !== startedPromptRef.current);
+    } else {
+      setPromptChanged(false);
     }
-  }, [agentConfig.system_prompt, agentConfig.objective]);
+  }, [isConnected, agentConfig.system_prompt, agentConfig.objective]);
 
   useEffect(() => {
     if (transcriptBoxRef.current) {
@@ -86,6 +96,11 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
 
   async function startPreviewSession() {
     try {
+      intentionalCloseRef.current = false;
+      startedPromptRef.current = `${agentConfig.system_prompt || ""}||${agentConfig.objective || ""}`;
+      setPromptChanged(false);
+      setIsReconnecting(false);
+      setIsIdle(false);
       setIsConnecting(true);
       setErrorMsg(null);
       setTranscriptMessages([]);
@@ -125,7 +140,18 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         organization_id: effectiveOrgId
       };
 
+      // Never spin on "Connecting..." forever.
+      let sessionReady = false;
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current === ws && ws.readyState !== WebSocket.CLOSED && !sessionReady) {
+          setErrorMsg("The live preview took too long to start. Please check the backend is running and try again.");
+          stopPreviewSession();
+        }
+      }, CONNECT_TIMEOUT_MS);
+
       ws.onopen = () => {
+        lastMessageAtRef.current = Date.now();
         // Send initial agent configuration payload
         ws.send(
           JSON.stringify({
@@ -142,15 +168,45 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
             ws.send(JSON.stringify({ type: "ping" }));
           }
         }, 5000);
+
+        // Dead-link watchdog: if nothing (not even a pong) arrives for a while, say so instead of freezing silently.
+        if (watchdogRef.current) clearInterval(watchdogRef.current);
+        watchdogRef.current = setInterval(() => {
+          if (wsRef.current === ws && Date.now() - lastMessageAtRef.current > DEAD_SOCKET_MS) {
+            setErrorMsg("Connection to the live preview was lost. Press Start Live Preview to reconnect.");
+            stopPreviewSession();
+          }
+        }, 5000);
       };
 
       ws.onmessage = (event) => {
+        lastMessageAtRef.current = Date.now();
         try {
           const data = JSON.parse(event.data);
           if (data.type === "ready") {
+            sessionReady = true;
+            if (connectTimeoutRef.current) {
+              clearTimeout(connectTimeoutRef.current);
+              connectTimeoutRef.current = null;
+            }
             setIsConnected(true);
             setIsConnecting(false);
             startMicrophoneStream(ws);
+          } else if (data.type === "engine_reconnecting") {
+            setIsReconnecting(true);
+            clearAudioQueue();
+          } else if (data.type === "engine_restored") {
+            setIsReconnecting(false);
+            setErrorMsg(null);
+          } else if (data.type === "engine_lost") {
+            setErrorMsg(data.message || "The voice connection was lost. Please start the preview again.");
+            stopPreviewSession();
+          } else if (data.type === "idle") {
+            setIsIdle(true);
+          } else if (data.type === "pong") {
+            // heartbeat answer: lastMessageAtRef already refreshed
+          } else if (data.type === "stopped") {
+            // acknowledgement of our own Stop
           } else if (data.type === "audio" && data.payload) {
             playIncomingHDLinearAudio(data.payload, data.sample_rate || 24000, data.encoding || "linear16");
           } else if (data.type === "transcript") {
@@ -200,10 +256,19 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
           } else if (data.type === "call_concluded") {
             // End the preview session when call is concluded (silence, user refusal, or agent farewell)
             console.info(`[VoicePlayground] Call concluded: reason=${data.reason}`);
+            const why = data.reason === "user_declined" ? "the caller declined to continue" : "the agent said goodbye";
+            setTranscriptMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: `Preview ended: ${why}. Press Start Live Preview to try again.`, turn_latency_ms: 0 },
+            ]);
             stopPreviewSession();
           } else if (data.type === "error") {
             setErrorMsg(data.message || "Preview session error.");
+            if (data.fatal) {
+              stopPreviewSession();
+            }
           }
+          if (data.type) setIsIdle(false);
         } catch (e) {
           console.error("Preview WS parse error:", e);
         }
@@ -216,10 +281,11 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
       };
 
       ws.onclose = () => {
-        setIsConnected(false);
-        setIsConnecting(false);
-        setIsMicActive(false);
-        setIsAgentSpeaking(false);
+        if (wsRef.current && wsRef.current !== ws) return; // an older session closing after a restart
+        if (!intentionalCloseRef.current) {
+          setErrorMsg((prev) => prev || "The live preview connection closed unexpectedly. Press Start Live Preview to reconnect.");
+        }
+        stopPreviewSession();
       };
     } catch (err: any) {
       console.error("Error starting live preview:", err);
@@ -391,6 +457,17 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
   }
 
   function stopPreviewSession() {
+    intentionalCloseRef.current = true;
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    if (watchdogRef.current) {
+      clearInterval(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+    setIsReconnecting(false);
+    setIsIdle(false);
     setIsConnected(false);
     setIsConnecting(false);
     setIsMicActive(false);
@@ -616,6 +693,33 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         <div className="px-4 py-2.5 bg-rose-500/10 border-b border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center justify-between animate-fade-in">
           <span>{errorMsg}</span>
           <button type="button" onClick={() => setErrorMsg(null)} className="text-xs font-bold px-1.5 py-0.5 rounded hover:bg-rose-500/20 cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {isReconnecting && (
+        <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span>Connection interrupted. Reconnecting the voice engine...</span>
+        </div>
+      )}
+      {isConnected && isIdle && !isReconnecting && (
+        <div className="px-4 py-2 bg-[var(--color-surface-muted)]/60 border-b border-[var(--color-border)] text-[var(--color-muted)] text-xs">
+          Waiting for you. The preview stays open until you press Stop.
+        </div>
+      )}
+      {isConnected && promptChanged && (
+        <div className="px-4 py-2.5 bg-sky-500/10 border-b border-sky-500/20 text-sky-700 dark:text-sky-300 text-xs flex items-center justify-between gap-3">
+          <span>You changed the instructions. The running preview still uses the earlier version.</span>
+          <button
+            type="button"
+            onClick={() => {
+              stopPreviewSession();
+              setTimeout(() => startPreviewSession(), 300);
+            }}
+            className="shrink-0 px-2.5 py-1 rounded-md bg-sky-600 text-white font-semibold hover:bg-sky-700 cursor-pointer"
+          >
+            Restart with changes
+          </button>
         </div>
       )}
 

@@ -309,6 +309,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     live_transcript_turns: List[Dict[str, str]] = []
     turn_counter: int = 0
     preview_turn_marks: Dict[str, float] = {}
+    engine_callbacks: Dict[str, Any] = {}  # kept so a dropped voice-engine session can be rebuilt identically
 
     # Follows the caller's language turn by turn, exactly like a real phone call.
     from app.voice.language_follow import LanguageFollower
@@ -510,20 +511,78 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
         if thinking_filler_task and not thinking_filler_task.done():
             thinking_filler_task.cancel()
 
+    async def recover_voice_engine() -> bool:
+        """The voice engine dropped mid-preview: tell the browser, open a fresh session (up to 3 tries) and carry on."""
+        nonlocal deepgram_client, handoff_controller, last_user_speech_time, last_agent_speech_done_time
+        nonlocal has_reprompted_silence, is_agent_speaking, is_user_speaking
+        logger.warning("[VoicePreview] Voice engine connection dropped. Reconnecting...")
+        try:
+            await websocket.send_json({"type": "engine_reconnecting"})
+        except Exception:
+            return False
+        stale = deepgram_client
+        if stale:
+            try:
+                await stale.close()
+            except Exception:
+                pass
+        for attempt in (1, 2, 3):
+            fresh = DeepgramVoiceAgentClient(**engine_callbacks)
+            try:
+                await fresh.connect_and_configure(settings=deepgram_settings, greeting=None)
+            except asyncio.CancelledError:
+                await fresh.close()
+                raise
+            except Exception as e:
+                logger.warning(f"[VoicePreview] Reconnect attempt {attempt}/3 failed: {e}")
+                await fresh.close()
+                await asyncio.sleep(1.5 * attempt)
+                continue
+            deepgram_client = fresh
+            if handoff_controller is not None and hasattr(handoff_controller, "_deepgram_client"):
+                handoff_controller._deepgram_client = fresh
+            now_ts = time.time()
+            last_user_speech_time = now_ts
+            last_agent_speech_done_time = now_ts
+            has_reprompted_silence = False
+            is_agent_speaking = False
+            is_user_speaking = False
+            try:
+                await websocket.send_json({"type": "engine_restored"})
+            except Exception:
+                pass
+            logger.info("[VoicePreview] Voice engine reconnected.")
+            return True
+        return False
+
     async def preview_lifecycle_monitor():
-        """Keeps the preview alive with KeepAlive pulses and runs the same silence timeout as a real call:
-        ask the reprompt after the configured silence, then conclude and end if there is still no answer."""
+        """Keeps the preview alive: KeepAlive pulses, automatic recovery if the voice engine drops, and the same
+        "are you still there?" prompt as a real call. Unlike a real call, silence NEVER ends the preview: the person
+        testing may be reading, editing the form or thinking, so it stays open until they press Stop."""
         nonlocal last_backchannel_time, has_reprompted_silence, reprompt_injected_at, is_concluding_call
         from app.services.language_text import silence_messages
         from app.voice.silence_policy import silence_action
         from app.voice.language_switcher import normalize_code
         keepalive_counter = 0
+        preview_idle_notified = False
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(1.0)
                 keepalive_counter += 1
                 if not deepgram_client or not deepgram_client.is_ready:
-                    continue
+                    if deepgram_client is None or is_concluding_call or call_ended_event.is_set():
+                        continue
+                    if await recover_voice_engine():
+                        continue
+                    logger.error("[VoicePreview] Voice engine could not be reconnected. Ending preview.")
+                    try:
+                        await websocket.send_json({
+                            "type": "engine_lost",
+                            "message": "The voice engine connection was lost and could not be restored. Please start the preview again.",
+                        })
+                    except Exception:
+                        pass
+                    break
 
                 now = time.time()
 
@@ -553,19 +612,16 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     has_reprompted_silence = True
                     reprompt_injected_at = now
                     await deepgram_client.inject_agent_message(reprompt_msg)
-                elif action == "conclude":
-                    logger.info(f"[VoicePreview] No answer {hangup_delay:.0f}s after the reprompt. Concluding.")
-                    is_concluding_call = True
-                    spoken_from = time.time()
-                    await deepgram_client.inject_agent_message(conclusion_msg, behavior="queue")
-                    # Wait until the goodbye has started and then finished playing (never end mid-sentence).
-                    for _ in range(150):
-                        await asyncio.sleep(0.1)
-                        started = last_agent_speech_done_time > spoken_from
-                        if started and time.time() >= last_agent_speech_done_time + 1.0:
-                            break
-                    await websocket.send_json({"type": "call_concluded", "reason": "silence"})
-                    break
+                elif action == "conclude" and not preview_idle_notified:
+                    # A real call hangs up here. The preview stays open and just tells the browser it is idle.
+                    preview_idle_notified = True
+                    logger.info("[VoicePreview] Still silent after the reprompt. Keeping the preview open (no hang-up in preview).")
+                    try:
+                        await websocket.send_json({"type": "idle"})
+                    except Exception:
+                        pass
+                if action == "none" and preview_idle_notified and not has_reprompted_silence:
+                    preview_idle_notified = False
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -747,7 +803,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         except Exception:
                             pass
 
-                    deepgram_client = DeepgramVoiceAgentClient(
+                    engine_callbacks.clear()
+                    engine_callbacks.update(
                         on_audio=handle_dg_audio,
                         on_event=handle_dg_event,
                         on_transcript=handle_dg_transcript,
@@ -755,8 +812,9 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         on_agent_thinking=handle_dg_agent_thinking,
                         on_agent_speaking=handle_dg_agent_speaking,
                         on_agent_audio_done=handle_dg_agent_audio_done,
-                        on_error=handle_dg_error
+                        on_error=handle_dg_error,
                     )
+                    deepgram_client = DeepgramVoiceAgentClient(**engine_callbacks)
 
                     # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
                     if orchestrator and not preview_proxy_token:
@@ -821,7 +879,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         logger.error(f"[VoicePreview] Failed to configure voice agent: {dg_err}")
                         await websocket.send_json({
                             "type": "error",
-                            "message": str(dg_err)
+                            "message": "The live preview could not start the voice engine. Please try again in a moment.",
+                            "fatal": True,
                         })
 
                 # Legacy base64 JSON audio chunk fallback
