@@ -311,6 +311,7 @@ async def export_leads_csv(
     campaign_id: Optional[str] = Query(None),
     outcome: Optional[str] = Query(None),
     interest_level: Optional[str] = Query(None),
+    qualification_tiers: Optional[str] = Query(None, description="Comma-separated tier names or IDs to filter by"),
     min_score: Optional[int] = Query(None),
     max_score: Optional[int] = Query(None),
     agent_id: Optional[str] = Query(None),
@@ -321,7 +322,7 @@ async def export_leads_csv(
     lead_svc: LeadIntelligenceService = Depends(get_lead_service)
 ):
     """
-    Exports filtered leads directly to CSV format.
+    Exports every lead matching the filters (all pages, not just the one on screen) to CSV.
     """
     csv_data = await lead_svc.export_leads_csv(
         ctx=ctx,

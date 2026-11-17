@@ -168,15 +168,36 @@ export function ProspectsView() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSelectedIds([]); // a new search is a new list: do not keep hidden rows selected for bulk actions
     setPage(1);
     loadProspects();
   };
 
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
+
+  // Header checkbox works on the rows of the CURRENT page only and ADDS to (or removes from) the selection,
+  // so rows ticked on other pages stay selected while you move between pages.
   const handleToggleSelectAll = () => {
-    if (selectedIds.length === prospects.length) {
-      setSelectedIds([]);
+    const pageIds = prospects.map((p) => p.id);
+    const chosen = new Set(selectedIds);
+    const pageFullySelected = pageIds.length > 0 && pageIds.every((id) => chosen.has(id));
+    if (pageFullySelected) {
+      setSelectedIds(selectedIds.filter((id) => !pageIds.includes(id)));
     } else {
-      setSelectedIds(prospects.map((p) => p.id));
+      setSelectedIds(Array.from(new Set([...selectedIds, ...pageIds])));
+    }
+  };
+
+  // "Select all N contacts": every contact matching the current filters, across all pages.
+  const handleSelectAllMatching = async () => {
+    setIsSelectingAll(true);
+    try {
+      const everything = await fetchAllProspects(true);
+      setSelectedIds(everything.map((p) => p.id));
+    } catch (err: any) {
+      toast.error(err?.message || "Could not select all contacts.");
+    } finally {
+      setIsSelectingAll(false);
     }
   };
 
@@ -348,8 +369,53 @@ export function ProspectsView() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (prospects.length === 0) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Loads every contact (all pages), not just the page on screen. With `useFilters` the search/status/group/source
+  // filters currently applied on screen are kept; without it the whole contact list is returned.
+  const fetchAllProspects = async (useFilters: boolean): Promise<Prospect[]> => {
+    const all: Prospect[] = [];
+    const exportPageSize = 1000; // the API maximum
+    for (let pageNo = 1; pageNo <= 500; pageNo++) {
+      const params = new URLSearchParams();
+      if (useFilters) {
+        if (searchTerm.trim()) params.append("search", searchTerm.trim());
+        if (selectedStatus !== "all") params.append("status", selectedStatus);
+        if (selectedGroup !== "all") params.append("group_name", selectedGroup);
+        if (selectedSource !== "all") params.append("source", selectedSource);
+      }
+      params.append("page", String(pageNo));
+      params.append("page_size", String(exportPageSize));
+      params.append("sort_by", sortBy);
+      params.append("sort_order", sortOrder);
+      const res = await fetchApi<ProspectPaginationResponse>(`/prospects?${params.toString()}`);
+      const items = res?.items || [];
+      all.push(...items);
+      if (items.length === 0 || pageNo >= (res?.total_pages || 1)) break;
+    }
+    return all;
+  };
+
+  // Export: ticked contacts when some are selected, otherwise EVERY contact matching the current filters
+  // (all pages, not only the page being viewed).
+  const handleExportCSV = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    let exportRows: Prospect[] = [];
+    try {
+      if (selectedIds.length > 0) {
+        const wanted = new Set(selectedIds);
+        exportRows = (await fetchAllProspects(false)).filter((p) => wanted.has(p.id));
+      } else {
+        exportRows = await fetchAllProspects(true);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Could not load contacts to export.");
+      setIsExporting(false);
+      return;
+    }
+    setIsExporting(false);
+    if (exportRows.length === 0) {
       toast.error("No contacts to export.");
       return;
     }
@@ -374,7 +440,7 @@ export function ProspectsView() {
     ];
     const rows = [headers.join(",")];
 
-    for (const p of prospects) {
+    for (const p of exportRows) {
       const r = [
         p.id,
         `"${(p.full_name || "").replace(/"/g, '""')}"`,
@@ -403,6 +469,8 @@ export function ProspectsView() {
     a.href = url;
     a.download = `contacts_export_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${exportRows.length} contact${exportRows.length === 1 ? "" : "s"}.`);
     fetchApi("/activity/event", { method: "POST", body: JSON.stringify({ event: "export_contacts_csv" }) }).catch(() => {});
   };
 
@@ -441,8 +509,15 @@ export function ProspectsView() {
         header: (
           <input
             type="checkbox"
-            checked={prospects.length > 0 && selectedIds.length === prospects.length}
+            checked={prospects.length > 0 && prospects.every((p) => selectedIds.includes(p.id))}
+            ref={(el) => {
+              if (el) {
+                const onPage = prospects.filter((p) => selectedIds.includes(p.id)).length;
+                el.indeterminate = onPage > 0 && onPage < prospects.length;
+              }
+            }}
             onChange={handleToggleSelectAll}
+            title="Select or clear every contact on this page"
             className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] cursor-pointer"
           />
         ),
@@ -612,9 +687,10 @@ export function ProspectsView() {
               variant="outline"
               size="sm"
               onClick={handleExportCSV}
+              isLoading={isExporting}
               leftIcon={<Download className="w-3.5 h-3.5" />}
             >
-              Export
+              {selectedIds.length > 0 ? `Export selected (${selectedIds.length})` : `Export all (${totalCount})`}
             </Button>
             <Button
               variant="outline"
@@ -667,6 +743,7 @@ export function ProspectsView() {
                 value={selectedGroup}
                 onChange={(e) => {
                   setSelectedGroup(e.target.value);
+                  setSelectedIds([]);
                   setPage(1);
                 }}
                 className="px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-heading)] font-medium"
@@ -702,6 +779,7 @@ export function ProspectsView() {
               value={selectedStatus}
               onChange={(e) => {
                 setSelectedStatus(e.target.value);
+                setSelectedIds([]);
                 setPage(1);
               }}
               className="px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-heading)]"
@@ -717,6 +795,7 @@ export function ProspectsView() {
               value={selectedSource}
               onChange={(e) => {
                 setSelectedSource(e.target.value);
+                setSelectedIds([]);
                 setPage(1);
               }}
               className="px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-xs text-[var(--color-heading)]"
@@ -748,6 +827,16 @@ export function ProspectsView() {
               <span className="font-semibold text-[var(--color-primary)]">
                 {selectedIds.length} contact{selectedIds.length > 1 ? "s" : ""} selected
               </span>
+              {totalCount > selectedIds.length && (
+                <button
+                  type="button"
+                  disabled={isSelectingAll}
+                  onClick={handleSelectAllMatching}
+                  className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  {isSelectingAll ? "Selecting..." : `Select all ${totalCount} contacts`}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedIds([])}

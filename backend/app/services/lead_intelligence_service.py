@@ -1746,6 +1746,7 @@ class LeadIntelligenceService:
             campaign_id=campaign_id,
             outcome=outcome,
             interest_level=interest_level,
+            qualification_tiers=qualification_tiers,
             min_score=min_score,
             max_score=max_score,
             agent_id=agent_id,

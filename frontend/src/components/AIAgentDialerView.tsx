@@ -654,7 +654,7 @@ export function AIAgentDialerView({
                   <optgroup label="My Organization Agents">
                     {availableAgents.my_agents.map((a) => (
                       <option key={`my_agent_${a.agent_id}`} value={a.agent_id}>
-                        {a.name} - {a.role}
+                        {a.name}
                       </option>
                     ))}
                   </optgroup>
@@ -665,7 +665,7 @@ export function AIAgentDialerView({
                       .filter((da) => !(availableAgents.my_agents || []).some((ma) => ma.agent_id === da.agent_id))
                       .map((a) => (
                         <option key={`platform_agent_${a.agent_id}`} value={a.agent_id}>
-                          {a.name} - {a.role}
+                          {a.name}
                         </option>
                       ))}
                   </optgroup>

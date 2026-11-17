@@ -108,7 +108,8 @@ export function ExecutiveReportExportModal({
     }
 
     const totalPages = Math.ceil(totalItems / pageSize);
-    while (currentPage < totalPages && currentPage < 20) {
+    // No small page cap: the report must contain every matching lead (200 pages x 250 = 50,000).
+    while (currentPage < totalPages && currentPage < 200) {
       currentPage += 1;
       const nextParams = buildFilterQueryParams(currentPage, pageSize);
       const nextRes = await fetchApi<LeadListPaginationResponse>(`/lead-intelligence/leads?${nextParams.toString()}`);
