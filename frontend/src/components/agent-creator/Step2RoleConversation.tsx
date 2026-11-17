@@ -195,6 +195,50 @@ export function Step2RoleConversation({
     }
   };
 
+  // Upload straight from the agent creator: the file is indexed into the organization Knowledge Base (so it
+  // also shows there) and, when this agent uses specific documents, is attached to this agent right away.
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement | null>(null);
+  const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+  const handleAgentDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingDoc(true);
+    const uploadedIds: string[] = [];
+    for (const file of files) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        toast.error(`"${file.name}" is larger than 25 MB.`);
+        continue;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("category", "General");
+      try {
+        const res = await fetchApi<KnowledgeDocument>("/knowledge/upload", { method: "POST", body: formData });
+        if (res?.id) {
+          uploadedIds.push(res.id);
+          toast.success(`"${res.title || file.name}" added to the Knowledge Base`, {
+            description: `Indexed into ${res.total_chunks} searchable sections.`,
+          });
+        }
+      } catch (err: any) {
+        toast.error(err?.message || `Could not add "${file.name}".`);
+      }
+    }
+    if (docFileInputRef.current) docFileInputRef.current.value = "";
+    if (uploadedIds.length > 0) {
+      await fetchKnowledgeDocuments();
+      if (agentData.knowledge_mode === "specific") {
+        setAgentData((prev) => ({
+          ...prev,
+          attached_document_ids: Array.from(new Set([...(prev.attached_document_ids || []), ...uploadedIds])),
+        }));
+      }
+    }
+    setUploadingDoc(false);
+  };
+
   const handleKnowledgeModeChange = (mode: 'auto' | 'specific' | 'disabled') => {
     setAgentData((prev) => ({
       ...prev,
@@ -774,6 +818,35 @@ export function Step2RoleConversation({
               </div>
 
               {/* Mode Description Banner */}
+              {agentData.knowledge_mode !== "disabled" && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-[var(--color-surface)] border border-dashed border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[var(--color-heading)]">Add a new document</p>
+                    <p className="text-[11px] text-[var(--color-muted)]">
+                      PDF, DOCX or TXT up to 25 MB. It is saved to your Knowledge Base
+                      {agentData.knowledge_mode === "specific" ? " and attached to this agent." : " and available to this agent automatically."}
+                    </p>
+                  </div>
+                  <input
+                    ref={docFileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.docx,.txt"
+                    className="hidden"
+                    onChange={handleAgentDocumentUpload}
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadingDoc}
+                    onClick={() => docFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 cursor-pointer shrink-0"
+                  >
+                    {uploadingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                    <span>{uploadingDoc ? "Uploading & indexing..." : "Upload document"}</span>
+                  </button>
+                </div>
+              )}
+
               {agentData.knowledge_mode === "disabled" ? (
                 <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] flex items-center justify-between text-[11px] text-[var(--color-muted)]">
                   <div className="flex items-center gap-2">
@@ -833,7 +906,7 @@ export function Step2RoleConversation({
                       <FileText className="w-5 h-5 text-[var(--color-muted)] mx-auto opacity-50" />
                       <p className="text-xs font-medium text-[var(--color-heading)]">No indexed documents found</p>
                       <p className="text-[11px] text-[var(--color-muted)]">
-                        Upload PDFs, manuals, or rate cards in <strong className="text-[var(--color-heading)]">Knowledge Base</strong> to attach them here.
+                        Use <strong className="text-[var(--color-heading)]">Upload document</strong> above to add PDFs, manuals or rate cards and attach them here.
                       </p>
                     </div>
                   ) : (
