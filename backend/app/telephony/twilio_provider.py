@@ -124,18 +124,18 @@ class TwilioProvider(TelephonyProvider):
         fallback_message: Optional[str] = None,
         action_callback_url: Optional[str] = None,
     ) -> bool:
-        kwargs = dict(
+        # Passed through unchanged: None means "say nothing" (the gateway announces the transfer itself).
+        return await TwilioService(TwilioRepository()).transfer_call(
+            org_id,
+            call_id,
+            destination_phone,
             caller_id=caller_id,
+            whisper_message=whisper_message,
             timeout_seconds=timeout_seconds,
             fallback_action=fallback_action,
+            fallback_message=fallback_message,
             action_callback_url=action_callback_url,
         )
-        # Only pass messages when given, so TwilioService keeps its own default wording otherwise.
-        if whisper_message is not None:
-            kwargs["whisper_message"] = whisper_message
-        if fallback_message is not None:
-            kwargs["fallback_message"] = fallback_message
-        return await TwilioService(TwilioRepository()).transfer_call(org_id, call_id, destination_phone, **kwargs)
 
     async def delete_recording(self, org_id: str, call_id: str) -> int:
         return await TwilioService(TwilioRepository()).delete_call_recording(org_id, call_id)

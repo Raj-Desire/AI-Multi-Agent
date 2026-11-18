@@ -34,7 +34,9 @@ from app.api.v1.think_proxy import attach_think_proxy, think_proxy_requested, un
 from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
-from app.services.twilio_service import TwilioService
+from app.telephony import registry as _telephony_registry  # noqa: F401  (importing the package registers providers)
+from app.telephony.base import TelephonyProvider
+from app.telephony.registry import get_provider
 from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.call_repository import CallRepository
@@ -55,16 +57,21 @@ agent_service = AgentService(agent_repo)
 call_repo = CallRepository()
 call_session_service = CallSessionService(call_repo)
 twilio_repo = TwilioRepository()
-twilio_service = TwilioService(twilio_repo)
 
 
 @router.websocket("/voice/stream")
 async def voice_stream_websocket(websocket: WebSocket):
+    """Audio stream endpoint for calls carried by Twilio (URL unchanged so in-flight calls keep working)."""
+    await run_voice_stream(websocket, get_provider("twilio"))
+
+
+async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
     """
-    Main WebSocket endpoint receiving Twilio Media Streams audio and piping to Deepgram Voice Agent API.
+    Bridges a telephony provider's audio stream to the real-time voice engine. All provider-specific wire formats and
+    call control go through `provider`; everything else here is provider-independent.
     """
     await websocket.accept()
-    logger.info("[VoiceGateway] Twilio Media Stream WebSocket connected.")
+    logger.info(f"[VoiceGateway] {provider.name} media stream WebSocket connected.")
 
     session: Optional[CallSession] = None
     agent_config: Optional[AgentConfiguration] = None
@@ -158,9 +165,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                     continue
 
                 outbound_chunk_counter += 1
-                twilio_msg = AudioAdapter.bytes_to_twilio_media(chunk, stream_sid)
                 try:
-                    await websocket.send_text(json.dumps(twilio_msg))
+                    await websocket.send_text(provider.build_media_message(stream_sid, chunk))
                 except Exception as send_err:
                     logger.debug(f"[VoiceGateway] Audio chunk send notice: {send_err}")
                     outbound_audio_queue.task_done()
@@ -282,7 +288,7 @@ async def voice_stream_websocket(websocket: WebSocket):
 
                 # Send clear message to Twilio to flush the audio buffer on the caller's handset
                 if stream_sid:
-                    clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
+                    clear_msg = provider.build_clear_message(stream_sid)
                     try:
                         await websocket.send_text(clear_msg)
                         logger.info(f"[VoiceGateway] Verified barge-in clear signal sent to Twilio for stream {stream_sid}")
@@ -657,7 +663,7 @@ async def voice_stream_websocket(websocket: WebSocket):
                 except Exception:
                     break
             if stream_sid:
-                clear_msg = AudioAdapter.create_twilio_clear_message(stream_sid)
+                clear_msg = provider.build_clear_message(stream_sid)
                 try:
                     await websocket.send_text(clear_msg)
                     logger.info(f"[VoiceGateway] Refusal clear message sent to Twilio for stream {stream_sid}")
@@ -753,9 +759,9 @@ async def voice_stream_websocket(websocket: WebSocket):
 
         try:
             if session and session.twilio_call_sid and session.organization_id:
-                success = await twilio_service.transfer_call(
+                success = await provider.transfer_call(
                     org_id=session.organization_id,
-                    call_sid=session.twilio_call_sid,
+                    call_id=session.twilio_call_sid,
                     destination_phone=destination_phone,
                     caller_id=session.phone_number,
                     whisper_message=None,  # Already announced by AI
@@ -790,9 +796,9 @@ async def voice_stream_websocket(websocket: WebSocket):
         try:
             if session and session.twilio_call_sid and session.organization_id:
                 logger.info(f"[VoiceGateway] Hanging up Twilio call {session.twilio_call_sid}...")
-                await twilio_service.end_call(session.organization_id, session.twilio_call_sid)
+                await provider.end_call(session.organization_id, session.twilio_call_sid)
         except Exception as e:
-            logger.warning(f"[VoiceGateway] Could not hang up Twilio call: {e}")
+            logger.warning(f"[VoiceGateway] Could not hang up call: {e}")
         try:
             if websocket.client_state.name != "DISCONNECTED":
                 await websocket.close()
@@ -932,21 +938,16 @@ async def voice_stream_websocket(websocket: WebSocket):
             if not raw_message:
                 continue
 
-            try:
-                data = json.loads(raw_message)
-            except Exception:
-                continue
-
-            event = data.get("event")
+            stream_event = provider.parse_stream_message(raw_message)
+            event = stream_event.kind
 
             if event == "connected":
-                logger.info("[VoiceGateway] Received 'connected' event from Twilio.")
+                logger.info(f"[VoiceGateway] Received 'connected' event from {provider.name}.")
 
             elif event == "start":
-                start_data = data.get("start", {})
-                stream_sid = data.get("streamSid") or start_data.get("streamSid")
-                call_sid = start_data.get("callSid")
-                custom_params = start_data.get("customParameters", {})
+                stream_sid = stream_event.stream_id
+                call_sid = stream_event.call_id
+                custom_params = dict(stream_event.custom_params)
 
                 logged_params = {k: v for k, v in custom_params.items() if k != "stream_token"}
                 logger.info(f"[VoiceGateway] Received 'start' event. streamSid={stream_sid}, callSid={call_sid}, params={logged_params}")
@@ -987,8 +988,8 @@ async def voice_stream_websocket(websocket: WebSocket):
                     org_id = custom_params.get("organization_id") or "default"
                     agent_id = custom_params.get("agent_id") or "agt_receptionist_default"
                     direction = custom_params.get("direction") or "outbound"
-                    from_num = custom_params.get("from") or start_data.get("from", "")
-                    to_num = custom_params.get("to") or start_data.get("to", "")
+                    from_num = custom_params.get("from") or ""
+                    to_num = custom_params.get("to") or ""
                     user_id = custom_params.get("user_id")
 
                 ctx = TenantContext(
@@ -1356,15 +1357,12 @@ async def voice_stream_websocket(websocket: WebSocket):
                     break
 
             elif event == "media":
-                media_data = data.get("media", {})
-                payload = media_data.get("payload")
-                if payload and deepgram_client and deepgram_client.is_ready:
-                    raw_audio = AudioAdapter.twilio_media_to_bytes(payload)
-                    if raw_audio:
-                        await deepgram_client.send_audio(raw_audio)
+                raw_audio = stream_event.audio
+                if raw_audio and deepgram_client and deepgram_client.is_ready:
+                    await deepgram_client.send_audio(raw_audio)
 
             elif event == "stop":
-                logger.info(f"[VoiceGateway] Received 'stop' event from Twilio for stream {stream_sid}")
+                logger.info(f"[VoiceGateway] Received 'stop' event from {provider.name} for stream {stream_sid}")
                 break
 
     except WebSocketDisconnect:
@@ -1413,7 +1411,7 @@ async def voice_stream_websocket(websocket: WebSocket):
         if session and session.twilio_call_sid and session.organization_id and not is_transferred:
             try:
                 logger.info(f"[VoiceGateway] Ensuring Twilio call {session.twilio_call_sid} is terminated on stream disconnect...")
-                await twilio_service.end_call(session.organization_id, session.twilio_call_sid)
+                await provider.end_call(session.organization_id, session.twilio_call_sid)
             except Exception as tw_err:
                 logger.debug(f"[VoiceGateway] Notice on ending Twilio call: {tw_err}")
 
