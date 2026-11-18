@@ -174,12 +174,6 @@ export function AIAgentDialerView({
         }
       }
 
-      if (twCfg?.phone_number) {
-        const numbers = twCfg.phone_number.split(",").map((n) => n.trim()).filter(Boolean);
-        if (numbers.length > 0) {
-          setSelectedFromNumber(numbers[0]);
-        }
-      }
     } catch (err: any) {
       console.error("AI Dialer data load error:", err);
     } finally {
@@ -198,6 +192,8 @@ export function AIAgentDialerView({
     .filter(Boolean);
   // Numbers of every provider this organization may call from (a platform operator sees both providers' numbers)
   const availableFromNumbers = numberOptions.length > 0 ? numberOptions.map((n) => n.number) : legacyFromNumbers;
+  // The number actually used: the one picked if it is still available, otherwise the first (domestic numbers are listed first)
+  const effectiveFromNumber = availableFromNumbers.includes(selectedFromNumber) ? selectedFromNumber : (availableFromNumbers[0] || "");
   const mixedProviders = new Set(numberOptions.map((n) => n.provider)).size > 1;
   const numberLabel = (num: string) => {
     const opt = numberOptions.find((n) => n.number === num);
@@ -209,7 +205,6 @@ export function AIAgentDialerView({
       .then((list) => {
         if (Array.isArray(list) && list.length > 0) {
           setNumberOptions(list);
-          setSelectedFromNumber((prev) => prev || list[0].number);
         }
       })
       .catch(() => { });
@@ -417,7 +412,7 @@ export function AIAgentDialerView({
         method: "POST",
         body: JSON.stringify({
           to_number: toNumber.trim(),
-          from_number: selectedFromNumber || availableFromNumbers[0] || "",
+          from_number: effectiveFromNumber,
           agent_id: selectedAgent.agent_id,
           agent_config_override: customPrompt ? { ...selectedAgent, greeting: customPrompt } : selectedAgent,
         }),
@@ -722,7 +717,7 @@ export function AIAgentDialerView({
               </label>
               {availableFromNumbers.length > 1 ? (
                 <select
-                  value={selectedFromNumber}
+                  value={effectiveFromNumber}
                   onChange={(e) => setSelectedFromNumber(e.target.value)}
                   disabled={calling}
                   className="w-full h-9 text-xs font-mono px-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"

@@ -74,7 +74,7 @@ async def provider_for_number(org_id: str, number: str) -> TelephonyProvider:
 
 async def list_numbers(org_id: str) -> list:
     """Numbers the organization can call from, each labelled with the provider that owns it."""
-    names = ["twilio", "plivo"] if await resolve_market(org_id) == "both" else [await resolve_provider_name(org_id)]
+    names = ["plivo", "twilio"] if await resolve_market(org_id) == "both" else [await resolve_provider_name(org_id)]
     listing = []
     for name in names:
         cfg = await load_config_for(name, org_id)
