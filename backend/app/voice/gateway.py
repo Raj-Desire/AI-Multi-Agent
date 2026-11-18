@@ -34,7 +34,7 @@ from app.api.v1.think_proxy import attach_think_proxy, think_proxy_requested, un
 from app.repositories.platform_rules_repository import PlatformRulesRepository
 from app.services.agent_service import AgentService
 from app.services.call_session_service import CallSessionService
-from app.telephony import registry as _telephony_registry  # noqa: F401  (importing the package registers providers)
+from app.telephony import registry as telephony_registry  # importing the package registers the providers
 from app.telephony.base import TelephonyProvider
 from app.telephony.registry import get_provider
 from app.repositories.twilio_repository import TwilioRepository
@@ -1026,6 +1026,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     )
 
                 startup_timing["start"] = time.perf_counter()
+                session.provider = provider.name
                 await call_session_service.attach_stream(session, stream_sid, call_sid=call_sid)
                 if session.connected_at and session.started_at:
                     session.latest_latency.call_connection_time_ms = round(
@@ -1085,9 +1086,9 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     if not (session and session.organization_id):
                         return None
                     try:
-                        return await twilio_repo.get_by_org(session.organization_id)
+                        return await telephony_registry.load_org_config(session.organization_id)
                     except Exception as tw_err:
-                        logger.warning(f"[VoiceGateway] Notice fetching Twilio config: {tw_err}")
+                        logger.warning(f"[VoiceGateway] Notice fetching telephony config: {tw_err}")
                         return None
 
                 async def _load_credit_limit():

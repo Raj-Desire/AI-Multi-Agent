@@ -18,6 +18,8 @@ from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.call_repository import CallRepository
 from app.repositories.agent_repository import AgentRepository
 from app.agents.configuration import AgentConfiguration
+from app.telephony import registry as telephony
+from app.telephony.types import PlaceCallRequest, TelephonyError
 
 def normalize_phone_number(value: Optional[str]) -> Optional[str]:
     if not value:
@@ -80,19 +82,21 @@ class CallService:
 
         resolved_prospect_id = matched_prospect.id if matched_prospect else prospect_id
 
-        tw_cfg = await self.twilio_repo.get_by_org(ctx.organization_id)
+        try:
+            provider = await telephony.provider_for_org(ctx.organization_id)
+        except TelephonyError as te:
+            raise HTTPException(status_code=400, detail=te.public_message)
+        tw_cfg = await telephony.load_org_config(ctx.organization_id)
         if not tw_cfg:
             raise HTTPException(
                 status_code=400,
-                detail="Twilio is not configured for this organization. Please configure your Account SID and Auth Token first."
+                detail="Telephony is not configured for this organization. Please complete your telephony settings first."
             )
-
-        auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
 
         # Parse available phone numbers
         available_numbers = [n.strip() for n in tw_cfg.phone_number.split(",") if n.strip()]
         if not available_numbers:
-            raise HTTPException(status_code=400, detail="No valid Twilio phone numbers configured.")
+            raise HTTPException(status_code=400, detail="No valid phone numbers configured.")
 
         selected_from = (from_number or available_numbers[0]).strip()
 
@@ -116,32 +120,14 @@ class CallService:
         agent_version = agent_config.version if agent_config else 1
         agent_scope = agent_config.scope if agent_config else "ORGANIZATION"
 
-        # Build Media Stream TwiML connecting to Real-Time Voice Agent (Env var takes priority over DB for multi-environment support)
+        # Public URLs the provider will call back (Env var takes priority over DB for multi-environment support)
         base_url = (os.getenv("PUBLIC_BASE_URL") or getattr(tw_cfg, "public_base_url", None) or "").strip().rstrip("/")
         ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://") if base_url else "wss://localhost:8000"
-        stream_url = f"{ws_base}/api/v1/voice/stream"
+        stream_url = f"{ws_base}/api/v1{provider.stream_path}"
         from app.core.webhook_security import create_stream_token
         stream_token = create_stream_token(ctx.organization_id, resolved_agent_id, "outbound")
 
-        twiml_body = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect>
-        <Stream url="{stream_url}">
-            <Parameter name="stream_token" value="{stream_token}" />
-            <Parameter name="organization_id" value="{ctx.organization_id}" />
-            <Parameter name="agent_id" value="{resolved_agent_id}" />
-            <Parameter name="direction" value="outbound" />
-            <Parameter name="from" value="{selected_from}" />
-            <Parameter name="to" value="{to_number}" />
-            <Parameter name="user_id" value="{ctx.user_id}" />
-            <Parameter name="prospect_id" value="{resolved_prospect_id or ''}" />
-            <Parameter name="campaign_id" value="{campaign_id or ''}" />
-        </Stream>
-    </Connect>
-    <Hangup/>
-</Response>"""
-
-        # Add Twilio StatusCallback URL for accurate PSTN status tracking (busy, no-answer, failed, completed)
+        # Status callback URL for accurate PSTN status tracking (busy, no-answer, failed, completed)
         status_callback_params = []
         if campaign_id:
             status_callback_params.append(f"campaign_id={campaign_id}")
@@ -151,46 +137,45 @@ class CallService:
             status_callback_params.append(f"organization_id={ctx.organization_id}")
 
         query_str = f"?{'&'.join(status_callback_params)}" if status_callback_params else ""
-        status_callback_url = f"{base_url}/api/v1/twilio/voice/status{query_str}" if base_url and not ("localhost" in base_url or "127.0.0.1" in base_url) else None
+        reachable = bool(base_url) and not ("localhost" in base_url or "127.0.0.1" in base_url)
+        status_callback_url = f"{base_url}{provider.status_callback_path}{query_str}" if reachable else None
+        amd_callback_url = f"{base_url}{provider.amd_callback_path}" if reachable else None
+
+        # Hard cap at the provider as a safety net (see duration_policy): if our server ever loses the call, the
+        # provider still ends it just after the agent's maximum duration, or earlier when the credits run out.
+        credit_cap = None
+        if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
+            credit_cap = int(auth_check.get("remaining_seconds", 14400))
+        agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
 
         try:
-            def _sync_twilio_call():
-                client = Client(tw_cfg.account_sid, auth_token)
-                create_kwargs: Dict[str, Any] = {
+            placed = await provider.place_call(PlaceCallRequest(
+                organization_id=ctx.organization_id,
+                to_number=to_number,
+                from_number=selected_from,
+                stream_url=stream_url,
+                stream_params={
+                    "stream_token": stream_token,
+                    "organization_id": ctx.organization_id,
+                    "agent_id": resolved_agent_id,
+                    "direction": "outbound",
+                    "from": selected_from,
                     "to": to_number,
-                    "from_": selected_from,
-                    "twiml": twiml_body,
-                }
-                # Hard cap at Twilio as a safety net (see duration_policy): if our server ever loses the call, Twilio still
-                # ends it just after the agent's maximum duration, or earlier when the organization's credits run out.
-                credit_cap = None
-                if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
-                    credit_cap = int(auth_check.get("remaining_seconds", 14400))
-                agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
-                create_kwargs["time_limit"] = twilio_backstop_seconds(agent_max, credit_cap)
-                if ring_timeout_seconds:
-                    # How long Twilio lets the phone ring before reporting no-answer (default is ~60s)
-                    create_kwargs["timeout"] = max(5, min(int(ring_timeout_seconds), 120))
-                if status_callback_url:
-                    # Audio-based voicemail detection: catches answering machines in any language.
-                    create_kwargs["machine_detection"] = "Enable"
-                    create_kwargs["async_amd"] = True
-                    create_kwargs["async_amd_status_callback"] = f"{base_url}/api/v1/twilio/voice/amd"
-                    create_kwargs["async_amd_status_callback_method"] = "POST"
-                    create_kwargs["status_callback"] = status_callback_url
-                    # Twilio only accepts these four events; busy / no-answer / canceled all arrive as "completed"
-                    create_kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed"]
-                    create_kwargs["status_callback_method"] = "POST"
-                return client.calls.create(**create_kwargs)
-
-            tw_call = await asyncio.to_thread(_sync_twilio_call)
-            real_call_sid = tw_call.sid
-            status = tw_call.status or "initiated"
-            duration = int(tw_call.duration) if tw_call.duration and str(tw_call.duration).isdigit() else 0
-        except TwilioRestException as tre:
-            raise HTTPException(status_code=400, detail=f"Twilio API Error: {tre.msg} (Code: {tre.code})")
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Twilio call failed: {str(e)}")
+                    "user_id": ctx.user_id,
+                    "prospect_id": resolved_prospect_id or "",
+                    "campaign_id": campaign_id or "",
+                },
+                public_base_url=base_url,
+                status_callback_url=status_callback_url,
+                amd_callback_url=amd_callback_url,
+                ring_timeout_seconds=ring_timeout_seconds,
+                time_limit_seconds=twilio_backstop_seconds(agent_max, credit_cap),
+            ))
+        except TelephonyError as te:
+            raise HTTPException(status_code=400, detail=te.public_message)
+        real_call_sid = placed.call_id
+        status = placed.status or "initiated"
+        duration = placed.duration
 
         call = Call(
             id=f"cal_{uuid.uuid4().hex[:12]}",
@@ -200,6 +185,7 @@ class CallService:
             campaign_id=campaign_id,
             twilio_configuration_id=tw_cfg.id,
             call_sid=real_call_sid,
+            provider=provider.name,
             from_number=selected_from,
             to_number=to_number,
             duration=duration,

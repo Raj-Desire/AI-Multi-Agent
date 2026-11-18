@@ -25,7 +25,9 @@ from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.call_repository import CallRepository
 from app.core.security import decrypt_token
-from twilio.rest import Client
+from app.telephony import registry as telephony
+from app.telephony.registry import provider_for_call
+from app.telephony.types import PlaceCallRequest, TelephonyError
 
 logger = logging.getLogger("voice_api")
 
@@ -38,7 +40,6 @@ twilio_repo = TwilioRepository()
 # process, so its in-memory live state can never update. We detect that and fall back to Twilio's own status.
 INSTANCE_ID = uuid.uuid4().hex
 _remote_sessions: Dict[str, str] = {}          # call_session_id -> host that actually receives the call
-_twilio_status_cache: Dict[str, tuple] = {}    # call_sid -> (monotonic_ts, status, start_time_iso, duration)
 
 
 def _fetch_instance_id_sync(base_url: str) -> Optional[str]:
@@ -54,28 +55,6 @@ def _fetch_instance_id_sync(base_url: str) -> Optional[str]:
 
 async def _routes_to_this_server(base_url: str) -> bool:
     return (await asyncio.to_thread(_fetch_instance_id_sync, base_url)) == INSTANCE_ID
-
-
-async def _twilio_call_status(org_id: str, call_sid: str) -> Optional[tuple]:
-    """Live call status straight from Twilio (cached ~1.5s): (status, start_time_iso, duration)."""
-    cached = _twilio_status_cache.get(call_sid)
-    if cached and time.monotonic() - cached[0] < 1.5:
-        return cached[1:]
-    tw_cfg = await twilio_repo.get_by_org(org_id)
-    if not tw_cfg:
-        return None
-
-    def _fetch():
-        c = Client(tw_cfg.account_sid, decrypt_token(tw_cfg.encrypted_auth_token)).calls(call_sid).fetch()
-        return (c.status or "", c.start_time.isoformat() if c.start_time else None, int(c.duration or 0))
-
-    try:
-        result = await asyncio.to_thread(_fetch)
-    except Exception as e:
-        logger.warning(f"[VoiceAPI] Could not read Twilio status for {call_sid}: {e}")
-        return None
-    _twilio_status_cache[call_sid] = (time.monotonic(),) + result
-    return result
 
 
 @router.get("/instance")
@@ -1325,18 +1304,20 @@ async def initiate_ai_test_call(
 
     resolved_prospect_id = matched_prospect.id if matched_prospect else payload.prospect_id
 
-    tw_cfg = await twilio_repo.get_by_org(ctx.organization_id)
+    try:
+        provider = await telephony.provider_for_org(ctx.organization_id)
+    except TelephonyError as te:
+        raise HTTPException(status_code=400, detail=te.public_message)
+    tw_cfg = await telephony.load_org_config(ctx.organization_id)
     if not tw_cfg:
         raise HTTPException(
             status_code=400,
-            detail="Twilio is not configured for your organization. Please configure Account SID and Auth Token first."
+            detail="Telephony is not configured for your organization. Please complete your telephony settings first."
         )
-
-    auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
 
     available_numbers = [n.strip() for n in tw_cfg.phone_number.split(",") if n.strip()]
     if not available_numbers:
-        raise HTTPException(status_code=400, detail="No configured Twilio phone numbers found.")
+        raise HTTPException(status_code=400, detail="No configured phone numbers found.")
 
     selected_from = (payload.from_number or available_numbers[0]).strip()
     agent_id = payload.agent_id or "agt_receptionist_default"
@@ -1367,12 +1348,12 @@ async def initiate_ai_test_call(
     if not base_url or "localhost" in base_url or "127.0.0.1" in base_url:
         raise HTTPException(
             status_code=400,
-            detail="Twilio cannot reach localhost. Please start an ngrok tunnel (e.g. `ngrok http 8000`) and set the HTTPS URL in Twilio Settings -> Public Base URL."
+            detail="The telephony provider cannot reach localhost. Please start a tunnel (e.g. `ngrok http 8000`) and set the HTTPS URL in Telephony Settings -> Public Base URL."
         )
 
     # Replace http/https with ws/wss
     ws_base = base_url.replace("http://", "ws://").replace("https://", "wss://")
-    stream_url = f"{ws_base}/api/v1/voice/stream"
+    stream_url = f"{ws_base}/api/v1{provider.stream_path}"
 
     # Render the opening greeting while the phone rings so it plays the moment the call is answered.
     from app.voice.greeting_cache import greeting_audio_cache
@@ -1396,62 +1377,53 @@ async def initiate_ai_test_call(
         is_test=payload.is_test
     )
 
-    # Build TwiML containing <Connect><Stream> with immediate hangup on stream completion
     from app.core.webhook_security import create_stream_token
+    from app.voice.duration_policy import twilio_backstop_seconds
     stream_token = create_stream_token(ctx.organization_id, agent_config.agent_id, "outbound", session.call_session_id)
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Connect>
-        <Stream url="{stream_url}">
-            <Parameter name="stream_token" value="{stream_token}" />
-            <Parameter name="organization_id" value="{ctx.organization_id}" />
-            <Parameter name="agent_id" value="{agent_config.agent_id}" />
-            <Parameter name="call_session_id" value="{session.call_session_id}" />
-            <Parameter name="direction" value="outbound" />
-            <Parameter name="from" value="{selected_from}" />
-            <Parameter name="to" value="{payload.to_number}" />
-            <Parameter name="user_id" value="{ctx.user_id}" />
-        </Stream>
-    </Connect>
-    <Hangup/>
-</Response>"""
+    credit_cap = None
+    if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
+        credit_cap = int(auth_check.get("remaining_seconds", 14400))
+    agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
 
     try:
-        def _place_call():
-            client = Client(tw_cfg.account_sid, auth_token)
-            create_kwargs = {
-                "to": payload.to_number,
-                "from_": selected_from,
-                "twiml": twiml,
-                "status_callback": f"{base_url.rstrip('/')}/api/v1/twilio/voice/status?organization_id={ctx.organization_id}&call_session_id={session.call_session_id}",
-                "status_callback_event": ["initiated", "ringing", "answered", "completed"],
-                "status_callback_method": "POST",
-            }
-            from app.voice.duration_policy import twilio_backstop_seconds
-            credit_cap = None
-            if auth_check.get("is_credit_enforced") and auth_check.get("credit_exhausted_action") == "block":
-                credit_cap = int(auth_check.get("remaining_seconds", 14400))
-            agent_max = getattr(getattr(agent_config, "runtime", None), "maximum_call_duration", None) or 300
-            create_kwargs["time_limit"] = twilio_backstop_seconds(agent_max, credit_cap)
-            return client.calls.create(**create_kwargs)
-
         routing_check = asyncio.create_task(_routes_to_this_server(base_url))
-        tw_call = await asyncio.to_thread(_place_call)
-        session.twilio_call_sid = tw_call.sid
+        tw_call = await provider.place_call(PlaceCallRequest(
+            organization_id=ctx.organization_id,
+            to_number=payload.to_number,
+            from_number=selected_from,
+            stream_url=stream_url,
+            stream_params={
+                "stream_token": stream_token,
+                "organization_id": ctx.organization_id,
+                "agent_id": agent_config.agent_id,
+                "call_session_id": session.call_session_id,
+                "direction": "outbound",
+                "from": selected_from,
+                "to": payload.to_number,
+                "user_id": ctx.user_id,
+            },
+            public_base_url=base_url,
+            status_callback_url=f"{base_url.rstrip('/')}{provider.status_callback_path}?organization_id={ctx.organization_id}&call_session_id={session.call_session_id}",
+            amd_callback_url=None,
+            ring_timeout_seconds=None,
+            time_limit_seconds=twilio_backstop_seconds(agent_max, credit_cap),
+        ))
+        session.twilio_call_sid = tw_call.call_id
+        session.provider = provider.name
         active_sessions.register(session)
         routes_here = await routing_check
         if not routes_here:
             from urllib.parse import urlparse
             _remote_sessions[session.call_session_id] = urlparse(base_url).netloc
             logger.warning(
-                f"[VoiceAPI] Twilio is routed to {base_url}, which is NOT this server. Live transcript/stats for call "
-                f"{tw_call.sid} will be handled there; this server shows Twilio's call status only. "
+                f"[VoiceAPI] The telephony provider is routed to {base_url}, which is NOT this server. Live transcript/stats for call "
+                f"{tw_call.call_id} will be handled there; this server shows the provider's call status only. "
                 f"Point Public Base URL at this server (tunnel) to get live transcript here."
             )
 
         return ApiResponse.ok({
             "call_session_id": session.call_session_id,
-            "call_sid": tw_call.sid,
+            "call_sid": tw_call.call_id,
             "status": tw_call.status or "initiated",
             "to": payload.to_number,
             "from": selected_from,
@@ -1460,9 +1432,12 @@ async def initiate_ai_test_call(
             "routes_to_this_server": routes_here,
             "routed_host": _remote_sessions.get(session.call_session_id),
         })
+    except TelephonyError as te:
+        logger.error(f"Error placing AI test call: {te.detail or te.public_message}")
+        raise HTTPException(status_code=400, detail=te.public_message)
     except Exception as e:
         logger.error(f"Error placing AI test call: {e}")
-        raise HTTPException(status_code=400, detail=f"Twilio call failed: {str(e)}")
+        raise HTTPException(status_code=400, detail="The call could not be placed. Please try again.")
 
 
 @router.get("/session/{call_session_id}/live", response_model=ApiResponse[Dict[str, Any]])
@@ -1481,7 +1456,7 @@ async def get_live_session_state(
         remote_host = _remote_sessions.get(call_session_id)
         if remote_host and not session.connected_at and session.twilio_call_sid:
             # The stream/webhooks land on another deployment: Twilio itself is the source of truth.
-            tw = await _twilio_call_status(session.organization_id, session.twilio_call_sid)
+            tw = await provider_for_call(session).get_call_status(session.organization_id, session.twilio_call_sid)
             tw_status = (tw[0] if tw else "") or ""
             tw_start, tw_duration = (tw[1], tw[2]) if tw else (None, 0)
             if tw_status in ("completed", "busy", "no-answer", "failed", "canceled"):
@@ -1541,7 +1516,6 @@ async def hangup_call(
     """
     Immediately terminates an active Twilio phone call and releases all streaming resources to prevent ongoing charges.
     """
-    tw_cfg = await twilio_repo.get_by_org(ctx.organization_id)
     target_call_sid = payload.call_sid
     session: Optional[CallSession] = None
 
@@ -1553,18 +1527,14 @@ async def hangup_call(
     if not target_call_sid and session:
         target_call_sid = session.twilio_call_sid
 
-    # Terminate the call in Twilio
-    if tw_cfg and target_call_sid:
+    # Terminate the call at the provider that carries it
+    if target_call_sid:
         try:
-            auth_token = decrypt_token(tw_cfg.encrypted_auth_token)
-            client = Client(tw_cfg.account_sid, auth_token)
-            await asyncio.to_thread(
-                client.calls(target_call_sid).update,
-                status="completed"
-            )
-            logger.info(f"[VoiceAPI] Terminated Twilio Call SID: {target_call_sid}")
+            provider = provider_for_call(session) if session else await telephony.provider_for_org(ctx.organization_id)
+            await provider.end_call(ctx.organization_id, target_call_sid)
+            logger.info(f"[VoiceAPI] Terminated call: {target_call_sid}")
         except Exception as e:
-            logger.warning(f"[VoiceAPI] Error terminating Twilio call: {e}")
+            logger.warning(f"[VoiceAPI] Error terminating call: {e}")
 
     # Finalize the session if active
     if session:

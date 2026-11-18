@@ -54,9 +54,10 @@ class CallSession(BaseModel):
     user_id: Optional[str] = None
     prospect_id: Optional[str] = None
     campaign_id: Optional[str] = None
-    twilio_call_sid: Optional[str] = None
+    twilio_call_sid: Optional[str] = None   # the provider's call id (whichever provider carries the call)
     twilio_stream_sid: Optional[str] = None
-    phone_number: str = ""          # Twilio phone number
+    provider: str = "twilio"        # telephony provider carrying this call
+    phone_number: str = ""          # our phone number on the call
     destination_number: str = ""    # Customer number
     direction: str = "outbound"     # "inbound" | "outbound"
     is_test: bool = False           # a test call from the agent editor or the test console: not a real lead or booking

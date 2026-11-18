@@ -340,6 +340,7 @@ class CallSessionService:
                 campaign_id=session.campaign_id,
                 twilio_configuration_id=session.agent_id,
                 call_sid=session.twilio_call_sid,
+                provider=session.provider,
                 session_id=session.call_session_id,
                 call_session_id=session.call_session_id,
                 from_number=session.phone_number or "Voice Gateway",
@@ -549,11 +550,9 @@ class CallSessionService:
             needs_rec = analytics_data.get("needs_audio_recording", False)
             if not needs_rec:
                 try:
-                    from app.services.twilio_service import TwilioService
-                    from app.repositories.twilio_repository import TwilioRepository
-                    tw_svc = TwilioService(TwilioRepository())
-                    asyncio.create_task(tw_svc.delete_call_recording(session.organization_id, session.twilio_call_sid))
-                    logger.info(f"[CallSessionService:SmartRetention] Scheduled instant deletion of routine recording on Twilio for SID {session.twilio_call_sid} to save storage credits.")
+                    from app.telephony.registry import provider_for_call
+                    asyncio.create_task(provider_for_call(session).delete_recording(session.organization_id, session.twilio_call_sid))
+                    logger.info(f"[CallSessionService:SmartRetention] Scheduled instant deletion of routine recording for call {session.twilio_call_sid} to save storage credits.")
                 except Exception as del_err:
                     logger.debug(f"[CallSessionService:SmartRetention] Notice deleting routine recording: {del_err}")
             else:
@@ -563,14 +562,13 @@ class CallSessionService:
                 # Dispatch Email Alert to SuperAdmin / Configured Alert Recipients
                 try:
                     from app.services.graph_email_service import graph_email_service
-                    from app.repositories.twilio_repository import TwilioRepository
+                    from app.telephony import registry as telephony
                     from app.repositories.user_repository import UserRepository
                     
                     async def _send_escalation_alert_async():
                         try:
                             # 1. Check organization Twilio config for custom alert settings
-                            tw_repo = TwilioRepository()
-                            tw_cfg = await tw_repo.get_by_org(session.organization_id)
+                            tw_cfg = await telephony.load_org_config(session.organization_id)
                             alerts_enabled = tw_cfg.escalation_alerts_enabled if tw_cfg and tw_cfg.escalation_alerts_enabled is not None else True
                             
                             # Global env fallback check

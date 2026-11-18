@@ -10,7 +10,9 @@ from app.telephony.types import PlaceCallRequest, PlacedCall, StreamEvent
 
 class TelephonyProvider(ABC):
     name: ClassVar[str]
-    stream_path: ClassVar[str]
+    stream_path: ClassVar[str]  # relative to /api/v1
+    status_callback_path: ClassVar[str]  # absolute path of this provider's call-status webhook
+    amd_callback_path: ClassVar[str]  # absolute path of this provider's answering-machine webhook
     # Bytes per outbound audio frame (20 ms of 8 kHz G.711 mu-law).
     chunk_bytes: ClassVar[int] = 160
 

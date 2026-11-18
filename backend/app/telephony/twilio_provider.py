@@ -26,6 +26,8 @@ _STATUS_CACHE: Dict[str, tuple] = {}  # call_sid -> (monotonic_ts, status, start
 class TwilioProvider(TelephonyProvider):
     name = "twilio"
     stream_path = "/voice/stream"
+    status_callback_path = "/api/v1/twilio/voice/status"
+    amd_callback_path = "/api/v1/twilio/voice/amd"
 
     # -- stream messages -------------------------------------------------------------------------------------------
 
@@ -88,13 +90,13 @@ class TwilioProvider(TelephonyProvider):
             if req.ring_timeout_seconds:
                 # How long the phone may ring before no-answer is reported (default is ~60s)
                 kwargs["timeout"] = max(5, min(int(req.ring_timeout_seconds), 120))
-            if req.status_callback_url:
+            if req.amd_callback_url:
                 # Audio-based voicemail detection: catches answering machines in any language.
                 kwargs["machine_detection"] = "Enable"
                 kwargs["async_amd"] = True
-                if req.amd_callback_url:
-                    kwargs["async_amd_status_callback"] = req.amd_callback_url
-                    kwargs["async_amd_status_callback_method"] = "POST"
+                kwargs["async_amd_status_callback"] = req.amd_callback_url
+                kwargs["async_amd_status_callback_method"] = "POST"
+            if req.status_callback_url:
                 kwargs["status_callback"] = req.status_callback_url
                 # Only these four events are accepted; busy / no-answer / canceled all arrive as "completed"
                 kwargs["status_callback_event"] = ["initiated", "ringing", "answered", "completed"]

@@ -29,7 +29,7 @@ _MAX_REMEMBERED = 50000
 
 # Columns needed by list views (everything heavy such as transcript, agent snapshot and analytics is left out)
 _LIGHT_COLUMNS = (
-    "c.id, c.organization_id, c.user_id, c.prospect_id, c.campaign_id, c.twilio_configuration_id, c.call_sid, "
+    "c.id, c.organization_id, c.user_id, c.prospect_id, c.campaign_id, c.twilio_configuration_id, c.call_sid, c.provider, "
     "c.session_id, c.call_session_id, c.from_number, c.to_number, c.duration, c.status, c.agent_id, "
     "c.agent_version, c.agent_name, c.agent_scope, c.outcome, c.business_outcome, c.summary, c.intent, "
     "c.sentiment, c.lead_score, c.interest_level, c.classification, c.callback_datetime, c.next_action, "
@@ -38,7 +38,7 @@ _LIGHT_COLUMNS = (
 
 # Light columns plus the analytics payload, but still no transcript / agent snapshot / prompt (read-only reporting).
 _ANALYTICS_COLUMNS = (
-    "c.id, c.organization_id, c.user_id, c.prospect_id, c.campaign_id, c.twilio_configuration_id, c.call_sid, "
+    "c.id, c.organization_id, c.user_id, c.prospect_id, c.campaign_id, c.twilio_configuration_id, c.call_sid, c.provider, "
     "c.session_id, c.call_session_id, c.from_number, c.to_number, c.duration, c.status, c.agent_id, "
     "c.agent_version, c.agent_name, c.agent_scope, c.outcome, c.business_outcome, c.summary, c.key_insights, "
     "c.key_requirements, c.customer_questions, c.objections, c.important_info, c.intent, c.sentiment, "

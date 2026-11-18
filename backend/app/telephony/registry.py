@@ -37,6 +37,22 @@ async def provider_for_org(org_id: str) -> TelephonyProvider:
     return get_provider(await resolve_provider_name(org_id))
 
 
+async def load_org_config(org_id: str):
+    """The organization's telephony configuration document for its provider (None when not configured).
+
+    Both configuration models expose the same fields used outside the adapters: phone_number, default_agent_id,
+    public_base_url, inbound_agent_mapping, escalation_alerts_enabled, escalation_alert_email, inbound_forward_*.
+    """
+    name = await resolve_provider_name(org_id)
+    if name == "plivo":
+        from app.repositories.plivo_repository import PlivoRepository
+
+        return await PlivoRepository().get_by_org(org_id)
+    from app.repositories.twilio_repository import TwilioRepository
+
+    return await TwilioRepository().get_by_org(org_id)
+
+
 def provider_for_call(call_or_session) -> TelephonyProvider:
     """The provider stored on a call or live session (old records without one are Twilio)."""
     return get_provider(getattr(call_or_session, "provider", None) or DEFAULT_PROVIDER)

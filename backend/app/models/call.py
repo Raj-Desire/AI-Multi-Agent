@@ -9,7 +9,8 @@ class Call(BaseModel):
     organization_id: str
     user_id: str
     twilio_configuration_id: str
-    call_sid: Optional[str] = None
+    call_sid: Optional[str] = None  # the telephony provider's call id (whichever provider carried the call)
+    provider: str = "twilio"  # telephony provider that carried this call; older records default to Twilio
     session_id: Optional[str] = None
     call_session_id: Optional[str] = None
     from_number: str
