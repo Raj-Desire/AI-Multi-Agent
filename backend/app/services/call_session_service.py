@@ -568,7 +568,7 @@ class CallSessionService:
                     async def _send_escalation_alert_async():
                         try:
                             # 1. Check organization Twilio config for custom alert settings
-                            tw_cfg = await telephony.load_org_config(session.organization_id)
+                            tw_cfg = await telephony.load_config_for(session.provider, session.organization_id)
                             alerts_enabled = tw_cfg.escalation_alerts_enabled if tw_cfg and tw_cfg.escalation_alerts_enabled is not None else True
                             
                             # Global env fallback check

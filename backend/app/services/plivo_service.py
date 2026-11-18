@@ -6,7 +6,8 @@ from typing import Optional
 from app.core.dependencies import TenantContext
 from app.core.security import decrypt_token, encrypt_token, mask_auth_token
 from app.models.plivo import PlivoConfiguration
-from app.repositories.plivo_repository import PlivoRepository
+from app.repositories.plivo_repository import PlivoRepository, normalize_number
+from app.repositories.twilio_repository import TwilioRepository
 from app.schemas.plivo import PlivoBalanceResponse, PlivoConfigResponse, SavePlivoConfigRequest
 
 _AUTH_FAILED = "Telephony authentication failed. Check your Auth ID and Auth Token."
@@ -63,12 +64,15 @@ class PlivoService:
                 return new
             return getattr(existing, field) if existing else default
 
+        phone_numbers = req.phone_number.strip() or (existing.phone_number if existing else "")
+        await self._ensure_numbers_unclaimed(ctx.organization_id, phone_numbers)
+
         cfg = PlivoConfiguration(
             id=existing.id if existing else f"plc_{uuid.uuid4().hex[:12]}",
             organization_id=ctx.organization_id,
             auth_id=req.auth_id.strip(),
             encrypted_auth_token=encrypted,
-            phone_number=req.phone_number.strip() or (existing.phone_number if existing else ""),
+            phone_number=phone_numbers,
             application_id=req.application_id,
             public_base_url=req.public_base_url,
             inbound_forward_mode=req.inbound_forward_mode or (existing.inbound_forward_mode if existing else "global"),
@@ -84,6 +88,17 @@ class PlivoService:
         )
         await self.repo.save(cfg)
         return _response(cfg, real_token)
+
+    async def _ensure_numbers_unclaimed(self, org_id: str, phone_numbers: str) -> None:
+        """A phone number belongs to one organization: inbound calls are routed to its owner by number."""
+        wanted = {d for d in (normalize_number(n) for n in phone_numbers.split(",")) if d}
+        if not wanted:
+            return
+        owners = [(c.organization_id, c.phone_number) for c in await self.repo.list_all()]
+        owners += [(c.organization_id, c.phone_number) for c in await TwilioRepository().list_all()]
+        for owner_org, numbers in owners:
+            if owner_org != org_id and wanted & {d for d in (normalize_number(n) for n in (numbers or "").split(",")) if d}:
+                raise ValueError("One or more phone numbers are already assigned to another organization.")
 
     async def _credentials(self, ctx: TenantContext, auth_id: Optional[str] = None, auth_token: Optional[str] = None):
         cfg = await self.repo.get_by_org(ctx.organization_id)

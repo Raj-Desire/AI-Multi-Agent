@@ -41,7 +41,10 @@ async def save_configuration(
     service: PlivoService = Depends(get_plivo_service),
 ):
     _require_admin(ctx)
-    return ApiResponse.ok(await service.save_config(ctx, payload))
+    try:
+        return ApiResponse.ok(await service.save_config(ctx, payload))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/test-connection", response_model=ApiResponse[dict])

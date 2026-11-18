@@ -24,8 +24,13 @@ def _invalidate(org_id: Optional[str] = None) -> None:
         _CACHE.clear()
 
 
+def normalize_number(number: str) -> str:
+    """Digits only, so '+91 1800-555-001' and '+911800555001' are the same number."""
+    return "".join(c for c in (number or "") if c.isdigit())
+
+
 def _numbers(cfg: PlivoConfiguration) -> List[str]:
-    return [n.strip().lstrip("+") for n in (cfg.phone_number or "").split(",") if n.strip()]
+    return [d for d in (normalize_number(n) for n in (cfg.phone_number or "").split(",")) if d]
 
 
 def _from_item(item: dict) -> PlivoConfiguration:
@@ -85,20 +90,24 @@ class PlivoRepository:
         return configs
 
     async def get_by_phone_number(self, phone_number: str) -> Optional[PlivoConfiguration]:
-        """The configuration whose number list contains exactly this number (exact match, not substring)."""
-        wanted = (phone_number or "").strip().lstrip("+")
+        """The configuration whose number list contains exactly this number (digits compared, not substrings).
+        A number claimed by more than one organization is ambiguous: return None rather than guess a tenant."""
+        wanted = normalize_number(phone_number)
         if not wanted:
             return None
         cached = _PHONE_CACHE.get(wanted)
         if cached and time.time() - cached[1] < CACHE_TTL_SECONDS:
             return cached[0]
-        for cfg in await self.list_all():
-            if wanted in _numbers(cfg):
-                if len(_PHONE_CACHE) >= _MAX_PHONE_CACHE:
-                    _PHONE_CACHE.clear()
-                _PHONE_CACHE[wanted] = (cfg, time.time())
-                return cfg
-        return None
+        matches = [cfg for cfg in await self.list_all() if wanted in _numbers(cfg)]
+        found: Optional[PlivoConfiguration] = None
+        if len({m.organization_id for m in matches}) > 1:
+            print(f"[PlivoRepository Warning] number {phone_number} is claimed by several organizations; refusing to route it")
+        elif matches:
+            found = matches[0]
+        if len(_PHONE_CACHE) >= _MAX_PHONE_CACHE:
+            _PHONE_CACHE.clear()
+        _PHONE_CACHE[wanted] = (found, time.time())
+        return found
 
     async def save(self, config: PlivoConfiguration) -> PlivoConfiguration:
         container = get_plivo_container()

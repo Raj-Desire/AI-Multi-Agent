@@ -21,3 +21,15 @@ def check_destination_allowed(to_number: str, now_utc: Optional[datetime] = None
         if not (_INDIA_OPEN <= local < _INDIA_CLOSE):
             return False, INDIA_HOURS_MESSAGE
     return True, ""
+
+
+def next_allowed_time(to_number: str, now_utc: Optional[datetime] = None) -> Optional[datetime]:
+    """None when the call may be placed now; otherwise the next time (UTC) the destination's calling window opens."""
+    now = now_utc or _utcnow()
+    if check_destination_allowed(to_number, now)[0]:
+        return None
+    local = now.astimezone(_IST)
+    opens = local.replace(hour=_INDIA_OPEN.hour, minute=_INDIA_OPEN.minute, second=0, microsecond=0)
+    if local.time() >= _INDIA_CLOSE:
+        opens += timedelta(days=1)
+    return opens.astimezone(timezone.utc)

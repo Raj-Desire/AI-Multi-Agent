@@ -1530,7 +1530,15 @@ async def hangup_call(
     # Terminate the call at the provider that carries it
     if target_call_sid:
         try:
-            provider = provider_for_call(session) if session else await telephony.provider_for_org(ctx.organization_id)
+            if session:
+                provider = provider_for_call(session)
+            else:
+                # No live session on this server: use the provider recorded on the call, not the org's current choice
+                stored = await call_repo.get_by_call_sid(target_call_sid)
+                if stored and stored.organization_id == ctx.organization_id:
+                    provider = provider_for_call(stored)
+                else:
+                    provider = await telephony.provider_for_org(ctx.organization_id)
             await provider.end_call(ctx.organization_id, target_call_sid)
             logger.info(f"[VoiceAPI] Terminated call: {target_call_sid}")
         except Exception as e:

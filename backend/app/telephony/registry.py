@@ -37,20 +37,33 @@ async def provider_for_org(org_id: str) -> TelephonyProvider:
     return get_provider(await resolve_provider_name(org_id))
 
 
-async def load_org_config(org_id: str):
-    """The organization's telephony configuration document for its provider (None when not configured).
+def is_available(name: str) -> bool:
+    """True when the provider can actually carry calls: an adapter is registered and, for Plivo, the flag is on."""
+    if name == "plivo" and not _plivo_enabled():
+        return False
+    return name in _PROVIDERS
 
+
+async def load_config_for(provider_name: str, org_id: str):
+    """The organization's configuration document for ONE provider (None when not configured).
+
+    Call-scoped code (a live stream, an ended call) must use the provider that carried the call, not the
+    organization's current selection, which may have changed since.
     Both configuration models expose the same fields used outside the adapters: phone_number, default_agent_id,
     public_base_url, inbound_agent_mapping, escalation_alerts_enabled, escalation_alert_email, inbound_forward_*.
     """
-    name = await resolve_provider_name(org_id)
-    if name == "plivo":
+    if provider_name == "plivo":
         from app.repositories.plivo_repository import PlivoRepository
 
         return await PlivoRepository().get_by_org(org_id)
     from app.repositories.twilio_repository import TwilioRepository
 
     return await TwilioRepository().get_by_org(org_id)
+
+
+async def load_org_config(org_id: str):
+    """Configuration of the provider the organization currently has selected (use for NEW calls only)."""
+    return await load_config_for(await resolve_provider_name(org_id), org_id)
 
 
 def provider_for_call(call_or_session) -> TelephonyProvider:

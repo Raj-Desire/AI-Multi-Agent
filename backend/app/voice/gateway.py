@@ -1086,7 +1086,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     if not (session and session.organization_id):
                         return None
                     try:
-                        return await telephony_registry.load_org_config(session.organization_id)
+                        return await telephony_registry.load_config_for(provider.name, session.organization_id)
                     except Exception as tw_err:
                         logger.warning(f"[VoiceGateway] Notice fetching telephony config: {tw_err}")
                         return None

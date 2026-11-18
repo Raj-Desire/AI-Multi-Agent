@@ -21,6 +21,7 @@ from app.repositories.campaign_repository import (
 )
 from app.repositories.prospect_repository import ProspectRepository
 from app.repositories.twilio_repository import TwilioRepository
+from app.telephony import compliance
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.call_repository import CallRepository
 from app.services.campaign_service import CampaignService
@@ -524,6 +525,24 @@ class CampaignDialerEngine:
                     details={"member_id": member.id, "reason": "invalid_phone"}
                 )
                 await self.campaign_service.recalculate_campaign_stats(campaign.id)
+                return
+
+            # 2b. Calling hours for the destination country (India: 09:00-21:00 IST): defer to the next window,
+            # without using an attempt, instead of dialing and failing.
+            reopen_at = compliance.next_allowed_time(member.normalized_phone)
+            if reopen_at is not None:
+                member.status = CampaignMemberStatus.RETRYING
+                member.next_attempt_at = reopen_at
+                member.last_error = compliance.INDIA_HOURS_MESSAGE
+                member.updated_at = now
+                await self.member_repo.save(member)
+                await self.event_repo.log_event(
+                    organization_id=campaign.organization_id,
+                    campaign_id=campaign.id,
+                    event_type=CampaignEventType.CALL_COMPLETED,
+                    message=f"Deferred dial to {member.prospect_name} ({member.phone_number}) until {reopen_at.isoformat()}: outside permitted calling hours.",
+                    details={"member_id": member.id, "reason": "calling_hours", "next_attempt_at": reopen_at.isoformat()}
+                )
                 return
 
             # 3. Transition member to CALLING and increment attempt counter

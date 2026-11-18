@@ -1,5 +1,3 @@
-import os
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.dependencies import TenantContext, get_tenant_context
@@ -8,7 +6,7 @@ from app.repositories.plivo_repository import PlivoRepository
 from app.repositories.telephony_settings_repository import TelephonySettingsRepository
 from app.schemas.common import ApiResponse
 from app.schemas.plivo import ProviderResponse, SelectProviderRequest
-from app.telephony.registry import resolve_provider_name
+from app.telephony.registry import is_available, resolve_provider_name
 
 router = APIRouter(prefix="/telephony", tags=["Telephony"])
 
@@ -26,8 +24,8 @@ async def set_provider_setting(payload: SelectProviderRequest, ctx: TenantContex
     if provider not in ("twilio", "plivo"):
         raise HTTPException(status_code=400, detail="Unknown telephony provider.")
     if provider == "plivo":
-        if (os.getenv("TELEPHONY_PLIVO_ENABLED") or "").strip().lower() != "true":
-            raise HTTPException(status_code=400, detail="This telephony provider is not enabled.")
+        if not is_available("plivo"):
+            raise HTTPException(status_code=400, detail="This telephony provider is not available yet.")
         if not await PlivoRepository().get_by_org(ctx.organization_id):
             raise HTTPException(status_code=400, detail="Save the telephony credentials for this provider before selecting it.")
     saved = await TelephonySettingsRepository().save(TelephonySettings(organization_id=ctx.organization_id, provider=provider))
