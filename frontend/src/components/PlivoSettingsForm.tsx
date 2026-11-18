@@ -153,6 +153,12 @@ export function PlivoSettingsForm() {
         </Alert>
       )}
 
+      {!config && (
+        <Alert type="info" title="Not set up yet">
+          Enter your credentials and phone numbers below, then save. Calls on this network start working once they are saved.
+        </Alert>
+      )}
+
       <FormSection title="Account credentials" description="Your Auth ID and Auth Token from the telephony provider console.">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input label="Auth ID" value={authId} onChange={(e) => setAuthId(e.target.value)} placeholder="Auth ID" required />

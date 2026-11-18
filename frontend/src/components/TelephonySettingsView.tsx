@@ -3,20 +3,23 @@ import { fetchApi, LIVE } from "../api-client";
 import { MARKET_LABELS, TelephonyMarket, TelephonyProvider } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { Alert } from "./ui/Alert";
+import { LoadingState } from "./ui/LoadingState";
 import { TwilioSettingsView } from "./TwilioSettingsView";
 import { PlivoSettingsForm } from "./PlivoSettingsForm";
 
 type ProviderSetting = { provider: TelephonyProvider; market: TelephonyMarket };
 
 /**
- * Phone & Voice settings. The market decides which telephony network carries the organization's calls:
- * Domestic (customers in India) or International. A platform operator (super admin) can also choose "Both" to use
- * numbers from either network and pick one per call. Switching only changes the active market; the other network's
- * saved settings are kept.
+ * Phone & Voice settings.
+ *
+ * An organization's market (Domestic or International) is fixed when the organization is created, so an organization
+ * admin simply lands on the settings for their own market, with nothing to choose. A platform operator (super admin)
+ * can switch the market, including "Both" to use numbers from either network. Switching never deletes the other
+ * network's saved settings.
  */
 export function TelephonySettingsView() {
   const { isSuperAdmin } = useAuth();
-  const [setting, setSetting] = useState<ProviderSetting>({ provider: "twilio", market: "international" });
+  const [setting, setSetting] = useState<ProviderSetting | null>(null);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,10 +27,13 @@ export function TelephonySettingsView() {
     let cancelled = false;
     fetchApi<ProviderSetting>("/telephony/provider", LIVE)
       .then((res) => {
-        if (!cancelled && res?.provider) setSetting({ provider: res.provider, market: res.market || (res.provider === "plivo" ? "domestic" : "international") });
+        if (cancelled) return;
+        const provider = res?.provider || "twilio";
+        setSetting({ provider, market: res?.market || (provider === "plivo" ? "domestic" : "international") });
       })
       .catch(() => {
-        /* keep the default (International) when the setting cannot be read */
+        // Settings cannot be read: fall back to International (the platform default) rather than showing nothing
+        if (!cancelled) setSetting({ provider: "twilio", market: "international" });
       });
     return () => {
       cancelled = true;
@@ -35,7 +41,7 @@ export function TelephonySettingsView() {
   }, []);
 
   async function handleChange(next: TelephonyMarket) {
-    if (next === setting.market) return;
+    if (!setting || next === setting.market) return;
     setError(null);
     setSwitching(true);
     try {
@@ -51,34 +57,45 @@ export function TelephonySettingsView() {
     }
   }
 
-  const markets: TelephonyMarket[] = isSuperAdmin ? ["domestic", "international", "both"] : ["domestic", "international"];
+  // Do not draw either form until the organization's market is known, so the wrong one never flashes up.
+  if (!setting) {
+    return (
+      <div className="py-16">
+        <LoadingState message="Loading phone settings..." subMessage="Checking your organization's market" size="lg" />
+      </div>
+    );
+  }
+
+  const markets: TelephonyMarket[] = ["domestic", "international", "both"];
   const showDomestic = setting.market === "domestic" || setting.market === "both";
   const showInternational = setting.market === "international" || setting.market === "both";
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--color-heading)]">Market</h2>
-          <p className="text-xs text-[var(--color-muted)]">
-            Domestic organizations call through the domestic network; international organizations through the international one.
-            Settings for the other network are kept.
-          </p>
+      {isSuperAdmin && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-[var(--radius-main,0.375rem)] bg-[var(--color-surface)] border border-[var(--color-border)]">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Market</h2>
+            <p className="text-xs text-[var(--color-muted)]">
+              Domestic uses the domestic network, International the international one, and Both lets you pick a number from either for each call.
+              Settings you saved for the other network are kept.
+            </p>
+          </div>
+          <select
+            aria-label="Market"
+            value={setting.market}
+            disabled={switching}
+            onChange={(e) => handleChange(e.target.value as TelephonyMarket)}
+            className="h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+          >
+            {markets.map((m) => (
+              <option key={m} value={m}>
+                {MARKET_LABELS[m]}
+              </option>
+            ))}
+          </select>
         </div>
-        <select
-          aria-label="Market"
-          value={setting.market}
-          disabled={switching}
-          onChange={(e) => handleChange(e.target.value as TelephonyMarket)}
-          className="h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
-        >
-          {markets.map((m) => (
-            <option key={m} value={m}>
-              {MARKET_LABELS[m]}
-            </option>
-          ))}
-        </select>
-      </div>
+      )}
 
       {error && (
         <Alert type="danger" onDismiss={() => setError(null)}>
