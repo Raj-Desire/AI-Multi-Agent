@@ -344,6 +344,20 @@ npm test
 | Port 3000 or 8000 already in use | Close the other program, or change the port (`--port 8001`, and set `VITE_API_BASE_URL`) |
 | Voice engine / AI errors on calls | Verify `DEEPGRAM_API_KEY` and the Azure OpenAI values, and that the deployment name exists |
 
+## 12b. Telephony providers (Twilio and Plivo)
+
+Each organization places and receives calls through one telephony provider, chosen in **Phone & Voice** settings. New and existing organizations use Twilio unless a provider is selected; the other provider's saved settings are kept when you switch.
+
+| Setting | Purpose |
+|---|---|
+| `TELEPHONY_PLIVO_ENABLED=true` | Turns the Plivo provider on for this deployment (off by default) |
+| `TELEPHONY_RATE_CARD` | Optional JSON rate card used for per-provider cost reports, e.g. `{"plivo": {"IN": {"per_minute": 0.4, "pulse_seconds": 30, "currency": "INR"}}}` |
+| `COSMOS_CONTAINER_TELEPHONY`, `COSMOS_CONTAINER_PLIVO` | Optional container names for the provider setting and Plivo configuration |
+
+Rollback: set the organization's provider back to Twilio in settings (or unset `TELEPHONY_PLIVO_ENABLED`); calls already in progress finish on the provider that started them.
+
+Campaign calls to Indian (+91) numbers are only placed between 09:00 and 21:00 India time.
+
 ## 13. Deployment notes
 
 - Build the frontend for production with `cd frontend && npm run build` (output in `frontend/dist`). A GitHub Actions workflow for Azure Static Web Apps is included under `.github/workflows`.
