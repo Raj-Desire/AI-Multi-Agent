@@ -8,6 +8,9 @@ from app.telephony.base import TelephonyProvider
 from app.telephony.types import TelephonyError
 
 DEFAULT_PROVIDER = "twilio"
+DEFAULT_MARKET = "international"
+# Which provider carries each market by default ("both" is a platform operator that routes per number).
+MARKET_PROVIDER = {"domestic": "plivo", "international": "twilio", "both": "twilio"}
 _PROVIDERS: Dict[str, TelephonyProvider] = {}
 
 
@@ -16,7 +19,8 @@ def register_provider(provider: TelephonyProvider) -> None:
 
 
 def _plivo_enabled() -> bool:
-    return (os.getenv("TELEPHONY_PLIVO_ENABLED") or "").strip().lower() == "true"
+    """Plivo is on unless TELEPHONY_PLIVO_ENABLED=false (an emergency switch to stop all Plivo traffic)."""
+    return (os.getenv("TELEPHONY_PLIVO_ENABLED") or "true").strip().lower() != "false"
 
 
 def get_provider(name: str) -> TelephonyProvider:
@@ -35,6 +39,48 @@ async def resolve_provider_name(org_id: str) -> str:
 
 async def provider_for_org(org_id: str) -> TelephonyProvider:
     return get_provider(await resolve_provider_name(org_id))
+
+
+async def resolve_market(org_id: str) -> str:
+    settings = await TelephonySettingsRepository().get(org_id)
+    return settings.market if settings else DEFAULT_MARKET
+
+
+def _digits(number: str) -> str:
+    return "".join(c for c in (number or "") if c.isdigit())
+
+
+def _config_numbers(cfg) -> list:
+    return [n.strip() for n in (getattr(cfg, "phone_number", "") or "").split(",") if n.strip()]
+
+
+async def provider_name_for_number(org_id: str, number: str) -> str:
+    """Provider for a call made from `number`. Only a "both" organization routes by number; every other
+    organization always uses its own provider."""
+    default = await resolve_provider_name(org_id)
+    if await resolve_market(org_id) != "both":
+        return default
+    wanted = _digits(number)
+    for name in ("plivo", "twilio"):
+        cfg = await load_config_for(name, org_id)
+        if cfg and wanted and any(_digits(n) == wanted for n in _config_numbers(cfg)):
+            return name
+    return default
+
+
+async def provider_for_number(org_id: str, number: str) -> TelephonyProvider:
+    return get_provider(await provider_name_for_number(org_id, number))
+
+
+async def list_numbers(org_id: str) -> list:
+    """Numbers the organization can call from, each labelled with the provider that owns it."""
+    names = ["twilio", "plivo"] if await resolve_market(org_id) == "both" else [await resolve_provider_name(org_id)]
+    listing = []
+    for name in names:
+        cfg = await load_config_for(name, org_id)
+        for number in _config_numbers(cfg) if cfg else []:
+            listing.append({"number": number if number.startswith("+") else "+" + _digits(number), "provider": name})
+    return listing
 
 
 def is_available(name: str) -> bool:

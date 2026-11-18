@@ -1305,10 +1305,11 @@ async def initiate_ai_test_call(
     resolved_prospect_id = matched_prospect.id if matched_prospect else payload.prospect_id
 
     try:
-        provider = await telephony.provider_for_org(ctx.organization_id)
+        provider = (await telephony.provider_for_number(ctx.organization_id, payload.from_number)) if payload.from_number \
+            else await telephony.provider_for_org(ctx.organization_id)
     except TelephonyError as te:
         raise HTTPException(status_code=400, detail=te.public_message)
-    tw_cfg = await telephony.load_org_config(ctx.organization_id)
+    tw_cfg = await telephony.load_config_for(provider.name, ctx.organization_id)
     if not tw_cfg:
         raise HTTPException(
             status_code=400,

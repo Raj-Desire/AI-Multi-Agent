@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import List, Dict, Any, Optional
+from typing import Literal, List, Dict, Any, Optional
 import uuid
 from app.core.password_policy import validate_password
 from app.repositories.user_repository import UserRepository
@@ -28,6 +28,8 @@ class CreateOrganizationPayload(BaseModel):
     admin_username: str = Field(..., min_length=2, max_length=50)
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=6)
+    # Where this organization's customers are: "domestic" (carried by Plivo) or "international" (Twilio)
+    market: Literal["domestic", "international"] = "international"
 
     _check_password = field_validator("admin_password")(lambda cls, v: validate_password(v))
 
@@ -228,6 +230,11 @@ async def create_organization_and_admin(
             organization_id=org_id,
             org_name=payload.org_name
         )
+        from app.models.telephony import TelephonySettings
+        from app.repositories.telephony_settings_repository import TelephonySettingsRepository
+        from app.telephony.registry import MARKET_PROVIDER
+        await TelephonySettingsRepository().save(TelephonySettings(
+            organization_id=org_id, provider=MARKET_PROVIDER[payload.market], market=payload.market))
         return SuperadminUserResponse(
             id=new_admin["id"],
             username=new_admin["username"],

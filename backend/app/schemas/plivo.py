@@ -49,8 +49,10 @@ class FetchPlivoNumbersRequest(BaseModel):
 
 
 class SelectProviderRequest(BaseModel):
-    provider: str
+    provider: Optional[str] = None
+    market: Optional[str] = None
 
 
 class ProviderResponse(BaseModel):
     provider: str
+    market: str = "international"

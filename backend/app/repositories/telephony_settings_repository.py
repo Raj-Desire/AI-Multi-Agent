@@ -27,6 +27,7 @@ class TelephonySettingsRepository:
             found = TelephonySettings(
                 organization_id=organization_id,
                 provider=item.get("provider", "twilio"),
+                market=item.get("market"),
             )
         except Exception:
             found = None
@@ -42,6 +43,7 @@ class TelephonySettingsRepository:
                 "id": f"tel_{settings.organization_id}",
                 "organization_id": settings.organization_id,
                 "provider": settings.provider,
+                "market": settings.market,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
         _CACHE.pop(settings.organization_id, None)

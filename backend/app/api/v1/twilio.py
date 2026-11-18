@@ -270,9 +270,26 @@ async def voice_status_webhook(request: Request):
     if not call_sid:
         return Response(content="<Response/>", media_type="application/xml")
 
+    call_session_id = request.query_params.get("call_session_id") or ""
+    await process_call_status(call_sid, call_status, call_duration, campaign_id, prospect_id, org_id, call_session_id)
+    return Response(content="<Response/>", media_type="application/xml")
+
+
+async def process_call_status(
+    call_sid: str,
+    call_status: str,
+    call_duration: int,
+    campaign_id: Optional[str],
+    prospect_id: Optional[str],
+    org_id: Optional[str],
+    call_session_id: str = "",
+) -> None:
+    """Applies one call-status update (any provider) to the live session, Call, Prospect and Campaign records.
+    `call_status` uses the internal vocabulary: queued, initiated, ringing, in-progress, answered, completed, busy,
+    no-answer, failed, canceled. Safe to call more than once for the same call."""
     # Push the live status to the dashboard immediately, before any database work
     from app.voice.session import active_sessions
-    live_session = active_sessions.get(request.query_params.get("call_session_id") or "") or active_sessions.get_by_call_sid(call_sid)
+    live_session = active_sessions.get(call_session_id or "") or active_sessions.get_by_call_sid(call_sid)
     if live_session and call_status:
         if call_status in ("initiated", "queued", "ringing", "in-progress", "answered"):
             live_session.status = "in-progress" if call_status in ("in-progress", "answered") else call_status
@@ -438,7 +455,6 @@ async def voice_status_webhook(request: Request):
         _webhook_tasks.add(task)
         task.add_done_callback(_webhook_tasks.discard)
 
-    return Response(content="<Response/>", media_type="application/xml")
 
 
 _webhook_tasks: set = set()

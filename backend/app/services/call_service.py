@@ -89,10 +89,12 @@ class CallService:
         resolved_prospect_id = matched_prospect.id if matched_prospect else prospect_id
 
         try:
-            provider = await telephony.provider_for_org(ctx.organization_id)
+            # A platform operator ("both" market) picks the provider by the number it calls from
+            provider = (await telephony.provider_for_number(ctx.organization_id, from_number)) if from_number \
+                else await telephony.provider_for_org(ctx.organization_id)
         except TelephonyError as te:
             raise HTTPException(status_code=400, detail=te.public_message)
-        tw_cfg = await telephony.load_org_config(ctx.organization_id)
+        tw_cfg = await telephony.load_config_for(provider.name, ctx.organization_id)
         if not tw_cfg:
             raise HTTPException(
                 status_code=400,
@@ -238,9 +240,11 @@ class CallService:
         if not tw_cfg.api_key_sid or not api_key_secret:
             raise HTTPException(status_code=400, detail="Twilio API Key SID & Secret are required for WebRTC browser calling. Add them in Twilio Settings.")
 
-        # Check and auto-sync TwiML App URL if public base url is available (Env var takes priority over DB)
+        # Auto-sync of the TwiML App voice URL is OPT-IN (TWIML_APP_AUTO_SYNC=true). A Twilio account can be shared by
+        # several projects; silently rewriting the app's URL would break whichever project actually owns it.
         effective_base_url = (os.getenv("PUBLIC_BASE_URL") or tw_cfg.public_base_url or req_base_url or "").strip().rstrip("/")
-        if effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
+        auto_sync = (os.getenv("TWIML_APP_AUTO_SYNC") or "").strip().lower() == "true"
+        if auto_sync and effective_base_url and not ("localhost" in effective_base_url or "127.0.0.1" in effective_base_url):
             expected_url = f"{effective_base_url}/api/v1/twilio/voice/twiml"
             try:
                 def _sync_url():
