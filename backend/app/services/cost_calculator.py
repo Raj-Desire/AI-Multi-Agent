@@ -9,8 +9,10 @@ Calculates multi-tenant infrastructure usage costs across:
 Provides profit margin projections for platform client billing.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, NamedTuple
+import json
 import math
+import os
 from datetime import datetime, timezone, timedelta
 from app.models.call import Call
 
@@ -37,6 +39,53 @@ LLM_RATES_PER_1K: Dict[str, Dict[str, float]] = {
     "default": {"input": 0.00020, "output": 0.00080},
 }
 
+# Dial-code prefix -> ISO country, used to look rates up in the telephony rate card (longest prefix wins).
+_DIAL_PREFIXES = {"+971": "AE", "+91": "IN", "+44": "GB", "+65": "SG", "+61": "AU", "+1": "US"}
+
+
+class TelephonyCost(NamedTuple):
+    amount: float
+    currency: str
+    known: bool
+
+
+def _rate_card() -> Dict[str, Any]:
+    """TELEPHONY_RATE_CARD = {"<provider>": {"<ISO country>|*": {"per_minute": n, "pulse_seconds": n, "currency": "XXX"}}}.
+    Rates differ by plan and change over time, so they are configuration, never hard-coded."""
+    raw = (os.getenv("TELEPHONY_RATE_CARD") or "").strip()
+    if not raw:
+        return {}
+    try:
+        card = json.loads(raw)
+        return card if isinstance(card, dict) else {}
+    except ValueError:
+        return {}
+
+
+def _country_of(number: str) -> str:
+    number = (number or "").strip()
+    for prefix in sorted(_DIAL_PREFIXES, key=len, reverse=True):
+        if number.startswith(prefix):
+            return _DIAL_PREFIXES[prefix]
+    return "OTHER"
+
+
+def estimate_call_cost(provider: str, to_number: str, duration_seconds: int, direction: str = "outbound") -> TelephonyCost:
+    """Telephony cost of one call in the rate card's own currency, billed in whole pulses. Unknown -> (0.0, "USD", False)."""
+    rates = (_rate_card().get(provider or "") or {})
+    rate = rates.get(_country_of(to_number)) or rates.get("*")
+    if not isinstance(rate, dict):
+        return TelephonyCost(0.0, "USD", False)
+    try:
+        per_minute = float(rate.get(f"per_minute_{direction}", rate["per_minute"]))
+        pulse = max(1, int(rate.get("pulse_seconds", 60)))
+    except (KeyError, TypeError, ValueError):
+        return TelephonyCost(0.0, "USD", False)
+    seconds = max(0, int(duration_seconds or 0))
+    billed_seconds = math.ceil(seconds / pulse) * pulse if seconds else 0
+    return TelephonyCost(round(billed_seconds / 60.0 * per_minute, 6), str(rate.get("currency", "USD")), True)
+
+
 # Default Markup for client billings (e.g. 2.5x wholesale cost)
 DEFAULT_BILLING_MARKUP = 2.50
 
@@ -60,6 +109,11 @@ class CostCalculatorService:
 
         # 1. Telephony Carrier Cost
         telephony_cost = minutes_billed * TELEPHONY_COST_PER_MINUTE
+        provider = getattr(call, "provider", None) or "twilio"
+        inbound = getattr(call, "direction", "") == "inbound"
+        native = estimate_call_cost(provider, call.from_number if inbound else call.to_number, duration_sec, "inbound" if inbound else "outbound")
+        if native.known and native.currency == "USD":
+            telephony_cost = native.amount  # a USD rate-card entry replaces the generic default; other currencies stay native
 
         # 2. STT Streaming Cost (calculated on actual speaking time)
         stt_cost = actual_minutes * STT_COST_PER_MINUTE
@@ -140,6 +194,8 @@ class CostCalculatorService:
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
             "tts_characters": tts_characters,
+            "provider": provider,
+            "telephony_cost_native": {"amount": round(native.amount, 5), "currency": native.currency, "known": native.known},
             "telephony_cost": round(telephony_cost, 5),
             "stt_cost": round(stt_cost, 5),
             "llm_cost": round(llm_cost, 5),
@@ -163,6 +219,7 @@ class CostCalculatorService:
         aggregates_by_org: Dict[str, Dict[str, Any]] = {}
         model_usage_breakdown: Dict[str, Dict[str, Any]] = {}
         voice_usage_breakdown: Dict[str, Dict[str, Any]] = {}
+        provider_usage: Dict[str, Dict[str, Any]] = {}
 
         # Initialize empty stats for known organizations
         for org_id, org_data in org_map.items():
@@ -198,6 +255,18 @@ class CostCalculatorService:
 
             metrics = cls.calculate_call_costs(call)
             target = aggregates_by_org[org_id]
+
+            # Per telephony provider (telephony cost kept in each rate card's own currency, never mixed)
+            prov = provider_usage.setdefault(metrics["provider"], {
+                "provider": metrics["provider"], "calls_count": 0, "duration_seconds": 0, "billed_minutes": 0,
+                "telephony_cost_native": {},
+            })
+            prov["calls_count"] += 1
+            prov["duration_seconds"] += metrics["duration_seconds"]
+            prov["billed_minutes"] += metrics["billed_minutes"]
+            native = metrics["telephony_cost_native"]
+            if native["known"]:
+                prov["telephony_cost_native"][native["currency"]] = round(prov["telephony_cost_native"].get(native["currency"], 0.0) + native["amount"], 5)
 
             target["total_calls"] += 1
             if call.status in ["completed", "answered"]:
@@ -355,6 +424,7 @@ class CostCalculatorService:
                 },
                 "models_usage": models_list,
                 "voices_usage": voices_list,
+                "providers_usage": sorted(provider_usage.values(), key=lambda p: p["calls_count"], reverse=True),
             },
             "organizations": org_list
         }
