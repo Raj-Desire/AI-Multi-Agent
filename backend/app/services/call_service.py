@@ -18,7 +18,7 @@ from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.call_repository import CallRepository
 from app.repositories.agent_repository import AgentRepository
 from app.agents.configuration import AgentConfiguration
-from app.telephony import registry as telephony
+from app.telephony import compliance, registry as telephony
 from app.telephony.types import PlaceCallRequest, TelephonyError
 
 def normalize_phone_number(value: Optional[str]) -> Optional[str]:
@@ -72,6 +72,12 @@ class CallService:
                 status_code=400,
                 detail="Call blocked: This recipient is registered on your Do Not Contact (DNC) list."
             )
+
+        # Campaign (promotional) calls to India are only allowed within India's permitted calling hours
+        if campaign_id:
+            allowed, reason = compliance.check_destination_allowed(to_number)
+            if not allowed:
+                raise HTTPException(status_code=400, detail=reason)
 
         # Lookup prospect if not explicitly provided
         matched_prospect = None
@@ -487,7 +493,7 @@ class CallService:
             return []
 
     async def _sync_unfinished_calls_from_twilio(self, ctx: TenantContext, calls: List[Call], light: bool = False) -> None:
-        """Refreshes status/duration of calls that look unfinished by asking Twilio, and persists ONLY the calls
+        """Refreshes status/duration of Twilio calls that look unfinished by asking Twilio, and persists ONLY the calls
         that actually changed (previously every listed call was re-written on every request)."""
         finished = {"completed", "failed", "busy", "no-answer", "canceled"}
         now = datetime.now(timezone.utc)
@@ -496,7 +502,7 @@ class CallService:
             created = c.created_at if c.created_at.tzinfo else c.created_at.replace(tzinfo=timezone.utc)
             return (now - created).total_seconds() < 6 * 3600
 
-        pending = [c for c in calls if c.call_sid and (c.status or "") not in finished and _recent(c)][:10]
+        pending = [c for c in calls if c.call_sid and (c.provider or "twilio") == "twilio" and (c.status or "") not in finished and _recent(c)][:10]
         if not pending:
             return
 
