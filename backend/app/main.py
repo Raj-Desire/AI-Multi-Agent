@@ -10,6 +10,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.api.v1.twilio import router as twilio_router
+from app.api.v1.plivo import router as plivo_router
+from app.api.v1.telephony import router as telephony_router
 from app.api.v1.calls import router as calls_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
@@ -108,6 +110,8 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(superadmin_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
+app.include_router(plivo_router, prefix="/api/v1")
+app.include_router(telephony_router, prefix="/api/v1")
 app.include_router(calls_router, prefix="/api/v1")
 app.include_router(theme_router, prefix="/api/v1")
 app.include_router(activity_router, prefix="/api/v1")
