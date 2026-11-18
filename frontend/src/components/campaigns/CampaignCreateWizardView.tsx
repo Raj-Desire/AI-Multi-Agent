@@ -12,6 +12,7 @@ import {
   CreateCampaignPayload,
   Prospect,
   TwilioConfig,
+  TelephonyNumberOption,
 } from "../../types";
 import { toast } from "sonner";
 import {
@@ -448,6 +449,18 @@ export function CampaignCreateWizardView({
         }
       } catch (err) {
         console.warn("Twilio config not available:", err);
+      }
+
+      // Numbers of every provider this organization can call from (overrides the single-provider list above)
+      try {
+        const options = await fetchApi<TelephonyNumberOption[]>("/telephony/numbers");
+        if (Array.isArray(options) && options.length > 0) {
+          const nums = options.map((o) => o.number);
+          setAvailableNumbers(nums);
+          setCallerNumber((prev) => (prev && nums.includes(prev) ? prev : nums[0]));
+        }
+      } catch (err) {
+        console.warn("Telephony numbers not available:", err);
       }
 
       // 3. Fetch Prospects

@@ -148,6 +148,20 @@ export interface TwilioConfig {
 }
 
 export type TelephonyProvider = "twilio" | "plivo";
+export type TelephonyMarket = "domestic" | "international" | "both";
+
+export interface TelephonyNumberOption {
+  number: string;
+  provider: TelephonyProvider;
+}
+
+/** Customer-facing name of a market (domestic = India, carried by one provider; international by another). */
+export const MARKET_LABELS: Record<TelephonyMarket, string> = {
+  domestic: "Domestic",
+  international: "International",
+  both: "Both (choose per call)",
+};
+export const PROVIDER_MARKET_LABEL: Record<TelephonyProvider, string> = { plivo: "Domestic", twilio: "International" };
 
 export interface PlivoConfig {
   auth_id: string;

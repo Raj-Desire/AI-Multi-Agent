@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchApi, LIVE } from "../api-client";
-import { TwilioConfig, CallRecord, AvailableAgentsResponse, AgentConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
+import { TelephonyNumberOption, PROVIDER_MARKET_LABEL, TwilioConfig, CallRecord, AvailableAgentsResponse, AgentConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
   Flame,
@@ -63,6 +63,7 @@ export function AIAgentDialerView({
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string>(initialAgentId || "");
   const [selectedFromNumber, setSelectedFromNumber] = useState("");
+  const [numberOptions, setNumberOptions] = useState<TelephonyNumberOption[]>([]);
   const [toNumber, setToNumber] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
@@ -191,10 +192,28 @@ export function AIAgentDialerView({
     (a) => a.agent_id === selectedAgentId
   );
 
-  const availableFromNumbers = (config?.phone_number || "")
+  const legacyFromNumbers = (config?.phone_number || "")
     .split(",")
     .map((n) => n.trim())
     .filter(Boolean);
+  // Numbers of every provider this organization may call from (a platform operator sees both providers' numbers)
+  const availableFromNumbers = numberOptions.length > 0 ? numberOptions.map((n) => n.number) : legacyFromNumbers;
+  const mixedProviders = new Set(numberOptions.map((n) => n.provider)).size > 1;
+  const numberLabel = (num: string) => {
+    const opt = numberOptions.find((n) => n.number === num);
+    return mixedProviders && opt ? `${num} — ${PROVIDER_MARKET_LABEL[opt.provider]}` : num;
+  };
+
+  useEffect(() => {
+    fetchApi<TelephonyNumberOption[]>("/telephony/numbers", LIVE)
+      .then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          setNumberOptions(list);
+          setSelectedFromNumber((prev) => prev || list[0].number);
+        }
+      })
+      .catch(() => { });
+  }, []);
 
   function refreshCalls() {
     return fetchApi<CallRecord[]>("/calls?type=ai", LIVE)
@@ -710,7 +729,7 @@ export function AIAgentDialerView({
                 >
                   {availableFromNumbers.map((num) => (
                     <option key={num} value={num}>
-                      {num}
+                      {numberLabel(num)}
                     </option>
                   ))}
                 </select>

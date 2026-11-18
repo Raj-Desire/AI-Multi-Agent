@@ -56,6 +56,7 @@ export const SuperAdminPanel: React.FC = () => {
   const [adminUsername, setAdminUsername] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [orgMarket, setOrgMarket] = useState<"domestic" | "international">("international");
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
 
   // Create Admin modal
@@ -109,6 +110,7 @@ export const SuperAdminPanel: React.FC = () => {
           admin_username: adminUsername,
           admin_email: adminEmail,
           admin_password: adminPassword,
+          market: orgMarket,
         }),
       });
 
@@ -118,6 +120,7 @@ export const SuperAdminPanel: React.FC = () => {
       setAdminUsername("");
       setAdminEmail("");
       setAdminPassword("");
+      setOrgMarket("international");
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to provision organization.");
@@ -539,6 +542,21 @@ export const SuperAdminPanel: React.FC = () => {
             placeholder="e.g. Acme Telecom AI"
             leftIcon={<Building2 className="w-4 h-4" />}
           />
+          <div className="space-y-1.5">
+            <label htmlFor="org-market" className="block text-xs font-medium text-[var(--color-heading)]">
+              Market
+            </label>
+            <select
+              id="org-market"
+              value={orgMarket}
+              onChange={(e) => setOrgMarket(e.target.value as "domestic" | "international")}
+              className="w-full h-9 px-3 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+            >
+              <option value="domestic">Domestic (customers in India)</option>
+              <option value="international">International</option>
+            </select>
+            <p className="text-[11px] text-[var(--color-muted)]">Decides which telephony network carries this organization's calls.</p>
+          </div>
           <Input
             label="Admin Full Name"
             type="text"

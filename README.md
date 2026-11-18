@@ -206,6 +206,9 @@ AZURE_OPENAI_API_VERSION=2024-08-01-preview
 PUBLIC_BASE_URL=https://your-subdomain.ngrok-free.app
 # Optional: Twilio TwiML App SID (only if using browser calling)
 TWIML_APP_SID=
+# Optional: set to true to let the platform rewrite the TwiML App voice URL to PUBLIC_BASE_URL on token creation.
+# Leave unset when the Twilio account is shared with other projects (each project needs its OWN TwiML App).
+TWIML_APP_AUTO_SYNC=
 
 # ---------- Optional: email alerts via Microsoft Graph ----------
 GRAPH_TENANT_ID=
@@ -346,11 +349,12 @@ npm test
 
 ## 12b. Telephony providers (Twilio and Plivo)
 
-Each organization places and receives calls through one telephony provider, chosen in **Phone & Voice** settings. New and existing organizations use Twilio unless a provider is selected; the other provider's saved settings are kept when you switch.
+Each organization has a **market**: **Domestic** (customers in India, carried by Plivo) or **International** (Twilio). Choose it when creating an organization (Super Admin) or later in **Phone & Voice** settings. Organizations without a market use International (Twilio). A Super Admin can also choose **Both**: numbers from either network appear in the caller-ID pickers and each call uses the network that owns the number chosen. The other network's saved settings are kept when you switch.
 
 | Setting | Purpose |
 |---|---|
-| `TELEPHONY_PLIVO_ENABLED=true` | Turns the Plivo provider on for this deployment (off by default) |
+| `TELEPHONY_PLIVO_ENABLED=false` | Emergency switch that turns the domestic (Plivo) network off for this deployment (on by default) |
+| `PLIVO_WEBHOOK_VERIFY` | `off`, `log` (default) or `enforce`: verification of Plivo webhook signatures; set to `enforce` once real calls show no "signature mismatch" in the log |
 | `TELEPHONY_RATE_CARD` | Optional JSON rate card used for per-provider cost reports, e.g. `{"plivo": {"IN": {"per_minute": 0.4, "pulse_seconds": 30, "currency": "INR"}}}` |
 | `COSMOS_CONTAINER_TELEPHONY`, `COSMOS_CONTAINER_PLIVO` | Optional container names for the provider setting and Plivo configuration |
 
