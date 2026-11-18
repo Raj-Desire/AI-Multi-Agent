@@ -48,8 +48,8 @@ class TelephonyProvider(ABC):
     async def delete_recording(self, org_id: str, call_id: str) -> int: ...
 
     @abstractmethod
-    async def get_call_status(self, org_id: str, call_id: str) -> Optional[tuple[str, int]]:
-        """(status, duration_seconds), or None when it cannot be determined."""
+    async def get_call_status(self, org_id: str, call_id: str) -> Optional[tuple]:
+        """(status, start_time_iso_or_None, duration_seconds), or None when it cannot be determined."""
 
     @abstractmethod
     async def verify_webhook(self, request: Request) -> Optional[bool]:
