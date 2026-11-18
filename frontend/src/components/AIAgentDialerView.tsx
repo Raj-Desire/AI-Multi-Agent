@@ -201,7 +201,7 @@ export function AIAgentDialerView({
   };
 
   useEffect(() => {
-    fetchApi<TelephonyNumberOption[]>("/telephony/numbers", LIVE)
+    fetchApi<TelephonyNumberOption[]>("/telephony/numbers")
       .then((list) => {
         if (Array.isArray(list) && list.length > 0) {
           setNumberOptions(list);
