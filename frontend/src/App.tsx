@@ -14,7 +14,7 @@ import { AdminPanel } from "./components/AdminPanel";
 import { SuperAdminPanel } from "./components/SuperAdminPanel";
 import { DashboardView } from "./components/DashboardView";
 import { RoleDashboardPage } from "./components/dashboards/RoleDashboardPage";
-import { TwilioSettingsView } from "./components/TwilioSettingsView";
+import { TelephonySettingsView } from "./components/TelephonySettingsView";
 import { ThemeStudioView } from "./components/ThemeStudioView";
 import { VoiceAgentView } from "./components/VoiceAgentView";
 import { AIAgentDialerView } from "./components/AIAgentDialerView";
@@ -239,7 +239,7 @@ function MainContent() {
       case "twilio":
         return {
           title: "Phone & Voice",
-          sub: "Twilio credentials, active numbers & call routing",
+          sub: "Telephony provider, credentials, active numbers & call routing",
           icon: Sliders,
         };
       case "theme":
@@ -451,7 +451,7 @@ function MainContent() {
             <Route path="/:orgId/usage" element={<Navigate to={`/${effectiveOrgId}/usage-credits`} replace />} />
             <Route
               path="/:orgId/phone-settings"
-              element={isAdmin ? <TwilioSettingsView /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
+              element={isAdmin ? <TelephonySettingsView /> : <Navigate to={`/${effectiveOrgId}/dashboard`} replace />}
             />
             <Route path="/:orgId/twilio" element={<Navigate to={`/${effectiveOrgId}/phone-settings`} replace />} />
             <Route

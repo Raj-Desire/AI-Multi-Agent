@@ -147,6 +147,24 @@ export interface TwilioConfig {
   status: string;
 }
 
+export type TelephonyProvider = "twilio" | "plivo";
+
+export interface PlivoConfig {
+  auth_id: string;
+  auth_token_masked: string;
+  phone_number: string;
+  application_id?: string | null;
+  public_base_url?: string | null;
+  inbound_forward_mode?: "global" | "per_number" | "disabled";
+  inbound_forward_global_number?: string | null;
+  inbound_forward_mapping?: Record<string, string>;
+  default_agent_id?: string | null;
+  inbound_agent_mapping?: Record<string, string>;
+  escalation_alerts_enabled?: boolean;
+  escalation_alert_email?: string | null;
+  status: string;
+}
+
 export interface TwilioBalance {
   configured: boolean;
   account_sid?: string | null;
