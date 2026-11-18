@@ -21,6 +21,7 @@ COSMOS_PREFERRED_LOCATIONS = [r.strip() for r in os.getenv("COSMOS_PREFERRED_LOC
 
 COSMOS_CONTAINER_USERS = os.getenv("COSMOS_CONTAINER_USERS", "users")
 COSMOS_CONTAINER_TWILIO = os.getenv("COSMOS_CONTAINER_TWILIO", "twilio_configs")
+COSMOS_CONTAINER_TELEPHONY = os.getenv("COSMOS_CONTAINER_TELEPHONY", "telephony_settings")
 COSMOS_CONTAINER_CALLS = os.getenv("COSMOS_CONTAINER_CALLS", "calls")
 COSMOS_CONTAINER_THEMES = os.getenv("COSMOS_CONTAINER_THEMES", "theme_configs")
 COSMOS_CONTAINER_AGENTS = os.getenv("COSMOS_CONTAINER_AGENTS", "agents")
@@ -83,6 +84,7 @@ def _index_policy(*excluded_paths: str) -> Dict[str, Any]:
 CONTAINER_SPECS: Dict[str, Dict[str, Any]] = {
     "users": {"name": COSMOS_CONTAINER_USERS, "pk": "/email"},
     "twilio": {"name": COSMOS_CONTAINER_TWILIO, "pk": "/user_id"},
+    "telephony_settings": {"name": COSMOS_CONTAINER_TELEPHONY, "pk": "/organization_id"},
     "calls": {
         "name": COSMOS_CONTAINER_CALLS,
         "pk": "/" + COSMOS_CALLS_PARTITION_FIELD,
@@ -174,6 +176,10 @@ def get_users_container():
 
 def get_twilio_container():
     return _get_container("twilio")
+
+
+def get_telephony_settings_container():
+    return _get_container("telephony_settings")
 
 
 def get_calls_container():
