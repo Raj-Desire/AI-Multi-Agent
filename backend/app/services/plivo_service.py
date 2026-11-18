@@ -1,4 +1,6 @@
 import asyncio
+import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -67,13 +69,18 @@ class PlivoService:
         phone_numbers = req.phone_number.strip() or (existing.phone_number if existing else "")
         await self._ensure_numbers_unclaimed(ctx.organization_id, phone_numbers)
 
+        base_url = (os.getenv("PUBLIC_BASE_URL") or req.public_base_url or (existing.public_base_url if existing else None) or "").strip().rstrip("/")
+        application_id = req.application_id or (existing.application_id if existing else None)
+        if base_url and "localhost" not in base_url and "127.0.0.1" not in base_url:
+            application_id = await self._sync_application(ctx.organization_id, req.auth_id.strip(), real_token, phone_numbers, base_url, application_id) or application_id
+
         cfg = PlivoConfiguration(
             id=existing.id if existing else f"plc_{uuid.uuid4().hex[:12]}",
             organization_id=ctx.organization_id,
             auth_id=req.auth_id.strip(),
             encrypted_auth_token=encrypted,
             phone_number=phone_numbers,
-            application_id=req.application_id,
+            application_id=application_id,
             public_base_url=req.public_base_url,
             inbound_forward_mode=req.inbound_forward_mode or (existing.inbound_forward_mode if existing else "global"),
             inbound_forward_global_number=keep(req.inbound_forward_global_number, "inbound_forward_global_number"),
@@ -88,6 +95,32 @@ class PlivoService:
         )
         await self.repo.save(cfg)
         return _response(cfg, real_token)
+
+    async def _sync_application(self, org_id: str, auth_id: str, token: str, phone_numbers: str, base_url: str, app_id: Optional[str]) -> Optional[str]:
+        """Points the provider at this server: one application whose answer/hangup URLs are ours, attached to every
+        number of the organization. Best effort: a failure is logged and never blocks saving the credentials."""
+        numbers = [re.sub(r"\D", "", n) for n in phone_numbers.split(",") if n.strip()]
+        urls = dict(
+            answer_url=f"{base_url}/api/v1/plivo/voice/answer", answer_method="POST",
+            hangup_url=f"{base_url}/api/v1/plivo/voice/hangup", hangup_method="POST",
+        )
+
+        def _sync() -> str:
+            client = _make_client(auth_id, token)
+            current = app_id
+            if current:
+                client.applications.update(current, **urls)
+            else:
+                current = client.applications.create(app_name=re.sub(r"[^A-Za-z0-9_-]", "_", f"voice_{org_id}")[:60], **urls).app_id
+            for number in numbers:
+                client.numbers.update(number, app_id=current)
+            return current
+
+        try:
+            return await asyncio.to_thread(_sync)
+        except Exception as e:
+            print(f"[PlivoService Warning] Could not sync the provider application: {e}")
+            return None
 
     async def _ensure_numbers_unclaimed(self, org_id: str, phone_numbers: str) -> None:
         """A phone number belongs to one organization: inbound calls are routed to its owner by number."""

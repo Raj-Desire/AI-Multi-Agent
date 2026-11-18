@@ -10,6 +10,7 @@ Authentication for the two public entry points that Twilio talks to.
    a stream, name any organization and agent, and run AI sessions on that organization's credits.
 
 Rollout switches (environment):
+    PLIVO_WEBHOOK_VERIFY  = off | log | enforce   (default: log)  same meaning, for Plivo (X-Plivo-Signature-V3)
     TWILIO_WEBHOOK_VERIFY = off | log | enforce   (default: log)  log = verify and warn, never reject
     VOICE_STREAM_AUTH     = off | log | enforce   (default: enforce)
 
@@ -39,6 +40,10 @@ def _mode(env_name: str, default: str) -> str:
 
 def twilio_webhook_mode() -> str:
     return _mode("TWILIO_WEBHOOK_VERIFY", "log")
+
+
+def plivo_webhook_mode() -> str:
+    return _mode("PLIVO_WEBHOOK_VERIFY", "log")
 
 
 def stream_auth_mode() -> str:
@@ -134,6 +139,24 @@ async def require_twilio_signature(request: Request) -> None:
         logger.warning(f"[WebhookSecurity] REJECTED {request.method} {path}: {reason}")
         raise HTTPException(status_code=403, detail="Invalid request signature")
     logger.warning(f"[WebhookSecurity] would reject {request.method} {path} ({reason}); TWILIO_WEBHOOK_VERIFY=log so it is allowed")
+
+
+async def require_plivo_signature(request: Request) -> None:
+    """FastAPI dependency for Plivo webhooks. Behaviour depends on PLIVO_WEBHOOK_VERIFY (off | log | enforce)."""
+    mode = plivo_webhook_mode()
+    if mode == "off":
+        return
+    from app.telephony.registry import get_provider
+
+    result = await get_provider("plivo").verify_webhook(request)
+    if result is True:
+        return
+    reason = {False: "signature mismatch or missing", None: "no Plivo configuration to verify against"}[result]
+    path = urlsplit(str(request.url)).path
+    if mode == "enforce":
+        logger.warning(f"[WebhookSecurity] REJECTED {request.method} {path}: {reason}")
+        raise HTTPException(status_code=403, detail="Invalid request signature")
+    logger.warning(f"[WebhookSecurity] would reject {request.method} {path} ({reason}); PLIVO_WEBHOOK_VERIFY=log so it is allowed")
 
 
 # ----------------------------------------------------------------------------------------------------------------

@@ -65,6 +65,18 @@ async def voice_stream_websocket(websocket: WebSocket):
     await run_voice_stream(websocket, get_provider("twilio"))
 
 
+@router.websocket("/voice/stream/plivo")
+async def voice_stream_websocket_plivo(websocket: WebSocket):
+    """Audio stream endpoint for calls carried by Plivo. Stream parameters arrive in the URL query."""
+    await run_voice_stream(websocket, get_provider("plivo"))
+
+
+def merge_start_params(url_query: dict, event_params: dict) -> dict:
+    """Stream parameters for a call: those in the WebSocket URL query (Plivo) plus those inside the start event
+    (Twilio). The event wins on a conflict."""
+    return {**url_query, **event_params}
+
+
 async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
     """
     Bridges a telephony provider's audio stream to the real-time voice engine. All provider-specific wire formats and
@@ -947,7 +959,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             elif event == "start":
                 stream_sid = stream_event.stream_id
                 call_sid = stream_event.call_id
-                custom_params = dict(stream_event.custom_params)
+                custom_params = merge_start_params(dict(websocket.query_params), dict(stream_event.custom_params))
 
                 logged_params = {k: v for k, v in custom_params.items() if k != "stream_token"}
                 logger.info(f"[VoiceGateway] Received 'start' event. streamSid={stream_sid}, callSid={call_sid}, params={logged_params}")
