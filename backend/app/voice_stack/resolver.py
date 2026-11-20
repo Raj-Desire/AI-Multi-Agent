@@ -14,7 +14,7 @@ _NOT_CONFIGURED = "Voice engine is not configured for this organization"
 
 
 def _slot_key(slot: KeySlot) -> str:
-    if slot.status == "invalid" or not slot.encrypted_api_key:
+    if slot.status != "valid" or not slot.encrypted_api_key:
         return ""
     return (decrypt_token(slot.encrypted_api_key) or "").strip()
 
