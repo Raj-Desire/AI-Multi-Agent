@@ -109,7 +109,7 @@ class GreetingAudioCache:
 
     # ── rendering ───────────────────────────────────────────────────────────
     async def ensure(self, text: str, provider: Any, org_id: Optional[str] = None,
-                     engine: Optional[str] = None) -> Optional[bytes]:
+                     engine: Optional[str] = None, endpoint: Any = None) -> Optional[bytes]:
         """Returns the audio, rendering it first when it is not cached. One render per greeting at a time."""
         cached = self.get(text, provider, org_id, engine)
         if cached is not None:
@@ -119,7 +119,7 @@ class GreetingAudioCache:
         key = self.key(text, provider, org_id, engine)
         task = self._inflight.get(key)
         if task is None:
-            task = asyncio.create_task(self._render(key, text.strip(), provider, org_id))
+            task = asyncio.create_task(self._render(key, text.strip(), provider, org_id, endpoint))
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         try:
@@ -127,12 +127,13 @@ class GreetingAudioCache:
         except Exception:
             return None
 
-    async def _render(self, key: str, text: str, provider: Any, org_id: Optional[str] = None) -> Optional[bytes]:
+    async def _render(self, key: str, text: str, provider: Any, org_id: Optional[str] = None,
+                      endpoint: Any = None) -> Optional[bytes]:
         started = time.perf_counter()
         if getattr(provider, "type", "deepgram") == "cartesia":
             from app.voice.preview_synth import synthesize_phone_audio
             try:
-                audio = await synthesize_phone_audio(text, provider, org_id=org_id)
+                audio = await synthesize_phone_audio(text, provider, org_id=org_id, endpoint=endpoint)
             except Exception as e:
                 logger.warning(f"[GreetingCache] render failed: {e}")
                 return None
@@ -178,11 +179,12 @@ class GreetingAudioCache:
 
         async def _run() -> None:
             try:
-                text, provider = resolve_greeting(agent_config, prospect_name, direction)
+                from app.voice_stack.resolver import resolve_voice_profile
+                profile = await resolve_voice_profile(org_id)
+                text, speak = resolve_greeting_speak(agent_config, prospect_name, direction, voice_profile=profile)
+                provider = speak.provider
                 if text and self.renderable(provider):
-                    from app.voice_stack.resolver import resolve_voice_profile
-                    profile = await resolve_voice_profile(org_id)
-                    await self.ensure(text, provider, org_id, profile.tts_engine)
+                    await self.ensure(text, provider, org_id, profile.tts_engine, speak.endpoint)
             except Exception as e:
                 logger.debug(f"[GreetingCache] prewarm notice: {e}")
 
@@ -192,18 +194,24 @@ class GreetingAudioCache:
             pass
 
 
-def resolve_greeting(agent_config: Any, prospect_name: str = "", direction: str = "outbound"):
+def resolve_greeting(agent_config: Any, prospect_name: str = "", direction: str = "outbound", voice_profile: Any = None):
     """The exact greeting text and voice the gateway will use for this call (same builder, same pronunciation rules)."""
+    text, speak = resolve_greeting_speak(agent_config, prospect_name, direction, voice_profile)
+    return text, speak.provider
+
+
+def resolve_greeting_speak(agent_config: Any, prospect_name: str = "", direction: str = "outbound", voice_profile: Any = None):
+    """Like resolve_greeting, but returns the full speak config (including any own-key endpoint)."""
     from app.agents.runtime import AgentRuntimeBuilder
     from app.voice.pronunciation_normalizer import PronunciationNormalizer
 
     cfg = copy.copy(agent_config)
     cfg._call_direction = direction
     cfg._prospect_data = {"name": prospect_name or ""} if prospect_name else {}
-    settings = AgentRuntimeBuilder.build_deepgram_settings(cfg)
+    settings = AgentRuntimeBuilder.build_deepgram_settings(cfg, voice_profile=voice_profile)
     raw = settings.agent.greeting or cfg.greeting
     text = PronunciationNormalizer.normalize(raw, getattr(cfg, "pronunciation_rules", None)) if raw else None
-    return text, settings.agent.speak.provider
+    return text, settings.agent.speak
 
 
 greeting_audio_cache = GreetingAudioCache()

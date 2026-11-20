@@ -23,6 +23,7 @@ from app.providers.deepgram.configuration import (
     DeepgramListenProvider,
     DeepgramSettingsConfiguration,
     DeepgramSpeakConfig,
+    DeepgramSpeakEndpoint,
     DeepgramSpeakProvider,
     DeepgramThinkConfig,
     DeepgramThinkProvider,
@@ -42,7 +43,7 @@ class PreviewSynthesisError(Exception):
 
 
 def build_preview_settings(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
-                           speed: float = 1.0) -> DeepgramSettingsConfiguration:
+                           speed: float = 1.0, endpoint: Optional[DeepgramSpeakEndpoint] = None) -> DeepgramSettingsConfiguration:
     """Settings identical in shape to a real call's Sonic speak provider; the greeting is the preview text."""
     speak = DeepgramSpeakProvider(
         type="cartesia",
@@ -51,7 +52,7 @@ def build_preview_settings(text: str, voice_id: str, language: Optional[str], mo
         model_id=model_id,
         voice={"mode": "id", "id": voice_id},
         language=(language or "en").split("-")[0],
-        speed=float(speed or 1.0),
+        speed=None if endpoint else float(speed or 1.0),  # speed is documented for the managed variant only
     )
     return DeepgramSettingsConfiguration(
         type="Settings",
@@ -67,7 +68,7 @@ def build_preview_settings(text: str, voice_id: str, language: Optional[str], mo
                 prompt="You are a silent preview. Never reply.",
                 functions=[],
             ),
-            speak=DeepgramSpeakConfig(provider=speak),
+            speak=DeepgramSpeakConfig(provider=speak, endpoint=endpoint),
         ),
     )
 
@@ -138,18 +139,20 @@ async def _collect_audio(settings: DeepgramSettingsConfiguration, timeout: float
 
 async def _synthesize_once(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
                                    speed: float = 1.0, timeout: float = 20.0,
-                                   client_factory=None, org_id: Optional[str] = None) -> bytes:
+                                   client_factory=None, org_id: Optional[str] = None,
+                                   endpoint: Optional[DeepgramSpeakEndpoint] = None) -> bytes:
     """Returns WAV bytes of `text` spoken by the Sonic voice through the voice engine."""
-    settings = build_preview_settings(text, voice_id, language, model_id, speed)
+    settings = build_preview_settings(text, voice_id, language, model_id, speed, endpoint)
     pcm = await _collect_audio(settings, timeout, PREVIEW_SAMPLE_RATE // 5 * 2, client_factory, org_id)
     return pcm_to_wav(pcm)
 
 
 async def synthesize_phone_audio(text: str, speak_provider: DeepgramSpeakProvider, timeout: float = 20.0,
-                                 attempts: int = 2, client_factory=None, org_id: Optional[str] = None) -> bytes:
+                                 attempts: int = 2, client_factory=None, org_id: Optional[str] = None,
+                                 endpoint: Optional[DeepgramSpeakEndpoint] = None) -> bytes:
     """Raw 8 kHz mu-law (what Twilio plays) of `text` spoken by the exact speak provider a call uses."""
     settings = build_preview_settings(text, "-", None)
-    settings.agent.speak = DeepgramSpeakConfig(provider=speak_provider)
+    settings.agent.speak = DeepgramSpeakConfig(provider=speak_provider, endpoint=endpoint)
     settings.audio = DeepgramAudioConfig(
         input=DeepgramAudioInput(encoding="mulaw", sample_rate=8000),
         output=DeepgramAudioOutput(encoding="mulaw", sample_rate=8000, container="none"),
@@ -166,12 +169,13 @@ async def synthesize_phone_audio(text: str, speak_provider: DeepgramSpeakProvide
 
 async def synthesize_sonic_preview(text: str, voice_id: str, language: Optional[str], model_id: str = "sonic-3.6",
                                    speed: float = 1.0, timeout: float = 15.0, attempts: int = 2,
-                                   client_factory=None, org_id: Optional[str] = None) -> bytes:
+                                   client_factory=None, org_id: Optional[str] = None,
+                                   endpoint: Optional[DeepgramSpeakEndpoint] = None) -> bytes:
     """Retries once: a brand-new engine session occasionally stalls before it starts speaking."""
     last_error: Optional[Exception] = None
     for attempt in range(attempts):
         try:
-            return await _synthesize_once(text, voice_id, language, model_id, speed, timeout, client_factory, org_id)
+            return await _synthesize_once(text, voice_id, language, model_id, speed, timeout, client_factory, org_id, endpoint)
         except PreviewSynthesisError as e:
             last_error = e
             logger.warning(f"[PreviewSynth] attempt {attempt + 1}/{attempts} failed: {e}")

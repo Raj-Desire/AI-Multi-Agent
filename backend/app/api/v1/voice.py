@@ -1095,7 +1095,7 @@ async def list_cartesia_voices(ctx: TenantContext = Depends(get_tenant_context))
         return {"status": "error", "message": str(e), "data": []}
 
 
-async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float], org_id: str):
+async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float], org_id: str, profile=None):
     """Renders a Sonic preview through the voice engine (the same path as real calls). None = fall back."""
     import hashlib
     import os
@@ -1105,6 +1105,13 @@ async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[st
 
     if os.getenv("PREVIEW_SONIC_VIA", "engine").strip().lower() == "direct":
         return None
+    endpoint = None
+    if profile is not None and profile.source == "own":
+        # An own-key organization renders Sonic only with its own key; otherwise the caller falls back to its checks.
+        if profile.tts_engine != "cartesia" or not profile.tts_key:
+            return None
+        from app.voice_stack.registry import own_cartesia_endpoint
+        endpoint = own_cartesia_endpoint(profile.tts_key)
     key = f"engine:{org_id}:{voice}:{language or ''}:{speed or 1.0}:{text}"
     if key in SAMPLE_SPEECH_CACHE:
         return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
@@ -1118,7 +1125,7 @@ async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[st
         return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
                         headers={"Cache-Control": "public, max-age=86400", "X-Cache": "DISK-HIT"})
     try:
-        wav = await synthesize_sonic_preview(text, voice, language, speed=speed or 1.0, org_id=org_id)
+        wav = await synthesize_sonic_preview(text, voice, language, speed=speed or 1.0, org_id=org_id, endpoint=endpoint)
     except PreviewSynthesisError as e:
         logger.warning(f"[SampleSpeech] Voice engine preview failed, falling back: {e}")
         return None
@@ -1165,7 +1172,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
 
     # Sonic previews go through the voice engine, like real calls, ahead of any older direct-vendor cache entries.
     if is_cartesia_voice(payload.provider, voice):
-        engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed, org_id)
+        engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed, org_id, profile)
         if engine_response is not None:
             return engine_response
 

@@ -1166,7 +1166,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     elif greeting_audio_cache.renderable(deepgram_settings.agent.speak.provider):
                         # Not rendered yet: the engine speaks it this time, and the render makes the next call instant.
                         logger.info("[VoiceGateway:Startup] Greeting audio not cached for this call; the voice engine will speak it (rendering now for next time)")
-                        asyncio.create_task(greeting_audio_cache.ensure(spoken_greeting, deepgram_settings.agent.speak.provider, org_id, voice_profile.tts_engine))
+                        asyncio.create_task(greeting_audio_cache.ensure(spoken_greeting, deepgram_settings.agent.speak.provider, org_id, voice_profile.tts_engine, deepgram_settings.agent.speak.endpoint))
                     else:
                         sp = deepgram_settings.agent.speak.provider
                         logger.info(f"[VoiceGateway:Startup] Greeting audio cannot be pre-rendered for this voice (type={sp.type}, model={sp.model or sp.model_id}, speed={sp.speed}); the voice engine will speak it")

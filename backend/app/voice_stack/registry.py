@@ -45,6 +45,13 @@ def redact_settings_for_log(payload: Dict[str, Any]) -> Dict[str, Any]:
     return safe
 
 
+def own_cartesia_endpoint(tts_key: str) -> DeepgramSpeakEndpoint:
+    return DeepgramSpeakEndpoint(
+        url=CARTESIA_TTS_URL,
+        headers={"x-api-key": tts_key, "Cartesia-Version": CARTESIA_API_VERSION},
+    )
+
+
 def build_speak_provider(
     profile: Optional[ResolvedVoiceProfile],
     voice: Any,
@@ -85,10 +92,7 @@ def build_speak_provider(
         )
         endpoint = None
         if byo:
-            endpoint = DeepgramSpeakEndpoint(
-                url=CARTESIA_TTS_URL,
-                headers={"x-api-key": profile.tts_key, "Cartesia-Version": CARTESIA_API_VERSION},
-            )
+            endpoint = own_cartesia_endpoint(profile.tts_key)
         return DeepgramSpeakConfig(provider=speak_provider, endpoint=endpoint)
 
     voice_version = _attr("version", "v2") or ("v2" if "flux" in voice_model else "v1")
