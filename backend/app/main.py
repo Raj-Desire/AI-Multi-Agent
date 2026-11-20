@@ -16,6 +16,7 @@ from app.api.v1.calls import router as calls_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.superadmin import router as superadmin_router
+from app.api.v1.voice_profiles import superadmin_router as voice_profiles_superadmin_router, org_router as voice_profile_org_router
 from app.api.v1.theme import router as theme_router
 from app.api.v1.activity import router as activity_router
 from app.api.v1.agents import router as agents_router
@@ -109,6 +110,8 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(superadmin_router, prefix="/api/v1")
+app.include_router(voice_profiles_superadmin_router, prefix="/api/v1")
+app.include_router(voice_profile_org_router, prefix="/api/v1")
 app.include_router(twilio_router, prefix="/api/v1")
 app.include_router(plivo_router, prefix="/api/v1")
 app.include_router(telephony_router, prefix="/api/v1")

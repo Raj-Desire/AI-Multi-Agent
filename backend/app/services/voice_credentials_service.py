@@ -92,6 +92,10 @@ class VoiceCredentialsService:
             result = await validate_tts_key(decrypt_token(creds.tts.encrypted_api_key))
             _apply_validation(creds.tts, result)
 
+    @staticmethod
+    def view_of(creds: VoiceCredentials) -> Dict:
+        return _view(creds)
+
     async def get_masked(self, org_id: str) -> Dict:
         return _view(await self._load(org_id))
 
