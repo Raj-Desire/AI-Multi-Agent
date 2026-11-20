@@ -6,6 +6,7 @@ import { Alert } from "./ui/Alert";
 import { LoadingState } from "./ui/LoadingState";
 import { TwilioSettingsView } from "./TwilioSettingsView";
 import { PlivoSettingsForm } from "./PlivoSettingsForm";
+import { VoiceCredentialsTab } from "./VoiceCredentialsTab";
 
 type ProviderSetting = { provider: TelephonyProvider; market: TelephonyMarket };
 
@@ -18,7 +19,7 @@ type ProviderSetting = { provider: TelephonyProvider; market: TelephonyMarket };
  * network's saved settings.
  */
 export function TelephonySettingsView() {
-  const { isSuperAdmin } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const [setting, setSetting] = useState<ProviderSetting | null>(null);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +108,12 @@ export function TelephonySettingsView() {
         <section aria-label="Domestic network settings" className="space-y-3">
           {setting.market === "both" && <h3 className="text-sm font-semibold text-[var(--color-heading)]">Domestic network</h3>}
           <PlivoSettingsForm />
+        </section>
+      )}
+      {!isSuperAdmin && user?.organization_id && (
+        <section aria-label="Voice engine" className="space-y-3">
+          <h3 className="text-sm font-semibold text-[var(--color-heading)]">Voice engine</h3>
+          <VoiceCredentialsTab organizationId={user.organization_id} canManage mode="org-admin" />
         </section>
       )}
       {showInternational && (

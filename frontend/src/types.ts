@@ -1534,3 +1534,26 @@ export interface CalendarEvent {
   next_action?: string | null;
   history: { at: string; event: string; [k: string]: any }[];
 }
+
+// ---- Per-organization voice credentials (masked views; key values are never returned by the API) ----
+export type VoiceEngineId = "aura" | "cartesia";
+export type KeySlotName = "engine" | "tts";
+
+export interface KeySlotView {
+  key_hint: string;
+  status: "valid" | "invalid" | "unverified";
+  source: "own" | "imported" | null;
+  last_verified_at: string | null;
+  configured: boolean;
+}
+
+export interface VoiceProfile {
+  organization_id?: string;
+  org_name?: string;
+  configured: boolean;
+  tts_engine: VoiceEngineId | null;
+  credential_mode: "platform" | "own";
+  allow_org_edit: boolean;
+  engine: KeySlotView;
+  tts: KeySlotView;
+}

@@ -40,6 +40,8 @@ import {
 } from "./constants";
 import { AgentConfig, PronunciationRule } from "../../types";
 import { MultilingualSettings } from "./MultilingualSettings";
+import { fetchApi, LIVE } from "../../api-client";
+import type { VoiceProfile } from "../../types";
 
 interface Step3VoiceLanguageProps {
   agentData: AgentConfig;
@@ -351,6 +353,23 @@ export function Step3VoiceLanguage({
   const currentVoiceId = agentData.voice?.voice || "flux-hannah-en";
   const initialEngine = (agentData.voice?.provider === "cartesia" || (!currentVoiceId.startsWith("flux-") && !currentVoiceId.startsWith("aura-") && currentVoiceId.includes("-"))) ? "sonic" : "flux";
   const [selectedEngine, setSelectedEngine] = useState<"flux" | "sonic">(initialEngine);
+
+  // Organizations on their own keys get one engine only; legacy / platform-mode orgs (or a failed lookup) see both.
+  const [engineLock, setEngineLock] = useState<"flux" | "sonic" | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchApi<VoiceProfile>("/voice-profile", LIVE)
+      .then((p) => {
+        if (cancelled || !p || p.credential_mode !== "own") return;
+        const lock = p.tts_engine === "cartesia" ? "sonic" : p.tts_engine === "aura" ? "flux" : null;
+        if (lock) {
+          setEngineLock(lock);
+          setSelectedEngine(lock);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Cartesia Sonic dynamic voices list
   const [sonicVoices, setSonicVoices] = useState<any[]>(POPULAR_SONIC_VOICES);
@@ -938,7 +957,7 @@ export function Step3VoiceLanguage({
 
           {/* Engine Dual Toggle: Flux vs Sonic */}
           <div className="inline-flex p-1 bg-[var(--color-surface-muted)] rounded-lg border border-[var(--color-border)] self-start sm:self-center shadow-2xs">
-            <button
+            {engineLock !== "sonic" && <button
               type="button"
               onClick={() => handleEngineSwitch("flux")}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -950,9 +969,9 @@ export function Step3VoiceLanguage({
               <Zap className="w-3.5 h-3.5 text-[var(--color-primary)]" />
               <span>Flux Engine</span>
               <span className="text-[9px] px-1 py-0.2 bg-[var(--color-primary-light)]/40 text-[var(--color-primary)] rounded font-medium">Standard</span>
-            </button>
+            </button>}
 
-            <button
+            {engineLock !== "flux" && <button
               type="button"
               onClick={() => handleEngineSwitch("sonic")}
               className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -964,7 +983,7 @@ export function Step3VoiceLanguage({
               <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
               <span>Sonic Engine</span>
               <span className="text-[9px] px-1 py-0.2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded font-bold border border-emerald-500/20">Hyper-Real</span>
-            </button>
+            </button>}
           </div>
         </div>
 

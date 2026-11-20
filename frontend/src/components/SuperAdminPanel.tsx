@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { UserSummary, OrganizationSummary, PlatformOverviewMetrics } from "../types";
+import { UserSummary, OrganizationSummary, PlatformOverviewMetrics, VoiceProfile } from "../types";
 import { fetchApi } from "../api-client";
 import {
   Building2,
@@ -36,6 +36,8 @@ import { SuperAdminUsageCostTab } from "./SuperAdminUsageCostTab";
 import { SuperAdminTwilioUsageTab } from "./SuperAdminTwilioUsageTab";
 import { SuperAdminCreditsTab } from "./SuperAdminCreditsTab";
 import { SuperAdminActivityLogTab } from "./SuperAdminActivityLogTab";
+import { VoiceCredentialsTab } from "./VoiceCredentialsTab";
+import { OrgVoiceEngineFields, OrgVoiceEngineValue, DEFAULT_ORG_VOICE } from "./OrgVoiceEngineFields";
 
 export const SuperAdminPanel: React.FC = () => {
   const [overview, setOverview] = useState<PlatformOverviewMetrics | null>(null);
@@ -58,6 +60,10 @@ export const SuperAdminPanel: React.FC = () => {
   const [adminPassword, setAdminPassword] = useState("");
   const [orgMarket, setOrgMarket] = useState<"domestic" | "international">("international");
   const [isCreatingOrg, setIsCreatingOrg] = useState(false);
+  const [orgVoice, setOrgVoice] = useState<OrgVoiceEngineValue>(DEFAULT_ORG_VOICE);
+  // Voice credential health for every organization, from a single list request
+  const [voiceProfiles, setVoiceProfiles] = useState<Record<string, VoiceProfile>>({});
+  const [voiceOrg, setVoiceOrg] = useState<{ id: string; name: string } | null>(null);
 
   // Create Admin modal
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -85,6 +91,9 @@ export const SuperAdminPanel: React.FC = () => {
       setOverview(overviewData);
       setOrganizations(orgsData);
       setUsers(usersData);
+      fetchApi<VoiceProfile[]>("/superadmin/voice-profiles")
+        .then((list) => setVoiceProfiles(Object.fromEntries((list || []).map((p) => [p.organization_id as string, p]))))
+        .catch(() => setVoiceProfiles({}));
     } catch (err: any) {
       setError(err.message || "Failed to load superadmin telemetry.");
     } finally {
@@ -111,6 +120,10 @@ export const SuperAdminPanel: React.FC = () => {
           admin_email: adminEmail,
           admin_password: adminPassword,
           market: orgMarket,
+          tts_engine: orgVoice.engine,
+          import_platform_keys: orgVoice.importPlatform,
+          ...(orgVoice.engineKey ? { engine_key: orgVoice.engineKey } : {}),
+          ...(orgVoice.engine === "cartesia" && orgVoice.ttsKey ? { tts_key: orgVoice.ttsKey } : {}),
         }),
       });
 
@@ -121,6 +134,7 @@ export const SuperAdminPanel: React.FC = () => {
       setAdminEmail("");
       setAdminPassword("");
       setOrgMarket("international");
+      setOrgVoice(DEFAULT_ORG_VOICE);
       await loadData();
     } catch (err: any) {
       setError(err.message || "Failed to provision organization.");
@@ -259,22 +273,54 @@ export const SuperAdminPanel: React.FC = () => {
       ),
     },
     {
+      key: "voice_health",
+      header: "Voice",
+      render: (org) => {
+        const p = voiceProfiles[org.organization_id];
+        if (!p) return <span className="text-[11px] text-[var(--color-muted)]">—</span>;
+        const slots = [p.engine, ...(p.tts_engine === "cartesia" || p.tts?.configured ? [p.tts] : [])];
+        const engineName = p.tts_engine === "cartesia" ? "Cartesia" : p.tts_engine === "aura" ? "Aura" : "Platform";
+        const health =
+          p.credential_mode !== "own" || !p.configured
+            ? { label: "Platform-billed", variant: "neutral" as const }
+            : slots.every((x) => x?.configured && x.status === "valid")
+              ? { label: "Valid", variant: "success" as const }
+              : { label: "Needs attention", variant: "warning" as const };
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-[var(--color-heading)]">{engineName}</span>
+            <Badge variant={health.variant}>{health.label}</Badge>
+          </div>
+        );
+      },
+    },
+    {
       key: "actions",
       header: "Actions",
       className: "text-right",
       render: (org) => (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setTargetOrgId(org.organization_id);
-            setTargetOrgName(org.org_name);
-            setShowAdminModal(true);
-          }}
-          className="h-7 px-2 text-xs"
-        >
-          Add Admin
-        </Button>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setVoiceOrg({ id: org.organization_id, name: org.org_name })}
+            className="h-7 px-2 text-xs"
+          >
+            Voice &amp; Credentials
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setTargetOrgId(org.organization_id);
+              setTargetOrgName(org.org_name);
+              setShowAdminModal(true);
+            }}
+            className="h-7 px-2 text-xs"
+          >
+            Add Admin
+          </Button>
+        </div>
       ),
     },
   ];
@@ -585,6 +631,7 @@ export const SuperAdminPanel: React.FC = () => {
             leftIcon={<Lock className="w-4 h-4" />}
           />
           <PasswordRules password={adminPassword} />
+          <OrgVoiceEngineFields value={orgVoice} onChange={setOrgVoice} />
           <div className="pt-2 flex justify-end gap-2">
             <Button
               type="button"
@@ -605,6 +652,16 @@ export const SuperAdminPanel: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!voiceOrg}
+        onClose={() => { setVoiceOrg(null); loadData(); }}
+        title="Voice & Credentials"
+        description={voiceOrg ? `Voice engine and keys for '${voiceOrg.name}'.` : undefined}
+        maxWidth="lg"
+      >
+        {voiceOrg && <VoiceCredentialsTab organizationId={voiceOrg.id} canManage mode="superadmin" />}
       </Modal>
 
       {/* Assign Extra Admin Modal */}
