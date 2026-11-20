@@ -15,6 +15,12 @@ from app.services.cost_calculator import CostCalculatorService
 from app.schemas.twilio import SaveTwilioConfigRequest, TwilioConfigResponse, TwilioDirectAccountUsageResponse
 from app.schemas.platform_rules import VoiceRulesResponse, UpdateVoiceRulesPayload
 from app.core.dependencies import require_superadmin, TenantContext
+from app.api.v1.voice_profiles import get_voice_service, get_voice_repo
+from app.services.voice_credentials_service import VoiceCredentialsService
+from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/superadmin", tags=["Superadmin Management"])
 
@@ -30,6 +36,12 @@ class CreateOrganizationPayload(BaseModel):
     admin_password: str = Field(..., min_length=6)
     # Where this organization's customers are: "domestic" (carried by Plivo) or "international" (Twilio)
     market: Literal["domestic", "international"] = "international"
+    # Voice engine for this organization. Keys are write-only; no length/format constraints here so a
+    # validation error can never echo a key back (the service trims and ignores blank values).
+    tts_engine: Literal["aura", "cartesia"] = "aura"
+    engine_key: Optional[str] = Field(None, repr=False)
+    tts_key: Optional[str] = Field(None, repr=False)
+    import_platform_keys: bool = False
 
     _check_password = field_validator("admin_password")(lambda cls, v: validate_password(v))
 
@@ -217,10 +229,13 @@ async def delete_org(
 @router.post("/organizations", response_model=SuperadminUserResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization_and_admin(
     payload: CreateOrganizationPayload,
-    _: Dict[str, Any] = Depends(require_superadmin)
+    current_user: Dict[str, Any] = Depends(require_superadmin),
+    voice_service: VoiceCredentialsService = Depends(get_voice_service),
+    voice_repo: VoiceCredentialsRepository = Depends(get_voice_repo),
 ):
     """Creates a new Organization and provisions its initial Organization Admin."""
     org_id = f"org_{uuid.uuid4().hex[:8]}"
+    user_created = False
     try:
         new_admin = await UserRepository.create_user(
             username=payload.admin_username,
@@ -230,11 +245,19 @@ async def create_organization_and_admin(
             organization_id=org_id,
             org_name=payload.org_name
         )
+        user_created = True
         from app.models.telephony import TelephonySettings
         from app.repositories.telephony_settings_repository import TelephonySettingsRepository
         from app.telephony.registry import MARKET_PROVIDER
         await TelephonySettingsRepository().save(TelephonySettings(
             organization_id=org_id, provider=MARKET_PROVIDER[payload.market], market=payload.market))
+        actor_id = str(current_user.get("id") or "superadmin")
+        # Always "own": the org stays blocked until its required keys are valid.
+        await voice_service.save(org_id, actor_id=actor_id, tts_engine=payload.tts_engine, credential_mode="own")
+        if payload.import_platform_keys:
+            await voice_service.import_platform(org_id, actor_id=actor_id)
+        if payload.engine_key or payload.tts_key:
+            await voice_service.save(org_id, actor_id=actor_id, engine_key=payload.engine_key, tts_key=payload.tts_key)
         return SuperadminUserResponse(
             id=new_admin["id"],
             username=new_admin["username"],
@@ -248,6 +271,20 @@ async def create_organization_and_admin(
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except Exception as e:
+        if user_created:
+            # Leave no half-configured organization behind. Telephony settings have no delete
+            # operation; that document is harmless without users and is left as is.
+            try:
+                await voice_repo.delete(org_id)
+            except Exception as cleanup_exc:
+                logger.error("org create rollback: voice credentials cleanup failed (%s)", type(cleanup_exc).__name__)
+            try:
+                await UserRepository.delete_organization(org_id)
+            except Exception as cleanup_exc:
+                logger.error("org create rollback: organization cleanup failed (%s)", type(cleanup_exc).__name__)
+            logger.error("organization creation failed after user creation (%s)", type(e).__name__)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                detail="Failed to create organization. Please try again.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create organization: {e}")
 
 @router.get("/users", response_model=List[SuperadminUserResponse])
