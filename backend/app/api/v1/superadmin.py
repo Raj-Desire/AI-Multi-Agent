@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
+from app.core.validation import parse_body_without_echo
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Literal, List, Dict, Any, Optional
 import uuid
@@ -228,12 +229,14 @@ async def delete_org(
 
 @router.post("/organizations", response_model=SuperadminUserResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization_and_admin(
-    payload: CreateOrganizationPayload,
+    request: Request,
     current_user: Dict[str, Any] = Depends(require_superadmin),
     voice_service: VoiceCredentialsService = Depends(get_voice_service),
     voice_repo: VoiceCredentialsRepository = Depends(get_voice_repo),
 ):
     """Creates a new Organization and provisions its initial Organization Admin."""
+    # Parsed here (not as a typed parameter) so 422 responses never echo keys or the password.
+    payload = await parse_body_without_echo(request, CreateOrganizationPayload)
     org_id = f"org_{uuid.uuid4().hex[:8]}"
     user_created = False
     try:
@@ -268,9 +271,9 @@ async def create_organization_and_admin(
             is_active=new_admin.get("is_active", True),
             created_at=new_admin.get("created_at", "")
         )
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except Exception as e:
+        if isinstance(e, ValueError) and not user_created:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         if user_created:
             # Leave no half-configured organization behind. Telephony settings have no delete
             # operation; that document is harmless without users and is left as is.

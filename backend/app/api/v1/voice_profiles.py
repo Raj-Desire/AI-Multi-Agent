@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.core.validation import parse_body_without_echo
 from app.core.dependencies import require_admin, require_superadmin
 from app.repositories.user_repository import UserRepository
 from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
@@ -41,21 +42,7 @@ class OrgProfilePayload(BaseModel):
     tts_key: Optional[str] = Field(None, repr=False)
 
 
-T = TypeVar("T", bound=BaseModel)
-
-
-async def _parse_body(request: Request, model: Type[T]) -> T:
-    """Validate the body without echoing submitted values (the default 422 body would echo keys)."""
-    try:
-        raw = await request.json()
-    except Exception:
-        raise HTTPException(422, detail="Invalid request body.")
-    try:
-        return model.model_validate(raw)
-    except ValidationError as exc:
-        errors = exc.errors(include_input=False, include_url=False, include_context=False)
-        safe = [{"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in errors]
-        raise HTTPException(422, detail=safe)
+_parse_body = parse_body_without_echo
 
 
 def _empty_slot() -> Dict[str, Any]:
