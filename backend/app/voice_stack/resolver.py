@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 from app.core.security import decrypt_token
 from app.models.voice_credentials import (
@@ -17,6 +17,14 @@ def _slot_key(slot: KeySlot) -> str:
     if slot.status != "valid" or not slot.encrypted_api_key:
         return ""
     return (decrypt_token(slot.encrypted_api_key) or "").strip()
+
+
+def platform_keys() -> Tuple[str, str]:
+    """Platform-level (engine, tts) keys from the environment."""
+    return (
+        (os.getenv("DEEPGRAM_API_KEY") or "").strip(),
+        (os.getenv("CARTESIA_API_KEY") or "").strip(),
+    )
 
 
 class VoiceCredentialResolver:
