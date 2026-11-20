@@ -13,6 +13,9 @@ from pydantic import BaseModel
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
 
 from app.core.dependencies import TenantContext, get_tenant_context
+from app.models.voice_credentials import VoiceCredentialsMissing
+from app.voice_stack.client_factory import build_voice_client
+from app.voice_stack.resolver import resolve_voice_profile
 from app.schemas.common import ApiResponse
 from app.voice.session import CallSession, active_sessions
 from app.voice.events import telemetry_broadcaster
@@ -288,6 +291,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
     live_transcript_turns: List[Dict[str, str]] = []
     turn_counter: int = 0
     preview_turn_marks: Dict[str, float] = {}
+    preview_org_id: List[Optional[str]] = [None]  # organization whose voice keys this preview uses
     engine_callbacks: Dict[str, Any] = {}  # kept so a dropped voice-engine session can be rebuilt identically
 
     # Follows the caller's language turn by turn, exactly like a real phone call.
@@ -506,7 +510,15 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
             except Exception:
                 pass
         for attempt in (1, 2, 3):
-            fresh = DeepgramVoiceAgentClient(**engine_callbacks)
+            try:
+                fresh = await build_voice_client(preview_org_id[0], **engine_callbacks)
+            except VoiceCredentialsMissing as vc_err:
+                logger.warning("[VoicePreview] Reconnect refused: voice credentials missing for this organization")
+                try:
+                    await websocket.send_json({"type": "error", "message": str(vc_err), "fatal": True})
+                except Exception:
+                    pass
+                return False
             try:
                 await fresh.connect_and_configure(settings=deepgram_settings, greeting=None)
             except asyncio.CancelledError:
@@ -793,7 +805,14 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         on_agent_audio_done=handle_dg_agent_audio_done,
                         on_error=handle_dg_error,
                     )
-                    deepgram_client = DeepgramVoiceAgentClient(**engine_callbacks)
+                    preview_org_id[0] = target_org_id
+                    try:
+                        deepgram_client = await build_voice_client(target_org_id, **engine_callbacks)
+                    except VoiceCredentialsMissing as vc_err:
+                        logger.warning("[VoicePreview] Voice credentials missing for this organization; preview refused")
+                        deepgram_client = None
+                        await websocket.send_json({"type": "error", "message": str(vc_err), "fatal": True})
+                        continue
 
                     # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
                     if orchestrator and not preview_proxy_token:
@@ -933,7 +952,7 @@ class SampleSpeechRequest(BaseModel):
 
 
 SAMPLE_SPEECH_CACHE: Dict[str, bytes] = {}
-CARTESIA_VOICES_CACHE: Dict[str, Any] = {"timestamp": 0.0, "voices": []}
+CARTESIA_VOICES_CACHE: Dict[str, Dict[str, Any]] = {}  # per organization: {"timestamp", "voices"}
 
 
 @router.get("/multilingual-languages")
@@ -945,23 +964,27 @@ async def list_multilingual_languages(voice: str = "flux-hannah-en", provider: s
 
 
 @router.get("/cartesia-voices")
-async def list_cartesia_voices():
+async def list_cartesia_voices(ctx: TenantContext = Depends(get_tenant_context)):
     """
     Returns curated, categorized Cartesia Sonic voices with high-speed in-memory caching.
     Includes gender, language, accent, and conversational suitability tags.
     """
-    import os
     import time
     import httpx
 
     now = time.time()
-    # Cache for 1 hour to prevent redundant API calls
-    if CARTESIA_VOICES_CACHE["voices"] and (now - CARTESIA_VOICES_CACHE["timestamp"]) < 3600:
-        return {"status": "success", "data": CARTESIA_VOICES_CACHE["voices"]}
+    # Cache for 1 hour to prevent redundant API calls; per organization so one org's key never fills another's list
+    try:
+        profile = await resolve_voice_profile(ctx.organization_id, require_tts=False)
+    except VoiceCredentialsMissing as vc_err:
+        return {"status": "error", "message": str(vc_err), "data": []}
+    org_cache = CARTESIA_VOICES_CACHE.get(ctx.organization_id)
+    if org_cache and org_cache["voices"] and (now - org_cache["timestamp"]) < 3600:
+        return {"status": "success", "data": org_cache["voices"]}
 
-    api_key = (os.getenv("CARTESIA_API_KEY", "")).strip()
+    api_key = (profile.tts_key or "").strip()
     if not api_key:
-        return {"status": "error", "message": "Cartesia API key is not configured in .env", "data": []}
+        return {"status": "error", "message": "Sonic voices are not configured for this organization", "data": []}
 
     try:
         headers = {
@@ -1044,15 +1067,14 @@ async def list_cartesia_voices():
                     "sampleText": NATIVE_SAMPLE_TEXTS.get(lang, f"Hello! I am your AI voice assistant powered by Sonic in {lang.upper()}. How can I help you today?")
                 })
 
-            CARTESIA_VOICES_CACHE["voices"] = formatted
-            CARTESIA_VOICES_CACHE["timestamp"] = now
+            CARTESIA_VOICES_CACHE[ctx.organization_id] = {"voices": formatted, "timestamp": now}
             return {"status": "success", "data": formatted}
     except Exception as e:
         logger.error(f"[CartesiaVoices Error] Exception fetching voices: {e}")
         return {"status": "error", "message": str(e), "data": []}
 
 
-async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float]):
+async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float], org_id: str):
     """Renders a Sonic preview through the voice engine (the same path as real calls). None = fall back."""
     import hashlib
     import os
@@ -1062,7 +1084,7 @@ async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[st
 
     if os.getenv("PREVIEW_SONIC_VIA", "engine").strip().lower() == "direct":
         return None
-    key = f"engine:{voice}:{language or ''}:{speed or 1.0}:{text}"
+    key = f"engine:{org_id}:{voice}:{language or ''}:{speed or 1.0}:{text}"
     if key in SAMPLE_SPEECH_CACHE:
         return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
                         headers={"Cache-Control": "public, max-age=86400", "X-Cache": "RAM-HIT"})
@@ -1075,7 +1097,7 @@ async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[st
         return Response(content=SAMPLE_SPEECH_CACHE[key], media_type="audio/wav",
                         headers={"Cache-Control": "public, max-age=86400", "X-Cache": "DISK-HIT"})
     try:
-        wav = await synthesize_sonic_preview(text, voice, language, speed=speed or 1.0)
+        wav = await synthesize_sonic_preview(text, voice, language, speed=speed or 1.0, org_id=org_id)
     except PreviewSynthesisError as e:
         logger.warning(f"[SampleSpeech] Voice engine preview failed, falling back: {e}")
         return None
@@ -1089,12 +1111,11 @@ async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[st
 
 
 @router.post("/sample-speech")
-async def generate_sample_speech(payload: SampleSpeechRequest):
+async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContext = Depends(get_tenant_context)):
     """
     Synthesizes a sample audio snippet using Conversational Text-to-Speech (Flux or Sonic).
     Features high-speed in-memory caching and lightweight MP3 encoding for instant in-browser playback.
     """
-    import os
     import httpx
     from fastapi.responses import Response
 
@@ -1114,15 +1135,22 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
         # e.g. Hindi text on an English-only voice: it would be read with the wrong pronunciation.
         raise HTTPException(status_code=422, detail="The selected voice cannot speak this language. Choose a voice that supports it.")
 
+    # Keys always come from the organization's resolved profile; an unconfigured own-key org never reaches a cache or vendor.
+    try:
+        profile = await resolve_voice_profile(ctx.organization_id, require_tts=False)
+    except VoiceCredentialsMissing as vc_err:
+        raise HTTPException(status_code=400, detail=str(vc_err))
+    org_id = ctx.organization_id
+
     # Sonic previews go through the voice engine, like real calls, ahead of any older direct-vendor cache entries.
     if payload.provider == "cartesia" or (
         "-" in voice and len(voice) == 36 and not voice.startswith(("flux-", "aura-"))
     ):
-        engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed)
+        engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed, org_id)
         if engine_response is not None:
             return engine_response
 
-    cache_key = f"{voice}:{language or ''}:{sample_text}"
+    cache_key = f"{org_id}:{voice}:{language or ''}:{sample_text}"
     if cache_key in SAMPLE_SPEECH_CACHE:
         return Response(
             content=SAMPLE_SPEECH_CACHE[cache_key],
@@ -1135,7 +1163,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     from pathlib import Path
     samples_dir = Path("static/voice_previews")
     samples_dir.mkdir(parents=True, exist_ok=True)
-    hash_sig = hashlib.md5(f"{voice}:{language or ''}:{sample_text}".encode("utf-8")).hexdigest()[:12]
+    hash_sig = hashlib.md5(f"{org_id}:{voice}:{language or ''}:{sample_text}".encode("utf-8")).hexdigest()[:12]
     safe_voice_filename = voice.replace("/", "_").replace("\\", "_")
     disk_file = samples_dir / f"{safe_voice_filename}_{hash_sig}.mp3"
 
@@ -1159,9 +1187,9 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
     )
 
     if is_sonic:
-        cartesia_key = (os.getenv("CARTESIA_API_KEY", "")).strip()
+        cartesia_key = (profile.tts_key or "").strip()
         if not cartesia_key:
-            raise HTTPException(status_code=400, detail="Cartesia Sonic API key is not configured in .env.")
+            raise HTTPException(status_code=400, detail="Sonic voices are not configured for this organization.")
 
         cartesia_url = "https://api.cartesia.ai/tts/bytes"
         headers = {
@@ -1219,9 +1247,9 @@ async def generate_sample_speech(payload: SampleSpeechRequest):
             raise HTTPException(status_code=500, detail=f"Sonic TTS synthesis failed: {str(e)}")
 
     # Default: Conversational Speech Synthesis Preview (Flux / Spoken Engine)
-    api_key = (os.getenv("DEEPGRAM_API_KEY", "")).strip()
+    api_key = (profile.engine_key or "").strip()
     if not api_key:
-        raise HTTPException(status_code=400, detail="Voice synthesis API key is not configured.")
+        raise HTTPException(status_code=400, detail="Voice synthesis is not configured for this organization.")
 
     # Flux voices use /v2/speak, while legacy models use /v1/speak
     endpoint_path = "v2/speak" if "flux" in voice.lower() else "v1/speak"
@@ -1337,7 +1365,11 @@ async def initiate_ai_test_call(
 
     # Validate Deepgram API Key before initiating call
     import os
-    if not os.getenv("DEEPGRAM_API_KEY"):
+    try:
+        voice_profile = await resolve_voice_profile(ctx.organization_id)
+    except VoiceCredentialsMissing as vc_err:
+        raise HTTPException(status_code=400, detail=str(vc_err))
+    if not voice_profile.engine_key:
         raise HTTPException(
             status_code=400,
             detail="Voice engine is not configured. Please verify your backend environment settings."
@@ -1358,7 +1390,7 @@ async def initiate_ai_test_call(
 
     # Render the opening greeting while the phone rings so it plays the moment the call is answered.
     from app.voice.greeting_cache import greeting_audio_cache
-    greeting_audio_cache.prewarm(agent_config, direction="outbound")
+    greeting_audio_cache.prewarm(agent_config, direction="outbound", org_id=ctx.organization_id)
 
     # Pre-create CallSession with full config snapshot
     session = await call_session_service.create_session(

@@ -16,6 +16,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.voice.greeting_cache import greeting_audio_cache
+from app.models.voice_credentials import VoiceCredentialsMissing
+from app.voice_stack.client_factory import build_voice_client
+from app.voice_stack.resolver import resolve_voice_profile
 from app.providers.deepgram.configuration import DeepgramAgentContext
 from app.voice.session import CallSession, active_sessions
 from app.voice.language_follow import LanguageFollower
@@ -1128,6 +1131,18 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     platform_rules=cached_platform_rules,
                 )
 
+                # Voice keys come from the organization's resolved profile; none usable means the call ends here.
+                try:
+                    voice_profile = await resolve_voice_profile(org_id)
+                    if not voice_profile.engine_key:
+                        raise VoiceCredentialsMissing("Voice engine is not configured for this organization")
+                except VoiceCredentialsMissing as vc_err:
+                    logger.error("[VoiceGateway] Voice credentials missing for this organization; ending call")
+                    if session:
+                        session.last_error = str(vc_err)
+                        session.error_type = "voice_credentials_missing"
+                    break
+
                 # ── Instant greeting ───────────────────────────────────────────────
                 # Play the pre-rendered opening greeting right now (typically rendered while the phone rang) instead of
                 # waiting for the voice engine to connect and speak it. The engine joins in parallel with the greeting
@@ -1137,7 +1152,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     spoken_greeting = PronunciationNormalizer.normalize(
                         deepgram_settings.agent.greeting, getattr(agent_config, "pronunciation_rules", None)
                     )
-                    greeting_audio = greeting_audio_cache.get(spoken_greeting, deepgram_settings.agent.speak.provider)
+                    greeting_audio = greeting_audio_cache.get(spoken_greeting, deepgram_settings.agent.speak.provider, org_id, voice_profile.tts_engine)
                     if greeting_audio:
                         await handle_deepgram_audio(greeting_audio)
                         preplayed_greeting_s = len(greeting_audio) / 8000.0
@@ -1150,7 +1165,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     elif greeting_audio_cache.renderable(deepgram_settings.agent.speak.provider):
                         # Not rendered yet: the engine speaks it this time, and the render makes the next call instant.
                         logger.info("[VoiceGateway:Startup] Greeting audio not cached for this call; the voice engine will speak it (rendering now for next time)")
-                        asyncio.create_task(greeting_audio_cache.ensure(spoken_greeting, deepgram_settings.agent.speak.provider))
+                        asyncio.create_task(greeting_audio_cache.ensure(spoken_greeting, deepgram_settings.agent.speak.provider, org_id, voice_profile.tts_engine))
                     else:
                         sp = deepgram_settings.agent.speak.provider
                         logger.info(f"[VoiceGateway:Startup] Greeting audio cannot be pre-rendered for this voice (type={sp.type}, model={sp.model or sp.model_id}, speed={sp.speed}); the voice engine will speak it")
@@ -1254,7 +1269,9 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                         language_follower.reset()
 
                 # 3. Instantiate Voice Engine Client
-                deepgram_client = DeepgramVoiceAgentClient(
+                deepgram_client = await build_voice_client(
+                    org_id,
+                    profile=voice_profile,
                     on_audio=handle_deepgram_audio,
                     on_event=handle_deepgram_event,
                     on_transcript=handle_transcript,

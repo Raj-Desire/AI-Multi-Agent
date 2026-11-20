@@ -121,7 +121,7 @@ class DeepgramVoiceAgentClient:
         5. Optionally inject initial greeting
         """
         if not self.api_key:
-            err_msg = "Deepgram API key is missing. Set DEEPGRAM_API_KEY in environment or organization settings."
+            err_msg = "Voice engine is not configured for this organization"
             logger.error(err_msg)
             if self.on_error:
                 await self.on_error(err_msg)

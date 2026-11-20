@@ -54,10 +54,11 @@ class GreetingAudioCache:
         return speed is None or abs(float(speed) - 1.0) < 1e-6
 
     @staticmethod
-    def key(text: str, provider: Any) -> str:
+    def key(text: str, provider: Any, org_id: Optional[str] = None, engine: Optional[str] = None) -> str:
         voice = getattr(provider, "voice", None)
         voice_id = voice.get("id", "") if isinstance(voice, dict) else ""
         raw = "|".join(str(x) for x in (
+            org_id or "", engine or "",
             getattr(provider, "type", ""), getattr(provider, "version", ""), getattr(provider, "model", ""),
             getattr(provider, "model_id", ""), voice_id, getattr(provider, "language", ""),
             getattr(provider, "speed", ""), text.strip(),
@@ -65,11 +66,11 @@ class GreetingAudioCache:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     # ── lookup ──────────────────────────────────────────────────────────────
-    def get(self, text: str, provider: Any) -> Optional[bytes]:
+    def get(self, text: str, provider: Any, org_id: Optional[str] = None, engine: Optional[str] = None) -> Optional[bytes]:
         """Instant lookup (memory, then disk). Never touches the network."""
         if not text or not text.strip() or not self.renderable(provider):
             return None
-        key = self.key(text, provider)
+        key = self.key(text, provider, org_id, engine)
         audio = self._memory.get(key)
         if audio is not None:
             self._memory.move_to_end(key)
@@ -107,17 +108,18 @@ class GreetingAudioCache:
             logger.debug(f"[GreetingCache] disk write notice: {e}")
 
     # ── rendering ───────────────────────────────────────────────────────────
-    async def ensure(self, text: str, provider: Any) -> Optional[bytes]:
+    async def ensure(self, text: str, provider: Any, org_id: Optional[str] = None,
+                     engine: Optional[str] = None) -> Optional[bytes]:
         """Returns the audio, rendering it first when it is not cached. One render per greeting at a time."""
-        cached = self.get(text, provider)
+        cached = self.get(text, provider, org_id, engine)
         if cached is not None:
             return cached
         if not text or not text.strip() or len(text) > MAX_TEXT_CHARS or not self.renderable(provider):
             return None
-        key = self.key(text, provider)
+        key = self.key(text, provider, org_id, engine)
         task = self._inflight.get(key)
         if task is None:
-            task = asyncio.create_task(self._render(key, text.strip(), provider))
+            task = asyncio.create_task(self._render(key, text.strip(), provider, org_id))
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         try:
@@ -125,12 +127,12 @@ class GreetingAudioCache:
         except Exception:
             return None
 
-    async def _render(self, key: str, text: str, provider: Any) -> Optional[bytes]:
+    async def _render(self, key: str, text: str, provider: Any, org_id: Optional[str] = None) -> Optional[bytes]:
         started = time.perf_counter()
         if getattr(provider, "type", "deepgram") == "cartesia":
             from app.voice.preview_synth import synthesize_phone_audio
             try:
-                audio = await synthesize_phone_audio(text, provider)
+                audio = await synthesize_phone_audio(text, provider, org_id=org_id)
             except Exception as e:
                 logger.warning(f"[GreetingCache] render failed: {e}")
                 return None
@@ -138,7 +140,12 @@ class GreetingAudioCache:
             await asyncio.to_thread(self._persist, key, audio)
             logger.info(f"[GreetingCache] rendered {len(audio) / 8000.0:.1f}s greeting in {(time.perf_counter() - started) * 1000:.0f}ms")
             return audio
-        api_key = (os.getenv("DEEPGRAM_API_KEY") or "").strip()
+        from app.models.voice_credentials import VoiceCredentialsMissing
+        from app.voice_stack.resolver import resolve_voice_profile
+        try:
+            api_key = (await resolve_voice_profile(org_id)).engine_key
+        except VoiceCredentialsMissing:
+            return None
         if not api_key:
             return None
         model = provider.model
@@ -163,7 +170,8 @@ class GreetingAudioCache:
         return audio
 
     # ── dial-time warm-up ───────────────────────────────────────────────────
-    def prewarm(self, agent_config: Any, prospect_name: str = "", direction: str = "outbound") -> None:
+    def prewarm(self, agent_config: Any, prospect_name: str = "", direction: str = "outbound",
+                org_id: Optional[str] = None) -> None:
         """Fire and forget: render the greeting this call will use while the phone is still ringing."""
         if agent_config is None or not (getattr(agent_config, "greeting", "") or "").strip():
             return
@@ -172,7 +180,9 @@ class GreetingAudioCache:
             try:
                 text, provider = resolve_greeting(agent_config, prospect_name, direction)
                 if text and self.renderable(provider):
-                    await self.ensure(text, provider)
+                    from app.voice_stack.resolver import resolve_voice_profile
+                    profile = await resolve_voice_profile(org_id)
+                    await self.ensure(text, provider, org_id, profile.tts_engine)
             except Exception as e:
                 logger.debug(f"[GreetingCache] prewarm notice: {e}")
 

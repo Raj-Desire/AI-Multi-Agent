@@ -121,6 +121,7 @@ class CallService:
             agent_config,
             prospect_name=(getattr(matched_prospect, "full_name", "") or "") if (campaign_id and resolved_prospect_id and matched_prospect) else "",
             direction="outbound",
+            org_id=ctx.organization_id,
         )
 
         agent_snapshot = agent_config.model_dump(mode="json") if agent_config else None
