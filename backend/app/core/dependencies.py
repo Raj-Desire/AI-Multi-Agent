@@ -14,15 +14,15 @@ class TenantContext(BaseModel):
     role: str
     org_name: Optional[str] = None
 
-async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)) -> Dict[str, Any]:
-    if not credentials or not credentials.credentials:
+async def authenticate_token(token: Optional[str]) -> Dict[str, Any]:
+    """Verifies a bearer token and returns the active user; shared by REST dependencies and the preview WebSocket."""
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated. Bearer token missing.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    token = credentials.credentials
+
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(
@@ -56,7 +56,10 @@ async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] =
 
     return user
 
-async def get_tenant_context(current_user: Dict[str, Any] = Depends(get_current_user)) -> TenantContext:
+async def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme)) -> Dict[str, Any]:
+    return await authenticate_token(credentials.credentials if credentials else None)
+
+def tenant_context_from_user(current_user: Dict[str, Any]) -> TenantContext:
     user_id = current_user.get("id", "")
     org_id = current_user.get("organization_id") or user_id
     return TenantContext(
@@ -66,6 +69,9 @@ async def get_tenant_context(current_user: Dict[str, Any] = Depends(get_current_
         role=current_user.get("role", "user"),
         org_name=current_user.get("org_name")
     )
+
+async def get_tenant_context(current_user: Dict[str, Any] = Depends(get_current_user)) -> TenantContext:
+    return tenant_context_from_user(current_user)
 
 async def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     role = current_user.get("role", "user")

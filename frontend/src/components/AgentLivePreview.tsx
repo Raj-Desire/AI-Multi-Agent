@@ -156,6 +156,7 @@ export function AgentLivePreview({ agentConfig, className = "" }: AgentLivePrevi
         ws.send(
           JSON.stringify({
             type: "configure",
+            token: localStorage.getItem("desire_token") || "",
             agent_config: fullAgentConfig,
             greeting: agentConfig.greeting,
           })

@@ -646,6 +646,14 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
 
                 # Configure & Start Session
                 if msg_type == "configure":
+                    # Authenticate first: no key is resolved for an unverified caller.
+                    from app.core.dependencies import authenticate_token, tenant_context_from_user
+                    try:
+                        caller = tenant_context_from_user(await authenticate_token(data.get("token")))
+                    except Exception:
+                        await websocket.send_json({"type": "error", "message": "Authentication required", "fatal": True})
+                        await websocket.close()
+                        break
                     agent_dict = data.get("agent_config", {})
                     greeting = data.get("greeting") or agent_dict.get("greeting")
                     try:
@@ -660,7 +668,12 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         )
 
                     from app.repositories.platform_rules_repository import PlatformRulesRepository
-                    target_org_id = agent_config.organization_id
+                    # The organization comes from the verified token; only a superadmin may name another one.
+                    if caller.role == "superadmin" and agent_config.organization_id:
+                        target_org_id = agent_config.organization_id
+                    else:
+                        target_org_id = caller.organization_id
+                        agent_config.organization_id = target_org_id
                     if not target_org_id or target_org_id == "default":
                         target_org_id = "org_platform_root"
                     business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
