@@ -53,8 +53,7 @@ def _apply_validation(slot: KeySlot, result: Optional[bool]) -> None:
         slot.status, slot.last_verified_at = "valid", _now()
     elif result is False:
         slot.status, slot.last_verified_at = "invalid", _now()
-    else:
-        slot.status = "unverified"
+    # None: leave status and last_verified_at untouched. A new key is already reset by _set_key.
 
 
 def _set_key(slot: KeySlot, key: str, source: Literal["own", "imported"]) -> None:
