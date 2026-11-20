@@ -1,6 +1,8 @@
 import time
 from typing import Dict, List, Optional, Tuple
 
+from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
 from app.core.cosmos import get_voice_credentials_container
 from app.models.voice_credentials import VoiceCredentials
 
@@ -26,7 +28,7 @@ class VoiceCredentialsRepository:
             return None
         try:
             item = container.read_item(item=_doc_id(org_id), partition_key=org_id)
-        except Exception:
+        except CosmosResourceNotFoundError:
             _VC_CACHE[org_id] = (None, time.time())
             return None
         data = {k: v for k, v in item.items() if not k.startswith("_") and k != "id"}
