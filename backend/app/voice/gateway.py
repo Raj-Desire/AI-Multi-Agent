@@ -1125,12 +1125,6 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                 credit_limit_task = asyncio.create_task(_load_credit_limit())
 
                 business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
-                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
-                    agent_config,
-                    business_profile=business_profile,
-                    platform_rules=cached_platform_rules,
-                )
-
                 # Voice keys come from the organization's resolved profile; none usable means the call ends here.
                 try:
                     voice_profile = await resolve_voice_profile(org_id)
@@ -1142,6 +1136,13 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                         session.last_error = str(vc_err)
                         session.error_type = "voice_credentials_missing"
                     break
+
+                deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
+                    agent_config,
+                    business_profile=business_profile,
+                    platform_rules=cached_platform_rules,
+                    voice_profile=voice_profile,
+                )
 
                 # ── Instant greeting ───────────────────────────────────────────────
                 # Play the pre-rendered opening greeting right now (typically rendered while the phone rang) instead of

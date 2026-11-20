@@ -15,6 +15,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPExce
 from app.core.dependencies import TenantContext, get_tenant_context
 from app.models.voice_credentials import VoiceCredentialsMissing
 from app.voice_stack.client_factory import build_voice_client
+from app.voice_stack.registry import is_cartesia_voice
 from app.voice_stack.resolver import resolve_voice_profile
 from app.schemas.common import ApiResponse
 from app.voice.session import CallSession, active_sessions
@@ -678,11 +679,18 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         target_org_id = "org_platform_root"
                     business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                     cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()
+                    try:
+                        preview_profile = await resolve_voice_profile(target_org_id)
+                    except VoiceCredentialsMissing as vc_err:
+                        logger.warning("[VoicePreview] Voice credentials missing for this organization; preview refused")
+                        await websocket.send_json({"type": "error", "message": str(vc_err), "fatal": True})
+                        continue
                     deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                         agent_config,
                         business_profile=business_profile,
                         platform_rules=cached_platform_rules,
-                        audio_profile="playground"
+                        audio_profile="playground",
+                        voice_profile=preview_profile,
                     )
 
                     if handoff_controller:
@@ -1156,9 +1164,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
     org_id = ctx.organization_id
 
     # Sonic previews go through the voice engine, like real calls, ahead of any older direct-vendor cache entries.
-    if payload.provider == "cartesia" or (
-        "-" in voice and len(voice) == 36 and not voice.startswith(("flux-", "aura-"))
-    ):
+    if is_cartesia_voice(payload.provider, voice):
         engine_response = await _sonic_preview_via_engine(sample_text, voice, language, payload.speed, org_id)
         if engine_response is not None:
             return engine_response
@@ -1194,10 +1200,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
             logger.debug(f"[SampleSpeech] Notice reading disk cache: {read_err}")
 
     # Detect if Sonic (UUID format or explicit cartesia provider)
-    is_sonic = (
-        payload.provider == "cartesia" or
-        ("-" in voice and len(voice) == 36 and not voice.startswith("flux-") and not voice.startswith("aura-"))
-    )
+    is_sonic = is_cartesia_voice(payload.provider, voice)
 
     if is_sonic:
         cartesia_key = (profile.tts_key or "").strip()

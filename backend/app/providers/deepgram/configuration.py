@@ -70,8 +70,15 @@ class DeepgramSpeakProvider(BaseModel):
     speed: Optional[float] = 1.0
 
 
+class DeepgramSpeakEndpoint(BaseModel):
+    """Bring-your-own speech vendor endpoint; sibling of provider. Header values are secrets."""
+    url: str
+    headers: Dict[str, str] = Field(default_factory=dict, repr=False)
+
+
 class DeepgramSpeakConfig(BaseModel):
     provider: DeepgramSpeakProvider = Field(default_factory=DeepgramSpeakProvider)
+    endpoint: Optional[DeepgramSpeakEndpoint] = None
 
     @property
     def model(self) -> str:
