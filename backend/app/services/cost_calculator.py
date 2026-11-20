@@ -165,7 +165,12 @@ class CostCalculatorService:
 
         # 4. Multi-Model TTS Voice Synthesis Cost
         tts_rate = TTS_RATES_PER_1K["default"]
-        if voice_provider in ["cartesia", "sonic"] or ("-" in voice_id and len(voice_id) == 36 and not voice_id.startswith("flux-") and not voice_id.startswith("aura-")):
+        recorded_engine = (getattr(call, "tts_engine", None) or "").lower()
+        if recorded_engine == "cartesia":
+            tts_rate = TTS_RATES_PER_1K["cartesia"]
+        elif recorded_engine == "aura":
+            tts_rate = TTS_RATES_PER_1K["aura"]
+        elif voice_provider in ["cartesia", "sonic"] or ("-" in voice_id and len(voice_id) == 36 and not voice_id.startswith("flux-") and not voice_id.startswith("aura-")):
             tts_rate = TTS_RATES_PER_1K["cartesia"]
         elif voice_id.startswith("aura-2-") or "aura-2" in voice_id:
             tts_rate = TTS_RATES_PER_1K["aura-2"]

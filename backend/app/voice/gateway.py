@@ -1137,6 +1137,11 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                         session.error_type = "voice_credentials_missing"
                     break
 
+                if session:
+                    session.tts_engine = voice_profile.tts_engine
+                    session.credential_source = voice_profile.source
+                    session.billed_to = voice_profile.billed_to
+
                 deepgram_settings = AgentRuntimeBuilder.build_deepgram_settings(
                     agent_config,
                     business_profile=business_profile,

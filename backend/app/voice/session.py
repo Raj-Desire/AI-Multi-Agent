@@ -60,6 +60,9 @@ class CallSession(BaseModel):
     phone_number: str = ""          # our phone number on the call
     destination_number: str = ""    # Customer number
     direction: str = "outbound"     # "inbound" | "outbound"
+    tts_engine: Optional[str] = None          # voice engine resolved for this call
+    credential_source: Optional[str] = None   # "own" | "platform"
+    billed_to: Optional[str] = None           # "org_own_key" | "platform"
     is_test: bool = False           # a test call from the agent editor or the test console: not a real lead or booking
     status: str = "initiated"       # "initiated" | "ringing" | "in-progress" | "completed" | "failed"
 

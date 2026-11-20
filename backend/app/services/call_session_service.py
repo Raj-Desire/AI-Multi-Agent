@@ -321,6 +321,9 @@ class CallSessionService:
             call_doc.classification = analytics_data.get("classification") or existing_call.classification
             call_doc.callback_datetime = analytics_data.get("callback_datetime") or existing_call.callback_datetime
             call_doc.analytics_status = "pending"
+            call_doc.tts_engine = session.tts_engine or existing_call.tts_engine
+            call_doc.credential_source = session.credential_source or existing_call.credential_source
+            call_doc.billed_to = session.billed_to or existing_call.billed_to
             call_doc.is_test = bool(getattr(session, "is_test", False) or getattr(existing_call, "is_test", False))
             call_doc.analytics = analytics_data if analytics_data else existing_call.analytics
             call_doc.latency_metrics = latency_dict or existing_call.latency_metrics
@@ -370,6 +373,9 @@ class CallSessionService:
                 classification=analytics_data.get("classification"),
                 callback_datetime=analytics_data.get("callback_datetime"),
                 analytics_status="pending",
+                tts_engine=session.tts_engine,
+                credential_source=session.credential_source,
+                billed_to=session.billed_to,
                 is_test=bool(getattr(session, "is_test", False)),
                 analytics=analytics_data if analytics_data else None,
                 latency_metrics=latency_dict,

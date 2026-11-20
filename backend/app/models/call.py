@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 class Call(BaseModel):
@@ -22,6 +22,10 @@ class Call(BaseModel):
     # Prospect & Campaign Association
     prospect_id: Optional[str] = None
     campaign_id: Optional[str] = None
+    # Voice engine and billing record of a live voice session (None on calls made before per-organization voice keys)
+    tts_engine: Optional[str] = None
+    credential_source: Optional[Literal["own", "platform"]] = None
+    billed_to: Optional[Literal["org_own_key", "platform"]] = None
     is_test: bool = False  # test call: its analysis is kept, but no calendar appointment is created
 
     # Agent Traceability & Immutable Snapshot

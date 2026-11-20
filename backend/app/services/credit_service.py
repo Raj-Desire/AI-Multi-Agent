@@ -115,8 +115,14 @@ class CreditService:
         total_tokens = cost_metrics.get("total_tokens", 0)
         estimated_cost = cost_metrics.get("total_cost", 0.0)
 
-        # 2. Atomic deduction
-        updated_creds = await self.repo.atomic_deduct_seconds(org_id, duration_sec)
+        # 2. Atomic deduction. Calls on the organization's own voice keys are costed for reporting only:
+        # the vendor cost is theirs, so no credits are consumed.
+        if getattr(call, "billed_to", None) == "org_own_key":
+            duration_sec_charged = 0
+            updated_creds = await self.repo.get_or_create_org_credits(org_id)
+        else:
+            duration_sec_charged = duration_sec
+            updated_creds = await self.repo.atomic_deduct_seconds(org_id, duration_sec)
 
         # 3. Write Ledger Entry
         now = datetime.now(timezone.utc)
@@ -124,7 +130,7 @@ class CreditService:
         hour_key = now.hour
 
         balance_after = updated_creds.remaining_credits_seconds
-        balance_before = balance_after + duration_sec
+        balance_before = balance_after + duration_sec_charged
 
         entry = LedgerEntry(
             id=f"ledger_{call.id}",
@@ -136,8 +142,8 @@ class CreditService:
             agent_name=call.agent_name,
             campaign_id=call.campaign_id,
             duration_seconds=duration_sec,
-            credits_consumed_seconds=duration_sec,
-            credits_consumed_minutes=round(duration_sec / 60.0, 2),
+            credits_consumed_seconds=duration_sec_charged,
+            credits_consumed_minutes=round(duration_sec_charged / 60.0, 2),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=total_tokens,
