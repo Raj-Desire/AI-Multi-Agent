@@ -87,6 +87,7 @@ CONTAINER_SPECS: Dict[str, Dict[str, Any]] = {
     "twilio": {"name": COSMOS_CONTAINER_TWILIO, "pk": "/user_id"},
     "telephony_settings": {"name": COSMOS_CONTAINER_TELEPHONY, "pk": "/organization_id"},
     "plivo": {"name": COSMOS_CONTAINER_PLIVO, "pk": "/organization_id"},
+    "voice_credentials": {"name": os.getenv("COSMOS_CONTAINER_VOICE_CREDENTIALS", "voice_credentials"), "pk": "/organization_id"},
     "calls": {
         "name": COSMOS_CONTAINER_CALLS,
         "pk": "/" + COSMOS_CALLS_PARTITION_FIELD,
@@ -178,6 +179,10 @@ def get_users_container():
 
 def get_twilio_container():
     return _get_container("twilio")
+
+
+def get_voice_credentials_container():
+    return _get_container("voice_credentials")
 
 
 def get_plivo_container():
