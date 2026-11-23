@@ -63,6 +63,8 @@ export function AIAgentDialerView({
   });
   const [selectedAgentId, setSelectedAgentId] = useState<string>(initialAgentId || "");
   const [selectedFromNumber, setSelectedFromNumber] = useState("");
+  // The page must not claim "no number" before the numbers list has answered
+  const [numbersLoaded, setNumbersLoaded] = useState(false);
   const [numberOptions, setNumberOptions] = useState<TelephonyNumberOption[]>([]);
   const [toNumber, setToNumber] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
@@ -194,6 +196,8 @@ export function AIAgentDialerView({
   const availableFromNumbers = numberOptions.length > 0 ? numberOptions.map((n) => n.number) : legacyFromNumbers;
   // The number actually used: the one picked if it is still available, otherwise the first (domestic numbers are listed first)
   const effectiveFromNumber = availableFromNumbers.includes(selectedFromNumber) ? selectedFromNumber : (availableFromNumbers[0] || "");
+  // Calling is possible when the organization has a number with ANY provider, not only a Twilio configuration
+  const telephonyReady = !!config || numberOptions.length > 0;
   const mixedProviders = new Set(numberOptions.map((n) => n.provider)).size > 1;
   const numberLabel = (num: string) => {
     const opt = numberOptions.find((n) => n.number === num);
@@ -207,7 +211,8 @@ export function AIAgentDialerView({
           setNumberOptions(list);
         }
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => setNumbersLoaded(true));
   }, []);
 
   function refreshCalls() {
@@ -605,12 +610,12 @@ export function AIAgentDialerView({
         }
       />
 
-      {/* Global Notice if Twilio not configured */}
-      {!loading && !config && (
+      {/* Notice when the organization has no phone number with any provider */}
+      {!loading && numbersLoaded && !telephonyReady && (
         <Alert type="warning">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="font-semibold">Twilio connection required.</span> Set up your Account SID and active phone numbers in Phone & Voice.
+              <span className="font-semibold">No phone number is set up.</span> Add an active phone number in Phone & Voice to place calls.
             </div>
             <Button
               size="sm"
@@ -618,7 +623,7 @@ export function AIAgentDialerView({
               onClick={onNavigateSettings}
               rightIcon={<ArrowUpRight className="w-3 h-3" />}
             >
-              Configure Twilio
+              Set up phone number
             </Button>
           </div>
         </Alert>
@@ -798,7 +803,7 @@ export function AIAgentDialerView({
                   variant="primary"
                   size="lg"
                   onClick={handleStartAICall}
-                  disabled={!config || !toNumber.trim() || !selectedAgent}
+                  disabled={!telephonyReady || !toNumber.trim() || !selectedAgent}
                   leftIcon={<PhoneOutgoing className="w-4 h-4" />}
                   className="w-full font-semibold"
                 >

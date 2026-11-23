@@ -106,7 +106,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       if (twCfg && twCfg.account_sid) {
         initializeWebRTCDevice();
       } else {
-        setDeviceStatusText("Twilio credentials not configured");
+        setDeviceStatusText("Calling is not set up");
       }
     } catch (err: any) {
       console.error("Dashboard load error:", err);
@@ -126,7 +126,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
       }
 
       if (!window.Twilio || !window.Twilio.Device) {
-        setDeviceStatusText("Twilio Voice SDK loading...");
+        setDeviceStatusText("Calling engine loading...");
         setTimeout(initializeWebRTCDevice, 1000);
         return;
       }
@@ -424,12 +424,12 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
         }
       />
 
-      {/* Global Notice if Twilio not configured */}
+      {/* Notice when browser calling is not set up */}
       {!loadingConfig && !config && (
         <Alert type="warning">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="font-semibold">Twilio connection required.</span> Set up your Account SID and active phone numbers in Phone & Voice.
+              <span className="font-semibold">Phone number not configured.</span> Set up an active phone number in Phone & Voice.
             </div>
             <Button
               size="sm"
@@ -437,7 +437,7 @@ export function DashboardView({ onNavigateSettings }: { onNavigateSettings: () =
               onClick={onNavigateSettings}
               rightIcon={<ArrowUpRight className="w-3 h-3" />}
             >
-              Configure Twilio
+              Set up phone number
             </Button>
           </div>
         </Alert>
