@@ -137,6 +137,8 @@ export const SuperAdminPanel: React.FC = () => {
       setOrgVoice(DEFAULT_ORG_VOICE);
       await loadData();
     } catch (err: any) {
+      // Never leave typed keys behind after a failed attempt; keep the non-secret choices
+      setOrgVoice((v) => ({ ...v, engineKey: "", ttsKey: "" }));
       setError(err.message || "Failed to provision organization.");
     } finally {
       setIsCreatingOrg(false);
@@ -574,7 +576,7 @@ export const SuperAdminPanel: React.FC = () => {
       {/* Provision Organization Modal */}
       <Modal
         isOpen={showOrgModal}
-        onClose={() => setShowOrgModal(false)}
+        onClose={() => { setShowOrgModal(false); setOrgVoice(DEFAULT_ORG_VOICE); }}
         title="Provision Tenant Organization"
         description="Creates an isolated tenant organization and primary administrator account."
       >
@@ -637,7 +639,7 @@ export const SuperAdminPanel: React.FC = () => {
               type="button"
               variant="outline"
               size="md"
-              onClick={() => setShowOrgModal(false)}
+              onClick={() => { setShowOrgModal(false); setOrgVoice(DEFAULT_ORG_VOICE); }}
             >
               Cancel
             </Button>

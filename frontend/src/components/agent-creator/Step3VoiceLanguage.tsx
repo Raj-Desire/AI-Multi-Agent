@@ -987,6 +987,12 @@ export function Step3VoiceLanguage({
           </div>
         </div>
 
+        {engineLock && ((engineLock === "sonic") !== (initialEngine === "sonic")) && (
+          <div role="status" className="text-[11px] text-[var(--color-muted)] border border-[var(--color-border)] rounded p-2">
+            The current voice is not available for your organization's voice engine. Calls will use the engine's default voice until a voice is chosen.
+          </div>
+        )}
+
         {/* Selected Engine Subheader & Stats */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
           <span className="text-[var(--color-muted)]">

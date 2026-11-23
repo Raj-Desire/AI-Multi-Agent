@@ -47,6 +47,21 @@ describe("voice picker engine filtering", () => {
   });
 });
 
+describe("voice picker unavailable voice", () => {
+  it("voice picker shows unavailable-voice notice for own-key org with a hidden-engine saved voice and does not change the saved voice", async () => {
+    fetchApi.mockReset();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
+    voiceRoutes({ configured: true, tts_engine: "cartesia", credential_mode: "own", allow_org_edit: false, engine: slot(), tts: slot() });
+    const setAgentData = vi.fn();
+    const agent: any = { voice: { voice: "flux-hannah-en", provider: "deepgram" }, language: "en" };
+    render(<Step3VoiceLanguage agentData={agent} setAgentData={setAgentData} />);
+    const notice = await screen.findByRole("status");
+    expect(notice.textContent).toMatch(/not available for your organization's voice engine/i);
+    expect(notice.textContent).toMatch(/default voice/i);
+    expect(setAgentData).not.toHaveBeenCalled();
+  });
+});
+
 describe("create-org form", () => {
   beforeEach(() => {
     fetchApi.mockReset();
@@ -73,5 +88,42 @@ describe("create-org form", () => {
     expect(body.tts_engine).toBe("cartesia");
     expect(body.import_platform_keys).toBe(true);
     expect(body.engine_key).toBeUndefined();
+  });
+
+  async function openForm() {
+    render(<SuperAdminPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: /Provision Org/i }));
+  }
+  const keyInputs = () => Array.from(document.querySelectorAll("input[type=password]")).filter((i) => (i as HTMLInputElement).id.includes("key")) as HTMLInputElement[];
+
+  it("create-org form clears typed keys after cancel and reopen", async () => {
+    await openForm();
+    fireEvent.click(screen.getByLabelText("Cartesia"));
+    fireEvent.change(screen.getByLabelText("Engine key"), { target: { value: "secret-1" } });
+    fireEvent.change(screen.getByLabelText("Voice key"), { target: { value: "secret-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: /Provision Org/i }));
+    fireEvent.click(screen.getByLabelText("Cartesia"));
+    expect((screen.getByLabelText("Engine key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Voice key") as HTMLInputElement).value).toBe("");
+  });
+
+  it("create-org form clears key fields after a failed create", async () => {
+    fetchApi.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/superadmin/organizations" && options?.method === "POST") return Promise.reject(new Error("nope"));
+      return Promise.resolve(path === "/superadmin/overview" ? {} : []);
+    });
+    await openForm();
+    fireEvent.click(screen.getByLabelText("Cartesia"));
+    fireEvent.change(screen.getByLabelText("Organization Brand Name"), { target: { value: "Acme Co" } });
+    fireEvent.change(screen.getByLabelText("Admin Full Name"), { target: { value: "Sarah Jenkins" } });
+    fireEvent.change(screen.getByLabelText("Admin Email Address"), { target: { value: "a@example.com" } });
+    fireEvent.change(screen.getByLabelText("Admin Password"), { target: { value: "Str0ng!Passw0rd#1" } });
+    fireEvent.change(screen.getByLabelText("Engine key"), { target: { value: "secret-1" } });
+    fireEvent.change(screen.getByLabelText("Voice key"), { target: { value: "secret-2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Provision Organization" }));
+    await waitFor(() => expect((screen.getByLabelText("Engine key") as HTMLInputElement).value).toBe(""));
+    expect((screen.getByLabelText("Voice key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Cartesia") as HTMLInputElement).checked).toBe(true);
   });
 });

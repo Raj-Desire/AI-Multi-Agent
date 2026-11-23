@@ -43,6 +43,7 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
   const [editing, setEditing] = useState<KeySlotName | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [pending, setPending] = useState<Pending>(null);
+  const [change, setChange] = useState<Record<string, string> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -239,7 +240,7 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
             <select
               value={engine ?? ""}
               disabled={busy}
-              onChange={(e) => e.target.value && run(() => put({ tts_engine: e.target.value }))}
+              onChange={(e) => e.target.value && setChange({ tts_engine: e.target.value })}
               className="h-8 px-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)]"
             >
               {!engine && <option value="">Not chosen</option>}
@@ -252,13 +253,27 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
             <select
               value={profile.credential_mode}
               disabled={busy}
-              onChange={(e) => run(() => put({ credential_mode: e.target.value }))}
+              onChange={(e) => setChange({ credential_mode: e.target.value })}
               className="h-8 px-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)]"
             >
               <option value="platform">Platform</option>
               <option value="own">Own</option>
             </select>
           </label>
+        </div>
+      )}
+
+      {change && (
+        <div role="alertdialog" aria-label="Confirm change" className="p-2 rounded border border-[var(--color-border)] space-y-2">
+          <p className="text-xs text-[var(--color-heading)]">
+            Change the {"tts_engine" in change ? "voice engine" : "credential mode"}? Switching can affect live agents and calls in progress for this organization.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => { const body = change; setChange(null); run(() => put(body)); }}>
+              Confirm change
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setChange(null)}>Cancel change</Button>
+          </div>
         </div>
       )}
 

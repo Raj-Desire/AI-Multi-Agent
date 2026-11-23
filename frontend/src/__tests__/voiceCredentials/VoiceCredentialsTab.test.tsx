@@ -126,4 +126,29 @@ describe("VoiceCredentialsTab", () => {
     expect(text).toContain("Sonic Voice");
     for (const bad of ["Deepgram", "Cartesia", "Desire"]) expect(text).not.toContain(bad);
   });
+
+  it("engine change asks for confirmation and cancel sends no request", async () => {
+    setup(profile({ tts_engine: "aura" }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    fireEvent.change(await screen.findByLabelText("Engine"), { target: { value: "cartesia" } });
+    expect(screen.getByRole("alertdialog", { name: "Confirm change" })).toBeInTheDocument();
+    expect(screen.getByText(/live agents/i)).toBeInTheDocument();
+    expect(calls("PUT")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel change" }));
+    expect(calls("PUT")).toHaveLength(0);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Engine"), { target: { value: "cartesia" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
+    await waitFor(() => expect(JSON.parse(calls("PUT")[0][1].body)).toEqual({ tts_engine: "cartesia" }));
+  });
+
+  it("credential mode change asks for confirmation", async () => {
+    setup(profile());
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    fireEvent.change(await screen.findByLabelText("Credential mode"), { target: { value: "platform" } });
+    expect(screen.getByRole("alertdialog", { name: "Confirm change" })).toBeInTheDocument();
+    expect(calls("PUT")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
+    await waitFor(() => expect(JSON.parse(calls("PUT")[0][1].body)).toEqual({ credential_mode: "platform" }));
+  });
 });
