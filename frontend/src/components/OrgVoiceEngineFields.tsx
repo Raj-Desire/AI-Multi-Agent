@@ -30,28 +30,33 @@ export function OrgVoiceEngineFields({ value, onChange }: { value: OrgVoiceEngin
           </label>
         ))}
       </div>
+      <p className="text-[11px] text-[var(--color-muted)]">
+        {value.engine === "aura"
+          ? "Aura speaks through the voice engine itself, so this organization needs one key: the voice engine key (it listens to callers, runs the AI agent and speaks)."
+          : "Cartesia needs two keys: the voice engine key (it listens to callers and runs the AI agent) and a Cartesia voice key (it makes the speaking voice)."}
+      </p>
       <label className="inline-flex items-center gap-2 text-xs text-[var(--color-heading)]">
         <input type="checkbox" checked={value.importPlatform} onChange={(e) => set({ importPlatform: e.target.checked })} />
         Import from superadmin
       </label>
       <Input
-        label="Engine key"
+        label="Voice engine key"
         type="password"
         autoComplete="new-password"
         required={!value.importPlatform}
         value={value.engineKey}
         onChange={(e) => set({ engineKey: e.target.value })}
-        placeholder={value.importPlatform ? "Optional override" : "Paste the engine key"}
+        placeholder={value.importPlatform ? "Optional override" : "Paste the voice engine key"}
       />
       {value.engine === "cartesia" && (
         <Input
-          label="Voice key"
+          label="Cartesia voice key"
           type="password"
           autoComplete="new-password"
           required={!value.importPlatform}
           value={value.ttsKey}
           onChange={(e) => set({ ttsKey: e.target.value })}
-          placeholder={value.importPlatform ? "Optional override" : "Paste the voice key"}
+          placeholder={value.importPlatform ? "Optional override" : "Paste the Cartesia voice key"}
         />
       )}
       <p className="text-[11px] text-[var(--color-muted)]">The organization cannot take calls until its keys are verified.</p>

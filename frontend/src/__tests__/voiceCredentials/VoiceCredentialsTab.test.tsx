@@ -165,4 +165,41 @@ describe("VoiceCredentialsTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
     await waitFor(() => expect(JSON.parse(calls("PUT")[0][1].body)).toEqual({ credential_mode: "platform" }));
   });
+
+  it("engine dropdown shows the chosen engine while confirming and the dialog names both engines", async () => {
+    setup(profile({ tts_engine: "aura" }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    const select = (await screen.findByLabelText("Engine")) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "cartesia" } });
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe("cartesia");
+    const dialog = screen.getByRole("alertdialog", { name: "Confirm change" });
+    expect(dialog.textContent).toMatch(/from Aura to Cartesia/i);
+    expect(dialog.textContent).toMatch(/voice key/i);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel change" }));
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe("aura");
+  });
+
+  it("credential mode dialog names both modes", async () => {
+    setup(profile());
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    fireEvent.change(await screen.findByLabelText("Credential mode"), { target: { value: "platform" } });
+    expect(screen.getByRole("alertdialog", { name: "Confirm change" }).textContent).toMatch(/from Own keys to Platform keys/i);
+  });
+
+  it("keys have plain names and a one-line explanation", async () => {
+    setup(profile({ tts_engine: "cartesia" }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    expect(await screen.findByText("Voice engine key")).toBeInTheDocument();
+    expect(screen.getByText("Cartesia voice key")).toBeInTheDocument();
+    expect(screen.getByText(/listens to callers and runs the ai agent/i)).toBeInTheDocument();
+    expect(screen.getByText(/makes the speaking voice/i)).toBeInTheDocument();
+  });
+
+  it("org admin sees neutral key names", async () => {
+    setup(profile({ tts_engine: "cartesia" }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage={false} mode="org-admin" />);
+    expect(await screen.findByText("Voice engine key")).toBeInTheDocument();
+    expect(screen.getByText("Voice key")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/cartesia|deepgram/i);
+  });
 });

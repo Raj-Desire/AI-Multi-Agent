@@ -128,13 +128,13 @@ describe("create-org form", () => {
   it("create-org form clears typed keys after cancel and reopen", async () => {
     await openForm();
     fireEvent.click(screen.getByLabelText("Cartesia"));
-    fireEvent.change(screen.getByLabelText("Engine key"), { target: { value: "secret-1" } });
-    fireEvent.change(screen.getByLabelText("Voice key"), { target: { value: "secret-2" } });
+    fireEvent.change(screen.getByLabelText("Voice engine key"), { target: { value: "secret-1" } });
+    fireEvent.change(screen.getByLabelText("Cartesia voice key"), { target: { value: "secret-2" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(screen.getByRole("button", { name: /Provision Org/i }));
     fireEvent.click(screen.getByLabelText("Cartesia"));
-    expect((screen.getByLabelText("Engine key") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Voice key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Voice engine key") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Cartesia voice key") as HTMLInputElement).value).toBe("");
   });
 
   it("create-org form clears key fields after a failed create", async () => {
@@ -148,11 +148,11 @@ describe("create-org form", () => {
     fireEvent.change(screen.getByLabelText("Admin Full Name"), { target: { value: "Sarah Jenkins" } });
     fireEvent.change(screen.getByLabelText("Admin Email Address"), { target: { value: "a@example.com" } });
     fireEvent.change(screen.getByLabelText("Admin Password"), { target: { value: "Str0ng!Passw0rd#1" } });
-    fireEvent.change(screen.getByLabelText("Engine key"), { target: { value: "secret-1" } });
-    fireEvent.change(screen.getByLabelText("Voice key"), { target: { value: "secret-2" } });
+    fireEvent.change(screen.getByLabelText("Voice engine key"), { target: { value: "secret-1" } });
+    fireEvent.change(screen.getByLabelText("Cartesia voice key"), { target: { value: "secret-2" } });
     fireEvent.click(screen.getByRole("button", { name: "Provision Organization" }));
-    await waitFor(() => expect((screen.getByLabelText("Engine key") as HTMLInputElement).value).toBe(""));
-    expect((screen.getByLabelText("Voice key") as HTMLInputElement).value).toBe("");
+    await waitFor(() => expect((screen.getByLabelText("Voice engine key") as HTMLInputElement).value).toBe(""));
+    expect((screen.getByLabelText("Cartesia voice key") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Cartesia") as HTMLInputElement).checked).toBe(true);
   });
 });

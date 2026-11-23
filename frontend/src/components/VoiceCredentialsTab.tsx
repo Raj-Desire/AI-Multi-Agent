@@ -19,7 +19,25 @@ const EMPTY_SLOT: KeySlotView = { key_hint: "", status: "unverified", source: nu
 const ADMIN_ENGINE_LABEL: Record<VoiceEngineId, string> = { aura: "Aura", cartesia: "Cartesia" };
 const ORG_ENGINE_LABEL: Record<VoiceEngineId, string> = { aura: "Aura Voice", cartesia: "Sonic Voice" };
 
+// Used for button/aria names (kept stable).
 const SLOT_LABEL: Record<KeySlotName, string> = { engine: "engine key", tts: "voice key" };
+
+// Visible names and one-line explanations. The org admin never sees the voice service's name.
+const SLOT_TITLE = {
+  admin: { engine: "Voice engine key", tts: "Cartesia voice key" },
+  org: { engine: "Voice engine key", tts: "Voice key" },
+} as const;
+const SLOT_HELP = {
+  admin: {
+    engine: "Listens to callers and runs the AI agent. Always required.",
+    tts: "Makes the speaking voice. Required because this organization uses Cartesia.",
+  },
+  org: {
+    engine: "Listens to callers and runs the AI agent.",
+    tts: "Makes the speaking voice.",
+  },
+} as const;
+const MODE_LABEL = { own: "Own keys", platform: "Platform keys" } as const;
 const STATUS_VARIANT = { valid: "success", invalid: "danger", unverified: "warning" } as const;
 
 function formatWhen(value: string | null): string {
@@ -122,12 +140,12 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
   const slotRow = (name: KeySlotName) => {
     const slot = slots[name];
     const label = SLOT_LABEL[name];
-    const label_cap = label.charAt(0).toUpperCase() + label.slice(1);
     return (
       <li key={name} className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-[var(--color-heading)]">{label_cap}</div>
+            <div className="text-xs font-semibold text-[var(--color-heading)]">{SLOT_TITLE[isAdminView ? "admin" : "org"][name]}</div>
+            <div className="text-[11px] text-[var(--color-muted)]">{SLOT_HELP[isAdminView ? "admin" : "org"][name]}</div>
             <div className="text-xs font-mono text-[var(--color-muted)] break-all">
               {slot.configured ? <span>{slot.key_hint}</span> : <span>Not set</span>}
             </div>
@@ -216,7 +234,7 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
         </div>
         <div>
           <dt className="text-[var(--color-muted)]">Credentials</dt>
-          <dd className="font-semibold text-[var(--color-heading)]">{profile.credential_mode === "own" ? "Own keys" : "Platform keys"}</dd>
+          <dd className="font-semibold text-[var(--color-heading)]">{MODE_LABEL[profile.credential_mode]}{isAdminView ? (profile.credential_mode === "own" ? " (the organization's own accounts)" : " (billed to you)") : ""}</dd>
         </div>
         {isAdminView && (
           <div>
@@ -241,9 +259,9 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
           <label className="text-xs text-[var(--color-heading)] flex items-center gap-2">
             Engine
             <select
-              value={engine ?? ""}
+              value={change?.tts_engine ?? engine ?? ""}
               disabled={busy}
-              onChange={(e) => e.target.value && setChange({ tts_engine: e.target.value })}
+              onChange={(e) => e.target.value && e.target.value !== engine && setChange({ tts_engine: e.target.value })}
               className="h-8 px-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)]"
             >
               {!engine && <option value="">Not chosen</option>}
@@ -254,9 +272,9 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
           <label className="text-xs text-[var(--color-heading)] flex items-center gap-2">
             Credential mode
             <select
-              value={profile.credential_mode}
+              value={change?.credential_mode ?? profile.credential_mode}
               disabled={busy}
-              onChange={(e) => setChange({ credential_mode: e.target.value })}
+              onChange={(e) => e.target.value !== profile.credential_mode && setChange({ credential_mode: e.target.value })}
               className="h-8 px-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)]"
             >
               <option value="platform">Platform</option>
@@ -269,7 +287,11 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
       {change && (
         <div role="alertdialog" aria-label="Confirm change" className="p-2 rounded border border-[var(--color-border)] space-y-2">
           <p className="text-xs text-[var(--color-heading)]">
-            Change the {"tts_engine" in change ? "voice engine" : "credential mode"}? Switching can affect live agents and calls in progress for this organization.
+            {"tts_engine" in change
+              ? `Change the voice engine from ${engine ? ADMIN_ENGINE_LABEL[engine] : "Platform default"} to ${ADMIN_ENGINE_LABEL[change.tts_engine as VoiceEngineId]}?`
+              : `Change credentials from ${MODE_LABEL[profile.credential_mode]} to ${MODE_LABEL[change.credential_mode as "own" | "platform"]}?`}
+            {" "}Switching can affect live agents and calls in progress for this organization.
+            {"tts_engine" in change && change.tts_engine === "cartesia" && " This organization will also need a Cartesia voice key before it can take calls."}
           </p>
           <div className="flex gap-2">
             <Button size="sm" variant="danger" disabled={busy} onClick={() => { const body = change; setChange(null); run(() => put(body)); }}>
