@@ -98,7 +98,7 @@ describe("voice previews only cost credits when the user asks to hear one", () =
     const preview = await screen.findByRole("button", { name: /Preview Voice/i });
     fireEvent.click(preview);
     await waitFor(() => expect(sampleRequests).toHaveLength(1));
-    expect(sampleRequests[0].text).toBe(SAMPLE);
+    expect(Array.from(sampleRequests[0].text as string).length).toBeLessThanOrEqual(40);
     fireEvent.click(await screen.findByRole("button", { name: /Stop Preview|Preview Voice/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Preview Voice/i }));
     await new Promise((r) => setTimeout(r, 200));

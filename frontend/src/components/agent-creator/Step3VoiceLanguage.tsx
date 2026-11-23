@@ -306,6 +306,60 @@ const FEATURED_VOICE_IDS = new Set([
   ...POPULAR_SONIC_VOICES.map((v) => v.id)
 ]);
 
+// Short per-language sentences used ONLY for voice previews. The voice vendor bills text-to-speech by the character,
+// so every entry stays at 40 characters or fewer. Agent greetings keep their full wording (NATIVE_DEFAULT_GREETINGS).
+export const PREVIEW_TEXTS: Record<string, string> = {
+  en: "Hello! How can I help you today?",
+  hi: "नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?",
+  gu: "નમસ્તે! હું તમારી કેવી રીતે મદદ કરું?",
+  es: "¡Hola! ¿En qué puedo ayudarte hoy?",
+  fr: "Bonjour ! Comment puis-je vous aider ?",
+  de: "Hallo! Wie kann ich Ihnen helfen?",
+  it: "Ciao! Come posso aiutarti oggi?",
+  pt: "Olá! Como posso ajudar você hoje?",
+  ja: "こんにちは！ご用件をお伺いします。",
+  zh: "您好！请问有什么可以帮您？",
+  ko: "안녕하세요! 무엇을 도와드릴까요?",
+  ar: "مرحباً! كيف يمكنني مساعدتك اليوم؟",
+  nl: "Hallo! Waarmee kan ik u helpen?",
+  he: "שלום! איך אוכל לעזור לך היום?",
+  sv: "Hej! Hur kan jag hjälpa dig?",
+  pl: "Cześć! W czym mogę Ci pomóc?",
+  tr: "Merhaba! Size nasıl yardımcı olabilirim?",
+  id: "Halo! Ada yang bisa saya bantu?",
+  th: "สวัสดีค่ะ! มีอะไรให้ช่วยไหมคะ?",
+  ru: "Здравствуйте! Чем могу помочь?",
+  vi: "Xin chào! Tôi có thể giúp gì cho bạn?",
+  tl: "Kamusta! Paano kita matutulungan?",
+  ta: "வணக்கம்! நான் எப்படி உதவ முடியும்?",
+  te: "నమస్కారం! నేను ఎలా సహాయపడగలను?",
+  bn: "নমস্কার! আমি কীভাবে সাহায্য করতে পারি?",
+  pa: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ ਕਿਵੇਂ ਮਦਦ ਕਰਾਂ?",
+  ur: "السلام علیکم! میں کیسے مدد کر سکتا ہوں؟",
+  el: "Γεια σας! Πώς μπορώ να βοηθήσω;",
+  da: "Hej! Hvordan kan jeg hjælpe dig?",
+  fi: "Hei! Kuinka voin auttaa sinua?",
+  no: "Hei! Hvordan kan jeg hjelpe deg?",
+  cs: "Dobrý den! Jak vám mohu pomoci?",
+  hu: "Üdvözlöm! Miben segíthetek?",
+  ro: "Bună! Cu ce te pot ajuta?",
+  uk: "Вітаю! Чим можу допомогти?",
+  sk: "Dobrý deň! Ako vám môžem pomôcť?",
+  ms: "Helo! Apa yang boleh saya bantu?",
+  mr: "नमस्कार! मी तुम्हाला कशी मदत करू?",
+  ml: "നമസ്കാരം! ഞാൻ എങ്ങനെ സഹായിക്കണം?",
+  kn: "ನಮಸ್ಕಾರ! ನಾನು ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
+  ka: "გამარჯობა! როგორ შემიძლია დაგეხმაროთ?",
+  hr: "Bok! Kako vam mogu pomoći?",
+  bg: "Здравейте! С какво мога да помогна?"
+};
+
+/** The short preview sentence for a language (English when the language has none). */
+export function previewTextFor(lang?: string): string {
+  const code = (lang || "en").split("-")[0].toLowerCase();
+  return PREVIEW_TEXTS[code] || PREVIEW_TEXTS.en;
+}
+
 // Authentic Native Greeting Translations for Synchronized Voice & Listening Experience
 export const NATIVE_DEFAULT_GREETINGS: Record<string, string> = {
   en: "Hi! Thanks for connecting. How can I help you today?",
@@ -558,11 +612,7 @@ export function Step3VoiceLanguage({
 
     // If custom text not supplied, use natural greeting in the target language for multilingual voices,
     // or fall back to voice sample text if targetLang matches voice's native language.
-    const sampleText =
-      customText ||
-      (targetLang && targetLang !== (voiceObj as any)?.language
-        ? (NATIVE_DEFAULT_GREETINGS[targetLang] || `Hello! I am your AI voice agent. How can I help you today?`)
-        : ((voiceObj as any)?.sampleText || NATIVE_DEFAULT_GREETINGS[targetLang || "en"] || `Hello! I am your AI voice agent. How can I help you today?`));
+    const sampleText = customText || previewTextFor(targetLang);
 
     const cacheKey = `${voiceId}:${targetLang}:${sampleText}`;
     if (audioBlobCacheRef.current.has(cacheKey)) return audioBlobCacheRef.current.get(cacheKey);
@@ -640,11 +690,7 @@ export function Step3VoiceLanguage({
         (selectedVoiceId === voiceId ? agentData.voice?.language : undefined) ||
         (isMultilingual ? (agentData.voice?.language || (voiceObj as any)?.language || "en") : ((voiceObj as any)?.language || "en"));
 
-      const sampleText =
-        customText ||
-        (targetLang && targetLang !== (voiceObj as any)?.language
-          ? (NATIVE_DEFAULT_GREETINGS[targetLang] || `Hello! I am your AI voice agent. How can I help you today?`)
-          : ((voiceObj as any)?.sampleText || NATIVE_DEFAULT_GREETINGS[targetLang || "en"] || `Hello! I am your AI voice agent. How can I help you today?`));
+      const sampleText = customText || previewTextFor(targetLang);
 
       const cacheKey = `${voiceId}:${targetLang}:${sampleText}`;
       let audioUrl = audioBlobCacheRef.current.get(cacheKey);

@@ -483,32 +483,7 @@ export function Step6PromptInstructions({
     ? `${apiBaseUrl}/voice/sample-speech`
     : `${apiBaseUrl}/api/v1/voice/sample-speech`;
 
-  // Warm the server's audio cache shortly after the greeting or voice settles, so Play Preview starts instantly.
-  const previewText = resolvePreviewText(agentData.greeting || "");
-  const previewVoice = agentData.voice?.voice;
-  const previewProvider = agentData.voice?.provider;
-  const previewLanguage = agentData.voice?.language || "en";
-  useEffect(() => {
-    if (!previewText.trim() || !previewVoice) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      const token = localStorage.getItem("desire_token");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      fetch(sampleSpeechUrl, {
-        method: "POST",
-        headers,
-        signal: controller.signal,
-        body: JSON.stringify({ text: previewText, voice: previewVoice, provider: previewProvider, language: previewLanguage })
-      }).catch(() => {
-        /* warming is best-effort; the real click reports errors */
-      });
-    }, 1500);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [previewText, previewVoice, previewProvider, previewLanguage, sampleSpeechUrl]);
+  // The greeting is only synthesized when the user presses Play: every request is billed by the voice vendor.
 
   // Play Greeting Sample Audio using selected voice
   const handlePlayGreetingAudio = async (textToPlay: string) => {

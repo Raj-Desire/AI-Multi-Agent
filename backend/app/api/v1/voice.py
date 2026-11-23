@@ -1149,7 +1149,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
 
     sample_text = payload.text
     if not sample_text or not sample_text.strip():
-        sample_text = "Hello! I am your AI Voice Agent. How can I help you today?"
+        sample_text = "Hello! How can I help you today?"
 
     sample_text = sample_text.strip()
     voice = payload.voice or "flux-hannah-en"
