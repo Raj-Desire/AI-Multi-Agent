@@ -534,7 +534,8 @@ export function Step3VoiceLanguage({
     };
   }, [audioElement]);
 
-  // Prefetch voice sample audio into memory for instantaneous (0ms) playback on click
+  // Renders a voice sample (real text-to-speech, billed by the voice vendor per character) and keeps it in memory.
+  // Only call this when the user asks to hear a voice: never on hover, load, selection or language change.
   const prefetchVoiceSample = async (voiceId: string, customText?: string, explicitLang?: string): Promise<string | undefined> => {
     const voiceObj =
       sonicVoices.find((v) => v.id === voiceId) ||
@@ -741,13 +742,11 @@ export function Step3VoiceLanguage({
       const matchingSonic = sonicVoices.find((v) => v.language === currentLang);
       const targetSonicId = matchingSonic ? matchingSonic.id : "6c756032-11c3-4be8-a120-74f9673fb700";
       handleVoiceChange(targetSonicId, matchingSonic ? currentLang : undefined);
-      prefetchVoiceSample(targetSonicId);
     } else {
       // Find a Flux voice matching current language if possible, else default to Hannah
       const matchingFlux = AURA_VOICES.find((v) => v.language === currentLang);
       const targetFluxId = matchingFlux ? matchingFlux.id : "flux-hannah-en";
       handleVoiceChange(targetFluxId, matchingFlux ? currentLang : "en");
-      prefetchVoiceSample(targetFluxId);
     }
   };
 
@@ -776,9 +775,6 @@ export function Step3VoiceLanguage({
 
     // 4. Update voice and listen atomically
     handleVoiceChange(targetVoiceId, lang);
-
-    // 5. Pre-warm preview for newly selected voice in the target language
-    prefetchVoiceSample(targetVoiceId);
   };
 
   // Custom Voice Dropdown State
@@ -1311,7 +1307,6 @@ export function Step3VoiceLanguage({
                       return (
                         <div
                           key={v.id}
-                          onMouseEnter={() => prefetchVoiceSample(v.id, undefined, effectiveVoiceLang)}
                           onClick={() => {
                             handleVoiceChange(v.id, effectiveVoiceLang);
                             setIsVoiceDropdownOpen(false);
@@ -1448,8 +1443,7 @@ export function Step3VoiceLanguage({
                                               e.stopPropagation();
                                               handleVoiceChange(v.id, item.lang);
                                               setOpenFlyoutVoiceId(null);
-                                              // Keep voice selection popup open so user can immediately test preview
-                                              prefetchVoiceSample(v.id, undefined, item.lang);
+                                              // Keep the voice selection popup open so the user can press Preview
                                             }}
                                           className={`w-full flex items-center justify-between gap-2 py-1.5 px-2 rounded-md text-xs transition-colors cursor-pointer text-left ${
                                             isLangActive
