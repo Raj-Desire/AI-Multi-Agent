@@ -3,6 +3,7 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timezone
 from app.models.twilio import TwilioConfiguration
 from app.core.cosmos import get_twilio_container
+from app.core.inbound_ownership import pick_inbound_owner
 
 _TWILIO_CACHE: Dict[str, Tuple[Optional[TwilioConfiguration], float]] = {}
 TWILIO_CACHE_TTL_SECONDS = 60.0
@@ -157,7 +158,7 @@ class TwilioRepository:
         if not container:
             return None
         
-        # Look for configuration where phone_number contains the called number
+        # Look for configurations where phone_number contains the called number
         cleaned = phone_number.replace("+", "").strip()
         query = "SELECT * FROM c WHERE CONTAINS(c.phone_number, @clean_num) OR CONTAINS(c.phone_number, @full_num)"
         params = [
@@ -166,34 +167,37 @@ class TwilioRepository:
         ]
         try:
             items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-            if items:
-                item = items[0]
-                found = TwilioConfiguration(
-                    id=item.get("id", f"cfg_{item.get('user_id')}"),
-                    organization_id=item.get("user_id"),
-                    account_sid=item.get("account_sid", ""),
-                    encrypted_auth_token=item.get("encrypted_auth_token", ""),
-                    phone_number=item.get("phone_number", ""),
-                    twiml_app_sid=item.get("twiml_app_sid"),
-                    api_key_sid=item.get("api_key_sid"),
-                    encrypted_api_key_secret=item.get("encrypted_api_key_secret"),
-                    public_base_url=item.get("public_base_url"),
-                    inbound_forward_mode=item.get("inbound_forward_mode", "global"),
-                    inbound_forward_global_number=item.get("inbound_forward_global_number"),
-                    inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
-                    escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
-                    escalation_alert_email=item.get("escalation_alert_email"),
-                    status="CONNECTED",
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc)
-                )
+            configs = [TwilioConfiguration(
+                id=item.get("id", f"cfg_{item.get('user_id')}"),
+                organization_id=item.get("user_id"),
+                account_sid=item.get("account_sid", ""),
+                encrypted_auth_token=item.get("encrypted_auth_token", ""),
+                phone_number=item.get("phone_number", ""),
+                twiml_app_sid=item.get("twiml_app_sid"),
+                api_key_sid=item.get("api_key_sid"),
+                encrypted_api_key_secret=item.get("encrypted_api_key_secret"),
+                public_base_url=item.get("public_base_url"),
+                inbound_forward_mode=item.get("inbound_forward_mode", "global"),
+                inbound_forward_global_number=item.get("inbound_forward_global_number"),
+                inbound_forward_mapping=item.get("inbound_forward_mapping") or {},
+                escalation_alerts_enabled=item.get("escalation_alerts_enabled", True),
+                escalation_alert_email=item.get("escalation_alert_email"),
+                status="CONNECTED",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc)
+            ) for item in items]
+            # A number several organizations saved goes to the one that takes inbound calls (None when ambiguous).
+            found = pick_inbound_owner(configs)
+            if found is None and configs:
+                print(f"[TwilioRepository Warning] number {phone_number} takes inbound calls in several organizations; refusing to route it")
+            if found is not None:
                 if len(_TWILIO_PHONE_CACHE) >= _MAX_PHONE_CACHE:
                     _TWILIO_PHONE_CACHE.clear()
                 _TWILIO_PHONE_CACHE[phone_number] = (found, time.time())
-                return found
+            return found
         except Exception as e:
             print(f"[TwilioRepository Error] get_by_phone_number: {e}")
-        
+
         return None
 
     async def save(self, config: TwilioConfiguration) -> TwilioConfiguration:

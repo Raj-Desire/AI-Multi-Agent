@@ -2,6 +2,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from app.core.inbound_ownership import pick_inbound_owner
 from app.core.cosmos import get_plivo_container
 from app.models.plivo import PlivoConfiguration
 
@@ -91,7 +92,7 @@ class PlivoRepository:
 
     async def get_by_phone_number(self, phone_number: str) -> Optional[PlivoConfiguration]:
         """The configuration whose number list contains exactly this number (digits compared, not substrings).
-        A number claimed by more than one organization is ambiguous: return None rather than guess a tenant."""
+        A number saved by several organizations goes to the one that takes inbound calls; if that is ambiguous, None."""
         wanted = normalize_number(phone_number)
         if not wanted:
             return None
@@ -99,11 +100,9 @@ class PlivoRepository:
         if cached and time.time() - cached[1] < CACHE_TTL_SECONDS:
             return cached[0]
         matches = [cfg for cfg in await self.list_all() if wanted in _numbers(cfg)]
-        found: Optional[PlivoConfiguration] = None
-        if len({m.organization_id for m in matches}) > 1:
-            print(f"[PlivoRepository Warning] number {phone_number} is claimed by several organizations; refusing to route it")
-        elif matches:
-            found = matches[0]
+        found = pick_inbound_owner(matches)
+        if found is None and matches:
+            print(f"[PlivoRepository Warning] number {phone_number} takes inbound calls in several organizations; refusing to route it")
         if len(_PHONE_CACHE) >= _MAX_PHONE_CACHE:
             _PHONE_CACHE.clear()
         _PHONE_CACHE[wanted] = (found, time.time())
