@@ -810,7 +810,7 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                         try:
                             await websocket.send_json({
                                 "type": "error",
-                                "message": f"Voice engine notice: {err_str}"
+                                "message": "Voice engine notice: the voice service reported a problem"
                             })
                         except Exception:
                             pass
@@ -1016,7 +1016,7 @@ async def list_cartesia_voices(ctx: TenantContext = Depends(get_tenant_context))
             resp = await client.get("https://api.cartesia.ai/voices", headers=headers)
             if resp.status_code != 200:
                 logger.error(f"[CartesiaVoices Error] Failed to fetch voices: {resp.status_code} - {resp.text}")
-                return {"status": "error", "message": f"Cartesia API returned {resp.status_code}", "data": []}
+                return {"status": "error", "message": f"Voice service rejected the request ({resp.status_code})", "data": []}
 
             raw_voices = resp.json()
             formatted = []
@@ -1092,7 +1092,7 @@ async def list_cartesia_voices(ctx: TenantContext = Depends(get_tenant_context))
             return {"status": "success", "data": formatted}
     except Exception as e:
         logger.error(f"[CartesiaVoices Error] Exception fetching voices: {e}")
-        return {"status": "error", "message": str(e), "data": []}
+        return {"status": "error", "message": "Unable to load voices right now", "data": []}
 
 
 async def _sonic_preview_via_engine(text: str, voice: str, language: Optional[str], speed: Optional[float], org_id: str, profile=None):
@@ -1249,7 +1249,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
                 if not resp or resp.status_code != 200:
                     err_msg = resp.text if resp else "No response"
                     logger.error(f"[SampleSpeech Error] Cartesia Sonic TTS returned {resp.status_code if resp else 'None'}: {err_msg}")
-                    raise HTTPException(status_code=resp.status_code if resp else 500, detail=f"Sonic synthesis error: {err_msg}")
+                    raise HTTPException(status_code=resp.status_code if resp else 500, detail=f"Voice synthesis failed ({resp.status_code if resp else 500})")
 
                 SAMPLE_SPEECH_CACHE[cache_key] = resp.content
                 # Save to disk permanently
@@ -1267,7 +1267,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
             raise
         except Exception as e:
             logger.error(f"[SampleSpeech Error] Failed to synthesize Sonic speech: {e}")
-            raise HTTPException(status_code=500, detail=f"Sonic TTS synthesis failed: {str(e)}")
+            raise HTTPException(status_code=500, detail="Voice synthesis failed")
 
     # Default: Conversational Speech Synthesis Preview (Flux / Spoken Engine)
     api_key = (profile.engine_key or "").strip()
@@ -1290,7 +1290,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
             resp = await client.post(deepgram_url, json=body, headers=headers)
             if resp.status_code != 200:
                 logger.error(f"[SampleSpeech Error] Voice TTS returned {resp.status_code}: {resp.text}")
-                raise HTTPException(status_code=resp.status_code, detail=f"Voice synthesis error: {resp.text}")
+                raise HTTPException(status_code=resp.status_code, detail=f"Voice synthesis failed ({resp.status_code})")
 
             SAMPLE_SPEECH_CACHE[cache_key] = resp.content
             return Response(
@@ -1302,7 +1302,7 @@ async def generate_sample_speech(payload: SampleSpeechRequest, ctx: TenantContex
         raise
     except Exception as e:
         logger.error(f"[SampleSpeech Error] Failed to synthesize speech: {e}")
-        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Voice synthesis failed")
 
 
 @router.get("/active-sessions", response_model=ApiResponse[List[Dict[str, Any]]])

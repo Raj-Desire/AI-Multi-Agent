@@ -288,7 +288,8 @@ async def create_organization_and_admin(
             logger.error("organization creation failed after user creation (%s)", type(e).__name__)
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                                 detail="Failed to create organization. Please try again.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create organization: {e}")
+        logger.error("organization creation failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create organization. Please try again.")
 
 @router.get("/users", response_model=List[SuperadminUserResponse])
 async def list_all_users(

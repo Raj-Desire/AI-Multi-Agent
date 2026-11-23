@@ -89,6 +89,20 @@ describe("VoiceCredentialsTab", () => {
     expect(screen.queryByLabelText("New engine key")).not.toBeInTheDocument();
   });
 
+  it("key input is cleared after a failed save", async () => {
+    setup(profile({ engine: slot(), tts: slot() }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Replace engine key" }));
+    const input = screen.getByLabelText("New engine key") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "sk-secret-fail" } });
+    fetchApi.mockImplementation((_u: string, o: any) =>
+      o?.method === "PUT" ? Promise.reject(Object.assign(new Error("boom"), { status: 500 })) : Promise.resolve(current));
+    fireEvent.click(screen.getByRole("button", { name: "Save engine key" }));
+    await waitFor(() => expect(calls("PUT").length).toBe(1));
+    await waitFor(() => expect((screen.getByLabelText("New engine key") as HTMLInputElement).value).toBe(""));
+    expect(document.body.innerHTML).not.toContain("sk-secret-fail");
+  });
+
   it("clear asks confirmation", async () => {
     setup(profile());
     render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);

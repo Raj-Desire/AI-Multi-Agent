@@ -82,10 +82,13 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
     const value = keyInput;
     const field = slot === "engine" ? "engine_key" : "tts_key";
     run(async () => {
-      const next = await put({ [field]: value });
-      setKeyInput("");
-      setEditing(null);
-      return next;
+      try {
+        const next = await put({ [field]: value });
+        setEditing(null);
+        return next;
+      } finally {
+        setKeyInput("");
+      }
     });
   }
 

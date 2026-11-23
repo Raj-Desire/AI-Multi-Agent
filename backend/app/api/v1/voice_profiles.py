@@ -155,7 +155,7 @@ async def get_own_profile(
     repo: VoiceCredentialsRepository = Depends(get_voice_repo),
     service: VoiceCredentialsService = Depends(get_voice_service),
 ):
-    return await _profile(repo, service, user["organization_id"])
+    return await _profile(repo, service, user.get("organization_id") or user.get("id"))
 
 
 @org_router.put("")
@@ -165,7 +165,7 @@ async def put_own_profile(
     repo: VoiceCredentialsRepository = Depends(get_voice_repo),
     service: VoiceCredentialsService = Depends(get_voice_service),
 ):
-    org_id = user["organization_id"]
+    org_id = user.get("organization_id") or user.get("id")
     creds = await repo.get_by_org(org_id)
     if creds is None or not creds.allow_org_edit:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Editing voice settings is not enabled for your organization.")

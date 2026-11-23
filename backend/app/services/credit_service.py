@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
@@ -8,6 +9,10 @@ from app.repositories.credit_repository import CreditRepository
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.campaign_repository import CampaignRepository
 from app.services.cost_calculator import CostCalculatorService
+from app.models.voice_credentials import VoiceCredentialsMissing
+from app.voice_stack.resolver import resolve_voice_profile
+
+logger = logging.getLogger(__name__)
 
 class CreditService:
     def __init__(
@@ -25,6 +30,26 @@ class CreditService:
         Pre-call check: Verifies if organization has sufficient credits to place a live call.
         """
         creds = await self.repo.get_or_create_org_credits(organization_id)
+
+        # Organizations on their own voice keys pay the vendor directly and are not charged credits.
+        # Missing/invalid keys or any lookup error never grants this exemption.
+        try:
+            profile = await resolve_voice_profile(organization_id, require_tts=False)
+            if profile.source == "own":
+                return {
+                    "allowed": True,
+                    "warning": False,
+                    "remaining_minutes": creds.remaining_minutes,
+                    "remaining_seconds": creds.remaining_credits_seconds,
+                    "is_credit_enforced": False,
+                    "credit_exhausted_action": creds.credit_exhausted_action,
+                    "status": creds.status,
+                    "reason": "Organization uses its own voice keys"
+                }
+        except VoiceCredentialsMissing:
+            pass
+        except Exception as exc:
+            logger.warning("credit pre-check: voice profile lookup failed (%s)", type(exc).__name__)
 
         if not creds.is_credit_enforced:
             return {
