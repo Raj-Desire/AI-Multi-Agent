@@ -365,6 +365,11 @@ export function Step3VoiceLanguage({
         if (lock) {
           setEngineLock(lock);
           setSelectedEngine(lock);
+          // A never-saved agent (no agent_id yet) still carries the factory Aura default; start it on the org's engine
+          // instead of showing a "voice unavailable" notice. Saved agents are never changed silently.
+          if (lock === "sonic" && !agentData.agent_id && initialEngine === "flux") {
+            handleEngineSwitch("sonic");
+          }
         }
       })
       .catch(() => {});

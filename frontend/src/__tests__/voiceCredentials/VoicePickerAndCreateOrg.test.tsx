@@ -53,11 +53,40 @@ describe("voice picker unavailable voice", () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
     voiceRoutes({ configured: true, tts_engine: "cartesia", credential_mode: "own", allow_org_edit: false, engine: slot(), tts: slot() });
     const setAgentData = vi.fn();
-    const agent: any = { voice: { voice: "flux-hannah-en", provider: "deepgram" }, language: "en" };
+    const agent: any = { agent_id: "agt_saved_1", voice: { voice: "flux-hannah-en", provider: "deepgram" }, language: "en" };
     render(<Step3VoiceLanguage agentData={agent} setAgentData={setAgentData} />);
     const notice = await screen.findByRole("status");
     expect(notice.textContent).toMatch(/not available for your organization's voice engine/i);
     expect(notice.textContent).toMatch(/default voice/i);
+    expect(setAgentData).not.toHaveBeenCalled();
+  });
+});
+
+describe("voice picker new agent in own-key org", () => {
+  it("a never-saved agent starts on the org's engine voice and shows no unavailable-voice notice", async () => {
+    fetchApi.mockReset();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
+    voiceRoutes({ configured: true, tts_engine: "cartesia", credential_mode: "own", allow_org_edit: false, engine: slot(), tts: slot() });
+    let latest: any = { agent_id: "", voice: { voice: "flux-hannah-en", provider: "deepgram" }, language: "en" };
+    const setAgentData = vi.fn((u: any) => { latest = typeof u === "function" ? u(latest) : u; });
+    const view = render(<Step3VoiceLanguage agentData={latest} setAgentData={setAgentData} />);
+    await waitFor(() => expect(setAgentData).toHaveBeenCalled());
+    expect(latest.voice.provider).toBe("cartesia");
+    expect(latest.voice.voice).not.toMatch(/^flux-/);
+    // the app re-renders with the updated agent: no unavailable-voice notice for it
+    view.rerender(<Step3VoiceLanguage agentData={latest} setAgentData={setAgentData} />);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("a never-saved agent in a legacy org keeps its default voice untouched", async () => {
+    fetchApi.mockReset();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
+    voiceRoutes({ configured: false, tts_engine: null, credential_mode: "platform", allow_org_edit: false, engine: slot(), tts: slot() });
+    const setAgentData = vi.fn();
+    const agent: any = { agent_id: "", voice: { voice: "flux-hannah-en", provider: "deepgram" }, language: "en" };
+    render(<Step3VoiceLanguage agentData={agent} setAgentData={setAgentData} />);
+    await waitFor(() => expect(fetchApi).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
     expect(setAgentData).not.toHaveBeenCalled();
   });
 });
