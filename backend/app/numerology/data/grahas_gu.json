@@ -1,0 +1,93 @@
+{
+  "version": "2026-11-24-draft",
+  "note": "Transcribed from the specialist's handwritten notes. Traits marked approved=false are unclear or may belong to another Graha and must be confirmed before use.",
+  "grahas": {
+    "1": {"graha": "સૂર્ય", "graha_en": "Sun", "theme_gu": "કારકિર્દી, સફળતા અને વ્યવસાય", "traits": [
+      {"id": "sun_1", "text_gu": "કોમ્યુનિકેશનમાં પ્રોબ્લેમ રહે", "approved": true},
+      {"id": "sun_2", "text_gu": "લીડરશીપ ક્વોલિટી ઓછી હોય", "approved": true},
+      {"id": "sun_3", "text_gu": "સેલ્ફ કોન્ફિડન્સ ઓછો હોય", "approved": true},
+      {"id": "sun_4", "text_gu": "ખુલીને વાત ન કરી શકતા હોય", "approved": true},
+      {"id": "sun_5", "text_gu": "ફ્લુએન્ટલી બોલી ન શકતા હોય", "approved": true}
+    ]},
+    "2": {"graha": "ચંદ્ર", "graha_en": "Moon", "theme_gu": "પતિ-પત્ની, સંબંધો અને ભાગીદારી", "traits": [
+      {"id": "moon_1", "text_gu": "પોતાની ભૂલમાંથી શીખી ન શકાય", "approved": true},
+      {"id": "moon_2", "text_gu": "ઇમોશનલ હોય છે", "approved": true},
+      {"id": "moon_3", "text_gu": "સેન્સિટિવ હોય છે", "approved": true},
+      {"id": "moon_4", "text_gu": "પાર્ટનરશીપમાં બિઝનેસ ન કરી શકે", "approved": true},
+      {"id": "moon_5", "text_gu": "વિચારે કંઈક અને કરે કંઈક", "approved": true},
+      {"id": "moon_6", "text_gu": "સંવેદનશીલ વ્યક્તિ હોય છે", "approved": true},
+      {"id": "moon_7", "text_gu": "બોનસ ઇશ્યૂ હોય છે", "approved": false, "needs_review": "handwriting unclear"}
+    ]},
+    "3": {"graha": "ગુરુ", "graha_en": "Jupiter", "theme_gu": "શાણપણ, કુટુંબ અને આરોગ્ય", "traits": [
+      {"id": "jup_1", "text_gu": "ક્રેડિટનો જશ ન મળે", "approved": true},
+      {"id": "jup_2", "text_gu": "ફેમિલી સપોર્ટ ઓછો મળે", "approved": true},
+      {"id": "jup_3", "text_gu": "પૈસા કમાવવામાં તકલીફ પડે", "approved": true},
+      {"id": "jup_4", "text_gu": "ગ્રોથ ન થઈ શકતો હોય", "approved": true, "needs_review": "Word file says job; handwriting reads growth"},
+      {"id": "jup_5", "text_gu": "શિસ્ત અને મેનેજમેન્ટમાં ઉણપ હોય", "approved": true},
+      {"id": "jup_6", "text_gu": "ઇમેજિનેશન પાવર ઓછી હોય", "approved": true}
+    ]},
+    "4": {"graha": "રાહુ", "graha_en": "Rahu", "theme_gu": "સંપત્તિ, નાણું અને ભાગ્ય", "traits": [
+      {"id": "rahu_1", "text_gu": "ગ્રોથ ન થઈ શકતો હોય", "approved": true, "needs_review": "Word file says job; handwriting reads growth"},
+      {"id": "rahu_2", "text_gu": "પૈસા ન બચે, પૈસા ક્યાં વપરાય છે તેની ખબર ન પડે", "approved": true},
+      {"id": "rahu_3", "text_gu": "ક્યારેક ભાગ્ય સાથ ન આપતું હોય એવું બને", "approved": true},
+      {"id": "rahu_4", "text_gu": "ઓવરથિંકિંગ કરતા હોય", "approved": true},
+      {"id": "rahu_5", "text_gu": "હાર્ડ વર્કિંગમાં ન માનતા હોય, આળસ બહુ આવે", "approved": true}
+    ]},
+    "5": {"graha": "બુધ", "graha_en": "Mercury", "theme_gu": "આરોગ્ય, સંતુલન અને સ્થિરતા", "traits": [
+      {"id": "merc_1", "text_gu": "ડિસિઝન લેવામાં બહુ તકલીફ થાય", "approved": true},
+      {"id": "merc_2", "text_gu": "લાઇફમાં સ્ટેબિલિટી ન આવે", "approved": true},
+      {"id": "merc_3", "text_gu": "હેલ્થ ઇશ્યૂઝ રહે", "approved": true},
+      {"id": "merc_4", "text_gu": "પૈસાનું મેનેજમેન્ટ ન કરી શકે", "approved": true},
+      {"id": "merc_5", "text_gu": "બીજાના ઉપર નિર્ભર રહે", "approved": true},
+      {"id": "merc_6", "text_gu": "લાઇફમાં મૂંઝવણ રહે", "approved": true}
+    ]},
+    "6": {"graha": "શુક્ર", "graha_en": "Venus", "theme_gu": "મિત્રો, પ્રવાસ અને શરૂઆત", "traits": [
+      {"id": "venus_1", "text_gu": "નવી કોઈપણ વસ્તુની શરૂઆત ન કરી શકો", "approved": true},
+      {"id": "venus_2", "text_gu": "વિદેશયોગમાં પ્રોબ્લેમ થાય", "approved": true},
+      {"id": "venus_3", "text_gu": "પૈસા ફસાઈ જાય", "approved": true},
+      {"id": "venus_4", "text_gu": "મિત્રોનો સપોર્ટ ઓછો મળે", "approved": true},
+      {"id": "venus_5", "text_gu": "લક્ઝરી વસ્તુઓનું આયોજન ન કરી શકો", "approved": true, "needs_review": "Word file reads the opposite"}
+    ]},
+    "7": {"graha": "કેતુ", "graha_en": "Ketu", "theme_gu": "સર્જનાત્મકતા, બાળકો અને યોજના", "traits": [
+      {"id": "ketu_1", "text_gu": "સ્ટ્રગલ વધારે હોય", "approved": true},
+      {"id": "ketu_2", "text_gu": "મહેનત કરો એ પ્રમાણે સફળતા ન મળે", "approved": true, "needs_review": "Word file reads the opposite"},
+      {"id": "ketu_3", "text_gu": "ક્રિએટિવ ન હોય", "approved": true},
+      {"id": "ketu_4", "text_gu": "આધ્યાત્મિકતામાં ઓછો રસ હોય", "approved": true}
+    ]},
+    "8": {"graha": "શનિ", "graha_en": "Saturn", "theme_gu": "અંતઃસ્તર અને ચાલકબળ", "theme_needs_review": true, "traits": [
+      {"id": "sat_1", "text_gu": "80% થી 90% કામ આવીને અટકી જાય", "approved": true},
+      {"id": "sat_2", "text_gu": "ગવર્નમેન્ટ જોબમાં ઇશ્યૂ થાય", "approved": true},
+      {"id": "sat_3", "text_gu": "વાંચેલું બહુ યાદ ન રહે", "approved": true},
+      {"id": "sat_4", "text_gu": "જાતે ન શીખી શકાય, બીજા સમજાવે તો સમજી જવાય", "approved": true},
+      {"id": "sat_5", "text_gu": "ડિસિપ્લિનમાં ન રહે", "approved": true},
+      {"id": "sat_6", "text_gu": "લોકોને જજ ન કરી શકે", "approved": true}
+    ]},
+    "9": {"graha": "મંગળ", "graha_en": "Mars", "theme_gu": "પ્રતિષ્ઠા, સમૃદ્ધિ અને રોશની", "incomplete": true, "traits": [
+      {"id": "mars_1", "text_gu": "ગ્રોથ ન થઈ શકતો હોય", "approved": true, "needs_review": "first line of page 2"},
+      {"id": "mars_2", "text_gu": "મનમાં ક્રોધ બહુ આવે", "approved": false, "needs_review": "may belong to Mars or Saturn"},
+      {"id": "mars_3", "text_gu": "આંતરિક વિરોધાભાસ હોઈ શકે છે", "approved": false, "needs_review": "may belong to Mars or Saturn"},
+      {"id": "mars_4", "text_gu": "એંગરનેસ બહુ હોય છે", "approved": false, "needs_review": "may belong to Mars or Saturn"}
+    ]}
+  },
+  "combos": {
+    "enabled": false,
+    "note": "Present-number meanings. Stored for later; not used in v1.",
+    "items": {
+      "77": "લવ મેરેજ કરે, ફોરેનથી ઇન્કમ આવતી હોય",
+      "666": "લક્ઝરી વસ્તુઓમાં પૈસા બહુ ખર્ચ",
+      "22": "ઇમોશનલ હોય, જમીન ખરીદી શકે, જોઇન્ટ પેઇન ઇશ્યૂઝ હોય",
+      "55": "ઓવર કોન્ફિડન્સમાં રહેતા હોય",
+      "555": "કોન્ફિડન્સ ઝીરો હોય",
+      "88": "જજ કરે, બધાને જીદ હોય",
+      "33": "ડેઇલી ઇન્કમ આવતી હોય",
+      "99": "એનર્જી લેવલ હાઈ, ટેકનિકલ માઇન્ડ",
+      "999": "ઇન્વેસ્ટમેન્ટ કરે",
+      "44": "સેવિંગ સારું કરે, Money with travel",
+      "444": "બિઝનેસ સેટ ન થતો હોય, લગભગ 42 વર્ષ સુધી સ્ટ્રગલ",
+      "4&7": "Travelling, bed habits",
+      "1&7": "Good researcher, search hidden truth, numero study",
+      "9&7": "Positive, strong, spirituality with logic",
+      "1&3": "Value in time, perfectionist, જૂઠું બોલે"
+    }
+  }
+}

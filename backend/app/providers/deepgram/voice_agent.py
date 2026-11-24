@@ -76,6 +76,7 @@ class DeepgramVoiceAgentClient:
         self._audio_received_event = asyncio.Event()
         self._knowledge_scope: Optional[Dict[str, Any]] = None
         self._function_tasks: set = set()
+        self._numerology_state: Dict[str, Any] = {}
 
     @property
     def is_ready(self) -> bool:
@@ -345,7 +346,10 @@ class DeepgramVoiceAgentClient:
                 continue
             name = fn.get("name")
             call_id = fn.get("id")
-            if name != "search_knowledge":
+            from app.numerology.tools import FUNCTION_NAMES as NUMEROLOGY_FUNCTION_NAMES, run_function
+            if name in NUMEROLOGY_FUNCTION_NAMES:
+                content = run_function(name, fn.get("arguments"), self._numerology_state)
+            elif name != "search_knowledge":
                 content = "Unknown function."
             else:
                 content = await self._run_knowledge_search(fn.get("arguments"))

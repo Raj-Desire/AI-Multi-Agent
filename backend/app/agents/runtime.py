@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, List
 from app.agents.configuration import AgentConfiguration
 from app.agents.prompt_builder import VoicePromptBuilder
 from app.voice.language_support import resolve_multilingual
+from app.numerology.tools import AGENT_SCOPE as NUMEROLOGY_SCOPE, NUMEROLOGY_FUNCTIONS
 from app.models.voice_credentials import ResolvedVoiceProfile
 from app.voice_stack.registry import build_speak_provider
 from app.voice.language_switcher import sonic_language_mode
@@ -274,7 +275,10 @@ class AgentRuntimeBuilder:
             provider=think_provider,
             endpoint=think_endpoint_obj,
             prompt=system_prompt,
-            functions=[SEARCH_KNOWLEDGE_FUNCTION] if knowledge_scope else []
+            functions=(
+                ([SEARCH_KNOWLEDGE_FUNCTION] if knowledge_scope else [])
+                + (NUMEROLOGY_FUNCTIONS if config.agent_entity_scope == NUMEROLOGY_SCOPE else [])
+            )
         )
 
         # 4. Speak configuration (TTS - Flux vs Sonic), per engine and the org's key
