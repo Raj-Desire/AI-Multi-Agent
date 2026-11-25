@@ -20,7 +20,17 @@ METHOD = "lo_shu_v1"
 GRID = [[4, 9, 2], [3, 5, 7], [8, 1, 6]]
 MIN_YEAR = 1900
 
-_DOB = re.compile(r"^\s*(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{4})\s*$")
+_DOB = re.compile(r"^\s*(\d{1,2})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{2}|\d{4})\s*$")
+
+
+def resolve_year(text: str) -> int:
+    """Four digits are used as given. Two digits are placed in a century: up to this year's last two digits
+    means 20xx (05 -> 2005, 26 -> 2026), anything above means 19xx (93 -> 1993, 50 -> 1950, 79 -> 1979).
+    A birth date can never be in the future, so 27 and above can only be 19xx."""
+    year = int(text)
+    if len(text) == 4:
+        return year
+    return 2000 + year if year <= date.today().year % 100 else 1900 + year
 
 
 class NumerologyResult(BaseModel):
@@ -55,12 +65,18 @@ def parse_dob(dob: str) -> date:
     match = _DOB.match(dob or "")
     if not match:
         raise ValueError("Date of birth must look like DD/MM/YYYY")
-    day, month, year = (int(g) for g in match.groups())
+    day, month = int(match.group(1)), int(match.group(2))
+    year = resolve_year(match.group(3))
     try:
         parsed = date(year, month, day)
     except ValueError as exc:
         raise ValueError("That is not a real calendar date") from exc
-    if year < MIN_YEAR or parsed > date.today():
+    if parsed > date.today():
+        raise ValueError(
+            "That date is in the future. If the caller said a year like nineteen-hundred-and-something, "
+            "it is a 19xx year; ask them to repeat the year"
+        )
+    if year < MIN_YEAR:
         raise ValueError("Date of birth is outside the supported range")
     return parsed
 

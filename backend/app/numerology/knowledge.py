@@ -47,11 +47,16 @@ def pick_traits(
     exclude_ids: Set[str],
     count: int = 2,
     rng: Optional[random.Random] = None,
+    exclude_texts: Optional[Set[str]] = None,
 ) -> List[Trait]:
-    """Random approved traits for a Graha, never one in `exclude_ids`."""
+    """Random approved traits for a Graha, never one in `exclude_ids` or with a sentence in `exclude_texts`.
+
+    The same sentence can belong to more than one Graha in the source notes, so the text is tracked too.
+    """
+    skip_texts = exclude_texts or set()
     pool = [
         Trait(id=t["id"], text_gu=t["text_gu"])
         for t in _load()["grahas"][str(number)]["traits"]
-        if t.get("approved") and t["id"] not in exclude_ids
+        if t.get("approved") and t["id"] not in exclude_ids and t["text_gu"] not in skip_texts
     ]
     return (rng or random).sample(pool, min(count, len(pool)))

@@ -6,22 +6,34 @@ Error texts stay vendor-neutral because the model may repeat them to the caller.
 import json
 from typing import Any, Dict
 
-from app.numerology import knowledge
+from app.numerology import knowledge, spoken_date
 from app.numerology.engine import calculate
 
 AGENT_SCOPE = "numerology_consultation"
 
 NUMEROLOGY_FUNCTIONS = [
     {
-        "name": "calculate_numerology",
+        "name": "parse_birth_date",
         "description": (
-            "Calculate the present and missing numbers for a date of birth. Call it ONLY after the caller has "
-            "confirmed the date. Never do this arithmetic yourself."
+            "Understand the date of birth the caller says. Call it every time the caller says anything about their "
+            "date of birth, even one part of it, with their exact words as heard. Say ONLY the text in the 'say' "
+            "field of the result, word for word. Never work out a day, month or year yourself."
         ),
         "parameters": {
             "type": "object",
-            "properties": {"dob": {"type": "string", "description": "Confirmed date of birth as DD/MM/YYYY"}},
-            "required": ["dob"],
+            "properties": {"spoken": {"type": "string", "description": "The caller's exact words about the date"}},
+            "required": ["spoken"],
+        },
+    },
+    {
+        "name": "calculate_numerology",
+        "description": (
+            "Calculate the present and missing numbers. Call it ONLY after parse_birth_date returned status "
+            "'confirm' and the caller said yes. It uses the confirmed date; never do this arithmetic yourself."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"dob": {"type": "string", "description": "Optional. The confirmed date as DD/MM/YYYY"}},
         },
     },
     {
@@ -50,18 +62,26 @@ def _args(raw: Any) -> Dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def run_parse_date(raw_args: Any, state: Dict[str, Any]) -> str:
+    return json.dumps(spoken_date.understand(str(_args(raw_args).get("spoken", "")), state), ensure_ascii=False)
+
+
 def run_calculate(raw_args: Any, state: Dict[str, Any]) -> str:
+    status = state.get("dob_status")
+    if status not in (None, "confirm", "done"):
+        return "The date of birth is not confirmed yet. Use parse_birth_date and read its 'say' text to the caller first."
+    # The date the code understood and read back wins over anything the model typed in.
+    dob = state.get("confirmed_dob") or str(_args(raw_args).get("dob", ""))
     try:
-        result = calculate(str(_args(raw_args).get("dob", "")))
+        result = calculate(dob)
     except ValueError as exc:
         return f"The date could not be used: {exc}. Ask the caller to say it again."
     state["result"] = result
+    state["dob_status"] = "done"
     state.setdefault("used", set())
-    return json.dumps(
-        # Only Graha names go to the model: no numbers and no themes, so it can speak only approved traits.
-        {"dob": result.dob, "weak_grahas": [knowledge.graha_name(n) for n in result.missing]},
-        ensure_ascii=False,
-    )
+    # Only Graha names go to the model: no numbers and no themes, so it can speak only approved traits.
+    out: Dict[str, Any] = {"dob": result.dob, "weak_grahas": [knowledge.graha_name(n) for n in result.missing]}
+    return json.dumps(out, ensure_ascii=False)
 
 
 def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
@@ -74,10 +94,12 @@ def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
     if number not in result.missing:
         return "That number is present in the chart, and there is no approved note for it. Offer the specialist."
     used = state.setdefault("used", set())
-    traits = knowledge.pick_traits(number, used)
+    used_texts = state.setdefault("used_texts", set())
+    traits = knowledge.pick_traits(number, used, exclude_texts=used_texts)
     if not traits:
         return "There are no more approved traits for this Graha. Offer the specialist for a detailed reading."
     used.update(t.id for t in traits)
+    used_texts.update(t.text_gu for t in traits)
     return json.dumps(
         {"graha": knowledge.graha_name(number), "traits": [t.text_gu for t in traits]},
         ensure_ascii=False,
@@ -85,6 +107,8 @@ def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
 
 
 def run_function(name: str, raw_args: Any, state: Dict[str, Any]) -> str:
+    if name == "parse_birth_date":
+        return run_parse_date(raw_args, state)
     if name == "calculate_numerology":
         return run_calculate(raw_args, state)
     if name == "get_graha_traits":
