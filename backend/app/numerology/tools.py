@@ -6,7 +6,7 @@ Error texts stay vendor-neutral because the model may repeat them to the caller.
 import json
 from typing import Any, Dict
 
-from app.numerology import knowledge, spoken_date
+from app.numerology import knowledge, phone, spoken_date
 from app.numerology.engine import calculate
 
 AGENT_SCOPE = "numerology_consultation"
@@ -22,6 +22,19 @@ NUMEROLOGY_FUNCTIONS = [
         "parameters": {
             "type": "object",
             "properties": {"spoken": {"type": "string", "description": "The caller's exact words about the date"}},
+            "required": ["spoken"],
+        },
+    },
+    {
+        "name": "capture_phone_number",
+        "description": (
+            "Understand the phone number the caller says. Call it every time the caller says any digits of their "
+            "phone number, with their exact words as heard. Say ONLY the text in the 'say' field, word for word. "
+            "Never turn number words into digits yourself. When the status is 'confirm', wait for the caller's yes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"spoken": {"type": "string", "description": "The caller's exact words about the number"}},
             "required": ["spoken"],
         },
     },
@@ -44,7 +57,10 @@ NUMEROLOGY_FUNCTIONS = [
         ),
         "parameters": {
             "type": "object",
-            "properties": {"graha": {"type": "string", "description": "Graha name, e.g. શનિ or Saturn"}},
+            "properties": {
+                "graha": {"type": "string", "description": "Graha name, e.g. શનિ or Saturn"},
+                "count": {"type": "integer", "description": "How many traits to get (1 or 2). Default 2."},
+            },
             "required": ["graha"],
         },
     },
@@ -84,6 +100,13 @@ def run_calculate(raw_args: Any, state: Dict[str, Any]) -> str:
     return json.dumps(out, ensure_ascii=False)
 
 
+def _count(raw_args: Any) -> int:
+    try:
+        return max(1, min(2, int(_args(raw_args).get("count", 2))))
+    except (TypeError, ValueError):
+        return 2
+
+
 def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
     result = state.get("result")
     if result is None:
@@ -95,7 +118,7 @@ def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
         return "That number is present in the chart, and there is no approved note for it. Offer the specialist."
     used = state.setdefault("used", set())
     used_texts = state.setdefault("used_texts", set())
-    traits = knowledge.pick_traits(number, used, exclude_texts=used_texts)
+    traits = knowledge.pick_traits(number, used, count=_count(raw_args), exclude_texts=used_texts)
     if not traits:
         return "There are no more approved traits for this Graha. Offer the specialist for a detailed reading."
     used.update(t.id for t in traits)
@@ -109,6 +132,8 @@ def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
 def run_function(name: str, raw_args: Any, state: Dict[str, Any]) -> str:
     if name == "parse_birth_date":
         return run_parse_date(raw_args, state)
+    if name == "capture_phone_number":
+        return json.dumps(phone.capture(str(_args(raw_args).get("spoken", "")), state), ensure_ascii=False)
     if name == "calculate_numerology":
         return run_calculate(raw_args, state)
     if name == "get_graha_traits":

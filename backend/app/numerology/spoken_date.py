@@ -77,7 +77,7 @@ _NUMBER_WORDS: Dict[int, Tuple[str, ...]] = {
     57: ("સત્તાવન",),
     58: ("અઠ્ઠાવન", "અઠાવન", "અઠ્યાવન"),
     59: ("ઓગણસાઠ",),
-    60: ("સાઠ",),
+    60: ("સાઠ", "સાઈઠ", "સાઇઠ"),
     61: ("એકસઠ",),
     62: ("બાસઠ",),
     63: ("ત્રેસઠ",),
@@ -164,6 +164,14 @@ _ENGLISH_UNITS = {
 }
 _OGAN = ("ઓગણ", "ઓગણા")  # "one less than": ઓગણ + એંશી = 79
 
+# "બે મહિનો" = month two, "બાવીસ તારીખ" = day twenty-two: the word next to a number says what the number is.
+_MONTH_WORDS = ("મહિનો", "મહીનો", "મહિના", "મહીના", "મહિને", "મહીને")
+_ORDINALS = {
+    "પહેલા": 1, "પહેલો": 1, "પહેલી": 1, "બીજા": 2, "બીજો": 2, "બીજી": 2, "ત્રીજા": 3, "ત્રીજો": 3, "ત્રીજી": 3,
+    "ચોથા": 4, "ચોથો": 4, "ચોથી": 4, "પાંચમા": 5, "પાંચમો": 5, "છઠ્ઠા": 6, "સાતમા": 7, "આઠમા": 8, "નવમા": 9,
+    "દસમા": 10, "અગિયારમા": 11, "બારમા": 12,
+}
+
 _GUJARATI_DIGITS = str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")
 
 _MONTH_NAMES = {m: words[0] for m, words in _MONTHS.items() if words}
@@ -200,7 +208,7 @@ _FUZZY_CUTOFF = 0.82
 
 
 # Endings the caller glues onto a word ("જૂનમાં" = in June, "ચુમ્માલીસમાં" = in forty-four).
-_SUFFIXES = ("માં", "ની", "નો", "ના", "ને", "થી", "નું")
+_SUFFIXES = ("માં", "મા", "ની", "નો", "ના", "ને", "થી", "નું")
 
 
 def _classify(token: str) -> Optional[Tuple[str, int]]:
@@ -257,11 +265,20 @@ def _groups(text: str) -> List[Tuple[str, int]]:
             elif len(token) <= 2:
                 items.append(("num", int(token)))
             continue
+        if token.startswith("તારીખ"):
+            items.append(("dword", 0))
+            continue
+        if any(token.startswith(w) for w in _MONTH_WORDS):
+            items.append(("mword", 0))
+            continue
+        if token in _ORDINALS:
+            items.append(("ord", _ORDINALS[token]))
+            continue
         kind = _classify(token)
         if kind:
             items.append(kind)
 
-    items = _merge_digit_runs(_merge_words(items))
+    items = _merge_digit_runs(_label_numbers(_merge_words(items)))
     out: List[Tuple[str, int]] = []
     i = 0
     n = len(items)
@@ -289,12 +306,39 @@ def _groups(text: str) -> List[Tuple[str, int]]:
                 i += 1
             else:
                 out.append(("base", base))
-        elif kind in ("num", "month", "year", "neg", "full"):
+        elif kind in ("num", "month", "mnum", "dnum", "year", "neg", "full"):
             out.append((kind, value))
         elif kind == "hword" and nxt and nxt[0] == "num":
             out.append(("year", 1000 + value + nxt[1]))
             i += 1
         i += 1
+    return out
+
+
+def _label_numbers(items: List[Tuple[str, int]]) -> List[Tuple[str, int]]:
+    """A number beside the word "મહિનો" is the month, beside "તારીખ" the day ("બે મહિનો", "તારીખ પાંચ")."""
+    out: List[Tuple[str, int]] = []
+    n = len(items)
+    used = set()  # a label word belongs to one number only
+    for i, (kind, value) in enumerate(items):
+        if kind in ("num", "ord"):
+            following = items[i + 1][0] if i + 1 < n else None
+            label = None
+            if following in ("mword", "dword") and (i + 1) not in used:
+                label, used = following, used | {i + 1}
+            elif following not in ("thousand", "hmult") and i > 0 and items[i - 1][0] in ("mword", "dword") and (i - 1) not in used:
+                label, used = items[i - 1][0], used | {i - 1}
+            if label == "mword" and 1 <= value <= 12:
+                out.append(("mnum", value))
+                continue
+            if label == "dword" and 1 <= value <= 31 and kind == "num":
+                out.append(("dnum", value))
+                continue
+            if kind == "ord":
+                continue  # an ordinal anywhere else is just a word
+        if kind in ("mword", "dword"):
+            continue
+        out.append((kind, value))
     return out
 
 
@@ -405,6 +449,10 @@ def _apply(groups: List[Tuple[str, int]], parts: Dict[str, Optional[int]], can_r
             parts["year"], parts["base"] = value % 10_000, None
         elif kind == "month":
             parts["month"] = value
+        elif kind == "mnum":
+            parts["month"] = value
+        elif kind == "dnum":
+            parts["day"] = value
         elif kind == "year":
             parts["year"], parts["base"] = value, None
         elif kind == "base":
@@ -463,10 +511,10 @@ def understand(spoken: str, state: Dict[str, Any]) -> Dict[str, str]:
     """
     parts = state.setdefault("dob_parts", _new_parts())
     groups = _groups(spoken)
-    has_data = any(k in ("num", "month", "year", "base", "full") for k, _ in groups)
+    has_data = any(k in ("num", "month", "mnum", "dnum", "year", "base", "full") for k, _ in groups)
     negative = any(k == "neg" for k, _ in groups)
 
-    month_at = [i for i, (k, _) in enumerate(groups) if k == "month"]
+    month_at = [i for i, (k, _) in enumerate(groups) if k == "month"]  # named months only
     if len(month_at) >= 2:
         # Two dates in one breath ("today is ... my birth date is ..."): the last one is the date of birth.
         last = month_at[-1]
