@@ -172,6 +172,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     applyThemeToCss(theme, userPreferences);
   }, [theme, userPreferences]);
 
+  // Follow OS light/dark changes while "system" is selected
+  useEffect(() => {
+    if (userPreferences.color_mode !== "system" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applyThemeToCss(theme, userPreferences);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [theme, userPreferences]);
+
   const updateDraftTheme = (updater: (prev: OrganizationThemeConfig) => OrganizationThemeConfig) => {
     setDraftTheme((prev) => updater(prev));
   };

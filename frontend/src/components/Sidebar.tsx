@@ -13,9 +13,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Sun,
-  Moon,
-  Laptop,
   AlertTriangle,
   Megaphone,
   Building2,
@@ -146,15 +143,8 @@ export function Sidebar({
   onToggleCollapse,
 }: SidebarProps) {
   const { user, isAdmin, isSuperAdmin, logout } = useAuth();
-  const { draftTheme, userPreferences, setUserPreferences } = useTheme();
+  const { draftTheme } = useTheme();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-
-  const toggleColorMode = () => {
-    const modes: ("system" | "light" | "dark")[] = ["light", "dark", "system"];
-    const currentIdx = modes.indexOf(userPreferences.color_mode);
-    const nextMode = modes[(currentIdx + 1) % modes.length];
-    setUserPreferences({ color_mode: nextMode });
-  };
 
   const navGroups: NavGroup[] = [
     {
@@ -405,31 +395,6 @@ export function Sidebar({
 
       {/* Footer Profile & Utilities */}
       <div className="p-2 border-t border-[var(--color-border)] space-y-1.5 bg-[var(--color-surface-muted)]/30 shrink-0">
-        {/* Color Mode Switcher */}
-        <button
-          type="button"
-          onClick={toggleColorMode}
-          title={`Theme: ${userPreferences.color_mode} (click to toggle)`}
-          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-main,0.375rem)] text-xs text-[var(--color-muted)] hover:text-[var(--color-heading)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer"
-        >
-          {userPreferences.color_mode === "light" ? (
-            <>
-              <Sun className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              {!collapsed && <span className="capitalize text-xs">Light</span>}
-            </>
-          ) : userPreferences.color_mode === "dark" ? (
-            <>
-              <Moon className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-              {!collapsed && <span className="capitalize text-xs">Dark</span>}
-            </>
-          ) : (
-            <>
-              <Laptop className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              {!collapsed && <span className="capitalize text-xs">System</span>}
-            </>
-          )}
-        </button>
-
         {/* User Card */}
         <div
           className={`flex items-center gap-2 p-1.5 rounded-[var(--radius-main,0.375rem)] ${

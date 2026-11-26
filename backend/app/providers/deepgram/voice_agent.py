@@ -11,6 +11,7 @@ import os
 import time
 from typing import Optional, Callable, Dict, Any, Awaitable
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from app.providers.deepgram.configuration import (
     DeepgramSettingsConfiguration,
@@ -77,6 +78,10 @@ class DeepgramVoiceAgentClient:
         self._knowledge_scope: Optional[Dict[str, Any]] = None
         self._function_tasks: set = set()
         self._numerology_state: Dict[str, Any] = {}
+
+    @property
+    def numerology_state(self) -> Dict[str, Any]:
+        return self._numerology_state
 
     @property
     def is_ready(self) -> bool:
@@ -340,20 +345,26 @@ class DeepgramVoiceAgentClient:
             return False
 
     async def _handle_function_call_request(self, data: Dict[str, Any]):
-        """Answers client-side function calls (knowledge search) with a FunctionCallResponse."""
+        """Answers client-side function calls with a FunctionCallResponse. A reply is ALWAYS sent, even when the function
+        fails: the voice engine waits for it, and without one the caller hears nothing for the rest of the call."""
         for fn in data.get("functions") or []:
             if not fn.get("client_side", True):
                 continue
             name = fn.get("name")
             call_id = fn.get("id")
-            from app.numerology.tools import FUNCTION_NAMES as NUMEROLOGY_FUNCTION_NAMES, run_function
-            if name in NUMEROLOGY_FUNCTION_NAMES:
-                content = run_function(name, fn.get("arguments"), self._numerology_state)
-            elif name != "search_knowledge":
-                content = "Unknown function."
-            else:
-                content = await self._run_knowledge_search(fn.get("arguments"))
+            try:
+                from app.numerology.tools import FUNCTION_NAMES as NUMEROLOGY_FUNCTION_NAMES, run_function
+                if name in NUMEROLOGY_FUNCTION_NAMES:
+                    content = run_function(name, fn.get("arguments"), self._numerology_state)
+                elif name != "search_knowledge":
+                    content = "Unknown function."
+                else:
+                    content = await self._run_knowledge_search(fn.get("arguments"))
+            except Exception as e:
+                logger.exception(f"[VoiceEngine] Function '{name}' failed: {e}")
+                content = "That could not be done just now. Say a short polite line and ask the caller to repeat."
             if not self._ws or not self._is_connected:
+                logger.error(f"[VoiceEngine] Function '{name}' finished but the voice engine connection is gone.")
                 return
             try:
                 await self._ws.send(json.dumps({
@@ -494,8 +505,13 @@ class DeepgramVoiceAgentClient:
                     warn_msg = data.get("message") or data.get("description") or data.get("warning") or data.get("warn") or str(data)
                     logger.warning(f"Deepgram Warning event: {warn_msg} | Full payload: {data}")
 
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed as closed:
             logger.info("Deepgram WebSocket connection closed.")
+            if not self._closed_event.is_set():
+                # Nobody asked for this: the caller would hear silence from now on, so make it visible.
+                logger.error(f"[VoiceEngine] Connection closed unexpectedly mid-call: {closed}")
+                if self.on_error:
+                    await self.on_error(f"Voice engine connection closed unexpectedly: {closed}")
         except asyncio.CancelledError:
             pass
         except Exception as e:

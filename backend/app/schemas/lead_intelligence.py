@@ -183,6 +183,7 @@ class LeadDetailResponse(BaseModel):
     customer_questions: List[str] = Field(default_factory=list)
     objections: List[str] = Field(default_factory=list)
     important_info: Optional[str] = None
+    call_details: List[Dict[str, str]] = Field(default_factory=list)  # facts the agent captured, e.g. date of birth
     next_action: Optional[str] = None
     callback_datetime: Optional[str] = None
     agent_id: Optional[str] = None

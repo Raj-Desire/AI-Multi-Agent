@@ -396,6 +396,21 @@ export function LeadDetailDrawer({
                     </div>
                   </div>
 
+                  {/* Details the agent captured on the call (e.g. date of birth and missing Grahas) */}
+                  {detail.call_details && detail.call_details.length > 0 && (
+                    <div className="p-4 rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">
+                      <h4 className="font-bold text-xs text-[var(--color-heading)]">Details captured on the call</h4>
+                      <dl className="space-y-2 text-xs">
+                        {detail.call_details.map((item, i) => (
+                          <div key={i} className="p-2 rounded bg-[var(--color-background)]/50 border border-[var(--color-border)]/40">
+                            <dt className="text-[10px] text-[var(--color-muted)]">{item.label}</dt>
+                            <dd className="font-semibold text-[var(--color-heading)] mt-0.5 break-words">{item.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
+
                   {/* Key Requirements */}
                   {detail.key_requirements && detail.key_requirements.length > 0 && (
                     <div className="p-4 rounded-[var(--radius-main,0.5rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">

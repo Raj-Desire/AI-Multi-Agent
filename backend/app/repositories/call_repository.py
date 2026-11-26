@@ -41,7 +41,7 @@ _ANALYTICS_COLUMNS = (
     "c.id, c.organization_id, c.user_id, c.prospect_id, c.campaign_id, c.twilio_configuration_id, c.call_sid, c.provider, "
     "c.session_id, c.call_session_id, c.from_number, c.to_number, c.duration, c.status, c.agent_id, "
     "c.agent_version, c.agent_name, c.agent_scope, c.outcome, c.business_outcome, c.summary, c.key_insights, "
-    "c.key_requirements, c.customer_questions, c.objections, c.important_info, c.intent, c.sentiment, "
+    "c.key_requirements, c.customer_questions, c.objections, c.important_info, c.call_details, c.intent, c.sentiment, "
     "c.lead_score, c.interest_level, c.classification, c.callback_datetime, c.next_action, c.analytics, "
     "c.analytics_status, c.tts_engine, c.credential_source, c.billed_to, c.is_test, c.created_at, c.updated_at, ARRAY_LENGTH(c.transcript) AS transcript_turns"
 )

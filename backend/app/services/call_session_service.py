@@ -313,6 +313,7 @@ class CallSessionService:
             call_doc.customer_questions = analytics_data.get("customer_questions") or existing_call.customer_questions
             call_doc.objections = analytics_data.get("objections") or existing_call.objections
             call_doc.important_info = analytics_data.get("important_info") or existing_call.important_info
+            call_doc.call_details = session.call_details or existing_call.call_details
             call_doc.next_action = analytics_data.get("next_action") or existing_call.next_action
             call_doc.intent = analytics_data.get("intent") or existing_call.intent
             call_doc.sentiment = analytics_data.get("sentiment") or existing_call.sentiment
@@ -365,6 +366,7 @@ class CallSessionService:
                 customer_questions=analytics_data.get("customer_questions"),
                 objections=analytics_data.get("objections"),
                 important_info=analytics_data.get("important_info"),
+                call_details=session.call_details or None,
                 next_action=analytics_data.get("next_action"),
                 intent=analytics_data.get("intent"),
                 sentiment=analytics_data.get("sentiment"),

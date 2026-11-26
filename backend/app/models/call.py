@@ -47,6 +47,7 @@ class Call(BaseModel):
     customer_questions: Optional[List[str]] = None
     objections: Optional[List[str]] = None
     important_info: Optional[str] = None
+    call_details: Optional[List[Dict[str, str]]] = None  # facts the agent captured on the call, as {label, value}
     next_action: Optional[str] = None
     intent: Optional[str] = None
     sentiment: Optional[str] = None

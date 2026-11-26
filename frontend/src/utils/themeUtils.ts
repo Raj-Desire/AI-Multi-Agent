@@ -491,6 +491,15 @@ export function shuffleColors(currentBase = "#4f46e5"): ThemeColors {
 // 4. CSS Variable Injection Engine
 // ==========================================
 
+function resolveEffectiveMode(userMode?: string, orgMode?: string): "light" | "dark" {
+  const mode = userMode === "light" || userMode === "dark" ? userMode : userMode === "system" ? "system" : orgMode;
+  if (mode === "dark") return "dark";
+  if (mode === "system") {
+    return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  return "light";
+}
+
 export function applyThemeToCss(
   theme: OrganizationThemeConfig,
   userPrefs?: UserPreferences
@@ -500,12 +509,7 @@ export function applyThemeToCss(
   const appearance = theme.appearance;
   const typography = theme.typography;
 
-  const effectiveMode =
-    userPrefs?.color_mode === "dark"
-      ? "dark"
-      : appearance.color_mode === "dark"
-      ? "dark"
-      : "light";
+  const effectiveMode = resolveEffectiveMode(userPrefs?.color_mode, appearance.color_mode);
 
   const isDark = effectiveMode === "dark";
   const effectiveDensity = userPrefs?.ui_density || appearance.ui_density || "comfortable";
@@ -622,12 +626,7 @@ export function getThemeCssVariables(
   const appearance = theme.appearance;
   const typography = theme.typography;
 
-  const effectiveMode =
-    userPrefs?.color_mode === "dark"
-      ? "dark"
-      : appearance.color_mode === "dark"
-      ? "dark"
-      : "light";
+  const effectiveMode = resolveEffectiveMode(userPrefs?.color_mode, appearance.color_mode);
 
   const isDark = effectiveMode === "dark";
   const effectiveDensity = userPrefs?.ui_density || appearance.ui_density || "comfortable";

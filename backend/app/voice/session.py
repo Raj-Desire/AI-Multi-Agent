@@ -94,6 +94,9 @@ class CallSession(BaseModel):
     avg_turn_latency_ms: float = 0.0
     outcome: Optional[str] = None
 
+    # Facts the agent worked out on the call for the follow-up team, as [{"label", "value"}] (e.g. date of birth)
+    call_details: List[Dict[str, str]] = Field(default_factory=list)
+
     # Error Tracking
     last_error: Optional[str] = None
     error_type: Optional[str] = None

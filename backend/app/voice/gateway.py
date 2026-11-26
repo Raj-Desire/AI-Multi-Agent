@@ -61,6 +61,8 @@ call_repo = CallRepository()
 call_session_service = CallSessionService(call_repo)
 twilio_repo = TwilioRepository()
 
+ENGINE_LOST_GRACE_SECONDS = 4.0  # how long the voice engine may be gone before the call is ended
+
 
 @router.websocket("/voice/stream")
 async def voice_stream_websocket(websocket: WebSocket):
@@ -122,6 +124,8 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
     thinking_filler_task: Optional[asyncio.Task] = None
     barge_in_debounce_task: Optional[asyncio.Task] = None
     caller_farewell_at: Optional[float] = None
+    engine_ready_seen: bool = False  # the voice engine has been connected at some point in this call
+    engine_lost_since: Optional[float] = None  # when it stopped being connected
 
     # Multi-Agent Orchestrator runtime state
     orchestrator: Optional[AgentOrchestrator] = None
@@ -725,7 +729,10 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         # "I'm good" answering "how are you today?" is a friendly reply, not a refusal, whatever the model says
         from app.api.v1.voice import is_wellbeing_answer
         friendly = is_wellbeing_answer(latest_text, last_agent_line, turn_counter)
-        should_end = bool(verdict) and (verdict.is_machine or (verdict.wants_to_end and not is_question and not friendly))
+        from app.numerology.guard import is_plain_answer
+        # A short answer to the agent's question (a date, a number) is never a voicemail, whatever the model says.
+        machine = bool(verdict) and verdict.is_machine and not is_plain_answer(agent_config, latest_text)
+        should_end = bool(verdict) and (machine or (verdict.wants_to_end and not is_question and not friendly))
         if not is_concluding_call and not should_end:
             # The model's verdict wins: it knows Hindi that a Gujarati-tuned recognizer wrote in Gujarati script.
             verdict_lang = verdict.language if verdict and verdict.language else None
@@ -737,7 +744,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             return
         is_concluding_call = True
         from app.api.v1.voice import detect_caller_farewell
-        if verdict.is_machine:
+        if machine:
             reason = "IVR_DETECTED (LLM_MACHINE)"
         elif detect_caller_farewell(latest_text):
             reason = "CALLER_ENDED"  # a polite goodbye (even after a booking) is not a refusal; the analysis decides the outcome
@@ -820,17 +827,41 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         except Exception:
             pass
 
+    async def handle_engine_error(message: str):
+        """The voice engine reported a problem (or its connection dropped): keep the reason with the call record."""
+        logger.error(f"[VoiceGateway] Voice engine problem: {message}")
+        if session:
+            session.last_error = f"Voice engine: {message}"[:500]
+
     async def call_lifecycle_monitor():
         """
         Monitors Silence Timeout (2-Stage Recovery: Reprompt -> Conclude & End)
         and Dynamic Maximum Call Duration (180s active vs 60s silent).
         """
         nonlocal is_concluding_call, has_reprompted_silence, reprompt_injected_at, last_agent_speech_done_time, last_user_speech_time, is_agent_speaking, user_spoke, last_backchannel_time
+        nonlocal engine_ready_seen, engine_lost_since
         try:
             while not call_ended_event.is_set():
                 await asyncio.sleep(0.5)
-                if not deepgram_client or not deepgram_client.is_ready or not agent_config:
+                if not deepgram_client or not agent_config:
                     continue
+                if not deepgram_client.is_ready:
+                    if engine_ready_seen and not is_concluding_call:
+                        if engine_lost_since is None:
+                            engine_lost_since = time.time()
+                            logger.error("[VoiceGateway] Voice engine connection lost mid-call.")
+                        elif time.time() - engine_lost_since >= ENGINE_LOST_GRACE_SECONDS:
+                            # Nothing can be heard or said any more. Dead air also keeps billing, so end the call and
+                            # record why instead of waiting for the caller to give up.
+                            logger.error(f"[VoiceGateway] Voice engine still gone after {ENGINE_LOST_GRACE_SECONDS:.0f}s. Ending the call.")
+                            is_concluding_call = True
+                            if session:
+                                session.outcome = "VOICE_ENGINE_DISCONNECTED"
+                            asyncio.create_task(end_call_gracefully(None, max_wait=3.0))
+                            break
+                    continue
+                engine_ready_seen = True
+                engine_lost_since = None
 
                 runtime = agent_config.runtime or AgentRuntimeSettings()
                 now = time.time()
@@ -1284,7 +1315,8 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     on_user_speaking=handle_user_speaking,
                     on_agent_thinking=handle_agent_thinking,
                     on_agent_speaking=handle_agent_speaking,
-                    on_agent_audio_done=handle_agent_audio_done
+                    on_agent_audio_done=handle_agent_audio_done,
+                    on_error=handle_engine_error
                 )
 
                 # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
@@ -1433,6 +1465,13 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         if audio_pacer_task:
             audio_pacer_task.cancel()
             audio_pacer_task = None
+
+        if deepgram_client and session and getattr(agent_config, "agent_entity_scope", None) == "numerology_consultation":
+            try:
+                from app.numerology.call_details import build as numerology_call_details
+                session.call_details = numerology_call_details(deepgram_client.numerology_state)
+            except Exception as details_err:  # the call record must still be saved without them
+                logger.warning(f"[VoiceGateway] Could not collect the numerology call details: {details_err}")
 
         if deepgram_client:
             try:

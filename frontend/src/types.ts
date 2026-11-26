@@ -1174,6 +1174,7 @@ export interface LeadDetailResponse {
   customer_questions: string[];
   objections: string[];
   important_info?: string | null;
+  call_details?: { label: string; value: string }[];
   next_action?: string | null;
   callback_datetime?: string | null;
   agent_id?: string | null;

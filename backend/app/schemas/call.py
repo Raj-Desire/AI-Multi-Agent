@@ -39,6 +39,7 @@ class CallResponse(BaseModel):
     customer_questions: Optional[List[str]] = None
     objections: Optional[List[str]] = None
     important_info: Optional[str] = None
+    call_details: Optional[List[Dict[str, str]]] = None
     next_action: Optional[str] = None
     intent: Optional[str] = None
     sentiment: Optional[str] = None
@@ -58,7 +59,7 @@ class CallResponse(BaseModel):
 # over an already-loaded full record without wiping its details.
 HEAVY_CALL_FIELDS = {
     "agent_config_snapshot", "transcript", "analytics", "latency_metrics", "error_information",
-    "key_insights", "key_requirements", "customer_questions", "objections", "important_info",
+    "key_insights", "key_requirements", "customer_questions", "objections", "important_info", "call_details",
 }
 
 

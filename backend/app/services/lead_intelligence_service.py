@@ -1562,6 +1562,7 @@ class LeadIntelligenceService:
         customer_questions = latest_call.customer_questions if latest_call and latest_call.customer_questions else []
         objections = latest_call.objections if latest_call and latest_call.objections else []
         important_info = latest_call.important_info if latest_call else None
+        call_details = (latest_call.call_details or []) if latest_call else []
         next_action = latest_call.next_action if latest_call else "Follow up with prospect"
         callback_dt = latest_call.callback_datetime if latest_call else (prospect.next_follow_up_at.isoformat() if prospect.next_follow_up_at else None)
         agent_id = latest_call.agent_id if latest_call else None
@@ -1639,6 +1640,7 @@ class LeadIntelligenceService:
             customer_questions=customer_questions,
             objections=objections,
             important_info=important_info,
+            call_details=call_details,
             next_action=next_action,
             callback_datetime=callback_dt,
             agent_id=agent_id,

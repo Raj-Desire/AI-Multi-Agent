@@ -6,7 +6,7 @@ Error texts stay vendor-neutral because the model may repeat them to the caller.
 import json
 from typing import Any, Dict
 
-from app.numerology import knowledge, phone, spoken_date
+from app.numerology import knowledge, spoken_date
 from app.numerology.engine import calculate
 
 AGENT_SCOPE = "numerology_consultation"
@@ -26,23 +26,11 @@ NUMEROLOGY_FUNCTIONS = [
         },
     },
     {
-        "name": "capture_phone_number",
-        "description": (
-            "Understand the phone number the caller says. Call it every time the caller says any digits of their "
-            "phone number, with their exact words as heard. Say ONLY the text in the 'say' field, word for word. "
-            "Never turn number words into digits yourself. When the status is 'confirm', wait for the caller's yes."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {"spoken": {"type": "string", "description": "The caller's exact words about the number"}},
-            "required": ["spoken"],
-        },
-    },
-    {
         "name": "calculate_numerology",
         "description": (
             "Calculate the present and missing numbers. Call it ONLY after parse_birth_date returned status "
-            "'confirm' and the caller said yes. It uses the confirmed date; never do this arithmetic yourself."
+            "'confirm' and the caller said yes. It uses the confirmed date; never do this arithmetic yourself. "
+            "The result has the ready first reading sentences in 'first_reading'."
         ),
         "parameters": {
             "type": "object",
@@ -97,7 +85,29 @@ def run_calculate(raw_args: Any, state: Dict[str, Any]) -> str:
     state.setdefault("used", set())
     # Only Graha names go to the model: no numbers and no themes, so it can speak only approved traits.
     out: Dict[str, Any] = {"dob": result.dob, "weak_grahas": [knowledge.graha_name(n) for n in result.missing]}
+    out["first_reading"] = _first_reading(result, state)
     return json.dumps(out, ensure_ascii=False)
+
+
+def _first_reading(result: Any, state: Dict[str, Any]) -> list:
+    """The first 2 or 3 approved sentences, chosen in the same call as the calculation.
+
+    Handing them over now saves the model two or three extra lookups (each a full round trip through the language
+    model) and the caller hears the reading sooner. The Graha names are left out: the reading is only the sentences.
+    """
+    cached = state.get("first_reading")
+    if cached and cached[0] == result.dob:
+        return cached[1]  # asked twice for the same date: never spend a second set of sentences
+    used = state.setdefault("used", set())
+    used_texts = state.setdefault("used_texts", set())
+    sentences: list = []
+    for position, number in enumerate(result.missing[:2]):
+        for trait in knowledge.pick_traits(number, used, count=2 if position == 0 else 1, exclude_texts=used_texts):
+            used.add(trait.id)
+            used_texts.add(trait.text_gu)
+            sentences.append(trait.text_gu)
+    state["first_reading"] = (result.dob, sentences)
+    return sentences
 
 
 def _count(raw_args: Any) -> int:
@@ -132,8 +142,6 @@ def run_get_traits(raw_args: Any, state: Dict[str, Any]) -> str:
 def run_function(name: str, raw_args: Any, state: Dict[str, Any]) -> str:
     if name == "parse_birth_date":
         return run_parse_date(raw_args, state)
-    if name == "capture_phone_number":
-        return json.dumps(phone.capture(str(_args(raw_args).get("spoken", "")), state), ensure_ascii=False)
     if name == "calculate_numerology":
         return run_calculate(raw_args, state)
     if name == "get_graha_traits":
