@@ -50,7 +50,9 @@ def turn_is_complete(final_text: str, speech_final: bool, ms_since_last_word: in
 def is_real_interruption(partial_text: str, speech_ms: int, agent_speaking: bool) -> bool:
     if not agent_speaking:
         return False
-    if speech_ms >= _SPEECH_MS:
-        return True
     words = _words(partial_text)
+    # Duration alone never interrupts: echo of the agent's own audio or line
+    # noise gives long voice activity with no recognised words.
+    if words and speech_ms >= _SPEECH_MS:
+        return True
     return len(words) >= 2 and not _is_backchannel(words)
