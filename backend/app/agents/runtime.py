@@ -129,6 +129,12 @@ class AgentRuntimeBuilder:
         voice_profile: Optional[ResolvedVoiceProfile] = None,
     ) -> DeepgramSettingsConfiguration:
         # Build optimized spoken prompt with optional business knowledge base and active platform rules
+        if config.agent_entity_scope == NUMEROLOGY_SCOPE and config.system_prompt:
+            # The business phone number and email are given as exact spoken words, so they are never garbled.
+            from app.numerology.phone import spoken_contact_block
+            config = config.model_copy(update={
+                "system_prompt": config.system_prompt + spoken_contact_block(config.company_phone or "", config.company_email or "", config.office_address or "")
+            })
         system_prompt = VoicePromptBuilder.build_prompt(
             config,
             business_profile=business_profile,
