@@ -95,8 +95,9 @@ class AzureChatStream:
         usage: dict = {}
         got_token = False
 
+        deadline = asyncio.timeout(self._timeout_s)  # request start -> first token
         try:
-            async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
+            async with deadline, httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
                 async with client.stream(
                     "POST", url, headers={"api-key": self._api_key}, json=body
                 ) as resp:
@@ -106,14 +107,9 @@ class AzureChatStream:
                     lines = resp.aiter_lines().__aiter__()
                     while True:
                         try:
-                            if got_token:
-                                line = await lines.__anext__()
-                            else:
-                                line = await asyncio.wait_for(lines.__anext__(), self._timeout_s)
+                            line = await lines.__anext__()
                         except StopAsyncIteration:
                             break
-                        except asyncio.TimeoutError:
-                            raise LlmTimeout("Language model gave no response in time")
                         line = line.strip()
                         if not line.startswith("data:"):
                             continue
@@ -124,16 +120,22 @@ class AzureChatStream:
                             data = json.loads(payload)
                         except ValueError:
                             continue
+                        if not isinstance(data, dict):
+                            continue
                         if data.get("usage"):
                             usage = data["usage"]
                         for choice in data.get("choices") or []:
                             delta = choice.get("delta") or {}
                             text = delta.get("content")
                             if text:
-                                got_token = True
+                                if not got_token:
+                                    got_token = True
+                                    deadline.reschedule(None)
                                 yield TextDelta(text)
                             for tc in delta.get("tool_calls") or []:
-                                got_token = True
+                                if not got_token:
+                                    got_token = True
+                                    deadline.reschedule(None)
                                 slot = calls.setdefault(
                                     tc.get("index", 0), {"id": "", "name": "", "args": ""})
                                 if tc.get("id"):
@@ -143,6 +145,8 @@ class AzureChatStream:
                                     slot["name"] = fn["name"]
                                 if fn.get("arguments"):
                                     slot["args"] += fn["arguments"]
+        except TimeoutError:
+            raise LlmTimeout("Language model gave no response in time")
         except httpx.TimeoutException:
             raise LlmTimeout("Language model gave no response in time")
         except httpx.HTTPError:
