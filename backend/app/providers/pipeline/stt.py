@@ -129,11 +129,13 @@ class StreamingSTT:
                     msg = json.loads(raw)
                 except ValueError:
                     continue
+                if not isinstance(msg, dict):
+                    continue
                 await self._dispatch(msg)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[Listening] receive loop error: %s", type(e).__name__)
         if not self._closing and ws is self._ws:
             self._reconnect_task = asyncio.create_task(self._handle_failure())
 
@@ -168,8 +170,9 @@ class StreamingSTT:
             if self._closing:
                 return
             await self._open()
-            pending, self._pending, self._pending_bytes = self._pending, [], 0
-            for chunk in pending:
+            while self._pending:
+                chunk = self._pending.pop(0)
+                self._pending_bytes -= len(chunk)
                 await self._ws.send(chunk)
             self._reconnecting = False
         except Exception:
@@ -188,10 +191,12 @@ class StreamingSTT:
 
     async def close(self) -> None:
         self._closing = True
+        me = asyncio.current_task()
         ws, self._ws = self._ws, None
-        for t in (self._keepalive_task, self._reconnect_task):
-            if t and t is not asyncio.current_task():
-                t.cancel()
+        tasks = [t for t in (self._keepalive_task, self._reconnect_task, self._recv_task)
+                 if t and t is not me]
+        for t in tasks:
+            t.cancel()
         if ws is not None:
             try:
                 await ws.send(json.dumps({"type": "CloseStream"}))
@@ -201,7 +206,5 @@ class StreamingSTT:
                 await ws.close()
             except Exception:
                 pass
-        if self._recv_task:
-            self._recv_task.cancel()
-        tasks = [t for t in (self._keepalive_task, self._reconnect_task, self._recv_task) if t]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
