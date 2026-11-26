@@ -19,6 +19,7 @@ from app.providers.deepgram.configuration import (
     DeepgramInjectUserMessage
 )
 from app.providers.deepgram.events import DeepgramEventType
+from app.voice_stack.function_dispatch import answer_function_call, run_knowledge_search
 
 logger = logging.getLogger("deepgram.voice_agent")
 
@@ -352,17 +353,11 @@ class DeepgramVoiceAgentClient:
                 continue
             name = fn.get("name")
             call_id = fn.get("id")
-            try:
-                from app.numerology.tools import FUNCTION_NAMES as NUMEROLOGY_FUNCTION_NAMES, run_function
-                if name in NUMEROLOGY_FUNCTION_NAMES:
-                    content = run_function(name, fn.get("arguments"), self._numerology_state)
-                elif name != "search_knowledge":
-                    content = "Unknown function."
-                else:
-                    content = await self._run_knowledge_search(fn.get("arguments"))
-            except Exception as e:
-                logger.exception(f"[VoiceEngine] Function '{name}' failed: {e}")
-                content = "That could not be done just now. Say a short polite line and ask the caller to repeat."
+            content = await answer_function_call(
+                name, fn.get("arguments"),
+                state=self._numerology_state,
+                knowledge_runner=self._run_knowledge_search,
+            )
             if not self._ws or not self._is_connected:
                 logger.error(f"[VoiceEngine] Function '{name}' finished but the voice engine connection is gone.")
                 return
@@ -377,34 +372,7 @@ class DeepgramVoiceAgentClient:
                 logger.error(f"Error sending FunctionCallResponse: {e}")
 
     async def _run_knowledge_search(self, raw_arguments: Any) -> str:
-        scope = self._knowledge_scope
-        if not scope:
-            return "No knowledge base is attached to this agent."
-        try:
-            args = json.loads(raw_arguments) if isinstance(raw_arguments, str) else (raw_arguments or {})
-            query = str(args.get("query", "")).strip()
-            if not query:
-                return "No query provided."
-            started = time.perf_counter()
-            from app.services.knowledge_service import knowledge_service
-            context = await asyncio.wait_for(
-                knowledge_service.get_grounding_context_for_call(
-                    organization_id=scope["organization_id"],
-                    user_transcript=query,
-                    document_ids=scope.get("document_ids"),
-                ),
-                timeout=5.0,
-            )
-            logger.info(f"[Knowledge] search '{query[:60]}' -> {'hit' if context else 'miss'} in {(time.perf_counter() - started) * 1000:.0f}ms")
-            if not context:
-                return "No matching information was found. Say you will have the solution team follow up; do not guess."
-            return context
-        except asyncio.TimeoutError:
-            logger.warning("[Knowledge] search timed out")
-            return "The lookup took too long. Answer briefly from what you already know, or offer a follow-up."
-        except Exception as e:
-            logger.error(f"[Knowledge] search failed: {e}")
-            return "The lookup is unavailable right now. Offer a follow-up from the solution team."
+        return await run_knowledge_search(self._knowledge_scope, raw_arguments)
 
     async def send_keep_alive(self):
         """Sends KeepAlive to keep long-running sessions active."""
