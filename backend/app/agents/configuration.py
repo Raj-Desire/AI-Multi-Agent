@@ -4,7 +4,7 @@ Defines the complete tenant-isolated AI agent configuration including personalit
 runtime behaviors, guardrails, and spoken prompt parameters for Global and Organization agents.
 """
 
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Literal, Union
 from datetime import datetime, timezone
 import uuid
 from pydantic import BaseModel, Field, model_validator
@@ -504,6 +504,7 @@ class AgentConfiguration(BaseModel):
     closing_message: Optional[str] = "Thank you for speaking with us today. Have a great day!"
     system_prompt: Optional[str] = None
     include_business_knowledge: bool = True
+    voice_engine: Literal["managed", "custom"] = "managed"
     knowledge_mode: str = "auto"  # "auto" | "specific" | "disabled"
     attached_document_ids: List[str] = Field(default_factory=list)
     custom_knowledge: Optional[str] = None

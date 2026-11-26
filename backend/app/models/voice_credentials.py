@@ -30,6 +30,7 @@ class ResolvedVoiceProfile(BaseModel):
     tts_key: Optional[str] = None
     source: Literal["own", "platform"]
     billed_to: Literal["org_own_key", "platform"]
+    custom_pipeline_allowed: bool = False
 
 
 class VoiceCredentialsMissing(Exception):
