@@ -1,0 +1,160 @@
+"""Streaming chat-completions client with function calling (Azure OpenAI).
+
+Vendor details stay in this module; log and error text is vendor-neutral and
+never contains the key or the endpoint query string.
+"""
+import asyncio
+import json
+import logging
+from dataclasses import dataclass
+from typing import AsyncIterator, Dict, List, Optional, Union
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+_READ_TIMEOUT_S = 120.0  # overall gap allowed between chunks once streaming
+
+
+class LlmTimeout(Exception):
+    """No first token from the language model within the allowed time."""
+
+
+class LlmUnavailable(Exception):
+    """The language model service could not serve the request."""
+
+
+@dataclass
+class TextDelta:
+    text: str
+
+
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass
+class Finished:
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+
+
+def to_chat_tools(functions: List[dict]) -> List[dict]:
+    return [{"type": "function", "function": f} for f in functions]
+
+
+class AzureChatStream:
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str,
+        *,
+        deployment: str,
+        api_version: str = "2024-08-01-preview",
+        timeout_s: float = 8.0,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        self._endpoint = endpoint.rstrip("/")
+        self._api_key = api_key
+        self._deployment = deployment
+        self._api_version = api_version
+        self._timeout_s = timeout_s
+        self._transport = transport
+
+    async def stream(
+        self,
+        messages: List[dict],
+        tools: List[dict],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[Union[TextDelta, ToolCall, Finished]]:
+        url = (
+            f"{self._endpoint}/openai/deployments/{self._deployment}"
+            f"/chat/completions?api-version={self._api_version}"
+        )
+        body: dict = {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            body["tools"] = tools
+
+        timeout = httpx.Timeout(
+            connect=self._timeout_s, read=_READ_TIMEOUT_S,
+            write=self._timeout_s, pool=self._timeout_s,
+        )
+        calls: Dict[int, dict] = {}
+        usage: dict = {}
+        got_token = False
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout, transport=self._transport) as client:
+                async with client.stream(
+                    "POST", url, headers={"api-key": self._api_key}, json=body
+                ) as resp:
+                    if resp.status_code >= 400:
+                        logger.warning("Language model request failed: status %s", resp.status_code)
+                        raise LlmUnavailable(f"Language model unavailable (status {resp.status_code})")
+                    lines = resp.aiter_lines().__aiter__()
+                    while True:
+                        try:
+                            if got_token:
+                                line = await lines.__anext__()
+                            else:
+                                line = await asyncio.wait_for(lines.__anext__(), self._timeout_s)
+                        except StopAsyncIteration:
+                            break
+                        except asyncio.TimeoutError:
+                            raise LlmTimeout("Language model gave no response in time")
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(payload)
+                        except ValueError:
+                            continue
+                        if data.get("usage"):
+                            usage = data["usage"]
+                        for choice in data.get("choices") or []:
+                            delta = choice.get("delta") or {}
+                            text = delta.get("content")
+                            if text:
+                                got_token = True
+                                yield TextDelta(text)
+                            for tc in delta.get("tool_calls") or []:
+                                got_token = True
+                                slot = calls.setdefault(
+                                    tc.get("index", 0), {"id": "", "name": "", "args": ""})
+                                if tc.get("id"):
+                                    slot["id"] = tc["id"]
+                                fn = tc.get("function") or {}
+                                if fn.get("name"):
+                                    slot["name"] = fn["name"]
+                                if fn.get("arguments"):
+                                    slot["args"] += fn["arguments"]
+        except httpx.TimeoutException:
+            raise LlmTimeout("Language model gave no response in time")
+        except httpx.HTTPError:
+            logger.warning("Language model connection error")
+            raise LlmUnavailable("Language model unavailable")
+
+        for idx in sorted(calls):
+            c = calls[idx]
+            yield ToolCall(c["id"], c["name"], c["args"])
+        details = usage.get("prompt_tokens_details") or {}
+        yield Finished(
+            int(usage.get("prompt_tokens") or 0),
+            int(usage.get("completion_tokens") or 0),
+            int(details.get("cached_tokens") or 0),
+        )
