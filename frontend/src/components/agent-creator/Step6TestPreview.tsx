@@ -13,6 +13,7 @@ import { Badge } from "../ui/Badge";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AgentLivePreview } from "../AgentLivePreview";
 import { AgentConfig } from "../../types";
+import { useVoiceLabel } from "./useVoiceLabel";
 
 interface Step6TestPreviewProps {
   agentData: AgentConfig;
@@ -21,6 +22,7 @@ interface Step6TestPreviewProps {
 
 export function Step6TestPreview({ agentData, onTestCall }: Step6TestPreviewProps) {
   const durationSec = agentData.runtime?.maximum_call_duration ?? 300;
+  const voiceLabel = useVoiceLabel(agentData.voice?.voice);
 
   return (
     <div className="space-y-6 text-left">
@@ -69,7 +71,7 @@ export function Step6TestPreview({ agentData, onTestCall }: Step6TestPreviewProp
               <div className="pt-2 border-t border-[var(--color-border)]">
                 <span className="text-[var(--color-muted)] text-[11px] block">Voice & Engine</span>
                 <span className="font-mono font-medium text-[var(--color-heading)]">
-                  {agentData.voice?.voice} ({agentData.voice?.speed || 1.0}x)
+                  {voiceLabel} ({agentData.voice?.speed || 1.0}x)
                 </span>
                 <span className="text-[11px] text-[var(--color-muted)] block font-mono mt-0.5">
                   LLM: {agentData.llm?.model || "gpt-4o-mini"}

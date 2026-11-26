@@ -1,3 +1,4 @@
+import { VoiceLabel } from "../agent-creator/VoiceLabel";
 import React, { useState, useEffect, useRef } from "react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
@@ -818,7 +819,7 @@ export function CampaignCreateWizardModal({
                   {agents.map((agent) => {
                     const agentId = agent.agent_id || agent.id;
                     const isSelected = selectedAgentId === agentId;
-                    const voiceName = agent.voice?.voice || agent.voice || "Aura Voice";
+                    const voiceId = agent.voice?.voice || agent.voice || "";
 
                     return (
                       <div
@@ -846,7 +847,7 @@ export function CampaignCreateWizardModal({
 
                         <div className="flex items-center gap-2 pt-1 border-t border-[var(--color-border)]/50 text-[10px] text-[var(--color-muted)]">
                           <span className="px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-mono">
-                            {voiceName}
+                            {voiceId ? <VoiceLabel id={String(voiceId)} /> : "Aura Voice"}
                           </span>
                         </div>
                       </div>

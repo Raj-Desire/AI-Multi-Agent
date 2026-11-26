@@ -36,6 +36,7 @@ import { COMMUNICATION_STYLES, getInitialAgentData, AURA_VOICES, AGENT_PURPOSES 
 import { AgentConfig, AgentPersonality } from "../../types";
 import { toast } from "sonner";
 
+import { useVoiceLabel } from "./useVoiceLabel";
 interface Step4PersonalityCommunicationProps {
   agentData: AgentConfig;
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
@@ -812,7 +813,8 @@ export function Step4PersonalityCommunication({
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
-  const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
+  const voiceLabel = useVoiceLabel(selectedVoiceId);
+  const selectedVoiceObj = { ...(AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0]), name: voiceLabel };
 
   const currentStyles = (agentData.communication_style || "Professional").split("+").map((s) => s.trim());
   const primaryStyle = currentStyles[0] || "Professional";

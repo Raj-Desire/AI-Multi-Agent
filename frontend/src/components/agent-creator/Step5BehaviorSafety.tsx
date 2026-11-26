@@ -51,6 +51,7 @@ const DEFAULT_STANDARD_RULES = [
 
 import { HumanEscalationModal } from "./HumanEscalationModal";
 
+import { useVoiceLabel } from "./useVoiceLabel";
 export function Step5BehaviorSafety({
   agentData,
   setAgentData
@@ -84,7 +85,8 @@ export function Step5BehaviorSafety({
   };
 
   const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
-  const selectedVoiceObj = AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0];
+  const voiceLabel = useVoiceLabel(selectedVoiceId);
+  const selectedVoiceObj = { ...(AURA_VOICES.find((v) => v.id === selectedVoiceId) || AURA_VOICES[0]), name: voiceLabel };
 
   const currentDurationSeconds = agentData.runtime?.maximum_call_duration ?? 300;
   const bargeInEnabled = agentData.runtime?.barge_in_enabled ?? true;

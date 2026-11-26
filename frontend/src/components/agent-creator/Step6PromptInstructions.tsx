@@ -45,6 +45,7 @@ import { ConversationalWorkflowCanvas } from "./ConversationalWorkflowCanvas";
 import { PromptVersionHistoryModal } from "./PromptVersionHistoryModal";
 import { PromptRegressionTester } from "./PromptRegressionTester";
 
+import { useVoiceLabel } from "./useVoiceLabel";
 interface Step6PromptInstructionsProps {
   agentData: AgentConfig;
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
@@ -164,10 +165,13 @@ export function Step6PromptInstructions({
   };
 
   const selectedVoiceId = agentData.voice?.voice || "flux-hannah-en";
-  const selectedVoiceObj =
-    POPULAR_SONIC_VOICES.find((v) => v.id === selectedVoiceId) ||
-    AURA_VOICES.find((v) => v.id === selectedVoiceId) ||
-    AURA_VOICES[0];
+  const voiceLabel = useVoiceLabel(selectedVoiceId);
+  const selectedVoiceObj = {
+    ...(POPULAR_SONIC_VOICES.find((v) => v.id === selectedVoiceId) ||
+      AURA_VOICES.find((v) => v.id === selectedVoiceId) ||
+      AURA_VOICES[0]),
+    name: voiceLabel,
+  };
 
   // Effective company name resolved from business profile or fallback
   const resolvedCompanyName = businessProfile?.company_name?.trim() || "Apex Solutions";

@@ -20,6 +20,7 @@ import { Badge } from "../ui/Badge";
 import { Modal } from "../ui/Modal";
 import { InfoTooltip } from "../ui/Tooltip";
 import { AgentConfig } from "../../types";
+import { useVoiceLabel } from "./useVoiceLabel";
 
 interface Step7ReviewActivateProps {
   agentData: AgentConfig;
@@ -37,6 +38,7 @@ export function Step7ReviewActivate({
   onSave
 }: Step7ReviewActivateProps) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const voiceLabel = useVoiceLabel(agentData.voice?.voice);
 
   const durationSec = agentData.runtime?.maximum_call_duration ?? 300;
   const restrictedCount = agentData.guardrails?.restricted_actions?.length || 0;
@@ -208,7 +210,7 @@ export function Step7ReviewActivate({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-[var(--color-muted)] text-[11px] block">Voice</span>
-              <span className="font-mono font-medium text-[var(--color-heading)]">{agentData.voice?.voice}</span>
+              <span className="font-mono font-medium text-[var(--color-heading)]">{voiceLabel}</span>
             </div>
             <div>
               <span className="text-[var(--color-muted)] text-[11px] block">Speed</span>

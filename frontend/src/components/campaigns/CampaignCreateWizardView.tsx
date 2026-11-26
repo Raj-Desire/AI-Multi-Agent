@@ -1,3 +1,4 @@
+import { VoiceLabel } from "../agent-creator/VoiceLabel";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
 import { Button } from "../ui/Button";
@@ -1021,7 +1022,7 @@ export function CampaignCreateWizardView({
                   {agents.map((agent) => {
                     const agentId = agent.agent_id || agent.id;
                     const isSelected = selectedAgentId === agentId;
-                    const voiceName = agent.voice?.voice || agent.voice || "Aura Voice";
+                    const voiceId = agent.voice?.voice || agent.voice || "";
 
                     return (
                       <div
@@ -1055,7 +1056,7 @@ export function CampaignCreateWizardView({
 
                         <div className="flex items-center justify-between pt-2 border-t border-[var(--color-border)] text-[10px] text-[var(--color-muted)]">
                           <span className="px-2 py-0.5 rounded bg-[var(--color-surface-muted)] font-mono border border-[var(--color-border)]">
-                            {voiceName}
+                            {voiceId ? <VoiceLabel id={String(voiceId)} /> : "Aura Voice"}
                           </span>
                         </div>
                       </div>
