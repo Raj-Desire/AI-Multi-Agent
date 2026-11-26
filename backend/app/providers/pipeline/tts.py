@@ -15,7 +15,8 @@ import asyncio
 import base64
 import json
 import logging
-from typing import AsyncIterator, Dict, Optional, Set
+from collections import deque
+from typing import AsyncIterator, Deque, Dict, Optional, Set
 from urllib.parse import urlencode
 
 import httpx
@@ -51,6 +52,7 @@ FIRST_CHUNK_TIMEOUT_S = 5.0
 IDLE_TIMEOUT_S = 10.0
 
 _DONE = object()
+_TOMBSTONES = 64
 
 
 class TtsUnavailable(Exception):
@@ -93,6 +95,9 @@ class StreamingTTS:
         self._recv_task: Optional[asyncio.Task] = None
         self._queues: Dict[str, asyncio.Queue] = {}
         self._cancelled: Set[str] = set()
+        self._wire: Dict[str, str] = {}  # caller context id -> wire context id
+        self._tombstones: Deque[str] = deque(maxlen=_TOMBSTONES)
+        self._reuse = 0
         self._closing = False
         self._connect_lock = asyncio.Lock()
 
@@ -188,23 +193,38 @@ class StreamingTTS:
             pass
 
     async def cancel(self, context_id: str) -> None:
-        q = self._queues.get(context_id)
-        if q is None or context_id in self._cancelled:
+        wire = self._wire.get(context_id)
+        q = self._queues.get(wire) if wire else None
+        if q is None or wire in self._cancelled:
             return
-        self._cancelled.add(context_id)
+        self._cancelled.add(wire)
+        while not q.empty():  # drop audio already queued
+            q.get_nowait()
         q.put_nowait(_DONE)
-        await self._send_cancel(context_id)
+        await self._send_cancel(wire)
+
+    def _pick_wire(self, context_id: str) -> str:
+        """Reused ids of cancelled contexts get a fresh wire id so the old
+        context's late chunks (still tagged with the old id) are never routed
+        to the new call."""
+        wire = context_id
+        while wire in self._tombstones or wire in self._queues:
+            self._reuse += 1
+            wire = f"{context_id}~{self._reuse}"
+        return wire
 
     async def speak(self, text: str, *, context_id: str) -> AsyncIterator[bytes]:
         got_audio = False
         finished = False
         q: asyncio.Queue = asyncio.Queue()
-        self._queues[context_id] = q
+        wire = self._pick_wire(context_id)
+        self._wire[context_id] = wire
+        self._queues[wire] = q
         buf = b""
         try:
             try:
                 ws = await self._ensure_ws()
-                await ws.send(json.dumps(self._request(text, context_id)))
+                await ws.send(json.dumps(self._request(text, wire)))
                 streaming = True
             except Exception:  # noqa: BLE001
                 streaming = False
@@ -214,6 +234,9 @@ class StreamingTTS:
                     item = await asyncio.wait_for(q.get(), timeout)
                 except asyncio.TimeoutError:
                     item = _Failed()
+                if wire in self._cancelled:
+                    finished = True
+                    break
                 if item is _DONE:
                     finished = True
                     break
@@ -223,28 +246,34 @@ class StreamingTTS:
                 while len(buf) >= self._chunk_bytes:
                     out, buf = buf[: self._chunk_bytes], buf[self._chunk_bytes:]
                     got_audio = True
+                    if wire in self._cancelled:
+                        return
                     yield out
             if streaming and finished:
-                if buf and context_id not in self._cancelled:
+                if buf and wire not in self._cancelled:
                     yield buf
                 return
             if got_audio:
                 raise TtsUnavailable("Voice engine service unavailable")
             # nothing played: one-shot fallback for this sentence
             if streaming:
-                await self._send_cancel(context_id)
+                await self._send_cancel(wire)
             finished = True
             audio = await self._fallback(text)
             for i in range(0, len(audio), self._chunk_bytes):
-                if context_id in self._cancelled:
+                if wire in self._cancelled:
                     return
                 yield audio[i: i + self._chunk_bytes]
         finally:
-            self._queues.pop(context_id, None)
-            was_cancelled = context_id in self._cancelled
-            self._cancelled.discard(context_id)
+            self._queues.pop(wire, None)
+            if self._wire.get(context_id) == wire:
+                self._wire.pop(context_id, None)
+            was_cancelled = wire in self._cancelled
+            self._cancelled.discard(wire)
+            if was_cancelled or not finished:
+                self._tombstones.append(wire)
             if not finished and not was_cancelled:
-                await self._send_cancel(context_id)
+                await self._send_cancel(wire)
 
     async def _fallback(self, text: str) -> bytes:
         body = self._request(text, "")
@@ -266,6 +295,7 @@ class StreamingTTS:
 
     async def close(self) -> None:
         self._closing = True
+        self._tombstones.clear()
         ws, self._ws = self._ws, None
         task, self._recv_task = self._recv_task, None
         if ws is not None:
