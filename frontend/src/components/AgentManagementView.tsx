@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { fetchApi } from "../api-client";
+import { useVoiceCatalogNames } from "./agent-creator/useVoiceLabel";
+import { POPULAR_SONIC_VOICES } from "./agent-creator/constants";
 import { AgentConfig, AvailableAgentsResponse, TwilioConfig, VoiceTelemetryEvent, ConversationTurnMessage } from "../types";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -103,9 +105,16 @@ const VOICE_DISPLAY_MAP: Record<string, { name: string; locale: string }> = {
   "aura-2-ama-ja": { name: "Ama", locale: "Japanese (JA)" }
 };
 
-function formatVoiceDisplay(rawVoice?: string) {
+const UUID_VOICE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+function formatVoiceDisplay(rawVoice?: string, names?: Map<string, string>) {
   if (!rawVoice) return { name: "Standard Voice", locale: "English" };
   if (VOICE_DISPLAY_MAP[rawVoice]) return VOICE_DISPLAY_MAP[rawVoice];
+  if (UUID_VOICE.test(rawVoice)) {
+    // Cartesia voices are saved by id only; the name comes from the voice catalog.
+    const full = names?.get(rawVoice) || (POPULAR_SONIC_VOICES as any[]).find((v) => v.id === rawVoice)?.name;
+    return { name: full ? String(full).split(" - ")[0] : "Custom voice", locale: "Multilingual" };
+  }
   const parts = rawVoice.replace(/^(flux|aura(-2)?)-/, "").split("-");
   const name = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : rawVoice;
   const lang = parts[1] === "es" ? "Spanish" : parts[1] === "fr" ? "French" : parts[1] === "de" ? "German" : parts[1] === "it" ? "Italian" : parts[1] === "ja" ? "Japanese" : "English";
@@ -507,16 +516,17 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
     return Array.from(set);
   }, [myOrgAgents]);
 
+  const voiceNames = useVoiceCatalogNames();
   const uniqueVoices = useMemo(() => {
     const map = new Map<string, string>();
     myOrgAgents.forEach((a: AgentConfig) => {
       if (a.voice?.voice) {
-        const vInfo = formatVoiceDisplay(a.voice.voice);
+        const vInfo = formatVoiceDisplay(a.voice.voice, voiceNames);
         map.set(a.voice.voice, vInfo.name);
       }
     });
     return Array.from(map.entries());
-  }, [myOrgAgents]);
+  }, [myOrgAgents, voiceNames]);
 
   const isAnyMyFilterActive = mySearchQuery.trim() !== "" || myStatusFilter !== "ALL" || myRoleFilter !== "ALL" || myVoiceFilter !== "ALL";
 
@@ -599,9 +609,9 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       header: "Voice",
       sortable: true,
       render: (a) => {
-        const v = formatVoiceDisplay(a.voice?.voice);
+        const v = formatVoiceDisplay(a.voice?.voice, voiceNames);
         return (
-          <div className="flex flex-col text-xs" title={`Voice Model: ${a.voice?.voice || "aura"}`}>
+          <div className="flex flex-col text-xs" title={`Voice: ${v.name}`}>
             <span className="font-medium text-[var(--color-heading)] flex items-center gap-1">
               <Volume2 className="w-3 h-3 text-[var(--color-primary)] opacity-70" />
               {v.name}
@@ -777,9 +787,9 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
       header: "Default Voice",
       sortable: true,
       render: (a) => {
-        const v = formatVoiceDisplay(a.voice?.voice);
+        const v = formatVoiceDisplay(a.voice?.voice, voiceNames);
         return (
-          <div className="flex flex-col text-xs" title={`Default Voice: ${a.voice?.voice || "aura"}`}>
+          <div className="flex flex-col text-xs" title={`Voice: ${v.name}`}>
             <span className="font-medium text-[var(--color-heading)] flex items-center gap-1">
               <Volume2 className="w-3 h-3 text-[var(--color-primary)] opacity-70" />
               {v.name}
@@ -1279,7 +1289,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
                 <div className="flex justify-between">
                   <span className="text-[var(--color-muted)]">TTS Voice:</span>
                   <span className="font-mono font-medium text-[var(--color-heading)]">
-                    {selectedAgentDetail.voice?.voice} ({selectedAgentDetail.voice?.speed || 0.95}x)
+                    {formatVoiceDisplay(selectedAgentDetail.voice?.voice, voiceNames).name} ({selectedAgentDetail.voice?.speed || 0.95}x)
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1343,7 +1353,7 @@ export function AgentManagementView({ onNavigateToDialer, onEditorDirtyChange }:
             <div className="p-3 bg-[var(--color-surface-muted)] rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] space-y-2">
               <div className="flex justify-between">
                 <span className="text-[var(--color-muted)]">Voice:</span>
-                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice || "Aura"}</span>
+                <span className="font-mono font-medium text-[var(--color-heading)]">{testAgent.voice?.voice ? formatVoiceDisplay(testAgent.voice.voice, voiceNames).name : "Aura"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[var(--color-muted)]">Model:</span>

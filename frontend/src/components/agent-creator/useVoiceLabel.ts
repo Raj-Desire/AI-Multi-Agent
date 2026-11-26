@@ -6,7 +6,7 @@ import { AURA_VOICES, POPULAR_SONIC_VOICES } from "./constants";
 let catalog: Map<string, string> | null = null;
 let inflight: Promise<Map<string, string>> | null = null;
 
-function loadCatalog(): Promise<Map<string, string>> {
+export function loadCatalog(): Promise<Map<string, string>> {
   if (catalog) return Promise.resolve(catalog);
   if (!inflight) {
     inflight = (async () => {
@@ -53,4 +53,15 @@ export function useVoiceLabel(voiceId?: string | null): string {
   }, [id]);
   if (name) return name;
   return id && looksLikeId(id) ? "Custom voice" : id;
+}
+
+/** Whole id->name map for places that need many names at once (lists, filters). */
+export function useVoiceCatalogNames(): Map<string, string> {
+  const [m, setM] = useState<Map<string, string>>(() => catalog ?? new Map());
+  useEffect(() => {
+    let alive = true;
+    loadCatalog().then((c) => { if (alive && c.size) setM(c); });
+    return () => { alive = false; };
+  }, []);
+  return m;
 }
