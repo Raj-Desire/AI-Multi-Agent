@@ -29,6 +29,7 @@ import {
 import { PageHeader } from "./ui/PageHeader";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
+import { VoiceEngineBadge } from "./ui/VoiceEngineBadge";
 import { Alert } from "./ui/Alert";
 import { StatusIndicator } from "./ui/StatusIndicator";
 import { DataTable, Column } from "./ui/DataTable";
@@ -496,6 +497,7 @@ export function AIAgentDialerView({
         <div>
           <div className="font-semibold text-xs text-[var(--color-heading)] flex items-center gap-1">
             <span>{c.agent_name || "Receptionist"}</span>
+            <VoiceEngineBadge engine={c.voice_engine} />
           </div>
           <span className="text-[10px] text-[var(--color-muted)]">
             {c.agent_scope === "GLOBAL" ? "Platform" : "Organization"}

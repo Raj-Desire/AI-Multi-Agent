@@ -531,6 +531,7 @@ export interface AgentConfig {
   small_talk_level?: string;
   personality: AgentPersonality;
   voice: AgentVoiceConfig;
+  voice_engine?: 'managed' | 'custom';
   llm: AgentLLMConfig;
   language?: AgentLanguageConfig;
   listen?: AgentListenConfig;
@@ -617,6 +618,7 @@ export interface CallRecord {
   agent_version?: number;
   agent_name?: string;
   agent_scope?: string;
+  voice_engine?: string | null;
   agent_config_snapshot?: Partial<AgentConfig> | Record<string, any>;
   transcript?: ConversationTurnMessage[];
   outcome?: string;
@@ -1555,6 +1557,7 @@ export interface VoiceProfile {
   tts_engine: VoiceEngineId | null;
   credential_mode: "platform" | "own";
   allow_org_edit: boolean;
+  custom_pipeline_allowed?: boolean;
   engine: KeySlotView;
   tts: KeySlotView;
 }

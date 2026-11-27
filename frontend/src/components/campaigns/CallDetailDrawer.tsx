@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { VoiceEngineBadge } from "../ui/VoiceEngineBadge";
 import { fetchApi, LIVE } from "../../api-client";
 import { CallRecord, ConversationTurnMessage } from "../../types";
 import { Drawer } from "../ui/Drawer";
@@ -349,6 +350,7 @@ export function CallDetailDrawer({
                       {prospect?.full_name || call.to_number}
                     </h3>
                     {getStatusBadge(call.status)}
+                    <VoiceEngineBadge engine={call.voice_engine} />
                   </div>
                   <p className="text-xs font-mono text-[var(--color-muted)] mt-0.5">
                     {call.to_number} {prospect?.company ? `• ${prospect.company}` : ""}

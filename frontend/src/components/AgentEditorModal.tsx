@@ -281,6 +281,8 @@ export function AgentEditorModal({
           <Step3VoiceLanguage
             agentData={agentData}
             setAgentData={setAgentData}
+            viewerOrganizationId={user?.organization_id}
+            isSuperAdmin={user?.role === "superadmin"}
           />
         )}
 

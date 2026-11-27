@@ -41,11 +41,22 @@ import {
 import { AgentConfig, PronunciationRule } from "../../types";
 import { MultilingualSettings } from "./MultilingualSettings";
 import { fetchApi, LIVE } from "../../api-client";
-import type { VoiceProfile } from "../../types";
+import { useCustomPipelineAllowed } from "../../hooks/useCustomPipelineAllowed";
 
 interface Step3VoiceLanguageProps {
   agentData: AgentConfig;
   setAgentData: React.Dispatch<React.SetStateAction<AgentConfig>>;
+  /** The signed-in user's organization and role; used to pick whose Economy flag to read. */
+  viewerOrganizationId?: string;
+  isSuperAdmin?: boolean;
+}
+
+/** Mirrors the backend rule: provider cartesia/sonic, or a 36-character voice id that is not a flux-/aura- id. */
+export function isCartesiaVoice(provider?: string, voiceId?: string): boolean {
+  const p = (provider || "").toLowerCase();
+  if (p === "cartesia" || p === "sonic") return true;
+  const v = voiceId || "";
+  return v.length === 36 && !v.startsWith("flux-") && !v.startsWith("aura-");
 }
 
 interface VoiceMetadata {
@@ -401,7 +412,9 @@ export const NATIVE_DEFAULT_GREETINGS: Record<string, string> = {
 
 export function Step3VoiceLanguage({
   agentData,
-  setAgentData
+  setAgentData,
+  viewerOrganizationId,
+  isSuperAdmin
 }: Step3VoiceLanguageProps) {
   // Voice Engine Toggle State ("flux" | "sonic")
   const currentVoiceId = agentData.voice?.voice || "flux-hannah-en";
@@ -410,25 +423,25 @@ export function Step3VoiceLanguage({
 
   // Organizations on their own keys get one engine only; legacy / platform-mode orgs (or a failed lookup) see both.
   const [engineLock, setEngineLock] = useState<"flux" | "sonic" | null>(null);
+  const { allowed: economyAllowed, profile: viewerProfile } = useCustomPipelineAllowed({
+    agentOrgId: agentData.organization_id,
+    viewerOrgId: viewerOrganizationId,
+    isSuperAdmin
+  });
   useEffect(() => {
-    let cancelled = false;
-    fetchApi<VoiceProfile>("/voice-profile", LIVE)
-      .then((p) => {
-        if (cancelled || !p || p.credential_mode !== "own") return;
-        const lock = p.tts_engine === "cartesia" ? "sonic" : p.tts_engine === "aura" ? "flux" : null;
-        if (lock) {
-          setEngineLock(lock);
-          setSelectedEngine(lock);
-          // A never-saved agent (no agent_id yet) still carries the factory Aura default; start it on the org's engine
-          // instead of showing a "voice unavailable" notice. Saved agents are never changed silently.
-          if (lock === "sonic" && !agentData.agent_id && initialEngine === "flux") {
-            handleEngineSwitch("sonic");
-          }
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+    const p = viewerProfile;
+    if (!p || p.credential_mode !== "own") return;
+    const lock = p.tts_engine === "cartesia" ? "sonic" : p.tts_engine === "aura" ? "flux" : null;
+    if (lock) {
+      setEngineLock(lock);
+      setSelectedEngine(lock);
+      // A never-saved agent (no agent_id yet) still carries the factory Aura default; start it on the org's engine
+      // instead of showing a "voice unavailable" notice. Saved agents are never changed silently.
+      if (lock === "sonic" && !agentData.agent_id && initialEngine === "flux") {
+        handleEngineSwitch("sonic");
+      }
+    }
+  }, [viewerProfile]);
 
   // Cartesia Sonic dynamic voices list
   const [sonicVoices, setSonicVoices] = useState<any[]>(POPULAR_SONIC_VOICES);
@@ -964,6 +977,13 @@ export function Step3VoiceLanguage({
     return filtered;
   }, [selectedEngine, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
 
+  const economySelectable = economyAllowed && isCartesiaVoice(agentData.voice?.provider, agentData.voice?.voice);
+  const economyHint = !economyAllowed
+    ? "Not enabled for your organization"
+    : !economySelectable
+      ? "Not available for this voice"
+      : null;
+
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
@@ -982,6 +1002,29 @@ export function Step3VoiceLanguage({
             />
           </div>
         </div>
+      </div>
+
+      {/* Voice engine: Standard or Economy */}
+      <div data-testid="voice-engine-section" className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-1.5">
+        <label htmlFor="voice-engine-select" className="block text-xs font-semibold text-[var(--color-heading)]">
+          Voice engine
+        </label>
+        <select
+          id="voice-engine-select"
+          aria-describedby={economyHint ? "voice-engine-hint" : undefined}
+          value={agentData.voice_engine || "managed"}
+          onChange={(e) => {
+            const next = e.target.value === "custom" ? "custom" : "managed";
+            setAgentData((prev) => ({ ...prev, voice_engine: next }));
+          }}
+          className="w-full sm:w-64 px-2.5 py-1.5 text-xs bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
+        >
+          <option value="managed">Standard</option>
+          <option value="custom" disabled={!economySelectable}>Economy</option>
+        </select>
+        {economyHint && (
+          <p id="voice-engine-hint" className="text-[11px] text-[var(--color-muted)]">{economyHint}</p>
+        )}
       </div>
 
       {/* Section 1: Rich Production Voice Picker */}
