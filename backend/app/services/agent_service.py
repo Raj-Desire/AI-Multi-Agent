@@ -14,6 +14,13 @@ from app.agents.configuration import AgentConfiguration, get_default_receptionis
 from app.repositories.agent_repository import AgentRepository
 
 
+def apply_voice_engine_policy(role: str, incoming: str, existing: Optional[str]) -> str:
+    """Only a superadmin chooses the voice engine; everyone else keeps the stored value ("managed" for a new agent)."""
+    if role == "superadmin":
+        return incoming
+    return existing or "managed"
+
+
 class AgentService:
     def __init__(self, agent_repo: Optional[AgentRepository] = None):
         self.agent_repo = agent_repo or AgentRepository()
@@ -79,6 +86,7 @@ class AgentService:
             config.scope = "ORGANIZATION"
             config.organization_id = ctx.organization_id
 
+        config.voice_engine = apply_voice_engine_policy(ctx.role, config.voice_engine, None)
         config.owner_user_id = ctx.user_id
         config.created_by = ctx.user_id
         config.updated_by = ctx.user_id
@@ -131,6 +139,7 @@ class AgentService:
         payload.agent_id = agent_id
         payload.organization_id = existing.organization_id
         payload.scope = existing.scope
+        payload.voice_engine = apply_voice_engine_policy(ctx.role, payload.voice_engine, existing.voice_engine)
         return await self.agent_repo.update(
             agent_id=agent_id,
             organization_id=existing.organization_id or ctx.organization_id,

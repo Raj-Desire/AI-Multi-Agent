@@ -35,14 +35,6 @@ class SuperadminProfilePayload(BaseModel):
     custom_pipeline_enabled: Optional[bool] = None
 
 
-class OrgProfilePayload(BaseModel):
-    """Org admins may only supply keys; engine, mode and edit flag are not declared, so they are rejected."""
-
-    model_config = ConfigDict(extra="forbid")
-    engine_key: Optional[str] = Field(None, repr=False)
-    tts_key: Optional[str] = Field(None, repr=False)
-
-
 _parse_body = parse_body_without_echo
 
 
@@ -152,7 +144,7 @@ async def delete_key(
     return {"organization_id": org_id, "configured": True, **view}
 
 
-# ---------------- Org admin ----------------
+# ---------------- Org admin (read only; every write is superadmin-only) ----------------
 
 @org_router.get("")
 async def get_own_profile(
@@ -161,19 +153,3 @@ async def get_own_profile(
     service: VoiceCredentialsService = Depends(get_voice_service),
 ):
     return await _profile(repo, service, user.get("organization_id") or user.get("id"))
-
-
-@org_router.put("")
-async def put_own_profile(
-    request: Request,
-    user: Dict[str, Any] = Depends(require_admin),
-    repo: VoiceCredentialsRepository = Depends(get_voice_repo),
-    service: VoiceCredentialsService = Depends(get_voice_service),
-):
-    org_id = user.get("organization_id") or user.get("id")
-    creds = await repo.get_by_org(org_id)
-    if creds is None or not creds.allow_org_edit:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Editing voice settings is not enabled for your organization.")
-    body = await _parse_body(request, OrgProfilePayload)
-    view = await service.save(org_id, actor_id=user["id"], engine_key=body.engine_key, tts_key=body.tts_key)
-    return {"configured": True, **view}
