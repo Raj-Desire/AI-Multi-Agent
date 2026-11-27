@@ -38,7 +38,7 @@ describe("VoiceCredentialsTab", () => {
     expect(await screen.findByText("****abcd")).toBeInTheDocument();
     container.querySelectorAll("input[type=password], input[type=text]").forEach((i) => expect((i as HTMLInputElement).value).toBe(""));
     expect(screen.getAllByText("Own").length).toBeGreaterThan(0);
-    expect(screen.getByText("valid")).toBeInTheDocument();
+    expect(screen.getByText("Verified")).toBeInTheDocument();
   });
 
   it("import button shows Imported tag without revealing a key", async () => {
@@ -64,8 +64,8 @@ describe("VoiceCredentialsTab", () => {
     });
     render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.click(await screen.findByRole("button", { name: "Import from superadmin" }));
-    expect(await screen.findByText("This replaces the organization's own key")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Replace key" }));
+    expect(await screen.findByText("This replaces the organization's own keys and language model settings")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Replace and import" }));
     await waitFor(() =>
       expect(fetchApi.mock.calls.some((c) => String(c[0]).includes("/import-platform?overwrite=true"))).toBe(true)
     );
@@ -206,9 +206,9 @@ describe("VoiceCredentialsTab", () => {
   it("keys have plain names and a one-line explanation", async () => {
     setup(profile({ tts_engine: "cartesia" }));
     render(<VoiceCredentialsTab organizationId="org1" canManage />);
-    expect(await screen.findByText("Voice engine key")).toBeInTheDocument();
-    expect(screen.getByText("Cartesia voice key")).toBeInTheDocument();
-    expect(screen.getByText(/listens to callers and runs the ai agent/i)).toBeInTheDocument();
-    expect(screen.getByText(/makes the speaking voice/i)).toBeInTheDocument();
+    expect(await screen.findByText("Voice agent (listening and conversation engine)")).toBeInTheDocument();
+    expect(screen.getByText("Voice (speech) key: Cartesia")).toBeInTheDocument();
+    expect(screen.getByText(/engine that listens to callers/i)).toBeInTheDocument();
+    expect(screen.getByText(/key for the speaking voice/i)).toBeInTheDocument();
   });
 });

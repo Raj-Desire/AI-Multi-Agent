@@ -1583,6 +1583,8 @@ export interface VoiceProfile {
   llm?: LlmConfigView;
   /** Result of the last Verify call (verify route only). */
   llm_check?: LlmCheck;
+  /** Result of "Import from superadmin" (import route only). */
+  import_report?: { imported: string[]; llm_message: string | null };
   /** Organization route only: status flags without any detail. */
   llm_configured?: boolean;
   llm_verified?: boolean;

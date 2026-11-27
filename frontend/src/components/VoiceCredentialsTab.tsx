@@ -21,13 +21,23 @@ const ADMIN_ENGINE_LABEL: Record<VoiceEngineId, string> = { aura: "Aura", cartes
 const SLOT_LABEL: Record<KeySlotName, string> = { engine: "engine key", tts: "voice key" };
 
 // Visible names and one-line explanations.
-const SLOT_TITLE: Record<KeySlotName, string> = { engine: "Voice engine key", tts: "Cartesia voice key" };
+const SLOT_TITLE: Record<KeySlotName, string> = {
+  engine: "Voice agent (listening and conversation engine)",
+  tts: "Voice (speech) key: Cartesia",
+};
 const SLOT_HELP: Record<KeySlotName, string> = {
-  engine: "Listens to callers and runs the AI agent. Always required.",
-  tts: "Makes the speaking voice. Required because this organization uses Cartesia.",
+  engine: "Key for the engine that listens to callers. On Standard it also runs the conversation. Always required.",
+  tts: "Key for the speaking voice. Required because this organization uses Cartesia.",
 };
 const MODE_LABEL = { own: "Own keys", platform: "Platform keys" } as const;
 const STATUS_VARIANT = { valid: "success", invalid: "danger", unverified: "warning" } as const;
+
+/** One status chip for every credential section: Not set, Saved (not yet verified), Verified, or Invalid. */
+function StatusChip({ configured, status }: { configured: boolean; status: "valid" | "invalid" | "unverified" }) {
+  if (!configured) return <Badge variant="neutral">Not set</Badge>;
+  const label = status === "valid" ? "Verified" : status === "invalid" ? "Invalid" : "Saved";
+  return <Badge variant={STATUS_VARIANT[status] || "neutral"}>{label}</Badge>;
+}
 
 function formatWhen(value: string | null): string {
   if (!value) return "Never verified";
@@ -103,12 +113,12 @@ function LanguageModelSection({
     <section aria-label="Language model" className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div className="min-w-0">
-          <h4 className="text-xs font-semibold text-[var(--color-heading)]">Language model</h4>
+          <h4 className="text-xs font-semibold text-[var(--color-heading)]">Language model (Economy plan)</h4>
           <div className="text-[11px] text-[var(--color-muted)]">
             The organization's own model settings. Economy calls use only these, so usage is billed and measured per organization.
           </div>
         </div>
-        {llm.configured && <Badge variant={STATUS_VARIANT[llm.status] || "neutral"}>{llm.status}</Badge>}
+        <StatusChip configured={llm.configured} status={llm.status} />
       </div>
 
       {economy && !llm.configured && (
@@ -184,6 +194,17 @@ function LanguageModelSection({
   );
 }
 
+const IMPORT_LABEL: Record<string, string> = { engine_key: "voice agent key", tts_key: "voice (speech) key", llm: "language model settings" };
+
+function describeImport(p: VoiceProfile): string | null {
+  const report = p.import_report;
+  if (!report) return null;
+  const parts: string[] = [];
+  parts.push(report.imported.length ? `Imported: ${report.imported.map((k) => IMPORT_LABEL[k] || k).join(", ")}.` : "Nothing was imported.");
+  if (report.llm_message) parts.push(report.llm_message);
+  return parts.join(" ");
+}
+
 type Pending = { kind: "clear"; slot: KeySlotName } | { kind: "overwrite" } | null;
 
 /**
@@ -199,6 +220,7 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
   const [keyInput, setKeyInput] = useState("");
   const [pending, setPending] = useState<Pending>(null);
   const [change, setChange] = useState<Record<string, string> | null>(null);
+  const [importNote, setImportNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -252,6 +274,7 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
       try {
         const next = await fetchApi<VoiceProfile>(`${base}/import-platform${overwrite ? "?overwrite=true" : ""}`, { method: "POST" });
         setPending(null);
+        setImportNote(describeImport(next));
         return next;
       } catch (e: any) {
         if (e?.status === 409 && !overwrite) {
@@ -281,18 +304,16 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
       <li key={name} className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-[var(--color-heading)]">{SLOT_TITLE[name]}</div>
+            <h4 className="text-xs font-semibold text-[var(--color-heading)]">{SLOT_TITLE[name]}</h4>
             <div className="text-[11px] text-[var(--color-muted)]">{SLOT_HELP[name]}</div>
             <div className="text-xs font-mono text-[var(--color-muted)] break-all">
-              {slot.configured ? <span>{slot.key_hint}</span> : <span>Not set</span>}
+              {slot.configured ? <span>{slot.key_hint}</span> : <span>No key saved</span>}
             </div>
           </div>
-          {slot.configured && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge variant={STATUS_VARIANT[slot.status] || "neutral"}>{slot.status}</Badge>
-              {slot.source && <Badge variant="outline">{slot.source === "imported" ? "Imported" : "Own"}</Badge>}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StatusChip configured={slot.configured} status={slot.status} />
+            {slot.configured && slot.source && <Badge variant="outline">{slot.source === "imported" ? "Imported" : "Own"}</Badge>}
+          </div>
         </div>
         {slot.configured && <div className="text-[11px] text-[var(--color-muted)]">Last verified: {formatWhen(slot.last_verified_at)}</div>}
 
@@ -450,15 +471,19 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
 
       {canManage && (
         <div className="space-y-2">
+          <div className="text-[11px] text-[var(--color-muted)]">
+            Copies the platform's voice keys and language model settings into this organization. Only what is set at the platform is copied, and each organization keeps its own copy.
+          </div>
           <Button variant="outline" size="sm" disabled={busy} onClick={() => importPlatform(false)}>
             Import from superadmin
           </Button>
+          {importNote && <Alert type="info" onDismiss={() => setImportNote(null)}>{importNote}</Alert>}
           {pending?.kind === "overwrite" && (
             <div role="alertdialog" aria-label="Confirm overwrite" className="p-2 rounded border border-[var(--color-border)] space-y-2">
-              <p className="text-xs text-[var(--color-heading)]">This replaces the organization's own key</p>
+              <p className="text-xs text-[var(--color-heading)]">This replaces the organization's own keys and language model settings</p>
               <div className="flex gap-2">
                 <Button variant="danger" size="sm" disabled={busy} onClick={() => importPlatform(true)}>
-                  Replace key
+                  Replace and import
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setPending(null)}>Cancel</Button>
               </div>

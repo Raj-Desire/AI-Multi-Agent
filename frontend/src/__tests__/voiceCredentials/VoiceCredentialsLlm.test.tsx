@@ -42,7 +42,7 @@ describe("VoiceCredentialsTab language model section", () => {
   it("renders the section with a saved state, never prefilled key, and no vendor names", async () => {
     setup(profile({ llm: configured() }));
     const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage />);
-    expect(await screen.findByText("Language model")).toBeInTheDocument();
+    expect(await screen.findByText("Language model (Economy plan)")).toBeInTheDocument();
     const key = screen.getByLabelText("Language model key") as HTMLInputElement;
     expect(key.type).toBe("password");
     expect(key.value).toBe("");
@@ -118,7 +118,7 @@ describe("VoiceCredentialsTab language model section", () => {
     fetchApi.mockReset();
     setup(profile({ voice_engine: "custom", llm: configured({ status: "valid" }) }));
     render(<VoiceCredentialsTab organizationId="org1" canManage />);
-    await screen.findByText("Language model");
+    await screen.findByText("Language model (Economy plan)");
     expect(screen.queryByText(/Economy needs these/)).toBeNull();
     expect(screen.queryByText(/not verified yet/i)).toBeNull();
   });
@@ -126,7 +126,7 @@ describe("VoiceCredentialsTab language model section", () => {
   it("no warning on the Standard plan", async () => {
     setup(profile({ voice_engine: "managed", llm: llm() }));
     render(<VoiceCredentialsTab organizationId="org1" canManage />);
-    await screen.findByText("Language model");
+    await screen.findByText("Language model (Economy plan)");
     expect(screen.queryByText(/Economy needs these/)).toBeNull();
   });
 
@@ -143,6 +143,6 @@ describe("VoiceCredentialsTab language model section", () => {
     setup(profile({ llm: configured() }));
     render(<VoiceCredentialsTab organizationId="org1" canManage={false} />);
     await screen.findByText("****abcd");
-    expect(screen.queryByText("Language model")).toBeNull();
+    expect(screen.queryByText("Language model (Economy plan)")).toBeNull();
   });
 });
