@@ -134,6 +134,7 @@ class PipelineVoiceClient:
         self._overlap: List[Tuple[str, float]] = []  # (caller text, clock time) heard while the agent talked
         self._speech_started_at: Optional[float] = None
         self._user_speaking_sent = False
+        self._closed_by_interim = False    # this utterance already became a turn from its interim text
         self._last_interim = ""            # latest interim text of the utterance, used if no final ever comes
         self._turn_started_at: Optional[float] = None
 
@@ -255,6 +256,7 @@ class PipelineVoiceClient:
         self._speech_started_at = self._clock()
         self._user_speaking_sent = False
         self._last_interim = ""
+        self._closed_by_interim = False
         logger.info("[Economy] speech started (agent_active=%s)", self._agent_active())
 
     async def _announce_user_speaking(self) -> None:
@@ -265,7 +267,7 @@ class PipelineVoiceClient:
         await self._call(self.on_user_speaking)
 
     async def _on_stt_transcript(self, text: str, is_final: bool, speech_final: bool) -> None:
-        if self._closed:
+        if self._closed or self._closed_by_interim:  # late results of an utterance already answered
             return
         words = len(clean_transcript(text or "").split())
         logger.info("[Economy] listening result final=%s speech_final=%s words=%d", is_final, speech_final, words)
@@ -293,9 +295,10 @@ class PipelineVoiceClient:
             if words:
                 self._last_interim = text
             return
-        self._last_interim = ""
-        if is_final:
+        if words:
+            self._last_interim = ""  # an empty final keeps it, so UtteranceEnd can still finish the turn from it
             self._user_parts.append(text)
+        if self._user_parts:
             if turn_is_complete(" ".join(self._user_parts), speech_final, 0):
                 self._finish_user_turn()
 
@@ -306,6 +309,7 @@ class PipelineVoiceClient:
             # announced, but no final result ever came: finish from the interim text so the caller's turn closes
             self._user_parts.append(self._last_interim)
             self._last_interim = ""
+            self._closed_by_interim = True
             self._finish_user_turn()
             return
         if not self._user_parts:
