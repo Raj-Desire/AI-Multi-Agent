@@ -22,10 +22,10 @@ from urllib.parse import urlencode
 import httpx
 import websockets
 
+from app.providers.pipeline.log_safety import LogGuard, guard_connection_logs
 from app.voice_stack.registry import CARTESIA_API_VERSION
 
 logger = logging.getLogger(__name__)
-logging.getLogger("websockets").setLevel(logging.INFO)
 
 WS_URL = "wss://api.cartesia.ai/tts/websocket"
 BYTES_URL = "https://api.cartesia.ai/tts/bytes"
@@ -100,6 +100,7 @@ class StreamingTTS:
         self._reuse = 0
         self._closing = False
         self._connect_lock = asyncio.Lock()
+        self._log_guard: Optional[LogGuard] = None  # keeps the key out of connection logs while open
 
     # ---- connection ----
     def _headers(self) -> dict:
@@ -115,6 +116,8 @@ class StreamingTTS:
                 raise TtsUnavailable("Voice engine service unavailable")
             if self._ws is not None:
                 return self._ws
+            if self._log_guard is None:
+                self._log_guard = guard_connection_logs(self._api_key)
             last: Optional[Exception] = None
             for _ in range(2):  # first attempt plus one reconnect
                 try:
@@ -298,6 +301,9 @@ class StreamingTTS:
         self._tombstones.clear()
         ws, self._ws = self._ws, None
         task, self._recv_task = self._recv_task, None
+        guard, self._log_guard = self._log_guard, None
+        if guard is not None:
+            guard.release()
         if ws is not None:
             try:
                 await ws.close()

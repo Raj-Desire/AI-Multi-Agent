@@ -309,6 +309,13 @@ Trial Twilio accounts can only call numbers you have verified in the Twilio cons
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Yes | First Super Admin account |
 | `DEEPGRAM_API_KEY` | Yes | Real-time voice engine key |
 | `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT_NAME`, `AZURE_OPENAI_API_VERSION` | Yes | LLM for agent replies |
+| `AZURE_OPENAI_KEY` | No | Alias for `AZURE_OPENAI_API_KEY`, used when that one is not set |
+| `AZURE_OPENAI_VOICE_DEPLOYMENT_NAME` | No | Model deployment for the Economy voice engine (default: the agent's model; a wrong name makes every Economy turn apologise) |
+| `CUSTOM_PIPELINE_DEFAULT_ENABLED` | No | `true` = organizations without their own voice settings may use the Economy voice engine (default `false`) |
+| `COST_MANAGED_AGENT_PER_MIN` | No | Standard engine cost per minute for call analytics (default `0.056`) |
+| `COST_CUSTOM_STT_PER_MIN` | No | Economy engine speech recognition cost per minute (default `0.0077`) |
+| `COST_CUSTOM_LLM_PER_MIN` | No | Economy engine language model cost per minute (default `0.005`) |
+| `COST_VOICE_PER_1K_CHARS` | No | Voice cost per 1,000 characters used by the engine comparison script (default `0.045`) |
 | `PUBLIC_BASE_URL` | Yes for calls | Public HTTPS URL (ngrok or your server) Twilio calls back |
 | `TWIML_APP_SID` | No | Twilio TwiML App for browser calling |
 | `CARTESIA_API_KEY` | No | Extra voice provider |
@@ -318,6 +325,8 @@ Trial Twilio accounts can only call numbers you have verified in the Twilio cons
 | `ORCHESTRATOR_THINK_PROXY` | No | Advanced: route agent reasoning through the backend (needs one worker and an HTTPS `PUBLIC_BASE_URL`) |
 | `ORCHESTRATOR_EMBEDDINGS_ENABLED` | No | Advanced: enable vector embeddings for knowledge search |
 | `VITE_API_BASE_URL` | No (frontend) | Backend API URL, default `http://localhost:8000/api/v1` |
+
+The Economy voice engine needs Python 3.11 or newer; on older Python, calls set to Economy run on the Standard engine.
 
 ## 11. Running tests
 

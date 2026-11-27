@@ -31,6 +31,7 @@ from app.providers.pipeline.sentences import SentenceChunker
 from app.providers.pipeline.tts import StreamingTTS, TtsUnavailable
 from app.providers.pipeline.turns import clean_transcript, is_backchannel, is_real_interruption, turn_is_complete
 from app.voice_stack.function_dispatch import answer_function_call, run_knowledge_search
+from app.voice_stack.llm_env import resolve_llm_key
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ _speaker: "contextvars.ContextVar[Optional[_Speaker]]" = contextvars.ContextVar(
 
 
 class PipelineVoiceClient:
+    VOICE_ENGINE = "custom"  # marker read by engine_of() without importing this module
+
     def __init__(
         self,
         *,
@@ -221,10 +224,11 @@ class PipelineVoiceClient:
             )
         if self._llm is None:
             endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-            key = os.getenv("AZURE_OPENAI_API_KEY")
+            key = resolve_llm_key()
             deployment = os.getenv("AZURE_OPENAI_VOICE_DEPLOYMENT_NAME") or agent.think.provider.model
             if not endpoint or not key or not deployment:
                 raise ValueError(_NOT_CONFIGURED)
+            logger.info("[Economy] language model deployment: %s", deployment)
             self._llm = AzureChatStream(endpoint, key, deployment=deployment, timeout_s=LLM_FIRST_TOKEN_TIMEOUT_S)
 
     # ---- caller audio and speech-to-text events ----
@@ -333,6 +337,7 @@ class PipelineVoiceClient:
         turn = _Speaker()
         _speaker.set(turn)
         watchdog = self._spawn_speech(self._watchdog(turn, asyncio.current_task()))
+        start = len(self._history)
         try:
             self._history.append({"role": "user", "content": user_text})
             await self._emit("ConversationText", {"role": "user", "content": user_text})
@@ -347,13 +352,25 @@ class PipelineVoiceClient:
                 self._start_turn(carry)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception("[Economy] turn failed")
+        except Exception as e:
+            logger.error("[Economy] turn failed (%s)", type(e).__name__)
             self._overlap.clear()
+            await self._apologise_unless_replied(turn, watchdog, start)
             await self._finish_speaking()
         finally:
             if not watchdog.done():
                 watchdog.cancel()
+
+    async def _apologise_unless_replied(self, turn: _Speaker, watchdog: asyncio.Task, start: int) -> None:
+        """After an unexpected failure: the apology, unless this turn already spoke part of its reply."""
+        replied = any(m.get("role") == "assistant" and m.get("content") for m in self._history[start:])
+        if replied or self._closed:
+            return
+        try:
+            await self._end_watchdog(turn, watchdog)
+            await self._speak_line(APOLOGY_LINE)
+        except Exception as e:
+            logger.error("[Economy] apology failed (%s)", type(e).__name__)
 
     async def _watchdog(self, turn: _Speaker, turn_task: Optional[asyncio.Task]) -> None:
         """Speaks one short filler line when the turn has produced no audio for a while."""
@@ -413,8 +430,8 @@ class PipelineVoiceClient:
                 self._record_assistant(spoken)  # pending tool calls are dropped
                 await self._speak_line(APOLOGY_LINE)
                 return
-            except asyncio.CancelledError:
-                self._record_assistant(spoken)  # cut off: keep only what was fully spoken
+            except BaseException:
+                self._record_assistant(spoken)  # cut off or failed: keep only what was fully spoken
                 raise
             if not calls or rounds >= MAX_TOOL_ROUNDS:
                 self._record_assistant(spoken)
@@ -432,7 +449,7 @@ class PipelineVoiceClient:
                         c.name, c.arguments, state=self._numerology_state, knowledge_runner=self._knowledge_runner
                     )
                     answers.append({"role": "tool", "tool_call_id": c.id, "content": answer})
-            except asyncio.CancelledError:
+            except BaseException:
                 self._record_assistant(spoken)  # unanswered calls are dropped, so the history stays valid
                 raise
             # the call and all of its answers enter the history together

@@ -11,9 +11,9 @@ from urllib.parse import urlencode
 
 import websockets
 
+from app.providers.pipeline.log_safety import LogGuard, guard_connection_logs
+
 logger = logging.getLogger(__name__)
-# The library logs request headers (incl. the auth header) at DEBUG; keep that off.
-logging.getLogger("websockets").setLevel(logging.INFO)
 
 _BYTES_PER_SEC = 8000  # 8 kHz mu-law mono
 _MAX_PENDING_BYTES = int(1.5 * _BYTES_PER_SEC)
@@ -61,6 +61,7 @@ class StreamingSTT:
         self._last_failure: Optional[float] = None
         self._pending: List[bytes] = []
         self._pending_bytes = 0
+        self._log_guard: Optional[LogGuard] = None  # keeps the key out of connection logs while open
 
     def _full_url(self) -> str:
         params = {
@@ -87,7 +88,13 @@ class StreamingSTT:
 
     async def connect(self) -> None:
         self._closing = False
-        await self._open()
+        if self._log_guard is None:
+            self._log_guard = guard_connection_logs(self._api_key)
+        try:
+            await self._open()
+        except BaseException:
+            self._release_log_guard()
+            raise
         if self._keepalive_task is None:
             self._keepalive_task = asyncio.create_task(self._keepalive_loop())
         logger.info("[Listening] connected")
@@ -208,3 +215,9 @@ class StreamingSTT:
                 pass
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        self._release_log_guard()
+
+    def _release_log_guard(self) -> None:
+        guard, self._log_guard = self._log_guard, None
+        if guard is not None:
+            guard.release()

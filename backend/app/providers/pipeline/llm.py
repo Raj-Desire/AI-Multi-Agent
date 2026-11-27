@@ -153,6 +153,9 @@ class AzureChatStream:
             logger.warning("Language model connection error")
             raise LlmUnavailable("Language model unavailable")
 
+        if not got_token and not calls and not usage:
+            logger.warning("Language model returned an empty response")
+            raise LlmUnavailable("Language model unavailable")
         for idx in sorted(calls):
             c = calls[idx]
             yield ToolCall(c["id"], c["name"], c["args"])
