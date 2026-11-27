@@ -174,6 +174,9 @@ _ORDINALS = {
 
 _GUJARATI_DIGITS = str.maketrans("૦૧૨૩૪૫૬૭૮૯", "0123456789")
 
+# The recogniser writes May as "મેં" (with anusvara), which is also the everyday word "I did": May only after a day number.
+_MAY_ANUSVARA = unicodedata.normalize("NFC", "મેં")
+
 _MONTH_NAMES = {m: words[0] for m, words in _MONTHS.items() if words}
 _DAY_PREFIX = ("તારીખ",)
 
@@ -258,12 +261,19 @@ def _tokens(text: str) -> List[str]:
 def _groups(text: str) -> List[Tuple[str, int]]:
     """Turns the spoken words into ordered pieces: ('num', v), ('month', m), ('year', y), ('base', 1900), ('neg', 0)."""
     items: List[Tuple[str, int]] = []
+    prev_day_number = False  # the previous token was a number that can be a day (1-31)
     for token in _tokens(text):
+        after_day, prev_day_number = prev_day_number, False
+        if token == _MAY_ANUSVARA:
+            if after_day:
+                items.append(("month", 5))  # "બાવીસ મેં" = 22 May; elsewhere "મેં" means "I did", never a month
+            continue
         if token.isdigit():
             if len(token) == 4:
                 items.append(("year", int(token)))
             elif len(token) <= 2:
                 items.append(("num", int(token)))
+                prev_day_number = 1 <= int(token) <= 31
             continue
         if token.startswith("તારીખ"):
             items.append(("dword", 0))
@@ -277,6 +287,7 @@ def _groups(text: str) -> List[Tuple[str, int]]:
         kind = _classify(token)
         if kind:
             items.append(kind)
+            prev_day_number = kind[0] == "num" and 1 <= kind[1] <= 31
 
     items = _merge_digit_runs(_label_numbers(_merge_words(items)))
     out: List[Tuple[str, int]] = []
