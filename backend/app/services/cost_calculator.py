@@ -100,9 +100,10 @@ CUSTOM_LLM_PER_MINUTE = 0.005          # env COST_CUSTOM_LLM_PER_MIN
 
 def _rate(env_name: str, default: float) -> float:
     try:
-        return float(os.getenv(env_name, "").strip())
+        value = float(os.getenv(env_name, "").strip())
     except ValueError:
         return default
+    return value if math.isfinite(value) and value >= 0 else default
 
 
 def engine_cost_per_minute(engine: Optional[str]) -> Dict[str, float]:
