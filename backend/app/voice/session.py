@@ -61,6 +61,7 @@ class CallSession(BaseModel):
     destination_number: str = ""    # Customer number
     direction: str = "outbound"     # "inbound" | "outbound"
     tts_engine: Optional[str] = None          # voice engine resolved for this call
+    voice_engine: Optional[str] = None        # engine that actually ran: "managed" (Standard) | "custom" (Economy)
     credential_source: Optional[str] = None   # "own" | "platform"
     billed_to: Optional[str] = None           # "org_own_key" | "platform"
     is_test: bool = False           # a test call from the agent editor or the test console: not a real lead or booking

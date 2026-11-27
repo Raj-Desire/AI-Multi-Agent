@@ -17,7 +17,7 @@ from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.voice.greeting_cache import greeting_audio_cache
 from app.models.voice_credentials import VoiceCredentialsMissing
-from app.voice_stack.client_factory import build_voice_client
+from app.voice_stack.client_factory import build_voice_client, engine_of, filler_behavior, select_voice_engine
 from app.voice_stack.resolver import resolve_voice_profile
 from app.providers.deepgram.configuration import DeepgramAgentContext
 from app.voice.session import CallSession, active_sessions
@@ -374,7 +374,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
                     if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
                         logger.info(f"[VoiceGateway] Agent thinking threshold ({filler_delay}s) reached. Injecting filler: '{norm_filler}'")
-                        await deepgram_client.inject_agent_message(norm_filler, behavior="queue")
+                        await deepgram_client.inject_agent_message(norm_filler, behavior=filler_behavior(deepgram_client))
                 except asyncio.CancelledError:
                     pass
                 except Exception as ex:
@@ -1309,6 +1309,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                 deepgram_client = await build_voice_client(
                     org_id,
                     profile=voice_profile,
+                    engine=select_voice_engine(agent_config),
                     on_audio=handle_deepgram_audio,
                     on_event=handle_deepgram_event,
                     on_transcript=handle_transcript,
@@ -1318,6 +1319,8 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     on_agent_audio_done=handle_agent_audio_done,
                     on_error=handle_engine_error
                 )
+                if session:
+                    session.voice_engine = engine_of(deepgram_client)
 
                 # Initialize unified HandoffController if orchestrator is present and Think Proxy is NOT active
                 if orchestrator and not use_think_proxy:

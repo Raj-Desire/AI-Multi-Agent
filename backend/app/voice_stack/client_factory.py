@@ -5,6 +5,7 @@ from typing import Any, Optional
 from app.models.voice_credentials import ResolvedVoiceProfile, VoiceCredentialsMissing
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.voice_stack.protocol import VoiceClientProtocol
+from app.voice_stack.registry import is_cartesia_voice
 from app.voice_stack.resolver import resolve_voice_profile
 
 logger = logging.getLogger(__name__)
@@ -39,3 +40,27 @@ async def build_voice_client(
             return PipelineVoiceClient(profile=profile, **callbacks)
         logger.warning("Economy engine unavailable for this call; using Standard engine")
     return DeepgramVoiceAgentClient(api_key=profile.engine_key, **callbacks)
+
+
+def select_voice_engine(agent_config: Any) -> str:
+    """"custom" only when the agent asks for the Economy engine and its voice is Cartesia; otherwise "managed"."""
+    if getattr(agent_config, "voice_engine", "managed") != "custom":
+        return "managed"
+    voice = getattr(agent_config, "voice", None)
+    if voice is None:
+        return "managed"
+    provider = getattr(voice, "provider", None)
+    voice_id = getattr(voice, "voice", None)
+    return "custom" if is_cartesia_voice(provider, voice_id) else "managed"
+
+
+def engine_of(client: Any) -> str:
+    """The engine that actually runs for this client ("custom" for Economy, else "managed")."""
+    from app.providers.pipeline.client import PipelineVoiceClient
+
+    return "custom" if isinstance(client, PipelineVoiceClient) else "managed"
+
+
+def filler_behavior(client: Any) -> str:
+    """Thinking fillers must speak while the model thinks: Economy queues wait for the whole turn, so it uses "default"."""
+    return "default" if engine_of(client) == "custom" else "queue"
