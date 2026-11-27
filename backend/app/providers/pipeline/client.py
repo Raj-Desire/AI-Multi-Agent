@@ -20,14 +20,16 @@ import asyncio
 import contextlib
 import contextvars
 import functools
+import json
 import logging
 import os
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
+from collections import deque
+from typing import Any, Awaitable, Callable, Deque, Dict, List, Optional, Set, Tuple
 
 from app.providers.pipeline.llm import (
-    AzureChatStream, LlmTimeout, LlmUnavailable, TextDelta, ToolCall, to_chat_tools,
+    AzureChatStream, Finished, LlmTimeout, LlmUnavailable, TextDelta, ToolCall, to_chat_tools,
 )
 from app.providers.pipeline.sentences import SentenceChunker
 from app.providers.pipeline.tts import StreamingTTS, TtsUnavailable
@@ -44,7 +46,13 @@ MAX_REPLY_TOKENS = 400
 FILLER_LINE = "એક ક્ષણ, હું જોઉં છું."
 LLM_FIRST_TOKEN_TIMEOUT_S = 4.0  # with the silence watchdog, keeps the worst-case silence under 6 s
 UTTERANCE_END_SILENCE_MS = 1000
-PLAYBACK_LEAD_S = 0.3        # how far audio may be handed out ahead of real playback
+DATE_FUNCTION = "parse_birth_date"
+FINAL_WITHOUT_END_S = 0.45   # a final caller result with no end-of-speech flag: wait this long, not the full 1 s UtteranceEnd silence
+FIRST_CLAUSE_CHARS = 30      # the first piece of a reply may end at a comma once it is this long, so the voice starts sooner
+VOICE_PREFETCH = 2           # sentences whose voice is made at once: the one playing and the next (the voice service limits concurrent requests)
+_CLIP_END = object()
+_CLIP_FAIL = object()
+PLAYBACK_LEAD_S = 0.3       # how far audio may be handed out ahead of real playback
 AUDIO_BYTES_PER_S = 8000     # 8 kHz mu-law, one byte per sample
 SUPPORTED_VOICE_TYPE = "cartesia"
 _NOT_CONFIGURED = "Voice engine is not configured for this organization"
@@ -60,6 +68,28 @@ class _Speaker:
         self.audio = False                    # some audio was handed out
         self.last_sentence_at: Optional[float] = None  # clock time the latest sentence began playing
         self.filler_speaking = False
+        self.hold_task: Optional[asyncio.Task] = None  # the hold line spoken while a tool round runs
+
+
+class _Clip:
+    """One sentence on its way to the caller: its voice is made into `chunks` while earlier sentences still play."""
+
+    def __init__(self, text: str, spoken: List[str]):
+        self.text = text
+        self.spoken = spoken                      # the round's list of fully played sentences
+        self.ctx = uuid.uuid4().hex               # also the voice engine's context id
+        self.chunks: asyncio.Queue = asyncio.Queue()
+        self.task: Optional[asyncio.Task] = None  # making the voice
+
+
+class _Lane:
+    """The sentences of one reply, spoken in order. Reading the model's output never waits for playback."""
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue = asyncio.Queue()   # clips in speaking order; None ends the lane
+        self.unplayed: Deque[_Clip] = deque()
+        self.task: Optional[asyncio.Task] = None      # the player
+        self.error: Optional[BaseException] = None
 
 
 # The speaking unit of the running task; inherited by tasks it spawns (the silence watchdog).
@@ -85,11 +115,17 @@ class PipelineVoiceClient:
         llm: Any = None,
         tts: Any = None,
         silence_watchdog_s: float = 3.5,
+        tool_hold_line: Optional[bool] = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
         playback_sleep: Optional[Callable[[float], Awaitable[Any]]] = None,
     ):
         self._watchdog_s = silence_watchdog_s
+        # a short line spoken while a tool round runs, so the call is not silent (PIPELINE_TOOL_HOLD_LINE=0 turns it off)
+        self._tool_hold_line = (os.getenv("PIPELINE_TOOL_HOLD_LINE", "1") != "0") if tool_hold_line is None else tool_hold_line
+        # the date of birth is read in code before the model request when the caller's words hold date pieces (PIPELINE_PRERUN_DATE=0 turns it off)
+        self._prerun_date = os.getenv("PIPELINE_PRERUN_DATE", "1") != "0"
+        self._prerun: Optional[Tuple[str, str]] = None  # (caller words, answer) of this turn's pre-run
         self._clock = clock
         self._sleep = sleep
         self._playback_sleep = playback_sleep or sleep
@@ -137,6 +173,7 @@ class PipelineVoiceClient:
         self._closed_by_interim = False    # this utterance already became a turn from its interim text
         self._last_interim = ""            # latest interim text of the utterance, used if no final ever comes
         self._turn_started_at: Optional[float] = None
+        self._end_timer: Optional[asyncio.Task] = None  # finishes the turn shortly after a final result with no end flag
 
     # ---- protocol properties ----
     @property
@@ -196,6 +233,7 @@ class PipelineVoiceClient:
                 raise
             raise ConnectionError("Voice engine service unavailable") from None
 
+        self._warm_llm()
         self._session_id = uuid.uuid4().hex
         self._ready = True
         logger.info("[Economy] voice engine ready")
@@ -203,6 +241,16 @@ class PipelineVoiceClient:
         if greeting and greeting.strip():
             self._spawn_speech(self._speak_reply(greeting.strip()))
         return True
+
+    def _warm_llm(self) -> None:
+        """While the greeting plays: open the model connection and load the real prompt into its cache."""
+        warm = getattr(self._llm, "warm", None)
+        if warm is None:
+            return
+        messages = [{"role": "system", "content": self._system_prompt}, *self._history, {"role": "user", "content": "."}]
+        task = asyncio.ensure_future(warm(messages, self._tools))
+        self._aux_tasks.add(task)
+        task.add_done_callback(self._aux_tasks.discard)
 
     def _build_missing(self, settings: Any) -> None:
         agent = settings.agent
@@ -253,6 +301,7 @@ class PipelineVoiceClient:
         if self._closed:
             return
         # Voice activity alone (line noise, echo) is never announced: only recognised words are.
+        self._cancel_end_timer()  # the caller is speaking again: the earlier final was not the end of the turn
         self._speech_started_at = self._clock()
         self._user_speaking_sent = False
         self._last_interim = ""
@@ -293,6 +342,7 @@ class PipelineVoiceClient:
             await self._announce_user_speaking()
         if not is_final:
             if words:
+                self._cancel_end_timer()  # more words are still arriving
                 self._last_interim = text
             return
         if words:
@@ -301,6 +351,25 @@ class PipelineVoiceClient:
         if self._user_parts:
             if turn_is_complete(" ".join(self._user_parts), speech_final, 0):
                 self._finish_user_turn()
+            elif words:
+                self._arm_end_timer()  # no end flag yet: do not wait for the full UtteranceEnd silence
+
+    def _arm_end_timer(self) -> None:
+        self._cancel_end_timer()
+        self._end_timer = asyncio.ensure_future(self._end_after_pause())
+
+    def _cancel_end_timer(self) -> None:
+        timer, self._end_timer = self._end_timer, None
+        if timer is not None and timer is not asyncio.current_task() and not timer.done():
+            timer.cancel()
+
+    async def _end_after_pause(self) -> None:
+        await self._sleep(FINAL_WITHOUT_END_S)
+        self._end_timer = None
+        if self._closed or self._agent_active() or not self._user_parts:
+            return
+        logger.info("[Economy] turn finished %.2fs after the final result (no end flag)", FINAL_WITHOUT_END_S)
+        self._finish_user_turn()
 
     async def _on_utterance_end(self) -> None:
         if self._closed or self._agent_active():
@@ -323,6 +392,7 @@ class PipelineVoiceClient:
         await self._call(self.on_error, "Speech recognition connection lost")
 
     def _finish_user_turn(self) -> None:
+        self._cancel_end_timer()
         text = clean_transcript(" ".join(self._user_parts))
         self._user_parts = []
         if text:
@@ -379,11 +449,13 @@ class PipelineVoiceClient:
         start = len(self._history)
         try:
             self._history.append({"role": "user", "content": user_text})
+            await self._prerun_birth_date(user_text)
             await self._emit("ConversationText", {"role": "user", "content": user_text})
             await self._call(self.on_transcript, "user", user_text)
             await self._emit("AgentThinking", {})
             await self._call(self.on_agent_thinking, {})
             await self._respond()
+            await self._finish_hold(turn)
             await self._end_watchdog(turn, watchdog)
             await self._finish_speaking()
             carry = self._take_overlap(turn)
@@ -446,34 +518,70 @@ class PipelineVoiceClient:
         return clean_transcript(" ".join(keep))
 
     async def _respond(self) -> None:
+        """One reply. The model's sentences flow into the speaking lane, so reading its output (tool calls included)
+        never waits for audio playback, and the voice of the next sentence is made while the current one plays."""
+        lane = self._new_lane()
+        try:
+            await self._respond_rounds(lane)
+            await self._lane_finish(lane)
+        finally:
+            self._lane_cancel(lane)
+
+    async def _respond_rounds(self, lane: _Lane) -> None:
         rounds = 0
         while not self._closed:
-            spoken: List[str] = []
+            spoken: List[str] = []      # sentences fully played: all the history may keep when a reply is cut off
+            generated: List[str] = []   # sentences the model wrote this round
             calls: List[ToolCall] = []
             try:
                 messages = [{"role": "system", "content": self._system_prompt}, *self._history]
-                chunker = SentenceChunker()
+                chunker = SentenceChunker(early_clause_chars=FIRST_CLAUSE_CHARS)
                 stream = self._llm.stream(
                     messages, self._tools, temperature=self._temperature, max_tokens=MAX_REPLY_TOKENS
                 )
+                requested_at = self._clock()
+                first_word = True
                 async with contextlib.aclosing(stream) as events:
                     async for ev in events:
                         if isinstance(ev, TextDelta):
+                            if first_word:
+                                first_word = False
+                                logger.info("[Economy] language model first word after %.2fs", self._clock() - requested_at)
                             for sentence in chunker.feed(ev.text):
-                                await self._speak_sentence(sentence, spoken)
+                                self._lane_put(lane, sentence, spoken, generated)
                         elif isinstance(ev, ToolCall):
                             calls.append(ev)
+                        elif isinstance(ev, Finished):
+                            logger.info("[Economy] language model tokens in=%d out=%d cached=%d",
+                                        ev.input_tokens, ev.output_tokens, ev.cached_tokens)
                 rest = chunker.flush()
                 if rest:
-                    await self._speak_sentence(rest, spoken)
+                    self._lane_put(lane, rest, spoken, generated)
             except (LlmTimeout, LlmUnavailable):
                 logger.warning("[Economy] language model turn failed")
                 logger.info("[Economy] apology spoken (reason=model unavailable)")
-                self._record_assistant(spoken)  # pending tool calls are dropped
+                try:
+                    await self._lane_drain(lane)  # what was already written is spoken first
+                finally:
+                    self._record_assistant(spoken)  # pending tool calls are dropped
                 await self._speak_line(APOLOGY_LINE)
                 return
+            except Exception:
+                # the model failed part-way: what it had already written is still spoken, then the turn's own error
+                # handling runs (no apology on top of a reply that was already given)
+                try:
+                    await self._lane_drain(lane)
+                finally:
+                    self._record_assistant(spoken)
+                raise
             except BaseException:
-                self._record_assistant(spoken)  # cut off or failed: keep only what was fully spoken
+                self._record_assistant(spoken)  # cut off: keep only what was fully spoken
+                raise
+            try:
+                if not calls or rounds >= MAX_TOOL_ROUNDS:
+                    await self._lane_drain(lane)
+            except BaseException:
+                self._record_assistant(spoken)
                 raise
             if not calls or rounds >= MAX_TOOL_ROUNDS:
                 self._record_assistant(spoken)
@@ -483,27 +591,176 @@ class PipelineVoiceClient:
                 logger.warning("[Economy] tool round limit reached")
                 await self._speak_line(TOOL_LIMIT_LINE)
                 return
+            if rounds == 0 and not generated:
+                self._start_hold_line(calls)
             rounds += 1
             answers: List[dict] = []
             try:
                 for c in calls:
-                    answer = await answer_function_call(
-                        c.name, c.arguments, state=self._numerology_state, knowledge_runner=self._knowledge_runner
-                    )
+                    logger.info("[Economy] tool call %s", c.name)
+                    answer = self._prerun_answer(c.name, c.arguments)
+                    if answer is None:
+                        answer = await answer_function_call(
+                            c.name, c.arguments, state=self._numerology_state, knowledge_runner=self._knowledge_runner
+                        )
                     answers.append({"role": "tool", "tool_call_id": c.id, "content": answer})
             except BaseException:
                 self._record_assistant(spoken)  # unanswered calls are dropped, so the history stays valid
                 raise
-            # the call and all of its answers enter the history together
+            # the call and all of its answers enter the history together; the sentences written before the call
+            # may still be playing, so the call carries what the model wrote
             self._history.append({
                 "role": "assistant",
-                "content": " ".join(spoken) or None,
+                "content": " ".join(generated) or None,
                 "tool_calls": [
                     {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}
                     for c in calls
                 ],
             })
             self._history.extend(answers)
+
+    # ---- the speaking lane ----
+    def _new_lane(self) -> _Lane:
+        lane = _Lane()
+        lane.task = self._spawn_speech(self._lane_player(lane))
+        return lane
+
+    def _lane_put(self, lane: _Lane, sentence: str, spoken: List[str], generated: List[str]) -> None:
+        clip = _Clip(sentence, spoken)
+        generated.append(sentence)
+        lane.unplayed.append(clip)
+        lane.queue.put_nowait(clip)
+        self._lane_prefetch(lane)
+
+    def _lane_prefetch(self, lane: _Lane) -> None:
+        """Starts making the voice of the sentence playing now and of the next one, so the next starts without a gap."""
+        if self._tts is None or self._closed:
+            return
+        for clip in list(lane.unplayed)[:VOICE_PREFETCH]:
+            if clip.task is None:
+                clip.task = self._spawn_speech(self._fetch_clip(clip))
+
+    async def _fetch_clip(self, clip: _Clip) -> None:
+        try:
+            async with contextlib.aclosing(self._tts.speak(clip.text, context_id=clip.ctx)) as audio:
+                async for chunk in audio:
+                    clip.chunks.put_nowait(chunk)
+            clip.chunks.put_nowait(_CLIP_END)
+        except asyncio.CancelledError:
+            raise
+        except TtsUnavailable:
+            clip.chunks.put_nowait(_CLIP_FAIL)
+        except Exception as e:
+            logger.error("[Economy] making a sentence's voice failed (%s)", type(e).__name__)
+            clip.chunks.put_nowait(_CLIP_FAIL)
+
+    @staticmethod
+    async def _clip_audio(clip: _Clip):
+        while True:
+            item = await clip.chunks.get()
+            if item is _CLIP_END:
+                return
+            if item is _CLIP_FAIL:
+                raise TtsUnavailable("Voice engine service unavailable")
+            yield item
+
+    async def _lane_player(self, lane: _Lane) -> None:
+        try:
+            while True:
+                clip = await lane.queue.get()
+                if clip is None:
+                    lane.queue.task_done()
+                    return
+                try:
+                    await self._speak_sentence(clip.text, clip.spoken, source=self._clip_audio(clip), ctx=clip.ctx)
+                finally:
+                    if lane.unplayed and lane.unplayed[0] is clip:
+                        lane.unplayed.popleft()
+                    self._lane_prefetch(lane)
+                    lane.queue.task_done()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            lane.error = e
+            logger.error("[Economy] speaking failed (%s)", type(e).__name__)
+
+    async def _lane_drain(self, lane: _Lane) -> None:
+        """Waits until every queued sentence has been spoken (or the player stopped)."""
+        if lane.task is not None and not lane.task.done():
+            joined = asyncio.ensure_future(lane.queue.join())
+            try:
+                await asyncio.wait({joined, lane.task}, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                if not joined.done():
+                    joined.cancel()
+        if lane.error is not None:
+            raise lane.error
+
+    async def _lane_finish(self, lane: _Lane) -> None:
+        await self._lane_drain(lane)
+        lane.queue.put_nowait(None)
+        if lane.task is not None and not lane.task.done():
+            await asyncio.wait({lane.task})
+        if lane.error is not None:
+            raise lane.error
+
+    @staticmethod
+    def _lane_cancel(lane: _Lane) -> None:
+        for clip in lane.unplayed:
+            if clip.task is not None and not clip.task.done():
+                clip.task.cancel()
+        if lane.task is not None and not lane.task.done():
+            lane.task.cancel()
+
+    async def _prerun_birth_date(self, text: str) -> None:
+        """The caller's words hold date pieces and the date is not done yet: read the date in code now and put the call
+        with its answer in the history, so the model answers in ONE request instead of first asking for the tool (a
+        whole extra model round, about a second). Only the cases the model would call the tool for anyway."""
+        self._prerun = None
+        if not self._prerun_date or not any(t.get("function", {}).get("name") == DATE_FUNCTION for t in self._tools):
+            return
+        if self._numerology_state.get("dob_status") == "done":
+            return
+        from app.numerology.spoken_date import has_date_data
+        if not has_date_data(text):
+            return
+        arguments = json.dumps({"spoken": text}, ensure_ascii=False)
+        answer = await answer_function_call(DATE_FUNCTION, arguments, state=self._numerology_state, knowledge_runner=None)
+        call_id = "pre_" + uuid.uuid4().hex[:12]
+        self._history.append({
+            "role": "assistant", "content": None,
+            "tool_calls": [{"id": call_id, "type": "function", "function": {"name": DATE_FUNCTION, "arguments": arguments}}],
+        })
+        self._history.append({"role": "tool", "tool_call_id": call_id, "content": answer})
+        self._prerun = (text, answer)
+        logger.info("[Economy] date read in code before the model request")
+
+    def _prerun_answer(self, name: str, arguments: Any) -> Optional[str]:
+        """The pre-run answer when the model calls the date reader again with the very same words (never read twice)."""
+        if name != DATE_FUNCTION or self._prerun is None:
+            return None
+        try:
+            spoken = json.loads(arguments).get("spoken") if isinstance(arguments, str) else (arguments or {}).get("spoken")
+        except (ValueError, AttributeError):
+            return None
+        return self._prerun[1] if str(spoken or "").strip() == self._prerun[0].strip() else None
+
+    def _start_hold_line(self, calls: List[ToolCall]) -> None:
+        """First tool round with nothing said yet: speak one short line now, in parallel with the tool and the model's
+        next request, instead of leaving the caller in silence for the extra model round."""
+        turn = _speaker.get()
+        if not self._tool_hold_line or turn is None or turn.audio or turn.hold_task is not None:
+            return
+        logger.info("[Economy] tool round started (%s): holding the line", ", ".join(c.name for c in calls))
+        turn.hold_task = self._spawn_speech(
+            self._speak_sentence(FILLER_LINE, [], only_if=lambda: not turn.audio and not self._closed)  # never kept in history
+        )
+
+    @staticmethod
+    async def _finish_hold(turn: _Speaker) -> None:
+        task = turn.hold_task
+        if task is not None and not task.done():
+            await asyncio.wait({task})
 
     def _record_assistant(self, spoken: List[str]) -> None:
         if spoken:
@@ -564,9 +821,12 @@ class PipelineVoiceClient:
                 await self._call(self.on_agent_audio_done)
 
     async def _speak_sentence(
-        self, text: str, spoken: List[str], only_if: Optional[Callable[[], bool]] = None
+        self, text: str, spoken: List[str], only_if: Optional[Callable[[], bool]] = None,
+        source: Any = None, ctx: Optional[str] = None,
     ) -> None:
-        """Speaks one sentence; adds it to `spoken` only when all of its audio was handed out."""
+        """Speaks one sentence; adds it to `spoken` only when all of its audio was handed out.
+
+        `source` is audio already being made for it (the speaking lane's prefetch); without it the voice is requested here."""
         if self._closed or self._tts is None:
             return
         speaker = _speaker.get()
@@ -576,12 +836,13 @@ class PipelineVoiceClient:
         async with self._speak_lock:
             if only_if is not None and not only_if():
                 return
-            ctx = uuid.uuid4().hex
+            ctx = ctx or uuid.uuid4().hex
             self._ctx = ctx
             self._ctx_speaker = speaker
             started = False
             try:
-                async with contextlib.aclosing(self._tts.speak(text, context_id=ctx)) as audio:
+                stream = source if source is not None else self._tts.speak(text, context_id=ctx)
+                async with contextlib.aclosing(stream) as audio:
                     async for chunk in audio:
                         if self._ctx != ctx or self._closed:
                             break
@@ -673,6 +934,7 @@ class PipelineVoiceClient:
             return
         self._closed = True
         self._ready = False
+        self._cancel_end_timer()
         me = asyncio.current_task()
         self._interrupt()
         tasks = [t for t in (*self._speech_tasks, *self._aux_tasks) if t is not me and not t.done()]
@@ -686,4 +948,10 @@ class PipelineVoiceClient:
                     await part.close()
                 except Exception:
                     logger.warning("[Economy] closing a connection failed")
+        llm_close = getattr(self._llm, "aclose", None)
+        if llm_close is not None:
+            try:
+                await llm_close()
+            except Exception:
+                logger.warning("[Economy] closing a connection failed")
         logger.info("[Economy] client closed")

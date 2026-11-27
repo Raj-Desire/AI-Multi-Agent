@@ -19,6 +19,11 @@ _BYTES_PER_SEC = 8000  # 8 kHz mu-law mono
 _MAX_PENDING_BYTES = int(1.5 * _BYTES_PER_SEC)
 
 
+def _close_code(exc: BaseException):
+    frame = getattr(exc, "rcvd", None) or getattr(exc, "sent", None)
+    return getattr(frame, "code", None)
+
+
 class StreamingSTT:
     def __init__(
         self,
@@ -142,7 +147,8 @@ class StreamingSTT:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.warning("[Listening] receive loop error: %s", type(e).__name__)
+            # the close code (a number) says why the connection ended; the text reason is left out (it can name the vendor)
+            logger.warning("[Listening] receive loop error: %s code=%s", type(e).__name__, _close_code(e))
         if not self._closing and ws is self._ws:
             self._reconnect_task = asyncio.create_task(self._handle_failure())
 

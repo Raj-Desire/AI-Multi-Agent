@@ -511,6 +511,14 @@ def _complete(parts: Dict[str, Optional[int]]) -> bool:
     return parts["day"] is not None and parts["month"] is not None and (parts["year"] is not None or parts["base"] is not None)
 
 
+_DATA_KINDS = ("num", "month", "mnum", "dnum", "year", "base", "full")
+
+
+def has_date_data(spoken: str) -> bool:
+    """True when the words hold a day, month, year or other date piece. Reads and changes no state."""
+    return any(kind in _DATA_KINDS for kind, _ in _groups(spoken or ""))
+
+
 def understand(spoken: str, state: Dict[str, Any]) -> Dict[str, str]:
     """Reads what the caller said, merges it with earlier pieces in `state`, and says what to do next.
 
