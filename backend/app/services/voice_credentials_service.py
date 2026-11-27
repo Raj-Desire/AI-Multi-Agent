@@ -8,7 +8,7 @@ from app.providers.cartesia.client import validate_key as validate_tts_key
 from app.providers.deepgram.client_check import validate_engine_key
 from app.repositories.activity_log_repository import ActivityLogRepository
 from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
-from app.voice_stack.resolver import platform_keys
+from app.voice_stack.resolver import custom_pipeline_default_enabled, platform_keys
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,11 @@ class VoiceCredentialsService:
             logger.warning("voice credentials audit failed: %s", type(exc).__name__)
 
     async def _load(self, org_id: str) -> VoiceCredentials:
-        return await self._repo.get_by_org(org_id) or VoiceCredentials(organization_id=org_id)
+        existing = await self._repo.get_by_org(org_id)
+        if existing is not None:
+            return existing
+        # A new document must not change the effective Economy flag the organization already had.
+        return VoiceCredentials(organization_id=org_id, custom_pipeline_enabled=custom_pipeline_default_enabled())
 
     @staticmethod
     async def _validate_slots(creds: VoiceCredentials, engine: bool, tts: bool) -> None:
