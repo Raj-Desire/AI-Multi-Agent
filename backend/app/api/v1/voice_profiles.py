@@ -8,7 +8,7 @@ from app.core.dependencies import require_admin, require_superadmin
 from app.repositories.user_repository import UserRepository
 from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
 from app.services.voice_credentials_service import VoiceCredentialsService
-from app.voice_stack.resolver import platform_keys
+from app.voice_stack.resolver import custom_pipeline_default_enabled, platform_keys
 
 superadmin_router = APIRouter(prefix="/superadmin/voice-profiles", tags=["Voice Profiles"])
 org_router = APIRouter(prefix="/voice-profile", tags=["Voice Profiles"])
@@ -32,6 +32,7 @@ class SuperadminProfilePayload(BaseModel):
     engine_key: Optional[str] = Field(None, repr=False)
     tts_key: Optional[str] = Field(None, repr=False)
     allow_org_edit: Optional[bool] = None
+    custom_pipeline_enabled: Optional[bool] = None
 
 
 class OrgProfilePayload(BaseModel):
@@ -56,6 +57,7 @@ def _legacy_view() -> Dict[str, Any]:
         "tts_engine": None,
         "credential_mode": "platform",
         "allow_org_edit": False,
+        "custom_pipeline_enabled": custom_pipeline_default_enabled(),
         "engine": _empty_slot(),
         "tts": _empty_slot(),
     }
@@ -63,8 +65,11 @@ def _legacy_view() -> Dict[str, Any]:
 
 async def _profile(repo: VoiceCredentialsRepository, service: VoiceCredentialsService, org_id: str) -> Dict[str, Any]:
     if await repo.get_by_org(org_id) is None:
-        return _legacy_view()
-    return {"configured": True, **await service.get_masked(org_id)}
+        view = _legacy_view()
+    else:
+        view = {"configured": True, **await service.get_masked(org_id)}
+    view["custom_pipeline_allowed"] = view["custom_pipeline_enabled"]
+    return view
 
 
 # ---------------- Superadmin ----------------

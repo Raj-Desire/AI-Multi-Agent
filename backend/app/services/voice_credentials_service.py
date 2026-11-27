@@ -42,6 +42,7 @@ def _view(creds: VoiceCredentials) -> Dict:
         "tts_engine": creds.tts_engine,
         "credential_mode": creds.credential_mode,
         "allow_org_edit": creds.allow_org_edit,
+        "custom_pipeline_enabled": creds.custom_pipeline_enabled,
         "engine": _slot_view(creds.engine),
         "tts": _slot_view(creds.tts),
     }
@@ -109,9 +110,13 @@ class VoiceCredentialsService:
         engine_key: Optional[str] = None,
         tts_key: Optional[str] = None,
         allow_org_edit: Optional[bool] = None,
+        custom_pipeline_enabled: Optional[bool] = None,
     ) -> Dict:
         creds = await self._load(org_id)
         changed: List[str] = []
+        if custom_pipeline_enabled is not None:
+            creds.custom_pipeline_enabled = custom_pipeline_enabled
+            changed.append("custom_pipeline_enabled")
         if tts_engine is not None:
             creds.tts_engine = tts_engine  # type: ignore[assignment]
             changed.append("tts_engine")

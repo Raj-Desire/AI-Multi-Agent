@@ -27,18 +27,24 @@ def platform_keys() -> Tuple[str, str]:
     )
 
 
+def custom_pipeline_default_enabled() -> bool:
+    """Platform default for organizations without a credentials document, read at call time."""
+    return (os.getenv("CUSTOM_PIPELINE_DEFAULT_ENABLED") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 class VoiceCredentialResolver:
     def __init__(self, repository: Optional[VoiceCredentialsRepository] = None):
         self._repo = repository or VoiceCredentialsRepository()
 
     @staticmethod
-    def _platform_profile(tts_engine: str = "aura") -> ResolvedVoiceProfile:
+    def _platform_profile(tts_engine: str = "aura", custom_allowed: Optional[bool] = None) -> ResolvedVoiceProfile:
         return ResolvedVoiceProfile(
             tts_engine=tts_engine,
             engine_key=(os.getenv("DEEPGRAM_API_KEY") or "").strip(),
             tts_key=(os.getenv("CARTESIA_API_KEY") or "").strip() or None,
             source="platform",
             billed_to="platform",
+            custom_pipeline_allowed=custom_pipeline_default_enabled() if custom_allowed is None else custom_allowed,
         )
 
     async def resolve(self, org_id: Optional[str], *, require_tts: bool = True) -> ResolvedVoiceProfile:
@@ -49,7 +55,7 @@ class VoiceCredentialResolver:
         if creds is None:
             return self._platform_profile()
         if creds.credential_mode == "platform":
-            return self._platform_profile(creds.tts_engine)
+            return self._platform_profile(creds.tts_engine, creds.custom_pipeline_enabled)
 
         engine_key = _slot_key(creds.engine)
         if not engine_key:
@@ -63,6 +69,7 @@ class VoiceCredentialResolver:
             tts_key=tts_key,
             source="own",
             billed_to="org_own_key",
+            custom_pipeline_allowed=creds.custom_pipeline_enabled,
         )
 
 

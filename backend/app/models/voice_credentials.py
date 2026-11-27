@@ -20,6 +20,7 @@ class VoiceCredentials(BaseModel):
     engine: KeySlot = Field(default_factory=KeySlot)
     tts: KeySlot = Field(default_factory=KeySlot)
     allow_org_edit: bool = False
+    custom_pipeline_enabled: bool = False
     updated_by: Optional[str] = None
     updated_at: Optional[datetime] = None
 
