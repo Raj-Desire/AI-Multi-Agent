@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class KeySlot(BaseModel):
@@ -20,9 +20,23 @@ class VoiceCredentials(BaseModel):
     engine: KeySlot = Field(default_factory=KeySlot)
     tts: KeySlot = Field(default_factory=KeySlot)
     allow_org_edit: bool = False
-    custom_pipeline_enabled: bool = False
+    # Voice plan of the organization: "managed" = Standard, "custom" = Economy. Single source of truth.
+    voice_engine: Literal["managed", "custom"] = "managed"
+    custom_pipeline_enabled: bool = False  # legacy input only: read when voice_engine is absent, then kept in sync
     updated_by: Optional[str] = None
     updated_at: Optional[datetime] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_flag(cls, data):
+        if isinstance(data, dict) and "voice_engine" not in data:
+            data = {**data, "voice_engine": "custom" if data.get("custom_pipeline_enabled") else "managed"}
+        return data
+
+    @model_validator(mode="after")
+    def _sync_legacy_flag(self):
+        self.custom_pipeline_enabled = self.voice_engine == "custom"
+        return self
 
 
 class ResolvedVoiceProfile(BaseModel):
@@ -32,6 +46,7 @@ class ResolvedVoiceProfile(BaseModel):
     source: Literal["own", "platform"]
     billed_to: Literal["org_own_key", "platform"]
     custom_pipeline_allowed: bool = False
+    voice_engine: Literal["managed", "custom"] = "managed"
 
 
 class VoiceCredentialsMissing(Exception):

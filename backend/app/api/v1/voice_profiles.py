@@ -32,7 +32,7 @@ class SuperadminProfilePayload(BaseModel):
     engine_key: Optional[str] = Field(None, repr=False)
     tts_key: Optional[str] = Field(None, repr=False)
     allow_org_edit: Optional[bool] = None
-    custom_pipeline_enabled: Optional[bool] = None
+    voice_engine: Optional[Literal["managed", "custom"]] = None
 
 
 _parse_body = parse_body_without_echo
@@ -49,7 +49,7 @@ def _legacy_view() -> Dict[str, Any]:
         "tts_engine": None,
         "credential_mode": "platform",
         "allow_org_edit": False,
-        "custom_pipeline_enabled": custom_pipeline_default_enabled(),
+        "voice_engine": "custom" if custom_pipeline_default_enabled() else "managed",
         "engine": _empty_slot(),
         "tts": _empty_slot(),
     }
@@ -60,7 +60,7 @@ async def _profile(repo: VoiceCredentialsRepository, service: VoiceCredentialsSe
         view = _legacy_view()
     else:
         view = {"configured": True, **await service.get_masked(org_id)}
-    view["custom_pipeline_allowed"] = view["custom_pipeline_enabled"]
+    view["custom_pipeline_allowed"] = view["voice_engine"] == "custom"
     return view
 
 

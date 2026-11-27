@@ -52,9 +52,10 @@ async def build_voice_client(
     return DeepgramVoiceAgentClient(api_key=profile.engine_key, **callbacks)
 
 
-def select_voice_engine(agent_config: Any) -> str:
-    """"custom" only when the agent asks for the Economy engine and its voice is Cartesia; otherwise "managed"."""
-    if getattr(agent_config, "voice_engine", "managed") != "custom":
+def select_voice_engine(profile: ResolvedVoiceProfile, agent_config: Any) -> str:
+    """The organization's voice plan decides: "custom" (Economy) only when the plan is Economy and the agent's
+    voice is Cartesia; otherwise "managed" (Standard). The agent's own voice_engine field is not consulted."""
+    if getattr(profile, "voice_engine", "managed") != "custom":
         return "managed"
     voice = getattr(agent_config, "voice", None)
     if voice is None:

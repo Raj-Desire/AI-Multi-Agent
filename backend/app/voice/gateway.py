@@ -1320,7 +1320,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                 deepgram_client = await build_voice_client(
                     org_id,
                     profile=voice_profile,
-                    engine=select_voice_engine(agent_config),
+                    engine=select_voice_engine(voice_profile, agent_config),
                     on_audio=handle_deepgram_audio,
                     on_event=handle_deepgram_event,
                     on_transcript=handle_transcript,

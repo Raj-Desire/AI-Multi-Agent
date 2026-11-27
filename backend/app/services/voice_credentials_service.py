@@ -42,7 +42,7 @@ def _view(creds: VoiceCredentials) -> Dict:
         "tts_engine": creds.tts_engine,
         "credential_mode": creds.credential_mode,
         "allow_org_edit": creds.allow_org_edit,
-        "custom_pipeline_enabled": creds.custom_pipeline_enabled,
+        "voice_engine": creds.voice_engine,
         "engine": _slot_view(creds.engine),
         "tts": _slot_view(creds.tts),
     }
@@ -86,7 +86,9 @@ class VoiceCredentialsService:
         if existing is not None:
             return existing
         # A new document must not change the effective Economy flag the organization already had.
-        return VoiceCredentials(organization_id=org_id, custom_pipeline_enabled=custom_pipeline_default_enabled())
+        return VoiceCredentials(
+            organization_id=org_id, voice_engine="custom" if custom_pipeline_default_enabled() else "managed"
+        )
 
     @staticmethod
     async def _validate_slots(creds: VoiceCredentials, engine: bool, tts: bool) -> None:
@@ -114,13 +116,14 @@ class VoiceCredentialsService:
         engine_key: Optional[str] = None,
         tts_key: Optional[str] = None,
         allow_org_edit: Optional[bool] = None,
-        custom_pipeline_enabled: Optional[bool] = None,
+        voice_engine: Optional[Literal["managed", "custom"]] = None,
     ) -> Dict:
         creds = await self._load(org_id)
         changed: List[str] = []
-        if custom_pipeline_enabled is not None:
-            creds.custom_pipeline_enabled = custom_pipeline_enabled
-            changed.append("custom_pipeline_enabled")
+        if voice_engine is not None:
+            creds.voice_engine = voice_engine
+            creds.custom_pipeline_enabled = voice_engine == "custom"
+            changed.append("voice_engine")
         if tts_engine is not None:
             creds.tts_engine = tts_engine  # type: ignore[assignment]
             changed.append("tts_engine")
