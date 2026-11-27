@@ -74,19 +74,27 @@ def _reply_delays(transcript) -> List[float]:
     for i, e in enumerate(entries):
         if e.get("role") != "user":
             continue
+        # consecutive caller entries are one turn: only the last one before an agent entry is paired
+        following = entries[i + 1:]
+        nxt = next((x for x in following if x.get("role") != "user"), None)
+        if nxt is None or nxt.get("role") != "assistant":
+            continue
         start = _parse(e.get("timestamp"))
-        if start is None:
-            continue
-        nxt = next((x for x in entries[i + 1:] if x.get("role") == "assistant"), None)
-        if nxt is None:
-            continue
         end = _parse(nxt.get("timestamp"))
-        if end is None:
+        if start is None or end is None:
             continue
         d = _delta(start, end)
         if d is not None and d >= 0:
             delays.append(d)
     return delays
+
+
+def _seconds(v) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if math.isfinite(f) and f > 0 else 0.0
 
 
 def _chars_spoken(transcript) -> int:
@@ -110,7 +118,7 @@ def summarize(calls: List[dict], *, voice_cost_per_1k_chars: Optional[float] = N
     result: Dict[str, dict] = {}
     for engine in ordered:
         group = groups[engine]
-        seconds = sum(float(c.get("duration") or 0) for c in group)
+        seconds = sum(_seconds(c.get("duration")) for c in group)
         delays: List[float] = []
         silent = 0
         chars = 0
@@ -176,12 +184,18 @@ def render_checklist(summary: Dict[str, dict]) -> str:
         med = c["reply_delay_median_s"]
         ok = med is not None and med <= MEDIAN_LIMIT_S
         lines.append(f"  {'PASS' if ok else 'FAIL'}  median reply delay {_fmt(med)} s (limit {MEDIAN_LIMIT_S} s)")
+        lines.append("        Note: reply delay is measured to the agent's text event, so it slightly under-reports the "
+                     "time until the caller hears audio; confirm by listening to test calls.")
         ok = c["silence_over_6s_calls"] == 0 and c["disconnected_calls"] == 0
         lines.append(f"  {'PASS' if ok else 'FAIL'}  no call with silence over {SILENCE_LIMIT_S:.0f} s or a dropped engine "
                      f"(silent: {c['silence_over_6s_calls']}, disconnected: {c['disconnected_calls']})")
         total = c["total_cost_per_minute_usd"]
         ok = total is not None and total <= COST_LIMIT_PER_MINUTE_USD
-        lines.append(f"  {'PASS' if ok else 'FAIL'}  total cost per minute {_fmt(total, 4)} USD (limit {COST_LIMIT_PER_MINUTE_USD} USD)")
+        no_voice = c["chars_spoken"] == 0 and c["minutes"] > 0
+        verdict = "FAIL" if not ok else ("NO DATA" if no_voice else "PASS")
+        lines.append(f"  {verdict}  total cost per minute {_fmt(total, 4)} USD (limit {COST_LIMIT_PER_MINUTE_USD} USD)")
+        if no_voice:
+            lines.append("        Note: cost excludes voice: no spoken characters were recorded.")
     lines.append("  N/A   interruption stops audio within 0.4 s: cannot be judged from stored data; "
                  "check it by listening to test calls")
     return "\n".join(lines)
