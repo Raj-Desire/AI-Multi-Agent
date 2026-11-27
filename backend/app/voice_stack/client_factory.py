@@ -1,12 +1,10 @@
 import logging
-import os
 import sys
 from typing import Any, Optional
 
 from app.models.voice_credentials import ResolvedVoiceProfile, VoiceCredentialsMissing
 from app.providers.deepgram.voice_agent import DeepgramVoiceAgentClient
 from app.voice_stack.protocol import VoiceClientProtocol
-from app.voice_stack.llm_env import resolve_llm_key
 from app.voice_stack.registry import is_cartesia_voice
 from app.voice_stack.resolver import resolve_voice_profile
 
@@ -29,8 +27,8 @@ async def build_voice_client(
 ) -> VoiceClientProtocol:
     """Builds a voice engine client with the organization's own resolved key.
 
-    engine="custom" returns the Economy client only when the organization is allowed and the language model
-    settings exist; otherwise it falls back to the Standard client.
+    engine="custom" returns the Economy client only when the organization is allowed and the organization's own language model
+    settings exist (never the platform environment); otherwise it falls back to the Standard client.
     Raises VoiceCredentialsMissing (neutral message) when no usable key exists, instead of connecting with an empty key.
     """
     profile = profile or await resolve_voice_profile(org_id)
@@ -41,8 +39,9 @@ async def build_voice_client(
             logger.warning("Economy engine needs Python 3.11 or newer; using Standard engine")
         elif (
             profile.custom_pipeline_allowed
-            and os.getenv("AZURE_OPENAI_ENDPOINT")
-            and resolve_llm_key()
+            and profile.llm_endpoint
+            and profile.llm_api_key
+            and profile.llm_deployment
         ):
             from app.providers.pipeline.client import PipelineVoiceClient
 

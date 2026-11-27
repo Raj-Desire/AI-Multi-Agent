@@ -35,7 +35,8 @@ from app.providers.pipeline.sentences import SentenceChunker
 from app.providers.pipeline.tts import StreamingTTS, TtsUnavailable
 from app.providers.pipeline.turns import clean_transcript, is_backchannel, is_real_interruption, turn_is_complete
 from app.voice_stack.function_dispatch import answer_function_call, run_knowledge_search
-from app.voice_stack.llm_env import resolve_llm_key
+from app.models.voice_credentials import DEFAULT_LLM_API_VERSION
+from app.providers.pipeline.log_safety import LogGuard, guard_connection_logs
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ class PipelineVoiceClient:
         self._playback_sleep = playback_sleep or sleep
         self._play_until = 0.0  # clock time the line goes quiet (audio handed out so far has played)
         self._profile = profile
+        self._llm_guard: Optional[LogGuard] = None
         self.on_audio = on_audio
         self.on_event = on_event
         self.on_transcript = on_transcript
@@ -281,13 +283,20 @@ class PipelineVoiceClient:
                 language=speak.language or "gu",
             )
         if self._llm is None:
-            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-            key = resolve_llm_key()
-            deployment = os.getenv("AZURE_OPENAI_VOICE_DEPLOYMENT_NAME") or agent.think.provider.model
+            # The organization's own settings only: the platform environment is never a fallback.
+            p = self._profile
+            endpoint = getattr(p, "llm_endpoint", None)
+            key = getattr(p, "llm_api_key", None)
+            deployment = getattr(p, "llm_deployment", None)
             if not endpoint or not key or not deployment:
                 raise ValueError(_NOT_CONFIGURED)
             logger.info("[Economy] language model deployment: %s", deployment)
-            self._llm = AzureChatStream(endpoint, key, deployment=deployment, timeout_s=LLM_FIRST_TOKEN_TIMEOUT_S)
+            self._llm_guard = guard_connection_logs(key)
+            self._llm = AzureChatStream(
+                endpoint, key, deployment=deployment,
+                api_version=getattr(p, "llm_api_version", None) or DEFAULT_LLM_API_VERSION,
+                timeout_s=LLM_FIRST_TOKEN_TIMEOUT_S,
+            )
 
     # ---- caller audio and speech-to-text events ----
     async def send_audio(self, raw_audio_bytes: bytes) -> None:
@@ -948,6 +957,9 @@ class PipelineVoiceClient:
                     await part.close()
                 except Exception:
                     logger.warning("[Economy] closing a connection failed")
+        guard, self._llm_guard = self._llm_guard, None
+        if guard is not None:
+            guard.release()
         llm_close = getattr(self._llm, "aclose", None)
         if llm_close is not None:
             try:

@@ -13,6 +13,25 @@ class KeySlot(BaseModel):
     last_verified_at: Optional[datetime] = None
 
 
+DEFAULT_LLM_API_VERSION = "2024-08-01-preview"
+
+
+class LlmSlot(BaseModel):
+    """The organization's own language model settings (used only by the Economy plan). The key is stored encrypted."""
+
+    endpoint: str = ""
+    encrypted_api_key: str = ""
+    key_hint: str = ""
+    deployment: str = ""
+    api_version: str = DEFAULT_LLM_API_VERSION
+    status: Literal["unverified", "valid", "invalid"] = "unverified"
+    last_verified_at: Optional[datetime] = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.endpoint and self.encrypted_api_key and self.deployment)
+
+
 class VoiceCredentials(BaseModel):
     organization_id: str
     tts_engine: Literal["aura", "cartesia"] = "aura"
@@ -20,6 +39,7 @@ class VoiceCredentials(BaseModel):
     engine: KeySlot = Field(default_factory=KeySlot)
     tts: KeySlot = Field(default_factory=KeySlot)
     allow_org_edit: bool = False
+    llm: LlmSlot = Field(default_factory=LlmSlot)
     # Voice plan of the organization: "managed" = Standard, "custom" = Economy. Single source of truth.
     voice_engine: Literal["managed", "custom"] = "managed"
     custom_pipeline_enabled: bool = False  # legacy input only: read when voice_engine is absent, then kept in sync
@@ -47,6 +67,11 @@ class ResolvedVoiceProfile(BaseModel):
     billed_to: Literal["org_own_key", "platform"]
     custom_pipeline_allowed: bool = False
     voice_engine: Literal["managed", "custom"] = "managed"
+    # The organization's own language model settings, decrypted in memory only. Never log or return them.
+    llm_endpoint: Optional[str] = None
+    llm_api_key: Optional[str] = Field(None, repr=False)
+    llm_deployment: Optional[str] = None
+    llm_api_version: Optional[str] = None
 
 
 class VoiceCredentialsMissing(Exception):

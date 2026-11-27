@@ -21,7 +21,11 @@ class LlmTimeout(Exception):
 
 
 class LlmUnavailable(Exception):
-    """The language model service could not serve the request."""
+    """The language model service could not serve the request. status is the HTTP status when there was one."""
+
+    def __init__(self, message: str = "", status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass
@@ -140,7 +144,7 @@ class AzureChatStream:
                 ) as resp:
                     if resp.status_code >= 400:
                         logger.warning("Language model request failed: status %s", resp.status_code)
-                        raise LlmUnavailable(f"Language model unavailable (status {resp.status_code})")
+                        raise LlmUnavailable(f"Language model unavailable (status {resp.status_code})", resp.status_code)
                     lines = resp.aiter_lines().__aiter__()
                     while True:
                         try:

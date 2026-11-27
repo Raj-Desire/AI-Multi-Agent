@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.models.voice_credentials import DEFAULT_LLM_API_VERSION
 from app.core.validation import parse_body_without_echo
 from app.core.dependencies import require_admin, require_superadmin
 from app.repositories.user_repository import UserRepository
@@ -33,6 +34,10 @@ class SuperadminProfilePayload(BaseModel):
     tts_key: Optional[str] = Field(None, repr=False)
     allow_org_edit: Optional[bool] = None
     voice_engine: Optional[Literal["managed", "custom"]] = None
+    llm_endpoint: Optional[str] = Field(None, max_length=500)
+    llm_api_key: Optional[str] = Field(None, repr=False, max_length=500)
+    llm_deployment: Optional[str] = Field(None, max_length=200)
+    llm_api_version: Optional[str] = Field(None, max_length=50)
 
 
 _parse_body = parse_body_without_echo
@@ -40,6 +45,13 @@ _parse_body = parse_body_without_echo
 
 def _empty_slot() -> Dict[str, Any]:
     return {"key_hint": "", "status": "unverified", "source": None, "last_verified_at": None, "configured": False}
+
+
+def _empty_llm() -> Dict[str, Any]:
+    return {
+        "configured": False, "endpoint": "", "deployment": "", "api_version": DEFAULT_LLM_API_VERSION,
+        "key_hint": "", "has_key": False, "status": "unverified", "last_verified_at": None,
+    }
 
 
 def _legacy_view() -> Dict[str, Any]:
@@ -52,6 +64,7 @@ def _legacy_view() -> Dict[str, Any]:
         "voice_engine": "custom" if custom_pipeline_default_enabled() else "managed",
         "engine": _empty_slot(),
         "tts": _empty_slot(),
+        "llm": _empty_llm(),
     }
 
 
@@ -61,6 +74,14 @@ async def _profile(repo: VoiceCredentialsRepository, service: VoiceCredentialsSe
     else:
         view = {"configured": True, **await service.get_masked(org_id)}
     view["custom_pipeline_allowed"] = view["voice_engine"] == "custom"
+    return view
+
+
+def _org_safe(view: Dict[str, Any]) -> Dict[str, Any]:
+    """Organization admins only learn whether the language model is set up and verified, never any detail."""
+    llm = view.pop("llm", None) or _empty_llm()
+    view["llm_configured"] = bool(llm["configured"])
+    view["llm_verified"] = bool(llm["configured"]) and llm["status"] == "valid"
     return view
 
 
@@ -112,6 +133,25 @@ async def verify_profile(
     return {"organization_id": org_id, "configured": True, **await service.verify(org_id)}
 
 
+@superadmin_router.post("/{org_id}/llm/verify")
+async def verify_llm(
+    org_id: str,
+    _: Dict[str, Any] = Depends(require_superadmin),
+    service: VoiceCredentialsService = Depends(get_voice_service),
+):
+    return {"organization_id": org_id, "configured": True, **await service.verify_llm(org_id)}
+
+
+@superadmin_router.delete("/{org_id}/llm")
+async def delete_llm(
+    org_id: str,
+    user: Dict[str, Any] = Depends(require_superadmin),
+    service: VoiceCredentialsService = Depends(get_voice_service),
+):
+    view = await service.clear_llm(org_id, actor_id=user["id"])
+    return {"organization_id": org_id, "configured": True, **view}
+
+
 @superadmin_router.post("/{org_id}/import-platform")
 async def import_platform(
     org_id: str,
@@ -152,4 +192,4 @@ async def get_own_profile(
     repo: VoiceCredentialsRepository = Depends(get_voice_repo),
     service: VoiceCredentialsService = Depends(get_voice_service),
 ):
-    return await _profile(repo, service, user.get("organization_id") or user.get("id"))
+    return _org_safe(await _profile(repo, service, user.get("organization_id") or user.get("id")))

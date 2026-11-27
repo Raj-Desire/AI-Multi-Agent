@@ -30,10 +30,12 @@ def env(monkeypatch):
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "k")
 
 
-def _profile(plan):
+def _profile(plan, llm=True):
+    # adapted: Economy needs the organization's own language model settings, not the environment
+    extra = dict(llm_endpoint="https://org.example", llm_api_key="org-llm-key", llm_deployment="org-dep") if llm else {}
     return ResolvedVoiceProfile(
         tts_engine="cartesia", engine_key="k", tts_key="t", source="own", billed_to="org_own_key",
-        voice_engine=plan, custom_pipeline_allowed=plan == "custom",
+        voice_engine=plan, custom_pipeline_allowed=plan == "custom", **extra,
     )
 
 
@@ -71,8 +73,7 @@ def test_plan_custom_with_non_cartesia_voice_falls_back_to_standard():
 
 @pytest.mark.asyncio
 async def test_plan_custom_without_azure_falls_back_neutral(monkeypatch, caplog):
-    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
-    profile = _profile("custom")
+    profile = _profile("custom", llm=False)
     with caplog.at_level(logging.WARNING):
         client = await build_voice_client("o", profile=profile, engine=select_voice_engine(profile, _agent("managed")))
     assert engine_of(client) == "managed"

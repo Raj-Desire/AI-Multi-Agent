@@ -3,7 +3,10 @@ from datetime import datetime, timezone
 from typing import Awaitable, Callable, Dict, List, Literal, Optional
 
 from app.core.security import decrypt_token, encrypt_token
-from app.models.voice_credentials import KeySlot, VoiceCredentials
+import httpx
+
+from app.models.voice_credentials import DEFAULT_LLM_API_VERSION, KeySlot, LlmSlot, VoiceCredentials
+from app.providers.pipeline.llm import AzureChatStream, LlmTimeout, LlmUnavailable
 from app.providers.cartesia.client import validate_key as validate_tts_key
 from app.providers.deepgram.client_check import validate_engine_key
 from app.repositories.activity_log_repository import ActivityLogRepository
@@ -37,6 +40,19 @@ def _slot_view(slot: KeySlot) -> Dict:
     }
 
 
+def _llm_view(slot: LlmSlot) -> Dict:
+    return {
+        "configured": slot.configured,
+        "endpoint": slot.endpoint,
+        "deployment": slot.deployment,
+        "api_version": slot.api_version,
+        "key_hint": slot.key_hint,
+        "has_key": bool(slot.encrypted_api_key),
+        "status": slot.status,
+        "last_verified_at": slot.last_verified_at.isoformat() if slot.last_verified_at else None,
+    }
+
+
 def _view(creds: VoiceCredentials) -> Dict:
     return {
         "tts_engine": creds.tts_engine,
@@ -45,6 +61,7 @@ def _view(creds: VoiceCredentials) -> Dict:
         "voice_engine": creds.voice_engine,
         "engine": _slot_view(creds.engine),
         "tts": _slot_view(creds.tts),
+        "llm": _llm_view(creds.llm),
     }
 
 
@@ -71,7 +88,9 @@ class VoiceCredentialsService:
         self,
         repo: Optional[VoiceCredentialsRepository] = None,
         audit: Optional[AuditHook] = None,
+        llm_transport: Optional[httpx.AsyncBaseTransport] = None,
     ):
+        self._llm_transport = llm_transport
         self._repo = repo or VoiceCredentialsRepository()
         self._audit = audit or _default_audit
 
@@ -117,6 +136,10 @@ class VoiceCredentialsService:
         tts_key: Optional[str] = None,
         allow_org_edit: Optional[bool] = None,
         voice_engine: Optional[Literal["managed", "custom"]] = None,
+        llm_endpoint: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_deployment: Optional[str] = None,
+        llm_api_version: Optional[str] = None,
     ) -> Dict:
         creds = await self._load(org_id)
         changed: List[str] = []
@@ -141,6 +164,7 @@ class VoiceCredentialsService:
         if tts_key:
             _set_key(creds.tts, tts_key, "own")
             changed.append("tts_key")
+        changed += self._apply_llm(creds.llm, llm_endpoint, llm_api_key, llm_deployment, llm_api_version)
         await self._validate_slots(creds, bool(engine_key), bool(tts_key))
         creds.updated_by = actor_id
         creds.updated_at = _now()
@@ -148,6 +172,86 @@ class VoiceCredentialsService:
         if changed:
             await self._record("voice_credentials_updated", org_id, actor_id, changed)
         return _view(creds)
+
+    @staticmethod
+    def _apply_llm(
+        slot: LlmSlot,
+        endpoint: Optional[str],
+        key: Optional[str],
+        deployment: Optional[str],
+        api_version: Optional[str],
+    ) -> List[str]:
+        """None keeps the stored value; an empty string clears endpoint, deployment, or version. The key is only
+        replaced by a non-empty value (clear_llm removes it). Any change resets the verified status."""
+        changed: List[str] = []
+        if endpoint is not None and endpoint.strip().rstrip("/") != slot.endpoint:
+            slot.endpoint = endpoint.strip().rstrip("/")
+            changed.append("llm_endpoint")
+        if deployment is not None and deployment.strip() != slot.deployment:
+            slot.deployment = deployment.strip()
+            changed.append("llm_deployment")
+        if api_version is not None:
+            new_version = api_version.strip() or DEFAULT_LLM_API_VERSION
+            if new_version != slot.api_version:
+                slot.api_version = new_version
+                changed.append("llm_api_version")
+        key = (key or "").strip()
+        if key:
+            slot.encrypted_api_key = encrypt_token(key)
+            slot.key_hint = "\u2026" + key[-4:]
+            changed.append("llm_api_key")
+        if changed:
+            slot.status, slot.last_verified_at = "unverified", None
+        return changed
+
+    async def clear_llm(self, org_id: str, *, actor_id: str) -> Dict:
+        creds = await self._load(org_id)
+        creds.llm = LlmSlot()
+        creds.updated_by = actor_id
+        creds.updated_at = _now()
+        await self._repo.save(creds)
+        await self._record("voice_credentials_cleared", org_id, actor_id, ["llm_config"])
+        return _view(creds)
+
+    async def verify_llm(self, org_id: str) -> Dict:
+        """ONE tiny real chat request with the stored settings of the organization. Returns the view plus llm_check.
+
+        A rejected key or unknown deployment marks the settings invalid; timeouts and outages leave the status alone."""
+        creds = await self._load(org_id)
+        slot = creds.llm
+        if not slot.configured:
+            return {**_view(creds), "llm_check": {"ok": False, "message": "The language model is not configured"}}
+        status: Optional[bool] = None
+        stream = AzureChatStream(
+            slot.endpoint,
+            decrypt_token(slot.encrypted_api_key),
+            deployment=slot.deployment,
+            api_version=slot.api_version or DEFAULT_LLM_API_VERSION,
+            timeout_s=10.0,
+            transport=self._llm_transport,
+        )
+        try:
+            async for _ in stream.stream([{"role": "user", "content": "Reply with: ok"}], [], temperature=0.0, max_tokens=5):
+                pass
+            status, check = True, {"ok": True, "message": "The language model responded"}
+        except LlmTimeout:
+            check = {"ok": False, "message": "The language model request timed out"}
+        except LlmUnavailable as exc:
+            if exc.status in (401, 403):
+                status, check = False, {"ok": False, "message": "The API key was rejected"}
+            elif exc.status == 404:
+                status, check = False, {"ok": False, "message": "The deployment name was not found"}
+            elif exc.status is None:
+                check = {"ok": False, "message": "Could not reach the endpoint"}
+            else:
+                check = {"ok": False, "message": "The language model service is unavailable"}
+        except Exception:  # noqa: BLE001
+            check = {"ok": False, "message": "The language model service is unavailable"}
+        finally:
+            await stream.aclose()
+        _apply_validation(slot, status)
+        await self._repo.save(creds)
+        return {**_view(creds), "llm_check": check}
 
     async def import_platform(self, org_id: str, *, actor_id: str) -> Dict:
         creds = await self._load(org_id)

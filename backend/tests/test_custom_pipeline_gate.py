@@ -113,9 +113,12 @@ async def test_flag_on_without_settings_falls_back_with_neutral_log(monkeypatch,
 async def test_flag_on_with_settings_returns_economy(monkeypatch):
     from app.providers.pipeline.client import PipelineVoiceClient
 
-    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x.example")
-    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "k")
-    _repo(monkeypatch, _own(True))
+    # adapted: Economy needs the organization's own language model settings, not the environment
+    from app.models.voice_credentials import LlmSlot
+
+    doc = _own(True)
+    doc.llm = LlmSlot(endpoint="https://x.example", encrypted_api_key=encrypt_token("k"), deployment="d")
+    _repo(monkeypatch, doc)
     client = await build_voice_client("o", engine="custom")
     assert isinstance(client, PipelineVoiceClient)
 
