@@ -675,7 +675,8 @@ async def browser_preview_stream_websocket(websocket: WebSocket):
                     else:
                         target_org_id = caller.organization_id
                         agent_config.organization_id = target_org_id
-                    if not target_org_id or target_org_id == "default":
+                    if caller.role == "superadmin" and (not target_org_id or target_org_id == "default"):
+                        # Only the platform superadmin falls back to the platform root organisation.
                         target_org_id = "org_platform_root"
                     business_profile = None  # business details now live on each agent (see VoicePromptBuilder.agent_business_profile)
                     cached_platform_rules = PlatformRulesRepository.get_active_rule_directives_sync()

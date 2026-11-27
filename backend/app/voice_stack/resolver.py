@@ -13,6 +13,9 @@ from app.repositories.voice_credentials_repository import VoiceCredentialsReposi
 
 _NOT_CONFIGURED = "Voice engine is not configured for this organization"
 
+# The platform (superadmin) organisation. Its stored settings are the source of the language model "Import from superadmin".
+PLATFORM_ROOT_ORG_ID = "org_platform_root"
+
 
 def _slot_key(slot: KeySlot) -> str:
     if slot.status != "valid" or not slot.encrypted_api_key:

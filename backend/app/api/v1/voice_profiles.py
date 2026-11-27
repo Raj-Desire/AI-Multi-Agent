@@ -9,7 +9,7 @@ from app.core.dependencies import require_admin, require_superadmin
 from app.repositories.user_repository import UserRepository
 from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
 from app.services.voice_credentials_service import VoiceCredentialsService
-from app.voice_stack.resolver import custom_pipeline_default_enabled, platform_keys
+from app.voice_stack.resolver import PLATFORM_ROOT_ORG_ID, custom_pipeline_default_enabled, platform_keys
 
 superadmin_router = APIRouter(prefix="/superadmin/voice-profiles", tags=["Voice Profiles"])
 org_router = APIRouter(prefix="/voice-profile", tags=["Voice Profiles"])
@@ -169,6 +169,11 @@ async def import_platform(
                     status.HTTP_409_CONFLICT,
                     detail="This organization already has its own key configured. Confirm to overwrite it.",
                 )
+        if current["llm"]["configured"] and org_id != PLATFORM_ROOT_ORG_ID and await service.platform_llm_slot() is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail="This organization already has its own language model settings. Confirm to overwrite them.",
+            )
     view = await service.import_platform(org_id, actor_id=user["id"])
     return {"organization_id": org_id, "configured": True, **view}
 

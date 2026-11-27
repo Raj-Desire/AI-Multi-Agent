@@ -11,7 +11,7 @@ from app.providers.cartesia.client import validate_key as validate_tts_key
 from app.providers.deepgram.client_check import validate_engine_key
 from app.repositories.activity_log_repository import ActivityLogRepository
 from app.repositories.voice_credentials_repository import VoiceCredentialsRepository
-from app.voice_stack.resolver import custom_pipeline_default_enabled, platform_keys
+from app.voice_stack.resolver import PLATFORM_ROOT_ORG_ID, custom_pipeline_default_enabled, platform_keys
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +253,16 @@ class VoiceCredentialsService:
         await self._repo.save(creds)
         return {**_view(creds), "llm_check": check}
 
+    async def platform_llm_slot(self) -> Optional[LlmSlot]:
+        """The platform root organisation's stored language model settings, or None when they are not complete."""
+        root = await self._repo.get_by_org(PLATFORM_ROOT_ORG_ID)
+        if root is None or not root.llm.configured:
+            return None
+        return root.llm
+
     async def import_platform(self, org_id: str, *, actor_id: str) -> Dict:
+        """Copies the platform keys and, when the root organisation has them, its language model settings into this
+        organisation. Everything is copied server-side as the organisation's own independent copy; nothing secret is returned."""
         creds = await self._load(org_id)
         engine_key, tts_key = platform_keys()
         imported: List[str] = []
@@ -263,13 +272,27 @@ class VoiceCredentialsService:
         if tts_key:
             _set_key(creds.tts, tts_key, "imported")
             imported.append("tts_key")
+        llm_message: Optional[str] = None
+        root_llm = await self.platform_llm_slot() if org_id != PLATFORM_ROOT_ORG_ID else None
+        if root_llm is not None:
+            key = decrypt_token(root_llm.encrypted_api_key)
+            creds.llm = LlmSlot(
+                endpoint=root_llm.endpoint,
+                encrypted_api_key=encrypt_token(key),
+                key_hint="…" + key[-4:],
+                deployment=root_llm.deployment,
+                api_version=root_llm.api_version or DEFAULT_LLM_API_VERSION,
+            )
+            imported.append("llm")
+        elif org_id != PLATFORM_ROOT_ORG_ID:
+            llm_message = "The language model is not configured for the platform; nothing was imported for it."
         await self._validate_slots(creds, bool(engine_key), bool(tts_key))
         creds.updated_by = actor_id
         creds.updated_at = _now()
         await self._repo.save(creds)
         if imported:
             await self._record("voice_credentials_imported", org_id, actor_id, imported)
-        return _view(creds)
+        return {**_view(creds), "import_report": {"imported": imported, "llm_message": llm_message}}
 
     async def clear(self, org_id: str, slot: Literal["engine", "tts"], *, actor_id: str) -> Dict:
         creds = await self._load(org_id)

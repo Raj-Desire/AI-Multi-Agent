@@ -54,7 +54,8 @@ class DeepgramVoiceAgentClient:
         on_agent_audio_done: Optional[Callable[[], Awaitable[None]]] = None,
         on_error: Optional[Callable[[str], Awaitable[None]]] = None,
     ):
-        self.api_key = (api_key or os.getenv("DEEPGRAM_API_KEY", "")).strip()
+        # The key is always passed in by the factory (the organisation's own); there is no environment fallback.
+        self.api_key = (api_key or "").strip()
         self.endpoint = endpoint or self.DEFAULT_ENDPOINT
         self.on_audio = on_audio
         self.on_event = on_event
