@@ -373,6 +373,24 @@ class CampaignDialerEngine:
         except Exception as cred_err:
             logger.error(f"[CampaignDialer] Error checking credits for campaign {campaign.id}: {cred_err}")
 
+        # 2.6 An Economy organization without its own language model settings must not dial: pause the campaign (same
+        # pattern as exhausted credits) so no contact is attempted or burnt.
+        try:
+            from app.voice_stack.client_factory import MODEL_SETUP_INCOMPLETE, org_economy_blocked_reason
+            if await org_economy_blocked_reason(campaign.organization_id) == MODEL_SETUP_INCOMPLETE:
+                logger.warning(f"[CampaignDialer] Auto-pausing Campaign {campaign.id}: voice plan setup incomplete.")
+                campaign.status = CampaignStatus.PAUSED
+                await self.campaign_repo.save(campaign)
+                await self.event_repo.log_event(
+                    campaign_id=campaign.id,
+                    organization_id=campaign.organization_id,
+                    event_type=CampaignEventType.PAUSED,
+                    message="Campaign paused automatically: Voice plan setup incomplete for this organization. Ask your administrator to finish the model setup."
+                )
+                return False, None
+        except Exception as plan_err:
+            logger.error(f"[CampaignDialer] Error checking voice plan for campaign {campaign.id}: {plan_err}")
+
         # 3. Calculate Concurrency Limit
         in_flight = await self.member_repo.count_in_flight_calls(campaign.id)
         max_concurrent = campaign.calling_config.max_concurrent_calls

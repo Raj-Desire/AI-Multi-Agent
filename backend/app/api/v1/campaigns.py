@@ -173,6 +173,8 @@ async def start_campaign(
             status_code=402,
             detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
         )
+    from app.voice_stack.client_factory import ensure_org_may_place_calls
+    await ensure_org_may_place_calls(ctx.organization_id)
     campaign = await service.start_campaign(ctx, campaign_id)
     await log_action(request, ctx, f"started campaign '{campaign.name}'")
     # Trigger immediate dialer evaluation
@@ -206,6 +208,8 @@ async def resume_campaign(
             status_code=402,
             detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
         )
+    from app.voice_stack.client_factory import ensure_org_may_place_calls
+    await ensure_org_may_place_calls(ctx.organization_id)
     campaign = await service.resume_campaign(ctx, campaign_id)
     await log_action(request, ctx, f"resumed campaign '{campaign.name}'")
     asyncio.create_task(campaign_dialer_engine.tick())
@@ -350,6 +354,8 @@ async def trigger_dial_now(
             status_code=402,
             detail=auth_check.get("reason", "You have reached your allocated organization calling limit. Please contact your workspace administrator to top up your account.")
         )
+    from app.voice_stack.client_factory import ensure_org_may_place_calls
+    await ensure_org_may_place_calls(ctx.organization_id)
     campaign = await service.get_campaign(ctx, campaign_id)
     await campaign_dialer_engine.process_campaign(campaign)
     stats = await service.recalculate_campaign_stats(campaign_id)

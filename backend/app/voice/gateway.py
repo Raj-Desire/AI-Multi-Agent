@@ -18,7 +18,7 @@ from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.voice.greeting_cache import greeting_audio_cache
 from app.models.voice_credentials import VoiceCredentialsMissing
 from app.voice_stack.client_factory import (
-    backchannel_allowed, build_voice_client, engine_of, filler_behavior, select_voice_engine,
+    BLOCKED_MESSAGE, BLOCKED_OUTCOME, backchannel_allowed, build_voice_client, economy_blocked_reason, engine_of, filler_behavior, select_voice_engine,
 )
 from app.voice_stack.resolver import resolve_voice_profile
 from app.providers.deepgram.configuration import DeepgramAgentContext
@@ -1185,6 +1185,21 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     if session:
                         session.last_error = str(vc_err)
                         session.error_type = "voice_credentials_missing"
+                    break
+
+                # Safety net: an Economy organization without its own language model settings never gets a client or a greeting
+                if economy_blocked_reason(voice_profile):
+                    logger.warning("[VoiceGateway] Voice plan setup incomplete for this organization; ending call without an agent")
+                    if session:
+                        session.outcome = BLOCKED_OUTCOME
+                        session.last_error = BLOCKED_MESSAGE
+                        session.error_type = "model_setup_incomplete"
+                    for pending in (twilio_cfg_task, credit_limit_task):
+                        pending.cancel()
+                    try:
+                        await websocket.close()
+                    except Exception:
+                        pass
                     break
 
                 if session:

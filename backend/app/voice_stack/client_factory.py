@@ -12,6 +12,39 @@ logger = logging.getLogger(__name__)
 
 _NOT_CONFIGURED = "Voice engine is not configured for this organization"
 
+MODEL_SETUP_INCOMPLETE = "model_setup_incomplete"
+BLOCKED_MESSAGE = "Voice plan setup incomplete for this organization. Ask your administrator to finish the model setup."
+BLOCKED_OUTCOME = "BLOCKED_MODEL_SETUP"
+
+
+def economy_blocked_reason(profile: ResolvedVoiceProfile) -> Optional[str]:
+    """A neutral reason code when the organization is on the Economy plan but has no language model settings of its
+    own (endpoint, key and deployment); None otherwise. Such an organization may not make or take calls: there is no
+    fallback to Standard, which would run on the platform's credits."""
+    if getattr(profile, "voice_engine", "managed") != "custom":
+        return None
+    if profile.llm_endpoint and profile.llm_api_key and profile.llm_deployment:
+        return None
+    return MODEL_SETUP_INCOMPLETE
+
+
+async def org_economy_blocked_reason(org_id: Optional[str]) -> Optional[str]:
+    """economy_blocked_reason for an organization id. Missing voice keys are not this check's concern (other paths
+    already refuse those), so they count as not blocked here."""
+    try:
+        profile = await resolve_voice_profile(org_id)
+    except VoiceCredentialsMissing:
+        return None
+    return economy_blocked_reason(profile)
+
+
+async def ensure_org_may_place_calls(org_id: Optional[str]) -> None:
+    """Raises a neutral 409 before any call is placed or a campaign is started when the organization is blocked."""
+    if await org_economy_blocked_reason(org_id):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=409, detail=BLOCKED_MESSAGE)
+
 
 def _python_supports_economy() -> bool:
     """The Economy engine needs Python 3.11 or newer; checked at call time."""

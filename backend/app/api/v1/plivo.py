@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -187,6 +188,12 @@ async def voice_answer(request: Request):
         dest = normalize_phone_number(forward)
         caller = normalize_phone_number(p.get("From")) or normalize_phone_number(called)
         return _xml(PlivoProvider.build_transfer_xml(dest, caller, None, 30, None))
+
+    # An Economy organization without its own language model settings: end the call at once, no agent, no speech
+    from app.voice_stack.client_factory import org_economy_blocked_reason
+    if await org_economy_blocked_reason(cfg.organization_id):
+        logging.getLogger(__name__).warning("[Plivo Inbound AI] Voice plan setup incomplete for this organization; ending the call")
+        return _hangup_xml()
 
     agent_id = next((v for k, v in (cfg.inbound_agent_mapping or {}).items() if "".join(c for c in k if c.isdigit()) == called_digits), None) \
         or cfg.default_agent_id or "agt_receptionist_default"

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 import uuid
 import xml.sax.saxutils as saxutils
@@ -20,6 +21,9 @@ from app.repositories.agent_repository import AgentRepository
 from app.agents.configuration import AgentConfiguration
 from app.telephony import compliance, registry as telephony
 from app.telephony.types import PlaceCallRequest, TelephonyError
+
+logger = logging.getLogger(__name__)
+
 
 def normalize_phone_number(value: Optional[str]) -> Optional[str]:
     if not value:
@@ -52,6 +56,10 @@ class CallService:
         campaign_id: Optional[str] = None,
         ring_timeout_seconds: Optional[int] = None
     ) -> Call:
+        # An Economy organization without its own language model settings never places a call (no fallback to Standard)
+        from app.voice_stack.client_factory import ensure_org_may_place_calls
+        await ensure_org_may_place_calls(ctx.organization_id)
+
         # 1. Strict Backend DNC Enforcement
         from app.services.prospect_service import ProspectService
         from app.repositories.prospect_repository import ProspectRepository
@@ -433,6 +441,13 @@ class CallService:
                 dial = Dial(caller_id=fwd_caller_id, answer_on_bridge=True, timeout=30)
                 dial.number(fwd_destination)
                 response.append(dial)
+                return str(response)
+
+            # An Economy organization without its own language model settings: end the call at once, no agent, no speech
+            from app.voice_stack.client_factory import org_economy_blocked_reason
+            if await org_economy_blocked_reason(tw_cfg.organization_id):
+                logger.warning("[Twilio Inbound AI] Voice plan setup incomplete for this organization; ending the call")
+                response.hangup()
                 return str(response)
 
             # Inbound Real-Time AI Agent Answering (Env var takes priority over DB)

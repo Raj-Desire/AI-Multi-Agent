@@ -1335,6 +1335,10 @@ async def initiate_ai_test_call(
             detail=auth_check.get("reason", "Organization has exhausted available call credits. Please top up your subscription minutes.")
         )
 
+    # An Economy organization without its own language model settings never places a call (no fallback to Standard)
+    from app.voice_stack.client_factory import ensure_org_may_place_calls
+    await ensure_org_may_place_calls(ctx.organization_id)
+
     # 2. Strict Backend DNC Enforcement
     from app.services.prospect_service import ProspectService
     from app.repositories.prospect_repository import ProspectRepository
