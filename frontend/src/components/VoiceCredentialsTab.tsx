@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fetchApi, LIVE } from "../api-client";
-import type { KeySlotName, KeySlotView, VoiceEngineId, VoiceProfile } from "../types";
+import type { KeySlotName, KeySlotView, LlmConfigView, VoiceEngineId, VoiceProfile } from "../types";
 import { Alert } from "./ui/Alert";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
@@ -33,6 +33,155 @@ function formatWhen(value: string | null): string {
   if (!value) return "Never verified";
   const d = new Date(value);
   return isNaN(d.getTime()) ? "Never verified" : d.toLocaleString();
+}
+
+
+const EMPTY_LLM: LlmConfigView = {
+  configured: false, endpoint: "", deployment: "", api_version: "",
+  key_hint: "", has_key: false, status: "unverified", last_verified_at: null,
+};
+
+/**
+ * The organization's own language model settings (used by the Economy plan only). The key is write-only: never
+ * prefilled, omitted from the save when left empty, and dropped from the input once the save finishes.
+ */
+function LanguageModelSection({
+  base, profile, busy, run, onProfile,
+}: {
+  base: string;
+  profile: VoiceProfile;
+  busy: boolean;
+  run: (action: () => Promise<VoiceProfile | void>) => Promise<void>;
+  onProfile: (p: VoiceProfile) => void;
+}) {
+  const llm = profile.llm || EMPTY_LLM;
+  const [endpoint, setEndpoint] = useState(llm.endpoint);
+  const [deployment, setDeployment] = useState(llm.deployment);
+  const [apiVersion, setApiVersion] = useState(llm.api_version);
+  const [keyInput, setKeyInput] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [check, setCheck] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    setEndpoint(llm.endpoint);
+    setDeployment(llm.deployment);
+    setApiVersion(llm.api_version);
+  }, [llm.endpoint, llm.deployment, llm.api_version]);
+
+  function save() {
+    const body: Record<string, string> = {
+      llm_endpoint: endpoint.trim(),
+      llm_deployment: deployment.trim(),
+      llm_api_version: apiVersion.trim(),
+    };
+    if (keyInput.trim()) body.llm_api_key = keyInput.trim();
+    run(async () => {
+      try {
+        setCheck(null);
+        return await fetchApi<VoiceProfile>(base, { method: "PUT", body: JSON.stringify(body) });
+      } finally {
+        setKeyInput("");
+      }
+    });
+  }
+
+  function verify() {
+    run(async () => {
+      const next = await fetchApi<VoiceProfile>(`${base}/llm/verify`, { method: "POST" });
+      setCheck(next.llm_check || null);
+      return next;
+    });
+  }
+
+  const economy = profile.voice_engine === "custom";
+  const ready = !!endpoint.trim() && !!deployment.trim() && (llm.has_key || !!keyInput.trim());
+  const dirty =
+    endpoint.trim() !== llm.endpoint || deployment.trim() !== llm.deployment ||
+    apiVersion.trim() !== llm.api_version || !!keyInput.trim();
+
+  return (
+    <section aria-label="Language model" className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3">
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="min-w-0">
+          <h4 className="text-xs font-semibold text-[var(--color-heading)]">Language model</h4>
+          <div className="text-[11px] text-[var(--color-muted)]">
+            The organization's own model settings. Economy calls use only these, so usage is billed and measured per organization.
+          </div>
+        </div>
+        {llm.configured && <Badge variant={STATUS_VARIANT[llm.status] || "neutral"}>{llm.status}</Badge>}
+      </div>
+
+      {economy && !llm.configured && (
+        <Alert type="warning">Economy needs these; calls will run Standard until set.</Alert>
+      )}
+      {economy && llm.configured && llm.status !== "valid" && (
+        <Alert type="warning">
+          {llm.status === "invalid"
+            ? "The last check of these settings failed. Fix them, then verify."
+            : "These settings are not verified yet. Use Verify to check them."}
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Input label="Endpoint" type="text" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://your-resource.example.com" />
+        <Input label="Deployment name" type="text" value={deployment} onChange={(e) => setDeployment(e.target.value)} />
+        <Input label="API version (optional)" type="text" value={apiVersion} onChange={(e) => setApiVersion(e.target.value)} placeholder="2024-08-01-preview" />
+        <Input
+          label="Language model key"
+          type="password"
+          autoComplete="new-password"
+          value={keyInput}
+          onChange={(e) => setKeyInput(e.target.value)}
+          placeholder={llm.has_key ? "Leave empty to keep the saved key" : "Paste the key"}
+        />
+      </div>
+      <div className="text-[11px] font-mono text-[var(--color-muted)] break-all">
+        {llm.has_key ? <span>Key saved ({llm.key_hint})</span> : <span>No key saved</span>}
+      </div>
+      {llm.configured && <div className="text-[11px] text-[var(--color-muted)]">Last verified: {formatWhen(llm.last_verified_at)}</div>}
+
+      {check && <Alert type={check.ok ? "success" : "danger"}>{check.message}</Alert>}
+
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" disabled={busy || !ready || !dirty} aria-label="Save language model" onClick={save}>
+          Save
+        </Button>
+        <Button variant="outline" size="sm" disabled={busy || !llm.configured || dirty} aria-label="Verify language model" onClick={verify}>
+          Verify
+        </Button>
+        {(llm.configured || llm.has_key) && (
+          <Button variant="outline" size="sm" disabled={busy} aria-label="Clear language model" onClick={() => setConfirmClear(true)}>
+            Clear
+          </Button>
+        )}
+      </div>
+
+      {confirmClear && (
+        <div role="alertdialog" aria-label="Confirm clear language model" className="p-2 rounded border border-[var(--color-border)] space-y-2">
+          <p className="text-xs text-[var(--color-heading)]">Remove these settings? Economy calls for this organization will run Standard until new ones are saved.</p>
+          <div className="flex gap-2">
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={busy}
+              aria-label="Yes, clear language model"
+              onClick={() =>
+                run(async () => {
+                  const next = await fetchApi<VoiceProfile>(`${base}/llm`, { method: "DELETE" });
+                  setConfirmClear(false);
+                  setCheck(null);
+                  return next;
+                })
+              }
+            >
+              Yes, clear
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>Keep settings</Button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 type Pending = { kind: "clear"; slot: KeySlotName } | { kind: "overwrite" } | null;
@@ -296,6 +445,8 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
       )}
 
       <ul className="space-y-2">{visibleSlots.map(slotRow)}</ul>
+
+      {canManage && <LanguageModelSection base={base} profile={profile} busy={busy} run={run} onProfile={setProfile} />}
 
       {canManage && (
         <div className="space-y-2">

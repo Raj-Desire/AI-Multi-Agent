@@ -1550,6 +1550,23 @@ export interface KeySlotView {
   configured: boolean;
 }
 
+/** Superadmin view of the organization's own language model settings. The key is never returned, only a hint. */
+export interface LlmConfigView {
+  configured: boolean;
+  endpoint: string;
+  deployment: string;
+  api_version: string;
+  key_hint: string;
+  has_key: boolean;
+  status: "valid" | "invalid" | "unverified";
+  last_verified_at: string | null;
+}
+
+export interface LlmCheck {
+  ok: boolean;
+  message: string;
+}
+
 export interface VoiceProfile {
   organization_id?: string;
   org_name?: string;
@@ -1562,4 +1579,11 @@ export interface VoiceProfile {
   custom_pipeline_allowed?: boolean;
   engine: KeySlotView;
   tts: KeySlotView;
+  /** Superadmin routes only. */
+  llm?: LlmConfigView;
+  /** Result of the last Verify call (verify route only). */
+  llm_check?: LlmCheck;
+  /** Organization route only: status flags without any detail. */
+  llm_configured?: boolean;
+  llm_verified?: boolean;
 }
