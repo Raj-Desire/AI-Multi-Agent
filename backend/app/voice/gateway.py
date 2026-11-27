@@ -496,7 +496,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     ivr_res = SmartIVRDetector.analyze_transcript(content, enabled_rules=cached_rules_map)
                     if not ivr_res.is_ivr and len(recent_user_texts) > 1:
                         ivr_res = SmartIVRDetector.analyze_transcript(window_text, enabled_rules=cached_rules_map)
-                    if not ivr_res.is_ivr and SmartIVRDetector.is_user_refusal(content):
+                    if not ivr_res.is_ivr and not bare_no_answers_question(content) and SmartIVRDetector.is_user_refusal(content):
                         logger.info(f"[VoiceGateway] Caller declined to continue ({words_summary(content)}). Concluding and hanging up.")
                         is_concluding_call = True
                         asyncio.create_task(conclude_and_hangup(content, "USER_DECLINED"))
@@ -719,6 +719,12 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
     async def follow_caller_language(code: Optional[str], latest_text: str, confident: bool = False):
         await language_follower.follow(code, latest_text, confident=confident)
 
+    def bare_no_answers_question(caller_text: str) -> bool:
+        """True when the caller only said a bare "no" to the agent's last question: the agent handles it, we do not hang up."""
+        from app.numerology.guard import is_bare_no_to_question
+        last_line = next((t.get("content", "") for t in reversed(live_transcript_turns) if t.get("role") == "assistant"), "")
+        return is_bare_no_to_question(caller_text, last_line)
+
     async def llm_end_check(heard_text: str, latest_text: Optional[str] = None):
         """Background language-agnostic check for voicemail/IVR or a caller who wants to end the call."""
         nonlocal is_concluding_call
@@ -740,10 +746,12 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         # "I'm good" answering "how are you today?" is a friendly reply, not a refusal, whatever the model says
         from app.api.v1.voice import is_wellbeing_answer
         friendly = is_wellbeing_answer(latest_text, last_agent_line, turn_counter)
-        from app.numerology.guard import is_plain_answer
+        from app.numerology.guard import is_plain_answer, is_bare_no_to_question
         # A short answer to the agent's question (a date, a number) is never a voicemail, whatever the model says.
         machine = bool(verdict) and verdict.is_machine and not is_plain_answer(agent_config, latest_text)
-        should_end = bool(verdict) and (machine or (verdict.wants_to_end and not is_question and not friendly))
+        # A bare "no" to the agent's yes/no question is an answer; the agent's script carries on from it.
+        bare_no = is_bare_no_to_question(latest_text, last_agent_line)
+        should_end = bool(verdict) and (machine or (verdict.wants_to_end and not is_question and not friendly and not bare_no))
         if not is_concluding_call and not should_end:
             # The model's verdict wins: it knows Hindi that a Gujarati-tuned recognizer wrote in Gujarati script.
             verdict_lang = verdict.language if verdict and verdict.language else None
