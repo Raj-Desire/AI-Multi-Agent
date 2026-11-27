@@ -134,6 +134,8 @@ class PipelineVoiceClient:
         self._overlap: List[Tuple[str, float]] = []  # (caller text, clock time) heard while the agent talked
         self._speech_started_at: Optional[float] = None
         self._user_speaking_sent = False
+        self._last_interim = ""            # latest interim text of the utterance, used if no final ever comes
+        self._turn_started_at: Optional[float] = None
 
     # ---- protocol properties ----
     @property
@@ -249,10 +251,11 @@ class PipelineVoiceClient:
     async def _on_speech_started(self) -> None:
         if self._closed:
             return
+        # Voice activity alone (line noise, echo) is never announced: only recognised words are.
         self._speech_started_at = self._clock()
         self._user_speaking_sent = False
-        if not self._agent_active():
-            await self._announce_user_speaking()
+        self._last_interim = ""
+        logger.info("[Economy] speech started (agent_active=%s)", self._agent_active())
 
     async def _announce_user_speaking(self) -> None:
         if self._user_speaking_sent:
@@ -264,11 +267,16 @@ class PipelineVoiceClient:
     async def _on_stt_transcript(self, text: str, is_final: bool, speech_final: bool) -> None:
         if self._closed:
             return
+        words = len(clean_transcript(text or "").split())
+        logger.info("[Economy] listening result final=%s speech_final=%s words=%d", is_final, speech_final, words)
         if self._agent_active():
             heard = " ".join([t for t, _ in self._overlap] + [text])
             started = self._speech_started_at
             speech_ms = int((self._clock() - started) * 1000) if started is not None else 0
-            if not is_real_interruption(heard, speech_ms, True):
+            real = is_real_interruption(heard, speech_ms, True)
+            if words:
+                logger.info("[Economy] interruption decided real=%s words=%d speech_ms=%d", real, words, speech_ms)
+            if not real:
                 if is_final:
                     self._overlap.append((text, self._clock()))
                 return
@@ -277,14 +285,30 @@ class PipelineVoiceClient:
             self._user_parts = earlier
             await self._announce_user_speaking()
             if not is_final:
+                self._last_interim = text
                 return
+        elif words:
+            await self._announce_user_speaking()
+        if not is_final:
+            if words:
+                self._last_interim = text
+            return
+        self._last_interim = ""
         if is_final:
             self._user_parts.append(text)
             if turn_is_complete(" ".join(self._user_parts), speech_final, 0):
                 self._finish_user_turn()
 
     async def _on_utterance_end(self) -> None:
-        if self._closed or self._agent_active() or not self._user_parts:
+        if self._closed or self._agent_active():
+            return
+        if self._last_interim and self._user_speaking_sent:
+            # announced, but no final result ever came: finish from the interim text so the caller's turn closes
+            self._user_parts.append(self._last_interim)
+            self._last_interim = ""
+            self._finish_user_turn()
+            return
+        if not self._user_parts:
             return
         if turn_is_complete(" ".join(self._user_parts), False, UTTERANCE_END_SILENCE_MS):
             self._finish_user_turn()
@@ -304,7 +328,10 @@ class PipelineVoiceClient:
     def _start_turn(self, user_text: str) -> None:
         if self._protected_pending():
             self._deferred.append(user_text)  # answered once the protected message has played
+            logger.info("[Economy] turn deferred behind a protected message words=%d", len(user_text.split()))
             return
+        logger.info("[Economy] turn started words=%d", len(user_text.split()))
+        self._turn_started_at = self._clock()
         self._interrupt()
         self._turn_task = self._spawn_speech(self._run_turn(user_text))
 
@@ -376,6 +403,7 @@ class PipelineVoiceClient:
             return
         try:
             await self._end_watchdog(turn, watchdog)
+            logger.info("[Economy] apology spoken (reason=unexpected error)")
             await self._speak_line(APOLOGY_LINE)
         except Exception as e:
             logger.error("[Economy] apology failed (%s)", type(e).__name__)
@@ -390,6 +418,7 @@ class PipelineVoiceClient:
         if not still_silent():
             return
         turn.filler_speaking = True
+        logger.info("[Economy] watchdog filler spoken")
         try:
             await self._speak_sentence(FILLER_LINE, [], only_if=still_silent)  # not part of the model's history
         finally:
@@ -435,6 +464,7 @@ class PipelineVoiceClient:
                     await self._speak_sentence(rest, spoken)
             except (LlmTimeout, LlmUnavailable):
                 logger.warning("[Economy] language model turn failed")
+                logger.info("[Economy] apology spoken (reason=model unavailable)")
                 self._record_assistant(spoken)  # pending tool calls are dropped
                 await self._speak_line(APOLOGY_LINE)
                 return
@@ -487,6 +517,8 @@ class PipelineVoiceClient:
 
         A queued message waits until the active reply has fully finished, then speaks in arrival order."""
         _speaker.set(_Speaker(protected))
+        if protected:
+            logger.info("[Economy] protected message %s", "queued" if queued else "started")
         try:
             if queued:
                 async with self._inject_lock:
@@ -502,6 +534,8 @@ class PipelineVoiceClient:
             logger.exception("[Economy] speaking failed")
             await self._finish_speaking()
         finally:
+            if protected:
+                logger.info("[Economy] protected message finished")
             if protected and not self._closed:
                 self._resume_deferred()
 
@@ -521,6 +555,7 @@ class PipelineVoiceClient:
                 return
             self._speakers.discard(speaker)
             if not self._speakers:
+                logger.info("[Economy] audio done")
                 await self._emit("AgentAudioDone", {})
                 await self._call(self.on_agent_audio_done)
 
@@ -557,6 +592,10 @@ class PipelineVoiceClient:
                                 first = not self._speakers
                                 self._speakers.add(speaker)
                                 if first:
+                                    if self._turn_started_at is not None:
+                                        logger.info("[Economy] first audio %.2fs after turn start",
+                                                    self._clock() - self._turn_started_at)
+                                        self._turn_started_at = None
                                     await self._emit("AgentStartedSpeaking", {})
                                     await self._call(self.on_agent_speaking, {})
                             await self._emit("ConversationText", {"role": "assistant", "content": text})
