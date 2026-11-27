@@ -76,6 +76,8 @@ def _reply_delays(transcript) -> List[float]:
             continue
         # consecutive caller entries are one turn: only the last one before an agent entry is paired
         following = entries[i + 1:]
+        if following and following[0].get("role") == "user":
+            continue
         nxt = next((x for x in following if x.get("role") != "user"), None)
         if nxt is None or nxt.get("role") != "assistant":
             continue
