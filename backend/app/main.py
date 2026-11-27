@@ -5,6 +5,10 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+from app.core.file_logging import attach_file_logging
+
+attach_file_logging()  # only when APP_LOG_FILE is set
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
