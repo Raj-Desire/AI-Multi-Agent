@@ -25,7 +25,9 @@ from app.providers.deepgram.configuration import DeepgramAgentContext
 from app.voice.session import CallSession, active_sessions
 from app.voice.language_follow import LanguageFollower
 from app.voice.duration_policy import billing_elapsed, effective_limit, limit_action, limit_deadline
-from app.voice.call_ending import closing_audio_expected_seconds, playback_complete
+from app.voice.call_ending import (
+    closing_audio_expected_seconds, closing_audio_heard_s, closing_hard_stop, goodbye_start_wait_s, playback_complete,
+)
 from app.voice.silence_policy import MIN_SILENCE_SECONDS, STUCK_SPEAKING_SECONDS, silence_action
 from app.services.language_text import silence_messages
 from app.services.callback_intent import CallbackTracker, is_callback_confirmation
@@ -117,6 +119,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
     last_audio_chunk_time: float = 0.0  # when the voice engine last sent us audio
     goodbye_key: Optional[str] = None  # text fingerprint of the closing message while we wait for it to be spoken
     goodbye_started_event: asyncio.Event = asyncio.Event()
+    goodbye_started_audio_s: Optional[float] = None  # outbound audio total when the closing message began speaking
     injection_refused_event: asyncio.Event = asyncio.Event()
     is_concluding_call: bool = False
     org_credit_limit_sec: Optional[float] = None
@@ -412,7 +415,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         nonlocal session, turn_start_time, last_user_speech_time, is_user_speaking, is_agent_speaking, has_reprompted_silence, is_concluding_call, user_spoke, real_conversation
         nonlocal orchestrator, live_transcript_turns, handoff_controller, turn_counter, cached_rules_map, cached_inbound_forward_number
         nonlocal callback_tracker, callback_conclude_task
-        nonlocal caller_farewell_at
+        nonlocal caller_farewell_at, goodbye_started_audio_s
         if not session:
             return
 
@@ -528,6 +531,8 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
 
             live_transcript_turns.append({"role": "assistant", "content": content})
             if goodbye_key and goodbye_key in _text_key(content):
+                if goodbye_started_audio_s is None:
+                    goodbye_started_audio_s = total_outbound_audio_duration_s
                 goodbye_started_event.set()
             await call_session_service.record_agent_transcript(
                 session,
@@ -601,11 +606,13 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
         safety net for the maximum-duration limit; it is reached long after the goodbye has normally finished.
         For user refusals, behavior='interrupt' is used to instantly preempt any unwanted LLM redirection.
         """
-        nonlocal is_concluding_call, goodbye_key
+        nonlocal is_concluding_call, goodbye_key, goodbye_started_audio_s
         is_concluding_call = True
-        hard_stop = time.time() + max_wait
-        if deadline_at is not None:
-            hard_stop = min(hard_stop, deadline_at)
+        # Economy paces its audio, so a queued goodbye starts only after the reply has played: wait for it and
+        # count only the goodbye's own audio. Standard keeps the original formulas (custom=False).
+        custom = engine_of(deepgram_client) == "custom" and bool(closing_text)
+        hard_stop = closing_hard_stop(custom, time.time(), max_wait, last_agent_speech_done_time, deadline_at)
+        goodbye_started_audio_s = None
 
         audio_before = total_outbound_audio_duration_s
         expected_audio_s = 0.0
@@ -615,6 +622,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             # Inject closing message with specified behavior (interrupt for refusal, queue for normal conclusion)
             for attempt in range(6):
                 goodbye_started_event.clear()
+                goodbye_started_audio_s = None
                 injection_refused_event.clear()
                 try:
                     await deepgram_client.inject_agent_message(closing_text, behavior=behavior)
@@ -623,7 +631,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                 waiter = asyncio.create_task(goodbye_started_event.wait())
                 refused = asyncio.create_task(injection_refused_event.wait())
                 try:
-                    await asyncio.wait({waiter, refused}, timeout=max(0.5, min(8.0, hard_stop - time.time())), return_when=asyncio.FIRST_COMPLETED)
+                    await asyncio.wait({waiter, refused}, timeout=goodbye_start_wait_s(custom, time.time(), last_agent_speech_done_time, hard_stop), return_when=asyncio.FIRST_COMPLETED)
                 finally:
                     waiter.cancel()
                     refused.cancel()
@@ -642,7 +650,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             now = time.time()
             if playback_complete(
                 now,
-                total_outbound_audio_duration_s - audio_before,
+                closing_audio_heard_s(custom, total_outbound_audio_duration_s, audio_before, goodbye_started_audio_s),
                 expected_audio_s,
                 last_audio_chunk_time,
                 outbound_audio_queue.empty(),

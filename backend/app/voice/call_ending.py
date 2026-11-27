@@ -28,3 +28,34 @@ def playback_complete(
     engine_quiet = now - last_audio_chunk_at > ENGINE_QUIET_SECONDS
     played_out = queue_empty and now >= playback_end_at + PLAYBACK_TAIL_SECONDS
     return heard_enough and engine_quiet and played_out
+
+
+# The Economy engine paces its audio in real time, so a goodbye queued behind a long reply only starts once the
+# reply has played. These helpers keep the Standard formulas unchanged (custom=False) and, for Economy, wait for the
+# reply first and count only the goodbye's own audio.
+GOODBYE_START_WAIT_SECONDS = 8.0
+
+
+def closing_hard_stop(custom: bool, now: float, max_wait: float, speech_done_at: float, deadline_at=None) -> float:
+    """Latest hang-up time: Economy adds the reply playback still ahead; always bounded by the max-duration deadline."""
+    stop = now + max_wait
+    if custom:
+        stop += max(0.0, speech_done_at - now)
+    return stop if deadline_at is None else min(stop, deadline_at)
+
+
+def goodbye_start_wait_s(custom: bool, now: float, speech_done_at: float, hard_stop: float) -> float:
+    """How long to wait for the closing message to start speaking."""
+    wait = GOODBYE_START_WAIT_SECONDS
+    if custom:
+        wait += max(0.0, speech_done_at - now)
+    return max(0.5, min(wait, hard_stop - now))
+
+
+def closing_audio_heard_s(custom: bool, total_audio_s: float, audio_before_s: float, goodbye_start_audio_s=None) -> float:
+    """Closing audio received so far. Economy counts from the moment the goodbye started (nothing before it)."""
+    if not custom:
+        return total_audio_s - audio_before_s
+    if goodbye_start_audio_s is None:
+        return 0.0
+    return total_audio_s - goodbye_start_audio_s
