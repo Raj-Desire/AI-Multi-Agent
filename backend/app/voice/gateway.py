@@ -17,7 +17,9 @@ from app.voice.audio import AudioAdapter
 from app.voice.pronunciation_normalizer import PronunciationNormalizer
 from app.voice.greeting_cache import greeting_audio_cache
 from app.models.voice_credentials import VoiceCredentialsMissing
-from app.voice_stack.client_factory import build_voice_client, engine_of, filler_behavior, select_voice_engine
+from app.voice_stack.client_factory import (
+    backchannel_allowed, build_voice_client, engine_of, filler_behavior, select_voice_engine,
+)
 from app.voice_stack.resolver import resolve_voice_profile
 from app.providers.deepgram.configuration import DeepgramAgentContext
 from app.voice.session import CallSession, active_sessions
@@ -945,7 +947,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                             import random
                             bc_word = random.choice(bc_phrases)
                             norm_bc = PronunciationNormalizer.normalize(bc_word, getattr(agent_config, "pronunciation_rules", None))
-                            if deepgram_client and deepgram_client.is_ready:
+                            if deepgram_client and deepgram_client.is_ready and backchannel_allowed(deepgram_client):
                                 logger.info(f"[VoiceGateway] Caller monologue active ({user_speech_duration:.1f}s). Injecting backchannel cue: '{norm_bc}'")
                                 await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
                                 last_backchannel_time = now

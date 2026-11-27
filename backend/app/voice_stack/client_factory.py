@@ -74,3 +74,8 @@ def engine_of(client: Any) -> str:
 def filler_behavior(client: Any) -> str:
     """Thinking fillers must speak while the model thinks: Economy queues wait for the whole turn, so it uses "default"."""
     return "default" if engine_of(client) == "custom" else "queue"
+
+
+def backchannel_allowed(client: Any) -> bool:
+    """Listening cues while the caller talks: Standard only. On Economy a queued cue would talk over the caller."""
+    return engine_of(client) != "custom"
