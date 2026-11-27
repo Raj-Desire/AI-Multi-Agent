@@ -46,6 +46,7 @@ from app.repositories.twilio_repository import TwilioRepository
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.call_repository import CallRepository
 from app.core.dependencies import TenantContext
+from app.voice.log_text import words_summary
 
 logger = logging.getLogger("voice_gateway")
 logger.setLevel(logging.INFO)
@@ -375,7 +376,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     filler = random.choice(phrases)
                     norm_filler = PronunciationNormalizer.normalize(filler, getattr(agent_config, "pronunciation_rules", None))
                     if not is_agent_speaking and not is_user_speaking and deepgram_client and deepgram_client.is_ready:
-                        logger.info(f"[VoiceGateway] Agent thinking threshold ({filler_delay}s) reached. Injecting filler: '{norm_filler}'")
+                        logger.info(f"[VoiceGateway] Agent thinking threshold ({filler_delay}s) reached. Injecting filler ({words_summary(norm_filler)})")
                         await deepgram_client.inject_agent_message(norm_filler, behavior=filler_behavior(deepgram_client))
                 except asyncio.CancelledError:
                     pass
@@ -460,7 +461,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             from app.api.v1.voice import detect_caller_farewell
             if not is_concluding_call and turn_counter >= 1 and detect_caller_farewell(content):
                 caller_farewell_at = time.time()
-                logger.info(f"[VoiceGateway] Caller said goodbye: '{content[:40]}'. The call ends after the agent's reply.")
+                logger.info(f"[VoiceGateway] Caller said goodbye ({words_summary(content)}). The call ends after the agent's reply.")
                 stamp = caller_farewell_at
 
                 async def _caller_farewell_fallback():
@@ -493,7 +494,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     if not ivr_res.is_ivr and len(recent_user_texts) > 1:
                         ivr_res = SmartIVRDetector.analyze_transcript(window_text, enabled_rules=cached_rules_map)
                     if not ivr_res.is_ivr and SmartIVRDetector.is_user_refusal(content):
-                        logger.info(f"[VoiceGateway] Caller declined to continue: '{content[:60]}'. Concluding and hanging up.")
+                        logger.info(f"[VoiceGateway] Caller declined to continue ({words_summary(content)}). Concluding and hanging up.")
                         is_concluding_call = True
                         asyncio.create_task(conclude_and_hangup(content, "USER_DECLINED"))
                     elif not ivr_res.is_ivr:
@@ -522,7 +523,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     any(w in norm_c for w in ["धन्यवाद", "अलविदा", "goodbye", "thank you", "आभार", "आवजो", "adios", "hasta luego", "au revoir", "auf wiedersehen"])
                 )
                 if not is_close_snippet:
-                    logger.info(f"[VoiceGateway] Suppressing interrupted intermediate LLM redirection turn: '{content[:50]}...'")
+                    logger.info(f"[VoiceGateway] Suppressing interrupted intermediate LLM redirection turn ({words_summary(content)})")
                     return
 
             live_transcript_turns.append({"role": "assistant", "content": content})
@@ -567,7 +568,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
             ])
 
             if is_transfer_announcement and transfer_target and not is_concluding_call:
-                logger.info(f"[VoiceGateway] Assistant transfer announcement detected: '{content[:60]}...'. Initiating live call transfer to {transfer_target}.")
+                logger.info(f"[VoiceGateway] Assistant transfer announcement detected ({words_summary(content)}). Initiating live call transfer to {transfer_target}.")
                 asyncio.create_task(transfer_call_to_human(destination_phone=transfer_target))
                 return
 
@@ -581,7 +582,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     "automated system detected" in lower_content or
                     "leaving a message" in lower_content
                 )
-                logger.info(f"[VoiceGateway] Assistant ended with a farewell: '{content[-50:]}'. Hanging up once it has been heard in full.")
+                logger.info(f"[VoiceGateway] Assistant ended with a farewell ({words_summary(content)}). Hanging up once it has been heard in full.")
                 is_concluding_call = True
                 has_reprompted_silence = True
                 # The agent already said its goodbye; just let it finish playing, then hang up.
@@ -948,7 +949,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                             bc_word = random.choice(bc_phrases)
                             norm_bc = PronunciationNormalizer.normalize(bc_word, getattr(agent_config, "pronunciation_rules", None))
                             if deepgram_client and deepgram_client.is_ready and backchannel_allowed(deepgram_client):
-                                logger.info(f"[VoiceGateway] Caller monologue active ({user_speech_duration:.1f}s). Injecting backchannel cue: '{norm_bc}'")
+                                logger.info(f"[VoiceGateway] Caller monologue active ({user_speech_duration:.1f}s). Injecting backchannel cue ({words_summary(norm_bc)})")
                                 await deepgram_client.inject_agent_message(norm_bc, behavior="queue")
                                 last_backchannel_time = now
 
@@ -962,7 +963,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
                     # Phase 1: Ask reprompt message if silent for silence_timeout
                     if action == "reprompt":
                         norm_reprompt = PronunciationNormalizer.normalize(reprompt_msg, getattr(agent_config, "pronunciation_rules", None))
-                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout:.1f}s) reached. Injecting reprompt: '{norm_reprompt}'")
+                        logger.info(f"[VoiceGateway] Silence timeout ({silence_timeout:.1f}s) reached. Injecting reprompt ({words_summary(norm_reprompt)})")
                         has_reprompted_silence = True
                         reprompt_injected_at = now
                         await deepgram_client.inject_agent_message(norm_reprompt, behavior="queue")
@@ -1280,7 +1281,7 @@ async def run_voice_stream(websocket: WebSocket, provider: TelephonyProvider):
 
                 # Override with custom prompt if specified for this test call session
                 if session and session.custom_prompt:
-                    logger.info(f"[VoiceGateway] Applying custom call prompt override: {session.custom_prompt[:60]}...")
+                    logger.info(f"[VoiceGateway] Applying custom call prompt override ({words_summary(session.custom_prompt)})")
                     deepgram_settings.agent.think.prompt = session.custom_prompt
 
                 logger.info(

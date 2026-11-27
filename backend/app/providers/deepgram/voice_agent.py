@@ -20,6 +20,7 @@ from app.providers.deepgram.configuration import (
 )
 from app.providers.deepgram.events import DeepgramEventType
 from app.voice_stack.function_dispatch import answer_function_call, run_knowledge_search
+from app.voice.log_text import words_summary
 
 logger = logging.getLogger("deepgram.voice_agent")
 
@@ -203,7 +204,7 @@ class DeepgramVoiceAgentClient:
             if greeting and greeting.strip():
                 clean_greeting = greeting.strip()
                 if not getattr(settings.agent, "greeting", None):
-                    logger.info(f"Explicitly injecting agent greeting: '{clean_greeting[:40]}...'")
+                    logger.info(f"Explicitly injecting agent greeting ({words_summary(clean_greeting)})")
                     await self.inject_agent_message(clean_greeting)
                 else:
                     try:
@@ -263,7 +264,7 @@ class DeepgramVoiceAgentClient:
         payload = DeepgramInjectAgentMessage(message=message, behavior=behavior)
         try:
             await self._ws.send(payload.model_dump_json())
-            logger.info(f"Injected agent greeting/message: {message[:40]}...")
+            logger.info(f"Injected agent greeting/message ({words_summary(message)})")
         except Exception as e:
             logger.error(f"Error injecting agent message: {e}")
 
@@ -274,7 +275,7 @@ class DeepgramVoiceAgentClient:
         payload = DeepgramInjectUserMessage(content=content)
         try:
             await self._ws.send(payload.model_dump_json())
-            logger.info(f"Injected user message: {content[:40]}...")
+            logger.info(f"Injected user message ({words_summary(content)})")
         except Exception as e:
             logger.error(f"Error injecting user message: {e}")
 
