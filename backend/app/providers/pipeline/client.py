@@ -12,7 +12,9 @@ Callback order for one caller turn (mirrors the events the Standard engine sends
   on_agent_speaking({})                     -> first audio of the reply
   on_transcript("assistant", sentence)      -> each sentence, as its audio starts
   on_audio(bytes) ...                       -> audio chunks (8 kHz mu-law)
-  on_agent_audio_done()                     -> after the last chunk of the reply
+  on_agent_audio_done()                     -> when the last chunk of the reply has finished playing
+
+Audio is paced to real playback (8000 mu-law bytes per second): it never runs more than PLAYBACK_LEAD_S ahead.
 """
 import asyncio
 import contextlib
@@ -42,6 +44,8 @@ MAX_REPLY_TOKENS = 400
 FILLER_LINE = "એક ક્ષણ, હું જોઉં છું."
 LLM_FIRST_TOKEN_TIMEOUT_S = 4.0  # with the silence watchdog, keeps the worst-case silence under 6 s
 UTTERANCE_END_SILENCE_MS = 1000
+PLAYBACK_LEAD_S = 0.3        # how far audio may be handed out ahead of real playback
+AUDIO_BYTES_PER_S = 8000     # 8 kHz mu-law, one byte per sample
 SUPPORTED_VOICE_TYPE = "cartesia"
 _NOT_CONFIGURED = "Voice engine is not configured for this organization"
 
@@ -83,10 +87,13 @@ class PipelineVoiceClient:
         silence_watchdog_s: float = 3.5,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+        playback_sleep: Optional[Callable[[float], Awaitable[Any]]] = None,
     ):
         self._watchdog_s = silence_watchdog_s
         self._clock = clock
         self._sleep = sleep
+        self._playback_sleep = playback_sleep or sleep
+        self._play_until = 0.0  # clock time the line goes quiet (audio handed out so far has played)
         self._profile = profile
         self.on_audio = on_audio
         self.on_event = on_event
@@ -328,6 +335,7 @@ class PipelineVoiceClient:
             return
         ctx, self._ctx = self._ctx, None
         self._ctx_speaker = None
+        self._play_until = self._clock()  # the gateway flushes its queued audio on barge-in
         if ctx is not None and self._tts is not None:
             aux = asyncio.ensure_future(self._tts.cancel(ctx))
             self._aux_tasks.add(aux)
@@ -508,6 +516,9 @@ class PipelineVoiceClient:
         """AgentAudioDone fires once, when the last speaking unit is done."""
         speaker = _speaker.get()
         if speaker is not None and speaker in self._speakers:
+            await self._wait_played(0.0)
+            if speaker not in self._speakers:
+                return
             self._speakers.discard(speaker)
             if not self._speakers:
                 await self._emit("AgentAudioDone", {})
@@ -535,6 +546,9 @@ class PipelineVoiceClient:
                     async for chunk in audio:
                         if self._ctx != ctx or self._closed:
                             break
+                        await self._wait_played(PLAYBACK_LEAD_S)
+                        if self._ctx != ctx or self._closed:
+                            break
                         if not started:
                             started = True
                             speaker.audio = True
@@ -550,6 +564,7 @@ class PipelineVoiceClient:
                         if self._ctx != ctx:
                             break
                         await self._call(self.on_audio, chunk)
+                        self._play_until = max(self._play_until, self._clock()) + len(chunk) / AUDIO_BYTES_PER_S
             except TtsUnavailable:
                 await self._voice_failed()
                 return
@@ -563,6 +578,14 @@ class PipelineVoiceClient:
             if completed:
                 self._tts_failures = 0
                 spoken.append(text)
+
+    async def _wait_played(self, lead: float) -> None:
+        """Waits until the audio handed out so far is within `lead` seconds of finishing playing."""
+        while not self._closed:
+            remaining = self._play_until - lead - self._clock()
+            if remaining <= 0:
+                return
+            await self._playback_sleep(remaining)
 
     async def _voice_failed(self) -> None:
         self._tts_failures += 1
