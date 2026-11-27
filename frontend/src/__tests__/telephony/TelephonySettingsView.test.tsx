@@ -48,6 +48,15 @@ describe("TelephonySettingsView", () => {
     expect(screen.getByText("Not set up yet")).toBeInTheDocument();
   });
 
+  it("an organization admin has no voice credentials section and no voice-profile request", async () => {
+    routes("twilio", "international");
+    render(<TelephonySettingsView />);
+    await screen.findByTestId("twilio-form");
+    expect(screen.queryByRole("region", { name: "Voice engine" })).toBeNull();
+    expect(screen.queryByText("Voice engine")).toBeNull();
+    expect(fetchApi.mock.calls.some((c) => String(c[0]).includes("voice-profile"))).toBe(false);
+  });
+
   it("never flashes the wrong form while the market is still loading", async () => {
     let resolve: (v: any) => void = () => {};
     fetchApi.mockImplementation((path: string) => {

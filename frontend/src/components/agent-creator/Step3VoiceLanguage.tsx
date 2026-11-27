@@ -1004,8 +1004,8 @@ export function Step3VoiceLanguage({
         </div>
       </div>
 
-      {/* Voice engine: Standard or Economy */}
-      <div data-testid="voice-engine-section" className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-1.5">
+      {/* Voice engine: Standard or Economy. Platform-owner only; the server ignores it for everyone else. */}
+      {isSuperAdmin && <div data-testid="voice-engine-section" className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-1.5">
         <label htmlFor="voice-engine-select" className="block text-xs font-semibold text-[var(--color-heading)]">
           Voice engine
         </label>
@@ -1025,7 +1025,7 @@ export function Step3VoiceLanguage({
         {economyHint && (
           <p id="voice-engine-hint" className="text-[11px] text-[var(--color-muted)]">{economyHint}</p>
         )}
-      </div>
+      </div>}
 
       {/* Section 1: Rich Production Voice Picker */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">

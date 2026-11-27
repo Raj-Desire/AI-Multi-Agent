@@ -663,7 +663,7 @@ export const SuperAdminPanel: React.FC = () => {
         description={voiceOrg ? `Voice engine and keys for '${voiceOrg.name}'.` : undefined}
         maxWidth="lg"
       >
-        {voiceOrg && <VoiceCredentialsTab organizationId={voiceOrg.id} canManage mode="superadmin" />}
+        {voiceOrg && <VoiceCredentialsTab organizationId={voiceOrg.id} canManage />}
       </Modal>
 
       {/* Assign Extra Admin Modal */}

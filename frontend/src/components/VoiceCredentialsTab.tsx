@@ -10,33 +10,22 @@ import { LoadingState } from "./ui/LoadingState";
 export interface VoiceCredentialsTabProps {
   organizationId: string;
   canManage: boolean;
-  mode: "superadmin" | "org-admin";
 }
 
 const EMPTY_SLOT: KeySlotView = { key_hint: "", status: "unverified", source: null, last_verified_at: null, configured: false };
 
-// Superadmin screens name the engine; anything an org admin sees uses the neutral voice labels.
+// Super admin only screen, so it names the engine.
 const ADMIN_ENGINE_LABEL: Record<VoiceEngineId, string> = { aura: "Aura", cartesia: "Cartesia" };
-const ORG_ENGINE_LABEL: Record<VoiceEngineId, string> = { aura: "Aura Voice", cartesia: "Sonic Voice" };
 
 // Used for button/aria names (kept stable).
 const SLOT_LABEL: Record<KeySlotName, string> = { engine: "engine key", tts: "voice key" };
 
-// Visible names and one-line explanations. The org admin never sees the voice service's name.
-const SLOT_TITLE = {
-  admin: { engine: "Voice engine key", tts: "Cartesia voice key" },
-  org: { engine: "Voice engine key", tts: "Voice key" },
-} as const;
-const SLOT_HELP = {
-  admin: {
-    engine: "Listens to callers and runs the AI agent. Always required.",
-    tts: "Makes the speaking voice. Required because this organization uses Cartesia.",
-  },
-  org: {
-    engine: "Listens to callers and runs the AI agent.",
-    tts: "Makes the speaking voice.",
-  },
-} as const;
+// Visible names and one-line explanations.
+const SLOT_TITLE: Record<KeySlotName, string> = { engine: "Voice engine key", tts: "Cartesia voice key" };
+const SLOT_HELP: Record<KeySlotName, string> = {
+  engine: "Listens to callers and runs the AI agent. Always required.",
+  tts: "Makes the speaking voice. Required because this organization uses Cartesia.",
+};
 const MODE_LABEL = { own: "Own keys", platform: "Platform keys" } as const;
 const STATUS_VARIANT = { valid: "success", invalid: "danger", unverified: "warning" } as const;
 
@@ -52,9 +41,8 @@ type Pending = { kind: "clear"; slot: KeySlotName } | { kind: "overwrite" } | nu
  * An organization's voice credentials. Keys are write-only: the API only ever returns a masked hint, inputs are never
  * prefilled, and the typed value is dropped as soon as the save finishes.
  */
-export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCredentialsTabProps) {
-  const isAdminView = mode === "superadmin";
-  const base = isAdminView ? `/superadmin/voice-profiles/${organizationId}` : "/voice-profile";
+export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredentialsTabProps) {
+  const base = `/superadmin/voice-profiles/${organizationId}`;
   const [profile, setProfile] = useState<VoiceProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -132,10 +120,10 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
 
   const slots: Record<KeySlotName, KeySlotView> = { engine: profile.engine || EMPTY_SLOT, tts: profile.tts || EMPTY_SLOT };
   const engine = profile.tts_engine;
-  const engineLabel = engine ? (isAdminView ? ADMIN_ENGINE_LABEL : ORG_ENGINE_LABEL)[engine] : "Platform default";
+  const engineLabel = engine ? ADMIN_ENGINE_LABEL[engine] : "Platform default";
   // The voice key only exists for engines that use a separate voice service
   const visibleSlots: KeySlotName[] = engine === "cartesia" || slots.tts.configured ? ["engine", "tts"] : ["engine"];
-  const mayEditKeys = isAdminView ? canManage : canManage && profile.allow_org_edit;
+  const mayEditKeys = canManage;
 
   const slotRow = (name: KeySlotName) => {
     const slot = slots[name];
@@ -144,8 +132,8 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
       <li key={name} className="p-3 rounded-[var(--radius-main,0.375rem)] border border-[var(--color-border)] bg-[var(--color-surface)] space-y-2">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-[var(--color-heading)]">{SLOT_TITLE[isAdminView ? "admin" : "org"][name]}</div>
-            <div className="text-[11px] text-[var(--color-muted)]">{SLOT_HELP[isAdminView ? "admin" : "org"][name]}</div>
+            <div className="text-xs font-semibold text-[var(--color-heading)]">{SLOT_TITLE[name]}</div>
+            <div className="text-[11px] text-[var(--color-muted)]">{SLOT_HELP[name]}</div>
             <div className="text-xs font-mono text-[var(--color-muted)] break-all">
               {slot.configured ? <span>{slot.key_hint}</span> : <span>Not set</span>}
             </div>
@@ -164,7 +152,7 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
             <Button variant="outline" size="sm" disabled={busy} aria-label={`Replace ${label}`} onClick={() => { setEditing(name); setKeyInput(""); }}>
               Replace
             </Button>
-            {isAdminView && slot.configured && (
+            {slot.configured && (
               <>
                 <Button variant="outline" size="sm" disabled={busy} aria-label={`Verify ${label}`} onClick={() => run(async () => fetchApi<VoiceProfile>(`${base}/verify`, { method: "POST" }))}>
                   Verify
@@ -227,34 +215,18 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
     <div className="space-y-4">
       {error && <Alert type="danger" onDismiss={() => setError(null)}>{error}</Alert>}
 
-      <dl className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
         <div>
-          <dt className="text-[var(--color-muted)]">{isAdminView ? "Engine" : "Voice engine"}</dt>
+          <dt className="text-[var(--color-muted)]">Engine</dt>
           <dd className="font-semibold text-[var(--color-heading)]">{engineLabel}</dd>
         </div>
         <div>
           <dt className="text-[var(--color-muted)]">Credentials</dt>
-          <dd className="font-semibold text-[var(--color-heading)]">{MODE_LABEL[profile.credential_mode]}{isAdminView ? (profile.credential_mode === "own" ? " (the organization's own accounts)" : " (billed to you)") : ""}</dd>
+          <dd className="font-semibold text-[var(--color-heading)]">{MODE_LABEL[profile.credential_mode]}{profile.credential_mode === "own" ? " (the organization's own accounts)" : " (billed to you)"}</dd>
         </div>
-        {isAdminView && (
-          <div>
-            <dt className="text-[var(--color-muted)]">Org admin can edit keys</dt>
-            <dd>
-              <label className="inline-flex items-center gap-2 text-[var(--color-heading)]">
-                <input
-                  type="checkbox"
-                  checked={profile.allow_org_edit}
-                  disabled={!canManage || busy}
-                  onChange={(e) => run(() => put({ allow_org_edit: e.target.checked }))}
-                />
-                Allow
-              </label>
-            </dd>
-          </div>
-        )}
       </dl>
 
-      {isAdminView && canManage && (
+      {canManage && (
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-[var(--color-heading)] flex items-center gap-2">
             Engine
@@ -304,7 +276,7 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
 
       <ul className="space-y-2">{visibleSlots.map(slotRow)}</ul>
 
-      {isAdminView && canManage && (
+      {canManage && (
         <div className="space-y-2">
           <Button variant="outline" size="sm" disabled={busy} onClick={() => importPlatform(false)}>
             Import from superadmin
@@ -323,9 +295,6 @@ export function VoiceCredentialsTab({ organizationId, canManage, mode }: VoiceCr
         </div>
       )}
 
-      {!isAdminView && !mayEditKeys && (
-        <p className="text-[11px] text-[var(--color-muted)]">Voice keys are managed by your platform administrator.</p>
-      )}
     </div>
   );
 }

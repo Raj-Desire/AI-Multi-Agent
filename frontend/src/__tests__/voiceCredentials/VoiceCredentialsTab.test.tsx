@@ -33,7 +33,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("renders masked hint and never the key", async () => {
     setup(profile());
-    const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage />);
     expect(await screen.findByText("****abcd")).toBeInTheDocument();
     container.querySelectorAll("input[type=password], input[type=text]").forEach((i) => expect((i as HTMLInputElement).value).toBe(""));
     expect(screen.getAllByText("Own").length).toBeGreaterThan(0);
@@ -42,7 +42,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("import button shows Imported tag without revealing a key", async () => {
     setup(profile({ tts_engine: "aura", engine: slot(), tts: slot() }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     const btn = await screen.findByRole("button", { name: "Import from superadmin" });
     current = profile({ tts_engine: "aura", engine: slot({ key_hint: "****plat", source: "imported", configured: true }), tts: slot() });
     fireEvent.click(btn);
@@ -61,7 +61,7 @@ describe("VoiceCredentialsTab", () => {
       }
       return Promise.resolve(current);
     });
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.click(await screen.findByRole("button", { name: "Import from superadmin" }));
     expect(await screen.findByText("This replaces the organization's own key")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Replace key" }));
@@ -72,7 +72,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("replace flips tag to Own and key input is cleared after save", async () => {
     setup(profile({ engine: slot({ key_hint: "****plat", source: "imported", configured: true }), tts: slot() }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     expect(await screen.findByText("Imported")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Replace engine key" }));
     const input = screen.getByLabelText("New engine key") as HTMLInputElement;
@@ -91,7 +91,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("key input is cleared after a failed save", async () => {
     setup(profile({ engine: slot(), tts: slot() }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.click(await screen.findByRole("button", { name: "Replace engine key" }));
     const input = screen.getByLabelText("New engine key") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "sk-secret-fail" } });
@@ -105,7 +105,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("clear asks confirmation", async () => {
     setup(profile());
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.click(await screen.findByRole("button", { name: "Clear engine key" }));
     expect(calls("DELETE")).toHaveLength(0);
     expect(screen.getByText(/Clear this key\?/)).toBeInTheDocument();
@@ -113,37 +113,18 @@ describe("VoiceCredentialsTab", () => {
     await waitFor(() => expect(calls("DELETE")[0][0]).toBe("/superadmin/voice-profiles/org1/keys/engine"));
   });
 
-  it("org admin without permission sees read-only", async () => {
-    setup(profile({ allow_org_edit: false }));
-    const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage={false} mode="org-admin" />);
+  it("has no organization-editing toggle and never calls the organization route", async () => {
+    setup(profile({ allow_org_edit: true }));
+    const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage />);
     expect(await screen.findByText("****abcd")).toBeInTheDocument();
-    expect(container.querySelectorAll("input")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /Replace/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Clear/ })).not.toBeInTheDocument();
-    expect(fetchApi.mock.calls[0][0]).toBe("/voice-profile");
-  });
-
-  it("org admin with permission can replace a key via the org endpoint", async () => {
-    setup(profile({ allow_org_edit: true }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="org-admin" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Replace engine key" }));
-    fireEvent.change(screen.getByLabelText("New engine key"), { target: { value: "k1" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save engine key" }));
-    await waitFor(() => expect(calls("PUT")[0][0]).toBe("/voice-profile"));
-  });
-
-  it("no org-facing text contains the vendor names", async () => {
-    setup(profile({ allow_org_edit: true }));
-    const { container } = render(<VoiceCredentialsTab organizationId="org1" canManage mode="org-admin" />);
-    await screen.findByText("****abcd");
-    const text = container.textContent || "";
-    expect(text).toContain("Sonic Voice");
-    for (const bad of ["Deepgram", "Cartesia", "Desire"]) expect(text).not.toContain(bad);
+    expect(container.querySelectorAll("input[type='checkbox']")).toHaveLength(0);
+    expect(screen.queryByText(/org admin can edit keys/i)).not.toBeInTheDocument();
+    for (const c of fetchApi.mock.calls) expect(String(c[0])).toMatch(/^\/superadmin\/voice-profiles\/org1/);
   });
 
   it("engine change asks for confirmation and cancel sends no request", async () => {
     setup(profile({ tts_engine: "aura" }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.change(await screen.findByLabelText("Engine"), { target: { value: "cartesia" } });
     expect(screen.getByRole("alertdialog", { name: "Confirm change" })).toBeInTheDocument();
     expect(screen.getByText(/live agents/i)).toBeInTheDocument();
@@ -158,7 +139,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("credential mode change asks for confirmation", async () => {
     setup(profile());
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.change(await screen.findByLabelText("Credential mode"), { target: { value: "platform" } });
     expect(screen.getByRole("alertdialog", { name: "Confirm change" })).toBeInTheDocument();
     expect(calls("PUT")).toHaveLength(0);
@@ -168,7 +149,7 @@ describe("VoiceCredentialsTab", () => {
 
   it("engine dropdown shows the chosen engine while confirming and the dialog names both engines", async () => {
     setup(profile({ tts_engine: "aura" }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     const select = (await screen.findByLabelText("Engine")) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: "cartesia" } });
     expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe("cartesia");
@@ -181,25 +162,17 @@ describe("VoiceCredentialsTab", () => {
 
   it("credential mode dialog names both modes", async () => {
     setup(profile());
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     fireEvent.change(await screen.findByLabelText("Credential mode"), { target: { value: "platform" } });
     expect(screen.getByRole("alertdialog", { name: "Confirm change" }).textContent).toMatch(/from Own keys to Platform keys/i);
   });
 
   it("keys have plain names and a one-line explanation", async () => {
     setup(profile({ tts_engine: "cartesia" }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage mode="superadmin" />);
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
     expect(await screen.findByText("Voice engine key")).toBeInTheDocument();
     expect(screen.getByText("Cartesia voice key")).toBeInTheDocument();
     expect(screen.getByText(/listens to callers and runs the ai agent/i)).toBeInTheDocument();
     expect(screen.getByText(/makes the speaking voice/i)).toBeInTheDocument();
-  });
-
-  it("org admin sees neutral key names", async () => {
-    setup(profile({ tts_engine: "cartesia" }));
-    render(<VoiceCredentialsTab organizationId="org1" canManage={false} mode="org-admin" />);
-    expect(await screen.findByText("Voice engine key")).toBeInTheDocument();
-    expect(screen.getByText("Voice key")).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/cartesia|deepgram/i);
   });
 });
