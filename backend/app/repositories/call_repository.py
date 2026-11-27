@@ -43,7 +43,7 @@ _ANALYTICS_COLUMNS = (
     "c.agent_version, c.agent_name, c.agent_scope, c.outcome, c.business_outcome, c.summary, c.key_insights, "
     "c.key_requirements, c.customer_questions, c.objections, c.important_info, c.call_details, c.intent, c.sentiment, "
     "c.lead_score, c.interest_level, c.classification, c.callback_datetime, c.next_action, c.analytics, "
-    "c.analytics_status, c.tts_engine, c.credential_source, c.billed_to, c.is_test, c.created_at, c.updated_at, ARRAY_LENGTH(c.transcript) AS transcript_turns"
+    "c.analytics_status, c.tts_engine, c.voice_engine, c.credential_source, c.billed_to, c.is_test, c.created_at, c.updated_at, ARRAY_LENGTH(c.transcript) AS transcript_turns"
 )
 
 _CALL_FIELDS = set(Call.model_fields)

@@ -48,6 +48,7 @@ class Call(BaseModel):
     objections: Optional[List[str]] = None
     important_info: Optional[str] = None
     call_details: Optional[List[Dict[str, str]]] = None  # facts the agent captured on the call, as {label, value}
+    voice_engine: Optional[str] = None  # "managed" | "custom"; None on calls stored before the field existed
     next_action: Optional[str] = None
     intent: Optional[str] = None
     sentiment: Optional[str] = None

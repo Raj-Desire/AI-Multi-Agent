@@ -86,6 +86,43 @@ def estimate_call_cost(provider: str, to_number: str, duration_seconds: int, dir
     return TelephonyCost(round(billed_seconds / 60.0 * per_minute, 6), str(rate.get("currency", "USD")), True)
 
 
+# Per-minute rate card by voice engine, USD. Voice (text-to-speech) characters are costed separately and are NOT included.
+# managed: measured 2026-11-26 from a real call ($0.11 for 118 s on the managed Voice Agent); published pay-as-you-go
+#   range is 0.051-0.065. Speech-to-text and the language model are bundled in the agent rate.
+# custom: speech-to-text is the streaming list price (a promotional 0.0048 exists; the higher figure is used); the model
+#   cost is an estimate, about 38,000 input tokens/min on a 6,000-token prompt at gpt-4o-mini prices with prompt
+#   caching (measured 2026-11-26).
+# Each is overridable at call time by the named environment variable.
+MANAGED_AGENT_PER_MINUTE = 0.056       # env COST_MANAGED_AGENT_PER_MIN
+CUSTOM_STT_PER_MINUTE = 0.0077         # env COST_CUSTOM_STT_PER_MIN
+CUSTOM_LLM_PER_MINUTE = 0.005          # env COST_CUSTOM_LLM_PER_MIN
+
+
+def _rate(env_name: str, default: float) -> float:
+    try:
+        return float(os.getenv(env_name, "").strip())
+    except ValueError:
+        return default
+
+
+def engine_cost_per_minute(engine: Optional[str]) -> Dict[str, float]:
+    """USD per minute for a voice engine ("custom" or "managed"); anything else uses the managed rates."""
+    if engine == "custom":
+        stt = _rate("COST_CUSTOM_STT_PER_MIN", CUSTOM_STT_PER_MINUTE)
+        agent = 0.0
+        llm = _rate("COST_CUSTOM_LLM_PER_MIN", CUSTOM_LLM_PER_MINUTE)
+    else:
+        stt = 0.0
+        agent = _rate("COST_MANAGED_AGENT_PER_MIN", MANAGED_AGENT_PER_MINUTE)
+        llm = 0.0
+    return {
+        "stt_per_minute": round(stt, 6),
+        "agent_per_minute": round(agent, 6),
+        "llm_per_minute": round(llm, 6),
+        "total_per_minute": round(stt + agent + llm, 6),
+    }
+
+
 # Default Markup for client billings (e.g. 2.5x wholesale cost)
 DEFAULT_BILLING_MARKUP = 2.50
 

@@ -323,6 +323,7 @@ class CallSessionService:
             call_doc.callback_datetime = analytics_data.get("callback_datetime") or existing_call.callback_datetime
             call_doc.analytics_status = "pending"
             call_doc.tts_engine = session.tts_engine or existing_call.tts_engine
+            call_doc.voice_engine = session.voice_engine or existing_call.voice_engine
             call_doc.credential_source = session.credential_source or existing_call.credential_source
             call_doc.billed_to = session.billed_to or existing_call.billed_to
             call_doc.is_test = bool(getattr(session, "is_test", False) or getattr(existing_call, "is_test", False))
@@ -376,6 +377,7 @@ class CallSessionService:
                 callback_datetime=analytics_data.get("callback_datetime"),
                 analytics_status="pending",
                 tts_engine=session.tts_engine,
+                voice_engine=session.voice_engine,
                 credential_source=session.credential_source,
                 billed_to=session.billed_to,
                 is_test=bool(getattr(session, "is_test", False)),

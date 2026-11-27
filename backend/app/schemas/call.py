@@ -40,6 +40,7 @@ class CallResponse(BaseModel):
     objections: Optional[List[str]] = None
     important_info: Optional[str] = None
     call_details: Optional[List[Dict[str, str]]] = None
+    voice_engine: Optional[str] = None
     next_action: Optional[str] = None
     intent: Optional[str] = None
     sentiment: Optional[str] = None
