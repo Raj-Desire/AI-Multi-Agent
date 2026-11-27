@@ -40,6 +40,11 @@ def _is_backchannel(words: list[str]) -> bool:
     return " ".join(words) in BACKCHANNELS or all(w in BACKCHANNELS for w in words)
 
 
+def is_backchannel(text: str) -> bool:
+    """True when the text is only acknowledgement words ("હા", "ok", ...)."""
+    return _is_backchannel(_words(text))
+
+
 def turn_is_complete(final_text: str, speech_final: bool, ms_since_last_word: int) -> bool:
     words = _words(final_text)
     if not words:

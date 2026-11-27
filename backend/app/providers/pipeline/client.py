@@ -16,19 +16,20 @@ Callback order for one caller turn (mirrors the events the Standard engine sends
 """
 import asyncio
 import contextlib
+import contextvars
 import functools
 import logging
 import os
 import time
 import uuid
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set, Tuple
 
 from app.providers.pipeline.llm import (
     AzureChatStream, LlmTimeout, LlmUnavailable, TextDelta, ToolCall, to_chat_tools,
 )
 from app.providers.pipeline.sentences import SentenceChunker
 from app.providers.pipeline.tts import StreamingTTS, TtsUnavailable
-from app.providers.pipeline.turns import clean_transcript, is_real_interruption, turn_is_complete
+from app.providers.pipeline.turns import clean_transcript, is_backchannel, is_real_interruption, turn_is_complete
 from app.voice_stack.function_dispatch import answer_function_call, run_knowledge_search
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,27 @@ APOLOGY_LINE = "માફ કરજો, થોડી વાર લાગે છ�
 TOOL_LIMIT_LINE = "માફ કરજો, હમણાં એ થઈ શકતું નથી. બીજું કંઈ મદદ કરું?"
 MAX_TOOL_ROUNDS = 4
 MAX_REPLY_TOKENS = 400
-LLM_FIRST_TOKEN_TIMEOUT_S = 5.0  # keeps the worst-case silence under 6 s
+FILLER_LINE = "એક ક્ષણ, હું જોઉં છું."
+LLM_FIRST_TOKEN_TIMEOUT_S = 4.0  # with the silence watchdog, keeps the worst-case silence under 6 s
 UTTERANCE_END_SILENCE_MS = 1000
 SUPPORTED_VOICE_TYPE = "cartesia"
 _NOT_CONFIGURED = "Voice engine is not configured for this organization"
 
 Callback = Optional[Callable[..., Awaitable[Any]]]
+
+
+class _Speaker:
+    """One speaking unit: the reply to one caller turn, or one injected message."""
+
+    def __init__(self, protected: bool = False):
+        self.protected = protected            # never cancelled by an interruption
+        self.audio = False                    # some audio was handed out
+        self.last_sentence_at: Optional[float] = None  # clock time the latest sentence began playing
+        self.filler_speaking = False
+
+
+# The speaking unit of the running task; inherited by tasks it spawns (the silence watchdog).
+_speaker: "contextvars.ContextVar[Optional[_Speaker]]" = contextvars.ContextVar("economy_speaker", default=None)
 
 
 class PipelineVoiceClient:
@@ -61,7 +77,13 @@ class PipelineVoiceClient:
         stt: Any = None,
         llm: Any = None,
         tts: Any = None,
+        silence_watchdog_s: float = 3.5,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
     ):
+        self._watchdog_s = silence_watchdog_s
+        self._clock = clock
+        self._sleep = sleep
         self._profile = profile
         self.on_audio = on_audio
         self.on_event = on_event
@@ -91,11 +113,15 @@ class PipelineVoiceClient:
         self._speech_tasks: Set[asyncio.Task] = set()  # turn + injected speech
         self._aux_tasks: Set[asyncio.Task] = set()     # voice cancels
         self._ctx: Optional[str] = None                # voice context currently allowed to play
-        self._speaking = False
+        self._ctx_speaker: Optional[_Speaker] = None
+        self._speakers: Set[_Speaker] = set()          # units with audio out; AgentAudioDone when it empties
+        self._protected: Set[asyncio.Task] = set()     # injected messages an interruption never cancels
+        self._inject_lock = asyncio.Lock()             # queued injections speak one at a time, in order
+        self._deferred: List[str] = []                 # caller turns held while a protected message plays
         self._tts_failures = 0
 
         self._user_parts: List[str] = []   # final caller text of the turn being collected
-        self._overlap: List[str] = []      # caller text heard while the agent was talking
+        self._overlap: List[Tuple[str, float]] = []  # (caller text, clock time) heard while the agent talked
         self._speech_started_at: Optional[float] = None
         self._user_speaking_sent = False
 
@@ -212,7 +238,7 @@ class PipelineVoiceClient:
     async def _on_speech_started(self) -> None:
         if self._closed:
             return
-        self._speech_started_at = time.monotonic()
+        self._speech_started_at = self._clock()
         self._user_speaking_sent = False
         if not self._agent_active():
             await self._announce_user_speaking()
@@ -228,14 +254,14 @@ class PipelineVoiceClient:
         if self._closed:
             return
         if self._agent_active():
-            heard = " ".join(self._overlap + [text])
+            heard = " ".join([t for t, _ in self._overlap] + [text])
             started = self._speech_started_at
-            speech_ms = int((time.monotonic() - started) * 1000) if started is not None else 0
+            speech_ms = int((self._clock() - started) * 1000) if started is not None else 0
             if not is_real_interruption(heard, speech_ms, True):
                 if is_final:
-                    self._overlap.append(text)
+                    self._overlap.append((text, self._clock()))
                 return
-            earlier = list(self._overlap)
+            earlier = [t for t, _ in self._overlap]
             self._interrupt()  # synchronous: local playback stops before anything is awaited
             self._user_parts = earlier
             await self._announce_user_speaking()
@@ -265,30 +291,48 @@ class PipelineVoiceClient:
 
     # ---- turns ----
     def _start_turn(self, user_text: str) -> None:
+        if self._protected_pending():
+            self._deferred.append(user_text)  # answered once the protected message has played
+            return
         self._interrupt()
         self._turn_task = self._spawn_speech(self._run_turn(user_text))
 
-    def _spawn_speech(self, coro: Awaitable[Any]) -> asyncio.Task:
+    def _spawn_speech(self, coro: Awaitable[Any], protected: bool = False) -> asyncio.Task:
         task = asyncio.ensure_future(coro)
         self._speech_tasks.add(task)
         task.add_done_callback(self._speech_tasks.discard)
+        if protected:
+            self._protected.add(task)
+            task.add_done_callback(self._protected.discard)
         return task
 
+    def _protected_pending(self) -> bool:
+        me = asyncio.current_task()
+        return any(t is not me and not t.done() for t in self._protected)
+
     def _interrupt(self) -> None:
-        """Stops the reply now: no awaits, so no more audio is handed out once this returns."""
+        """Stops the reply now: no awaits, so no more audio is handed out once this returns.
+
+        Protected injected messages (the goodbye) keep playing."""
         me = asyncio.current_task()
         for t in list(self._speech_tasks):
-            if t is not me and not t.done():
+            if t is not me and not t.done() and t not in self._protected:
                 t.cancel()
-        ctx, self._ctx = self._ctx, None
-        self._speaking = False
+        self._speakers = {s for s in self._speakers if s.protected}
         self._overlap.clear()
+        if self._ctx_speaker is not None and self._ctx_speaker.protected:
+            return
+        ctx, self._ctx = self._ctx, None
+        self._ctx_speaker = None
         if ctx is not None and self._tts is not None:
             aux = asyncio.ensure_future(self._tts.cancel(ctx))
             self._aux_tasks.add(aux)
             aux.add_done_callback(self._aux_tasks.discard)
 
     async def _run_turn(self, user_text: str) -> None:
+        turn = _Speaker()
+        _speaker.set(turn)
+        watchdog = self._spawn_speech(self._watchdog(turn, asyncio.current_task()))
         try:
             self._history.append({"role": "user", "content": user_text})
             await self._emit("ConversationText", {"role": "user", "content": user_text})
@@ -296,13 +340,52 @@ class PipelineVoiceClient:
             await self._emit("AgentThinking", {})
             await self._call(self.on_agent_thinking, {})
             await self._respond()
+            await self._end_watchdog(turn, watchdog)
             await self._finish_speaking()
+            carry = self._take_overlap(turn)
+            if carry and not self._closed:
+                self._start_turn(carry)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("[Economy] turn failed")
-        finally:
             self._overlap.clear()
+            await self._finish_speaking()
+        finally:
+            if not watchdog.done():
+                watchdog.cancel()
+
+    async def _watchdog(self, turn: _Speaker, turn_task: Optional[asyncio.Task]) -> None:
+        """Speaks one short filler line when the turn has produced no audio for a while."""
+        await self._sleep(self._watchdog_s)
+
+        def still_silent() -> bool:
+            return not turn.audio and not self._closed and (turn_task is None or not turn_task.done())
+
+        if not still_silent():
+            return
+        turn.filler_speaking = True
+        try:
+            await self._speak_sentence(FILLER_LINE, [], only_if=still_silent)  # not part of the model's history
+        finally:
+            turn.filler_speaking = False
+
+    async def _end_watchdog(self, turn: _Speaker, watchdog: asyncio.Task) -> None:
+        if watchdog.done():
+            return
+        if turn.filler_speaking:
+            await asyncio.wait({watchdog})
+        else:
+            watchdog.cancel()
+
+    def _take_overlap(self, turn: _Speaker) -> str:
+        """Caller words heard during the reply that still need an answer.
+
+        A lone backchannel counts only when it came while the final sentence was playing."""
+        last = turn.last_sentence_at
+        keep = [t for t, at in self._overlap if not is_backchannel(t) or (last is not None and at >= last)]
+        self._overlap.clear()
+        return clean_transcript(" ".join(keep))
 
     async def _respond(self) -> None:
         rounds = 0
@@ -342,6 +425,17 @@ class PipelineVoiceClient:
                 await self._speak_line(TOOL_LIMIT_LINE)
                 return
             rounds += 1
+            answers: List[dict] = []
+            try:
+                for c in calls:
+                    answer = await answer_function_call(
+                        c.name, c.arguments, state=self._numerology_state, knowledge_runner=self._knowledge_runner
+                    )
+                    answers.append({"role": "tool", "tool_call_id": c.id, "content": answer})
+            except asyncio.CancelledError:
+                self._record_assistant(spoken)  # unanswered calls are dropped, so the history stays valid
+                raise
+            # the call and all of its answers enter the history together
             self._history.append({
                 "role": "assistant",
                 "content": " ".join(spoken) or None,
@@ -350,11 +444,7 @@ class PipelineVoiceClient:
                     for c in calls
                 ],
             })
-            for c in calls:
-                answer = await answer_function_call(
-                    c.name, c.arguments, state=self._numerology_state, knowledge_runner=self._knowledge_runner
-                )
-                self._history.append({"role": "tool", "tool_call_id": c.id, "content": answer})
+            self._history.extend(answers)
 
     def _record_assistant(self, spoken: List[str]) -> None:
         if spoken:
@@ -367,29 +457,61 @@ class PipelineVoiceClient:
         finally:
             self._record_assistant(spoken)
 
-    async def _speak_reply(self, text: str) -> None:
-        """A whole reply spoken outside a caller turn (greeting, injected message)."""
+    async def _speak_reply(self, text: str, *, protected: bool = False, queued: bool = False) -> None:
+        """A whole reply spoken outside a caller turn (greeting, injected message).
+
+        A queued message waits until the active reply has fully finished, then speaks in arrival order."""
+        _speaker.set(_Speaker(protected))
         try:
-            await self._speak_line(text)
+            if queued:
+                async with self._inject_lock:
+                    while self._turn_task is not None and not self._turn_task.done():
+                        await asyncio.wait({self._turn_task})
+                    await self._speak_line(text)
+            else:
+                await self._speak_line(text)
             await self._finish_speaking()
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("[Economy] speaking failed")
+            await self._finish_speaking()
+        finally:
+            if protected and not self._closed:
+                self._resume_deferred()
+
+    def _resume_deferred(self) -> None:
+        if self._deferred and not self._protected_pending():
+            text = clean_transcript(" ".join(self._deferred))
+            self._deferred.clear()
+            if text:
+                self._start_turn(text)
 
     async def _finish_speaking(self) -> None:
-        if self._speaking:
-            self._speaking = False
-            await self._emit("AgentAudioDone", {})
-            await self._call(self.on_agent_audio_done)
+        """AgentAudioDone fires once, when the last speaking unit is done."""
+        speaker = _speaker.get()
+        if speaker is not None and speaker in self._speakers:
+            self._speakers.discard(speaker)
+            if not self._speakers:
+                await self._emit("AgentAudioDone", {})
+                await self._call(self.on_agent_audio_done)
 
-    async def _speak_sentence(self, text: str, spoken: List[str]) -> None:
+    async def _speak_sentence(
+        self, text: str, spoken: List[str], only_if: Optional[Callable[[], bool]] = None
+    ) -> None:
         """Speaks one sentence; adds it to `spoken` only when all of its audio was handed out."""
         if self._closed or self._tts is None:
             return
+        speaker = _speaker.get()
+        if speaker is None:
+            speaker = _Speaker()
+            _speaker.set(speaker)
         async with self._speak_lock:
+            if only_if is not None and not only_if():
+                return
             ctx = uuid.uuid4().hex
             self._ctx = ctx
+            self._ctx_speaker = speaker
             started = False
             try:
                 async with contextlib.aclosing(self._tts.speak(text, context_id=ctx)) as audio:
@@ -398,10 +520,14 @@ class PipelineVoiceClient:
                             break
                         if not started:
                             started = True
-                            if not self._speaking:
-                                self._speaking = True
-                                await self._emit("AgentStartedSpeaking", {})
-                                await self._call(self.on_agent_speaking, {})
+                            speaker.audio = True
+                            speaker.last_sentence_at = self._clock()
+                            if speaker not in self._speakers:
+                                first = not self._speakers
+                                self._speakers.add(speaker)
+                                if first:
+                                    await self._emit("AgentStartedSpeaking", {})
+                                    await self._call(self.on_agent_speaking, {})
                             await self._emit("ConversationText", {"role": "assistant", "content": text})
                             await self._call(self.on_transcript, "assistant", text)
                         if self._ctx != ctx:
@@ -413,6 +539,7 @@ class PipelineVoiceClient:
             finally:
                 if self._ctx == ctx:
                     self._ctx = None
+                    self._ctx_speaker = None
                     completed = not self._closed
                 else:
                     completed = False
@@ -434,7 +561,11 @@ class PipelineVoiceClient:
             return
         if behavior == "interrupt":
             self._interrupt()
-        self._spawn_speech(self._speak_reply(text))
+            self._spawn_speech(self._speak_reply(text, protected=True), protected=True)
+        elif behavior == "queue":
+            self._spawn_speech(self._speak_reply(text, protected=True, queued=True), protected=True)
+        else:
+            self._spawn_speech(self._speak_reply(text))
 
     async def inject_user_message(self, content: str) -> None:
         text = clean_transcript(content or "")
