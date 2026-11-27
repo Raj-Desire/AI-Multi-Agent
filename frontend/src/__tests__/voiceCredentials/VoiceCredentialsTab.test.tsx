@@ -14,6 +14,7 @@ const profile = (over: any = {}) => ({
   tts_engine: "cartesia",
   credential_mode: "own",
   allow_org_edit: false,
+  voice_engine: "managed",
   engine: slot({ key_hint: "****abcd", status: "valid", source: "own", configured: true, last_verified_at: "2026-11-20T10:00:00Z" }),
   tts: slot({ key_hint: "****wxyz", status: "unverified", source: "own", configured: true }),
   ...over,
@@ -120,6 +121,41 @@ describe("VoiceCredentialsTab", () => {
     expect(container.querySelectorAll("input[type='checkbox']")).toHaveLength(0);
     expect(screen.queryByText(/org admin can edit keys/i)).not.toBeInTheDocument();
     for (const c of fetchApi.mock.calls) expect(String(c[0])).toMatch(/^\/superadmin\/voice-profiles\/org1/);
+  });
+
+  it("shows a Voice plan select with Standard and Economy and a hint for each", async () => {
+    setup(profile({ voice_engine: "custom" }));
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
+    const sel = (await screen.findByLabelText("Voice plan")) as HTMLSelectElement;
+    expect(Array.from(sel.options).map((o) => o.textContent)).toEqual(["Standard", "Economy"]);
+    expect(sel.value).toBe("custom");
+    expect(screen.getByText(/managed real-time voice assistant/i)).toBeInTheDocument();
+    expect(screen.getByText(/lower-cost own pipeline/i)).toBeInTheDocument();
+    expect(document.body.textContent || "").not.toMatch(/deepgram|openai|azure/i);
+  });
+
+  it("changing the plan asks for confirmation, cancel sends nothing, confirm saves voice_engine", async () => {
+    setup(profile());
+    render(<VoiceCredentialsTab organizationId="org1" canManage />);
+    const sel = (await screen.findByLabelText("Voice plan")) as HTMLSelectElement;
+    expect(sel.value).toBe("managed");
+    fireEvent.change(sel, { target: { value: "custom" } });
+    expect(calls("PUT")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel change" }));
+    expect(calls("PUT")).toHaveLength(0);
+    fireEvent.change(sel, { target: { value: "custom" } });
+    current = profile({ voice_engine: "custom" });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm change" }));
+    await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+    expect(JSON.parse(calls("PUT")[0][1].body)).toEqual({ voice_engine: "custom" });
+    expect(calls("PUT")[0][0]).toBe("/superadmin/voice-profiles/org1");
+  });
+
+  it("hides the Voice plan select when the viewer cannot manage", async () => {
+    setup(profile());
+    render(<VoiceCredentialsTab organizationId="org1" canManage={false} />);
+    await screen.findByText("****abcd");
+    expect(screen.queryByLabelText("Voice plan")).toBeNull();
   });
 
   it("engine change asks for confirmation and cancel sends no request", async () => {

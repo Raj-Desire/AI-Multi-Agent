@@ -423,7 +423,7 @@ export function Step3VoiceLanguage({
 
   // Organizations on their own keys get one engine only; legacy / platform-mode orgs (or a failed lookup) see both.
   const [engineLock, setEngineLock] = useState<"flux" | "sonic" | null>(null);
-  const { allowed: economyAllowed, profile: viewerProfile } = useCustomPipelineAllowed({
+  const { profile: viewerProfile } = useCustomPipelineAllowed({
     agentOrgId: agentData.organization_id,
     viewerOrgId: viewerOrganizationId,
     isSuperAdmin
@@ -977,13 +977,6 @@ export function Step3VoiceLanguage({
     return filtered;
   }, [selectedEngine, sonicLangFilter, searchQuery, activeFilter, activeCategory, voiceTab, savedVoiceIds]);
 
-  const economySelectable = economyAllowed && isCartesiaVoice(agentData.voice?.provider, agentData.voice?.voice);
-  const economyHint = !economyAllowed
-    ? "Not enabled for your organization"
-    : !economySelectable
-      ? "Not available for this voice"
-      : null;
-
   return (
     <div className="space-y-6 text-left">
       {/* Header */}
@@ -1003,29 +996,6 @@ export function Step3VoiceLanguage({
           </div>
         </div>
       </div>
-
-      {/* Voice engine: Standard or Economy. Platform-owner only; the server ignores it for everyone else. */}
-      {isSuperAdmin && <div data-testid="voice-engine-section" className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-1.5">
-        <label htmlFor="voice-engine-select" className="block text-xs font-semibold text-[var(--color-heading)]">
-          Voice engine
-        </label>
-        <select
-          id="voice-engine-select"
-          aria-describedby={economyHint ? "voice-engine-hint" : undefined}
-          value={agentData.voice_engine || "managed"}
-          onChange={(e) => {
-            const next = e.target.value === "custom" ? "custom" : "managed";
-            setAgentData((prev) => ({ ...prev, voice_engine: next }));
-          }}
-          className="w-full sm:w-64 px-2.5 py-1.5 text-xs bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)]"
-        >
-          <option value="managed">Standard</option>
-          <option value="custom" disabled={!economySelectable}>Economy</option>
-        </select>
-        {economyHint && (
-          <p id="voice-engine-hint" className="text-[11px] text-[var(--color-muted)]">{economyHint}</p>
-        )}
-      </div>}
 
       {/* Section 1: Rich Production Voice Picker */}
       <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-main,0.375rem)] shadow-2xs space-y-3 relative z-30">

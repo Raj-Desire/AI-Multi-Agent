@@ -242,6 +242,18 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
             </select>
           </label>
           <label className="text-xs text-[var(--color-heading)] flex items-center gap-2">
+            Voice plan
+            <select
+              value={profile.voice_engine ?? "managed"}
+              disabled={busy}
+              onChange={(e) => e.target.value !== (profile.voice_engine ?? "managed") && setChange({ voice_engine: e.target.value })}
+              className="h-8 px-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] rounded text-[var(--color-heading)]"
+            >
+              <option value="managed">Standard</option>
+              <option value="custom">Economy</option>
+            </select>
+          </label>
+          <label className="text-xs text-[var(--color-heading)] flex items-center gap-2">
             Credential mode
             <select
               value={change?.credential_mode ?? profile.credential_mode}
@@ -256,10 +268,19 @@ export function VoiceCredentialsTab({ organizationId, canManage }: VoiceCredenti
         </div>
       )}
 
+      {canManage && (
+        <ul className="text-[11px] text-[var(--color-muted)] space-y-0.5">
+          <li>Standard: managed real-time voice assistant.</li>
+          <li>Economy: lower-cost own pipeline, needs a Cartesia voice setup (no Aura voices).</li>
+        </ul>
+      )}
+
       {change && (
         <div role="alertdialog" aria-label="Confirm change" className="p-2 rounded border border-[var(--color-border)] space-y-2">
           <p className="text-xs text-[var(--color-heading)]">
-            {"tts_engine" in change
+            {"voice_engine" in change
+              ? `Change the voice plan to ${change.voice_engine === "custom" ? "Economy" : "Standard"}? Every agent and campaign of this organization will use it.`
+              : "tts_engine" in change
               ? `Change the voice engine from ${engine ? ADMIN_ENGINE_LABEL[engine] : "Platform default"} to ${ADMIN_ENGINE_LABEL[change.tts_engine as VoiceEngineId]}?`
               : `Change credentials from ${MODE_LABEL[profile.credential_mode]} to ${MODE_LABEL[change.credential_mode as "own" | "platform"]}?`}
             {" "}Switching can affect live agents and calls in progress for this organization.

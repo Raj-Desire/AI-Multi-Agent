@@ -17,126 +17,31 @@ const auraAgent = (extra: any = {}): any => ({ agent_id: "a1", organization_id: 
 function routes(map: Record<string, any>) {
   fetchApi.mockImplementation((path: string) => (path in map ? (map[path] instanceof Error ? Promise.reject(map[path]) : Promise.resolve(map[path])) : Promise.resolve({})));
 }
-const select = () => screen.findByLabelText("Voice engine") as Promise<HTMLSelectElement>;
-const economy = (s: HTMLSelectElement) => Array.from(s.options).find((o) => o.textContent === "Economy")!;
 
-describe("voice engine selector", () => {
+describe("voice engine selector is gone (the plan is an organisation setting)", () => {
   beforeEach(() => {
     fetchApi.mockReset();
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
   });
 
-  it("renders Standard and Economy, defaulting to Standard", async () => {
+  it.each([
+    ["a super admin", { isSuperAdmin: true }],
+    ["an org admin", { isSuperAdmin: false }],
+    ["a plain user", {}],
+  ])("is absent for %s, for Cartesia and Aura agents alike", async (_n, props: any) => {
     routes({ "/voice-profile": profile(true) });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    expect(Array.from(s.options).map((o) => o.textContent)).toEqual(["Standard", "Economy"]);
-    expect(s.value).toBe("managed");
-  });
-
-  it("disables Economy with the org hint when the flag is false", async () => {
-    routes({ "/voice-profile": profile(false) });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    await screen.findByText("Not enabled for your organization");
-    expect(economy(s).disabled).toBe(true);
-  });
-
-  it("treats a failed request as not allowed", async () => {
-    routes({ "/voice-profile": new Error("boom") });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    await screen.findByText("Not enabled for your organization");
-    expect(economy(s).disabled).toBe(true);
-  });
-
-  it("treats a pending request as not allowed", async () => {
-    fetchApi.mockImplementation(() => new Promise(() => {}));
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    expect(economy(s).disabled).toBe(true);
-  });
-
-  it("enables Economy for an allowed org with a Cartesia voice and saves custom", async () => {
-    routes({ "/voice-profile": profile(true) });
-    let latest = cartesiaAgent();
-    const setAgentData = vi.fn((u: any) => { latest = typeof u === "function" ? u(latest) : u; });
-    render(<Step3VoiceLanguage agentData={latest} setAgentData={setAgentData} isSuperAdmin />);
-    const s = await select();
-    await waitFor(() => expect(economy(s).disabled).toBe(false));
-    expect(screen.queryByText("Not enabled for your organization")).toBeNull();
-    fireEvent.change(s, { target: { value: "custom" } });
-    expect(latest.voice_engine).toBe("custom");
-  });
-
-  it("disables Economy for a non-Cartesia voice even when the org is allowed", async () => {
-    routes({ "/voice-profile": profile(true) });
-    render(<Step3VoiceLanguage agentData={auraAgent()} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    await screen.findByText("Not available for this voice");
-    expect(economy(s).disabled).toBe(true);
-  });
-
-  it("keeps a stored custom value selected but disabled when no longer allowed, without rewriting it", async () => {
-    routes({ "/voice-profile": profile(false) });
-    const setAgentData = vi.fn();
-    render(<Step3VoiceLanguage agentData={cartesiaAgent({ voice_engine: "custom" })} setAgentData={setAgentData} isSuperAdmin />);
-    const s = await select();
-    await screen.findByText("Not enabled for your organization");
-    expect(s.value).toBe("custom");
-    expect(economy(s).disabled).toBe(true);
-    expect(setAgentData).not.toHaveBeenCalled();
-  });
-
-  it("super admin on another organization's agent reads that organization's flag", async () => {
-    routes({ "/superadmin/voice-profiles/org2": { custom_pipeline_enabled: true }, "/voice-profile": profile(false) });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent({ organization_id: "org2" })} setAgentData={() => {}} isSuperAdmin viewerOrganizationId="org1" />);
-    const s = await select();
-    await waitFor(() => expect(economy(s).disabled).toBe(false));
-    expect(fetchApi).toHaveBeenCalledWith("/superadmin/voice-profiles/org2", expect.anything());
-    expect(fetchApi).not.toHaveBeenCalledWith("/voice-profile", expect.anything());
-  });
-
-  it("super admin on their own organization's agent uses /voice-profile", async () => {
-    routes({ "/voice-profile": profile(true) });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin viewerOrganizationId="org1" />);
-    const s = await select();
-    await waitFor(() => expect(economy(s).disabled).toBe(false));
-    expect(fetchApi).not.toHaveBeenCalledWith("/superadmin/voice-profiles/org1", expect.anything());
-  });
-
-  it("never shows vendor names in the new UI", async () => {
-    routes({ "/voice-profile": profile(false) });
-    const { container } = render(<Step3VoiceLanguage agentData={auraAgent({ voice_engine: "custom" })} setAgentData={() => {}} isSuperAdmin />);
-    const s = await select();
-    const region = (s.closest("[data-testid='voice-engine-section']") as HTMLElement).textContent || "";
-    expect(region).not.toMatch(/deepgram|cartesia|openai|azure/i);
-    expect(container).toBeTruthy();
-  });
-});
-
-describe("voice engine selector visibility", () => {
-  beforeEach(() => {
-    fetchApi.mockReset();
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, json: async () => ({}) })));
-  });
-
-  it("is rendered for a super admin", async () => {
-    routes({ "/voice-profile": profile(true) });
-    render(<Step3VoiceLanguage agentData={cartesiaAgent()} setAgentData={() => {}} isSuperAdmin />);
-    expect(await select()).toBeInTheDocument();
-  });
-
-  it.each([["an org admin", { isSuperAdmin: false }], ["a plain user", {}]])("is absent, not disabled, for %s", async (_n, props: any) => {
-    routes({ "/voice-profile": profile(true) });
-    const setAgentData = vi.fn();
-    const { container } = render(<Step3VoiceLanguage agentData={cartesiaAgent({ voice_engine: "custom" })} setAgentData={setAgentData} {...props} />);
-    await waitFor(() => expect(fetchApi).toHaveBeenCalled());
-    expect(screen.queryByLabelText("Voice engine")).toBeNull();
-    expect(container.querySelector("[data-testid='voice-engine-section']")).toBeNull();
-    expect(screen.queryByText("Economy")).toBeNull();
-    expect(screen.queryByText("Not enabled for your organization")).toBeNull();
-    expect(setAgentData).not.toHaveBeenCalled();
+    for (const agent of [cartesiaAgent({ voice_engine: "custom" }), auraAgent()]) {
+      const setAgentData = vi.fn();
+      const { container, unmount } = render(<Step3VoiceLanguage agentData={agent} setAgentData={setAgentData} {...props} />);
+      await waitFor(() => expect(fetchApi).toHaveBeenCalled());
+      expect(screen.queryByLabelText("Voice engine")).toBeNull();
+      expect(container.querySelector("[data-testid='voice-engine-section']")).toBeNull();
+      expect(screen.queryByText("Economy")).toBeNull();
+      expect(screen.queryByText("Not enabled for your organization")).toBeNull();
+      expect(screen.queryByText("Not available for this voice")).toBeNull();
+      expect(setAgentData).not.toHaveBeenCalled();
+      unmount();
+    }
   });
 });
 

@@ -28,7 +28,7 @@ export function useCustomPipelineAllowed({ agentOrgId, viewerOrgId, isSuperAdmin
     fetchApi<any>(path, LIVE)
       .then((p) => {
         if (cancelled || !p) return;
-        if (crossOrg) setAllowed(p.custom_pipeline_enabled === true);
+        if (crossOrg) setAllowed(p.voice_engine === "custom");
         else {
           setProfile(p);
           setAllowed(p.custom_pipeline_allowed === true);

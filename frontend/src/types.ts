@@ -1557,6 +1557,8 @@ export interface VoiceProfile {
   tts_engine: VoiceEngineId | null;
   credential_mode: "platform" | "own";
   allow_org_edit: boolean;
+  /** Voice plan of the organization: "managed" = Standard, "custom" = Economy. */
+  voice_engine?: "managed" | "custom";
   custom_pipeline_allowed?: boolean;
   engine: KeySlotView;
   tts: KeySlotView;
